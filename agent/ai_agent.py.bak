@@ -1,0 +1,374 @@
+import asyncio
+import os
+import shutil
+from typing import List, Optional
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from google.antigravity import Agent, LocalAgentConfig, CapabilitiesConfig
+import uvicorn
+
+app = FastAPI(title="Mì Tôm AI - Multimodal Standalone Agent", version="2.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Đảm bảo thư mục tạm tồn tại để chứa file upload
+TMP_DIR = "temp_uploads"
+os.makedirs(TMP_DIR, exist_ok=True)
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--api-key", type=str, default="type-vn-local-agent-2026")
+args, unknown = parser.parse_known_args()
+
+# Khóa bí mật (bạn có thể đưa vào file cấu hình hoặc biến môi trường)
+SECRET_AGENT_KEY = getattr(args, "api_key", "type-vn-local-agent-2026")
+
+@app.post("/api/chat")
+async def chat_endpoint(request: Request):
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key != SECRET_AGENT_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
+    try:
+        form = await request.form()
+        prompt = form.get("prompt", "Xin chào")
+        system_instructions = form.get("system_instructions", "Bạn là trợ lý AI thông minh đa phương tiện.")
+        model = form.get("model")
+        gemini_api_key = form.get("gemini_api_key")
+        
+        import uuid
+        conversation_id = form.get("conversation_id")
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
+            
+        files = form.getlist("files")
+        
+        tts_voice = form.get("tts_voice", "vi-VN-HoaiMyNeural")
+        tts_rate = form.get("tts_rate", "+0%")
+        
+        # 1. Lưu các file upload (image, video, audio) vào ổ đĩa tạm
+        file_paths = []
+        for file in files:
+            if getattr(file, "filename", None):
+                file_path = os.path.abspath(os.path.join(TMP_DIR, file.filename))
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+                file_paths.append(file_path)
+
+        import subprocess
+        import json
+        import re
+        import base64
+        import uuid
+        
+        # Dùng luôn thư mục tạm để tránh tạo 2 file (vì giao diện Angular cũng tự động lưu 1 bản)
+        target_dir = os.path.abspath(TMP_DIR)
+        is_video = prompt.startswith("Bắt buộc tạo video: ")
+        is_image = prompt.startswith("Bắt buộc tạo hình ảnh: ")
+
+        ext = ".mp4" if is_video else ".png"
+        filename = f"media_{uuid.uuid4().hex[:8]}{ext}"
+        target_path = os.path.join(target_dir, filename)
+
+        full_prompt = prompt
+        image_uid = "agimg" + str(uuid.uuid4()).replace("-", "")[:12]
+        
+        if is_video:
+            full_prompt = full_prompt.replace("Bắt buộc tạo video: ", "", 1).strip()
+            full_prompt += "\n\nHãy tạo video. Bắt buộc phải xuất ra màn hình một dòng văn bản chứa định dạng: VIDEO_PATH=<đường_dẫn_tuyệt_đối_thực_tế_của_file_vừa_tạo> sau khi tạo xong."
+            model = None
+        elif is_image:
+            full_prompt = full_prompt.replace("Bắt buộc tạo hình ảnh: ", "", 1).strip()
+            model = None
+            
+        if file_paths:
+            full_prompt += "\n[Ảnh tham khảo đính kèm]: " + ", ".join(file_paths)
+            
+        full_prompt = f"[{system_instructions}]\n\nLƯU Ý: Nếu yêu cầu của người dùng LÀ MỘT TÁC VỤ CẦN THỰC THI TRÊN MÁY TÍNH (ví dụ: mở app, đóng app, gửi tin nhắn, thao tác file, đăng bài Facebook, v.v.), hãy sử dụng công cụ terminal (bash) để hành động thay vì chỉ hướng dẫn suông. Ngược lại, nếu người dùng CHỈ HỎI THÔNG TIN BÌNH THƯỜNG (ví dụ: lịch âm, thời tiết, giải toán, kiến thức, v.v.), HÃY TRẢ LỜI NGẮN GỌN BẰNG VĂN BẢN VÀ KHÔNG CẦN THỰC THI BẤT KỲ LỆNH NÀO.\nNếu cần mở app có GUI như Opera GX, bắt buộc phải dùng lệnh `nohup <app> <args> </dev/null >/dev/null 2>&1 &` (ví dụ: `nohup opera-gx \"https://youtube.com\" </dev/null >/dev/null 2>&1 &`) để ứng dụng chạy ngầm hoàn toàn độc lập với Terminal. TUYỆT ĐỐI PHẢI CHUYỂN HƯỚNG TẤT CẢ STDIN/STDOUT/STDERR VÀO /dev/null NHƯ TRÊN, NẾU KHÔNG TIẾN TRÌNH SẼ BỊ TREO. KHÔNG DÙNG systemd-run NỮA VÌ NÓ SẼ LÀM APP MỞ LÊN RỒI TẮT NGAY.\nLƯU Ý ĐĂNG ẢNH LÊN FACEBOOK: TUYỆT ĐỐI KHÔNG click vào nút 'Ảnh/video' vì sẽ mở hộp thoại file của hệ thống gây treo/lỗi. Hãy tìm phần tử input file ẩn (ví dụ: `input[type=\"file\"]` có accept chứa 'image') và dùng Playwright/Puppeteer/Automation tool để upload trực tiếp đường dẫn file cục bộ vào input đó.\n\nLịch sử trò chuyện và Yêu cầu mới:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng! (Nếu không gọi công cụ tạo ảnh thì bỏ qua lưu ý này)."
+        
+        command = [
+            "agy", "--print", full_prompt,
+            "--dangerously-skip-permissions"
+        ]
+        if conversation_id:
+            command.extend(["--conversation", conversation_id])
+            
+        from fastapi.responses import StreamingResponse
+        
+        async def generate_stream():
+            try:
+                import subprocess
+                import json
+                import re
+                import base64
+                from PIL import Image
+                
+                import os
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
+                if "DISPLAY" not in env:
+                    env["DISPLAY"] = ":0"
+                if "XAUTHORITY" not in env:
+                    env["XAUTHORITY"] = os.path.expanduser("~/.Xauthority")
+                if "DBUS_SESSION_BUS_ADDRESS" not in env:
+                    env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/run/user/1000/bus"
+                if "XDG_RUNTIME_DIR" not in env:
+                    env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+                
+                # Bổ sung các đường dẫn phổ biến đề phòng trường hợp Electron app không kế thừa PATH
+                common_paths = [
+                    os.path.expanduser("~/.local/bin"),
+                    "/usr/local/bin",
+                    "/opt/homebrew/bin"
+                ]
+                current_path = env.get("PATH", "")
+                for p in common_paths:
+                    if p not in current_path and os.path.isdir(p):
+                        current_path = f"{p}:{current_path}"
+                env["PATH"] = current_path
+
+                try:
+                    process = subprocess.Popen(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1,
+                        env=env
+                    )
+                except FileNotFoundError:
+                    yield f"data: {json.dumps({'text': '⚠️ HỆ THỐNG CẢNH BÁO: Máy tính này chưa được cài đặt Antigravity CLI (lệnh `agy`). Bạn cần cài đặt core Antigravity thì AI Agent mới có thể hoạt động được trên thiết bị này!'})}\n\n"
+                    yield f"data: {json.dumps({'step_index': 1, 'status': 'DONE'})}\n\n"
+                    return
+                
+                prefixes_to_filter = ('I will ', 'I am ', 'I\'ll ', 'I need ', 'I have ', 'CRITICAL INSTRUCTION')
+                full_reply = []
+                
+                import queue
+                import threading
+                import asyncio
+                
+                event_queue = queue.Queue()
+                audio_task_queue = queue.Queue()
+                
+                def audio_worker():
+                    while True:
+                        task = audio_task_queue.get()
+                        if task is None:
+                            break
+                        try:
+                            import uuid, os
+                            import asyncio
+                            text_to_read = re.sub(r'```.*?```', '', task, flags=re.DOTALL).replace('*', '').replace('#', '')
+                            if text_to_read.strip() and tts_voice != 'none':
+                                audio_path = os.path.join(TMP_DIR, f"audio_{uuid.uuid4().hex[:8]}.mp3")
+                                
+                                if tts_voice == 'google':
+                                    try:
+                                        from gtts import gTTS
+                                        tts = gTTS(text=text_to_read[:5000], lang='vi')
+                                        tts.save(audio_path)
+                                    except Exception as err:
+                                        print("gTTS error:", err)
+                                else:
+                                    async def generate_edge_tts():
+                                        try:
+                                            import edge_tts
+                                            communicate = edge_tts.Communicate(text_to_read[:5000], tts_voice, rate=tts_rate)
+                                            await communicate.save(audio_path)
+                                        except Exception as err:
+                                            print("Edge-TTS error:", err)
+                                    
+                                    asyncio.run(generate_edge_tts())
+                                
+                                if os.path.exists(audio_path):
+                                    with open(audio_path, "rb") as f:
+                                        b64 = base64.b64encode(f.read()).decode("utf-8")
+                                try: os.remove(audio_path)
+                                except: pass
+                                event_queue.put({"success": True, "content": "", "audio_base64": b64, "conversation_id": conversation_id})
+                        except Exception as e:
+                            pass
+                        audio_task_queue.task_done()
+                        
+                worker_thread = threading.Thread(target=audio_worker)
+                worker_thread.start()
+
+                def text_reader():
+                    buffer_str = ""
+                    send_buffer = ""
+                    sentence_buffer = ""
+                    skip_current_line = False
+                    for char in iter(lambda: process.stdout.read(1), ''):
+                        if not char: break
+                        buffer_str += char
+                        
+                        if skip_current_line:
+                            if char == '\n':
+                                skip_current_line = False
+                                buffer_str = ""
+                            continue
+                            
+                        is_potential_prefix = False
+                        is_exact_prefix = False
+                        for p in prefixes_to_filter:
+                            if p.startswith(buffer_str):
+                                is_potential_prefix = True
+                            if buffer_str.startswith(p):
+                                is_exact_prefix = True
+                                
+                        if is_exact_prefix:
+                            skip_current_line = True
+                            buffer_str = ""
+                        elif is_potential_prefix:
+                            pass
+                        else:
+                            full_reply.append(buffer_str)
+                            send_buffer += buffer_str
+                            sentence_buffer += buffer_str
+                            
+                            if buffer_str in ('.', '!', '?', '\n') and len(sentence_buffer.strip()) > 10:
+                                audio_task_queue.put(sentence_buffer)
+                                sentence_buffer = ""
+                                
+                            buffer_str = ""
+                            
+                            if len(send_buffer) >= 15 or char in (' ', '\n'):
+                                event_queue.put({"success": True, "content": send_buffer, "conversation_id": conversation_id})
+                                send_buffer = ""
+                    
+                    if send_buffer:
+                        event_queue.put({"success": True, "content": send_buffer, "conversation_id": conversation_id})
+                    if sentence_buffer.strip():
+                        audio_task_queue.put(sentence_buffer)
+                        
+                    process.stdout.close()
+                    process.wait()
+                    audio_task_queue.put(None)
+                    worker_thread.join()
+                    event_queue.put(None)
+
+                reader_thread = threading.Thread(target=text_reader)
+                reader_thread.start()
+
+                while True:
+                    try:
+                        event = event_queue.get_nowait()
+                        if event is None:
+                            break
+                        yield f"data: {json.dumps(event)}\n\n"
+                    except queue.Empty:
+                        await asyncio.sleep(0.02)
+                
+                reply_text = "".join(full_reply).strip()
+                
+                # Bóc tách JSON nếu là định dạng có response (nhưng stream đã gửi rồi, fallback)
+                try:
+                    json_match = re.search(r'(\{[\s\S]*\"response\"[\s\S]*\})', reply_text)
+                    if json_match:
+                        clean_json = json_match.group(1).strip()
+                        parsed = json.loads(clean_json)
+                        if isinstance(parsed, dict) and "response" in parsed:
+                            reply_text = parsed["response"]
+                except Exception:
+                    pass
+                
+                # Xóa file tạm
+                for path in file_paths:
+                    try:
+                        os.remove(path)
+                    except:
+                        pass
+                        
+                # Tìm đường dẫn ảnh nếu có tạo ảnh hoặc video
+                image_base64 = None
+                video_base64 = None
+                img_path = target_path
+                
+                match = re.search(r"(?:IMAGE_PATH|VIDEO_PATH)=([^\s]+)", reply_text)
+                if match:
+                    img_path = match.group(1).strip()
+                    if img_path.endswith(']'):
+                        img_path = img_path[:-1]
+
+                if not os.path.exists(img_path) and image_uid:
+                    import glob
+                    brain_dir = os.path.expanduser("~/.gemini/antigravity-cli/brain")
+                    # Tìm file có chứa image_uid trong tên (do công cụ sinh ảnh sẽ thêm timestamp vào sau)
+                    pattern_png = os.path.join(brain_dir, "**", f"*{image_uid}*.png")
+                    pattern_jpg = os.path.join(brain_dir, "**", f"*{image_uid}*.jpg")
+                    pattern_jpeg = os.path.join(brain_dir, "**", f"*{image_uid}*.jpeg")
+                    
+                    found_files = glob.glob(pattern_png, recursive=True) + glob.glob(pattern_jpg, recursive=True) + glob.glob(pattern_jpeg, recursive=True)
+                    if found_files:
+                        img_path = found_files[0]
+
+                if os.path.exists(img_path):
+                        if img_path.endswith('.png') or img_path.endswith('.jpg') or img_path.endswith('.jpeg'):
+                            try:
+                                img = Image.open(img_path)
+                                width, height = img.size
+                                
+                                target_width = None
+                                if "kích thước là 4k" in full_prompt.lower():
+                                    target_width = 3840
+                                elif "kích thước là 2k" in full_prompt.lower():
+                                    target_width = 2560
+                                    
+                                if target_width and width < target_width:
+                                    aspect = height / width
+                                    new_height = int(target_width * aspect)
+                                    resample_method = getattr(Image, "Resampling", Image).LANCZOS
+                                    img = img.resize((target_width, new_height), resample_method)
+                                    img.save(img_path, quality=100)
+                            except Exception as e:
+                                print("Lỗi khi upscale ảnh:", e)
+                                pass
+                            
+                        with open(img_path, "rb") as f:
+                            b64_data = base64.b64encode(f.read()).decode("utf-8")
+                            if img_path.endswith('.mp4'):
+                                video_base64 = b64_data
+                            else:
+                                image_base64 = b64_data
+                        
+                        try:
+                            os.remove(img_path)
+                        except:
+                            pass
+                
+                # Đẩy file ảnh hoặc video xuống chunk cuối cùng
+                if image_base64 or video_base64:
+                    final_chunk = {"success": True, "content": "", "image_base64": image_base64, "video_base64": video_base64, "conversation_id": conversation_id}
+                    yield f"data: {json.dumps(final_chunk)}\n\n"
+                else:
+                    # Gửi chunk kết thúc để frontend chắc chắn nhận được conversation_id
+                    final_chunk = {"success": True, "content": "", "conversation_id": conversation_id}
+                    yield f"data: {json.dumps(final_chunk)}\n\n"
+                    
+            except Exception as e:
+                err_chunk = {"success": False, "error": str(e)}
+                yield f"data: {json.dumps(err_chunk)}\n\n"
+                
+        return StreamingResponse(generate_stream(), media_type="text/event-stream")
+        
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "result": "", "error": str(e)})
+
+@app.get("/api/shutdown")
+def shutdown_endpoint():
+    import os
+    import threading
+    def die():
+        os._exit(0)
+    threading.Timer(0.5, die).start()
+    return {"success": True, "message": "Shutting down"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=54321)

@@ -1,0 +1,28 @@
+.wp-picker-container {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* AI Type Global Unified Styling */
+.form-table th {
+    vertical-align: top !important;
+    width: 350px !important;
+    font-weight: 600 !important;
+    padding-top: 15px !important;
+}
+.form-table td {
+    vertical-align: top !important;
+    padding-top: 15px !important;
+}
+.form-table input[type="text"],
+.form-table input[type="number"],
+.form-table textarea,
+.form-table select {
+    width: 100% !important;
+    max-width: 600px !important;
+    padding: 8px !important;
+    box-sizing: border-box !important;
+}
+.nav-tab-wrapper {
+    margin-bottom: 20px;
+}

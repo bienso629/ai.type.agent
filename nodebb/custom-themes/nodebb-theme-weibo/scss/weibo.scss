@@ -1,0 +1,540 @@
+.weibo-composer {
+    border-radius: 8px;
+    border: none;
+    background-color: var(--bs-body-bg);
+
+    textarea {
+        resize: none;
+        font-size: 1.1rem;
+        background-color: transparent !important;
+        color: var(--bs-body-color) !important;
+
+        /* Viền bắt mắt và hiệu ứng nhịp thở (breathe/blink) gợi ý người dùng viết */
+        border: 1px solid rgba(var(--bs-primary-rgb, 13, 110, 253), 0.3) !important;
+        transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+        animation: composeBreathe 2.5s infinite ease-in-out;
+
+        &:focus {
+            animation: none;
+            border-color: var(--bs-primary, #86b7fe) !important;
+            outline: 0 !important;
+            box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb, 13, 110, 253), 0.25) !important;
+        }
+    }
+}
+
+@keyframes composeBreathe {
+    0%, 100% {
+        border-color: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.2) !important;
+        box-shadow: 0 0 0 rgba(var(--bs-primary-rgb, 13, 110, 253), 0) !important;
+    }
+    50% {
+        border-color: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.7) !important;
+        box-shadow: 0 0 8px rgba(var(--bs-primary-rgb, 13, 110, 253), 0.4) !important;
+    }
+}
+
+.weibo-post {
+    border-radius: 8px;
+    border: none;
+    background-color: transparent !important;
+    transition: background-color 0.2s;
+
+    .post-content {
+        &:not(.see-more-expanded):not(.see-more-released) {
+            max-height: 60vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        &.see-more-expanded {
+            max-height: 9999px;
+            transition: max-height 0.3s ease;
+        }
+
+        &.see-more-released {
+            max-height: none;
+            overflow: visible;
+        }
+    }
+
+    .post-actions {
+        font-size: 0.9rem;
+
+        a,
+        span {
+            transition: color 0.2s;
+            cursor: pointer;
+
+            &:hover {
+                color: var(--bs-primary) !important;
+            }
+        }
+    }
+}
+
+/* =========================================================
+   GIẢI QUYẾT LỖI GIẬT MÀN HÌNH (FOUC) KHI TẢI ẢNH GRID
+   Ẩn trước các hình nằm chơi vơi trong mảng Markdown,
+   chỉ hiện lên khi JS đã đóng đai vào weibo-img-grid.
+   ========================================================= */
+.post-content,
+[component="post/content"] {
+    word-break: break-word;
+    overflow-wrap: break-word;
+
+    > .weibo-img-grid,
+    > .ratio,
+    > .video-container,
+    > .iframe-container,
+    > iframe,
+    > video,
+    > .embed-wrapper,
+    > .embed-responsive,
+    > .iframely-link,
+    > p:has(> .weibo-img-grid),
+    > p:has(> .ratio),
+    > p:has(> .video-container),
+    > p:has(> .iframe-container),
+    > p:has(> iframe),
+    > p:has(> video),
+    > p:has(> .embed-wrapper),
+    > p:has(> .embed-responsive),
+    > p:has(.iframely-link),
+    > p:has(> img:not(.emoji):not(.avatar)) {
+        margin-bottom: 12px;
+    }
+
+    /* Ẩn sạch các hình ảnh thô lúc mới load (trừ mặt cười) để layout không bị giật/đẩy dòng */
+    p>img:not(.emoji):not(.avatar):not([alt="😎"]) {
+        display: none !important;
+    }
+
+    /* Hiển thị mượt mà kèm hiệu ứng khi Webo.js đã dàn Grid xong */
+    .weibo-img-grid {
+        img {
+            display: block !important;
+            animation: imgFadeIn 0.3s ease-out forwards;
+        }
+    }
+}
+
+@keyframes imgFadeIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Hide breadcrumbs on feed */
+.breadcrumb {
+    display: none !important;
+}
+
+/* Hide forum standard category lists */
+.category-item {
+    border: none !important;
+}
+
+.avatar {
+    border-radius: 50% / 60% 60% 40% 40% !important;
+}
+
+/* =========================================================
+   WEIBO IMAGE GRID SYSTEM
+   Hiển thị ảnh dưới dạng Lưới cực kỳ tối ưu
+   ========================================================= */
+
+#weibo-quick-post-content {
+    min-height: 100px !important;
+    background-color: var(--bs-body-bg) !important;
+    color: var(--bs-body-color) !important;
+}
+
+.weibo-img-grid {
+    display: grid;
+    gap: 16px;
+    margin-top: 10px;
+
+    @media (max-width: 767.98px) {
+        gap: 4px;
+    }
+
+    &.grid-1 {
+        grid-template-columns: 1fr;
+        max-width: 100%;
+    }
+
+    &.grid-2 {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: 80%;
+    }
+
+    &.grid-3 {
+        grid-template-columns: repeat(3, 1fr);
+        max-width: 100%;
+    }
+
+    .grid-img-wrap {
+        position: relative;
+        aspect-ratio: 1/1;
+        overflow: hidden;
+        border-radius: 10px 16px;
+        cursor: pointer;
+    }
+
+    &.grid-1 .grid-img-wrap {
+        aspect-ratio: auto;
+        border: none;
+        max-height: none;
+    }
+
+    &.grid-1 img {
+        width: 100%;
+        height: auto;
+        max-width: 100%;
+        max-height: none;
+        object-fit: contain;
+        border-radius: 6px;
+    }
+
+    &:not(.grid-1) img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+}
+
+.more-images-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(var(--bs-body-color-rgb), 0.5);
+    color: var(--bs-body-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: bold;
+    pointer-events: none;
+    text-decoration: none;
+}
+
+.weibo-post.card {
+    position: relative;
+    border-radius: 0px !important;
+    box-shadow: none !important;
+    border: none !important;
+
+    /* Phân cách nghệ thuật: Đường kẻ ngang bị đắt đoạn bởi dấu chấm tròn */
+    &:not(:first-child) {
+        margin-top: 30px !important;
+        /* Nới rộng khoảng cách */
+        overflow: visible;
+        /* Cho phép dấu chấm vươn ra ngoài thẻ */
+
+        /* Đường gạch ngang mờ */
+        &::before {
+            content: '';
+            position: absolute;
+            top: -15px;
+            /* Kéo lên chính giữa margin */
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background-color: rgba(var(--bs-body-color-rgb), 0.08);
+            /* Viền mờ */
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Dấu chấm tròn nằm đè lên kèm vầng sáng che cắt đứt đường kẻ */
+        &::after {
+            content: '';
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            margin-left: -10px;
+            margin-top: -10px;
+            width: 20px;
+            /* 4px + 8px spread x2 */
+            height: 20px;
+            border: 8px solid var(--bs-body-bg);
+            /* Thay thế box-shadow để tránh lỗi vệt đen render trên Mac OS */
+            border-radius: 50%;
+            background-color: rgba(var(--bs-body-color-rgb), 0.25);
+            background-clip: padding-box;
+            pointer-events: none;
+            z-index: 2;
+        }
+    }
+
+    .card-body {
+        padding: 0px !important;
+    }
+}
+
+.weibo-composer.quick-reply {
+    box-shadow: none !important;
+    border-radius: 0px !important;
+    background-color: transparent !important;
+    padding-bottom: 20px;
+}
+
+.sidebar .nav-link.active {
+    background-color: var(--bs-dark);
+    border-radius: 10px;
+}
+
+[component="post"]:last-child {
+    padding-bottom: 0rem;
+}
+
+[data-widget-area="sidebar"] {
+    [component="categories/category"] {
+        &:hover {
+            .content {
+                background: var(--bs-dark);
+                border-radius: 4px;
+            }
+        }
+
+        .content {
+            padding: 10px;
+        }
+
+        hr {
+            display: none;
+        }
+    }
+}
+
+[component="chat/message/body"] .img-fluid,
+[component="post/content"] .img-fluid {
+    border: 0;
+    box-shadow: none !important;
+    padding: 0;
+}
+
+[component="brand/wrapper"]:hover {
+    background-color: transparent;
+}
+
+/* Xóa khoảng trống margin-top 4 (mt-4) do cấu trúc Container HTML của Widget Bài Viết Liên Quan từ Backend sinh ra */
+[data-widget-area="footer"] .mt-4,
+[data-widget-area="footer"].mt-4 {
+    margin-top: 0 !important;
+}
+
+/* =========================================================
+   DARK THEME FIXES: HR, TEXTAREA, TIMELINE, BADGES & NAVIGATOR
+   ========================================================= */
+
+hr {
+    border-color: rgba(var(--bs-body-color-rgb), 0.1) !important;
+}
+
+textarea {
+    background-color: transparent !important;
+    color: var(--bs-body-color) !important;
+
+    &:not(:focus) {
+        border: 1px solid rgba(var(--bs-body-color-rgb), 0.15) !important;
+    }
+}
+
+.timeline {
+
+    >[component="post"],
+    .timeline-event,
+    >[component="post/placeholder"] {
+        border-left-color: rgba(var(--bs-body-color-rgb), 0.15) !important;
+    }
+
+    >[component="post"]:last-child::after {
+        background-color: rgba(var(--bs-body-color-rgb), 0.15) !important;
+    }
+
+    [component="topic/event"].timeline-event .timeline-badge,
+    [component="topic/necro-post"].timeline-event .timeline-badge {
+        border-color: rgba(var(--bs-body-color-rgb), 0.15) !important;
+        background-color: var(--bs-body-bg) !important;
+        color: rgba(var(--bs-body-color-rgb), 0.7) !important;
+    }
+}
+
+/* Badges (Lượt xem, người đăng, tags...) có nền trong suốt và viền trắng quá sáng */
+.badge.border.border-gray-300,
+.badge.border-gray-300 {
+    border-color: rgba(var(--bs-body-color-rgb), 0.15) !important;
+}
+
+/* Vertical line của thanh cuộn Navigator (Topic Scroller) bên phải màn hình */
+.topic .pagination-block .scroller-container {
+    border-left-color: rgba(var(--bs-body-color-rgb), 0.15) !important;
+}
+
+[component="category/topic"] .card-body {
+    background: transparent !important;
+}
+
+.brand-container {
+    margin-top: 10px;
+}
+
+[component="brand/logo"] {
+    max-width: 30px;
+    height: auto;
+    border-radius: 6px;
+}
+
+// Khi sidebar bị thu nhỏ (collapsed)
+.sidebar:not(.open) {
+    .brand-container {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+
+        .col-12 {
+            justify-content: center !important;
+        }
+
+        [component="brand/wrapper"] {
+            justify-content: center !important;
+            width: 100%;
+            padding: 0 !important;
+        }
+
+        [component="siteTitle"] {
+            display: none !important;
+        }
+    }
+}
+
+[component="post/footer"] {
+    border-bottom: none !important;
+    padding: 0 !important;
+}
+
+/* =========================================================
+   FACEBOOK STYLE MEDIA SKELETON LOADING
+   Hiệu ứng Loading (bóng mờ) cho hình ảnh / video khi đang tải
+   Phù hợp với Dark Theme
+   ========================================================= */
+@keyframes fbSkeletonShimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.fb-skeleton-loading {
+    background: linear-gradient(90deg, 
+        rgba(var(--bs-body-color-rgb), 0.04) 25%, 
+        rgba(var(--bs-body-color-rgb), 0.08) 50%, 
+        rgba(var(--bs-body-color-rgb), 0.04) 75%
+    ) !important;
+    background-color: rgba(var(--bs-body-color-rgb), 0.05) !important; /* Phù hợp cả Light & Dark Theme */
+    background-size: 200% 100% !important;
+    animation: fbSkeletonShimmer 1.5s infinite linear !important;
+}
+
+/* =========================================================
+   FACEBOOK EMBED ASPECT RATIOS (HORIZONTAL & VERTICAL)
+   ========================================================= */
+.weibo-fb-embed {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+
+    iframe {
+        width: 100%;
+        display: block;
+        border: none;
+    }
+
+    &.fb-horizontal {
+        max-width: 100%;
+        iframe {
+            aspect-ratio: 16 / 9;
+        }
+    }
+
+    &.fb-vertical {
+        max-width: 325px;
+        margin: 0 auto;
+        iframe {
+            aspect-ratio: 9 / 16;
+        }
+    }
+}
+
+/* Thu hep container lai giong kich thuoc hien thi cua Facebook */
+@media (min-width: 992px) {
+    .container-lg, .layout-container, .container {
+        max-width: 1000px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    /* Đảm bảo khung soạn thảo (Reply/Edit) luôn nằm chính giữa màn hình và đồng nhất với chiều rộng trang */
+    html.composing .composer {
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: 100% !important;
+        max-width: 1000px !important;
+        z-index: 1050 !important;
+    }
+}
+
+/* =========================================================
+   ĐIỀU CHỈNH FONT SIZE TIÊU ĐỀ TRANG CHỦ
+   ========================================================= */
+/* Tên chuyên mục (Categories) */
+[component="categories/category"] h2.title {
+    font-size: 1.15rem !important;
+}
+
+/* Tên người đăng bài (Recent topics) */
+[component="category/topic"] h5 {
+    font-size: 1.05rem !important;
+}
+
+/* =========================================================
+   ĐIỀU CHỈNH FONT SIZE HEADING TRONG NỘI DUNG BÀI VIẾT
+   Giảm kích thước các thẻ h1 -> h6 do người dùng tạo từ Markdown
+   ========================================================= */
+.post-content,
+[component="post/content"] {
+    h1 { font-size: 1.5rem !important; margin-top: 1.5rem; margin-bottom: 1rem; font-weight: 600; }
+    h2 { font-size: 1.35rem !important; margin-top: 1.25rem; margin-bottom: 0.875rem; font-weight: 600; }
+    h3 { font-size: 1.2rem !important; margin-top: 1rem; margin-bottom: 0.75rem; font-weight: 600; }
+    h4 { font-size: 1.1rem !important; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; }
+    h5 { font-size: 1.05rem !important; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; }
+    h6 { font-size: 1rem !important; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; }
+}
+/* =========================================================
+/* =========================================================
+   ĐIỀU CHỈNH BOTTOM BAR TRÊN MOBILE CHO DARK MODE
+   ========================================================= */
+.weibo-topic .post-container {
+    background-color: transparent !important;
+    border-radius: 8px;
+}
+.bottombar-nav.bg-light {
+    background-color: var(--bs-body-bg) !important;
+    border: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+}
+.bottombar-nav.text-dark {
+    color: var(--bs-body-color) !important;
+    
+    a, i, span {
+        color: var(--bs-body-color) !important;
+    }
+}

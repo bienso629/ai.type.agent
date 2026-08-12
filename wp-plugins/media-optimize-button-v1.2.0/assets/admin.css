@@ -1,0 +1,5 @@
+.mob-busy { opacity: .6; pointer-events: none; }
+.column-mob_size { width: 100px; }
+.mob-size { font-weight: 600; }
+.mob-size--medium { color: #d9831f; }
+.mob-size--heavy { color: #d63638; }

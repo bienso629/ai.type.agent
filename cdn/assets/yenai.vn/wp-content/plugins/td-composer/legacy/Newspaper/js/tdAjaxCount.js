@@ -1,0 +1,1 @@
+var tdAjaxCount={};tdAjaxCount={tdGetViewsCountsAjax:function(t,a){var e="td_ajax_get_views";"post"===t&&(e="td_ajax_update_views"),jQuery.ajax({type:"POST",url:td_ajax_url,cache:!0,data:{action:e,td_post_ids:a},success:function(t,a,e){(t=jQuery.parseJSON(t))instanceof Object&&jQuery.each(t,function(t,a){jQuery(".td-nr-views-"+t).html(a)})},error:function(t,a,e){}})}};

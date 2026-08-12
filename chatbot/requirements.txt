@@ -1,0 +1,47 @@
+# ==========================================
+# 1. Core Web Framework & Async
+# ==========================================
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6
+httpx>=0.24.1
+requests>=2.31.0
+aiofiles>=23.2.1
+
+# ==========================================
+# 2. Database (MongoDB & SQLite)
+# ==========================================
+pymongo>=4.6.1
+certifi>=2023.11.17
+
+# ==========================================
+# 3. Security & Authentication
+# ==========================================
+passlib[bcrypt]>=1.7.4
+PyJWT>=2.8.0
+google-auth>=2.22.0
+pydantic[email]>=2.3.0
+
+# ==========================================
+# 4. AI Models & Vector Database
+# ==========================================
+google-genai>=0.3.0
+sentence-transformers>=3.0.0
+torch>=2.0.0
+faiss-cpu>=1.7.4
+
+# ==========================================
+# 5. LangChain Ecosystem (RAG & Chunking)
+# ==========================================
+langchain-core>=0.1.52
+langchain-community>=0.0.38
+langchain-huggingface>=0.0.1
+langchain-text-splitters>=0.0.1
+
+# ==========================================
+# 6. Document Processing & OCR
+# ==========================================
+pymupdf>=1.24.0
+PyPDF2>=3.0.0
+pytesseract>=0.3.10
+pillow>=10.2.0

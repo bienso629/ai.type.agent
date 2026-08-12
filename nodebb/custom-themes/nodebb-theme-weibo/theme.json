@@ -1,0 +1,8 @@
+{
+    "id": "nodebb-theme-weibo",
+    "name": "Weibo Style",
+    "description": "Weibo style microblogging theme",
+    "url": "http://localhost",
+    "screenshot": "screenshot.png",
+    "baseTheme": "nodebb-theme-harmony"
+}
