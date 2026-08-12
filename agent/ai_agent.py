@@ -425,97 +425,6 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         full_prompt = prompt
         image_uid = "agimg" + str(uuid.uuid4()).replace("-", "")[:12]
 
-        # 🎮 Tự động phát hiện và áp dụng trực tiếp lệnh điều khiển & tạo/sửa/tắt Sự kiện 3D PlayCanvas vào /home/yenai/Documents/ai.type/data/profiles/admin/
-        prompt_lower = prompt.lower()
-        patch_3d = {}
-
-        if "tắt đèn" in prompt_lower or "tắt ánh sáng" in prompt_lower or "phòng tối" in prompt_lower:
-            patch_3d.setdefault("scene", {})["lightsOn"] = False
-        elif "bật đèn" in prompt_lower or "bật sáng" in prompt_lower or "mở đèn" in prompt_lower:
-            patch_3d.setdefault("scene", {})["lightsOn"] = True
-
-        if "nhảy" in prompt_lower or "múa" in prompt_lower or "dance" in prompt_lower:
-            patch_3d.setdefault("character", {})["animationState"] = "Dance"
-        elif "đi bộ" in prompt_lower or "walk" in prompt_lower:
-            patch_3d.setdefault("character", {})["animationState"] = "Walk"
-        elif "đứng yên" in prompt_lower or "idle" in prompt_lower or "dừng lại" in prompt_lower:
-            patch_3d.setdefault("character", {})["animationState"] = "Idle"
-        elif "chạy" in prompt_lower or "run" in prompt_lower:
-            patch_3d.setdefault("character", {})["animationState"] = "Run"
-        elif "vẫy tay" in prompt_lower or "wave" in prompt_lower:
-            patch_3d.setdefault("character", {})["animationState"] = "Wave"
-        elif "cú đá" in prompt_lower or "kick" in prompt_lower:
-            patch_3d.setdefault("character", {})["animationState"] = "Kick"
-
-        if "phóng to" in prompt_lower or "to hơn" in prompt_lower or "lớn hơn" in prompt_lower:
-            patch_3d.setdefault("character", {})["scale"] = 1.4
-        elif "thu nhỏ" in prompt_lower or "nhỏ hơn" in prompt_lower or "bé lại" in prompt_lower:
-            patch_3d.setdefault("character", {})["scale"] = 0.7
-
-        if "xoay" in prompt_lower or "quay mặt" in prompt_lower or "quay hướng" in prompt_lower:
-            patch_3d.setdefault("character", {})["facingAngle"] = 90
-
-        # Kiểm tra yêu cầu thêm/chỉnh sửa Hành động (animations.json)
-        if "thêm hành động" in prompt_lower or "tạo hành động" in prompt_lower or "thêm động tác" in prompt_lower:
-            m_name = re.search(r"(?:hành động|động tác)\s+([^\s,]+)", prompt_lower)
-            act_name = m_name.group(1).capitalize() if m_name else "Động tác mới"
-            is_move = "di chuyển" in prompt_lower or "chạy" in prompt_lower or "đi bộ" in prompt_lower
-            patch_3d["new_animation"] = {
-                "name": act_name,
-                "isMovement": is_move,
-                "speed": 12.0 if is_move else 0.0
-            }
-
-        # Kiểm tra yêu cầu tạo/sửa Sự kiện kịch bản (events.json)
-        if "thêm sự kiện" in prompt_lower or "tạo sự kiện" in prompt_lower or "khi click" in prompt_lower or "khi bấm" in prompt_lower:
-            trig = "clickLightSwitch"
-            if "cửa sổ" in prompt_lower: trig = "clickWindow"
-            elif "cửa ra vào" in prompt_lower or "cửa phòng" in prompt_lower: trig = "clickDoor"
-            elif "bể cá" in prompt_lower: trig = "clickAquarium"
-            elif "tủ đồ" in prompt_lower or "tủ quần áo" in prompt_lower: trig = "clickDrawer"
-            elif "khung ảnh" in prompt_lower: trig = "clickPicture"
-            elif "nhân vật" in prompt_lower: trig = "clickCharacter"
-
-            patch_3d["new_event"] = {
-                "trigger": trig,
-                "actions": [
-                    { "type": "notify", "message": f"Sự kiện {trig} đã được AI Agent ghi nhận!" }
-                ]
-            }
-
-        # Kiểm tra yêu cầu TẮT / BỎ sự kiện click tương tác
-        if "bỏ" in prompt_lower or "tắt" in prompt_lower or "xóa" in prompt_lower or "hủy" in prompt_lower or "không cho" in prompt_lower:
-            if "click" in prompt_lower or "sự kiện" in prompt_lower or "bấm" in prompt_lower:
-                trig_to_remove = None
-                if "nhân vật" in prompt_lower or "character" in prompt_lower: trig_to_remove = "clickCharacter"
-                elif "cửa sổ" in prompt_lower or "window" in prompt_lower: trig_to_remove = "clickWindow"
-                elif "cửa ra vào" in prompt_lower or "cửa phòng" in prompt_lower or "door" in prompt_lower: trig_to_remove = "clickDoor"
-                elif "bể cá" in prompt_lower or "aquarium" in prompt_lower: trig_to_remove = "clickAquarium"
-                elif "tủ đồ" in prompt_lower or "drawer" in prompt_lower: trig_to_remove = "clickDrawer"
-                elif "khung ảnh" in prompt_lower or "picture" in prompt_lower: trig_to_remove = "clickPicture"
-                elif "công tắc" in prompt_lower: trig_to_remove = "clickLightSwitch"
-
-                if trig_to_remove:
-                    patch_3d["disable_trigger"] = trig_to_remove
-
-        # Kiểm tra yêu cầu XÓA / BỎ đồ vật 3D (props.json)
-        if any(k in prompt_lower for k in ("xóa đồ vật", "bỏ đồ vật", "xóa prop", "xoá đồ vật", "xóa bàn", "xóa ghế", "xóa màn hình", "xóa bể cá", "xóa tủ", "xóa cửa", "xóa đồng hồ", "xóa khung ảnh")):
-            deleted_prop = None
-            for p in DEFAULT_PROPS:
-                if p["id"].lower() in prompt_lower or p["name"].lower() in prompt_lower or p["id"].replace("prop_", "").lower() in prompt_lower:
-                    deleted_prop = p
-                    break
-            if deleted_prop:
-                patch_3d["delete_prop_id"] = deleted_prop["id"]
-
-        if patch_3d:
-            update_playcanvas_3d_profile("admin", patch_3d)
-
-        # 🚀 Tự động nạp ngữ cảnh dữ liệu 3D từ thư mục Documents/ai.type/data/profiles
-        profiles_3d_context = load_all_user_3d_profiles_summary()
-        if profiles_3d_context:
-            full_prompt = profiles_3d_context + "\n\n[HƯỚNG DẪN TẠO VÀ CHỈNH SỬA SỰ KIỆN & HÀNH ĐỘNG 3D PLAYCANVAS]: Bạn là AI Agent có full quyền quản lý, tạo mới và chỉnh sửa trực tiếp các file JSON tại /home/yenai/Documents/ai.type/data/profiles/admin/:\n1. character.json: Thuộc tính nhân vật (scale, position, animationState, facingAngle, clothes, hair, face).\n2. room.json: Thuộc tính căn phòng (lightsOn, cameraPreset, wallPhotoPath).\n3. animations.json: Quản lý và tạo mới hành động/cử động (thêm hành động, sửa isMovement, sửa speed, gán file glbPath).\n4. events.json: Quản lý kịch bản & sự kiện tương tác 3D (khi clickLightSwitch, clickDoor, clickAquarium, clickDrawer, clickPicture, clickWindow, clickCharacter).\n5. props.json: Quản lý đồ vật trang trí 3D.\n\n" + full_prompt
-        
         if is_video:
             full_prompt = full_prompt.replace("Bắt buộc tạo video: ", "", 1).strip()
             full_prompt += "\n\nHãy tạo video. Bắt buộc phải xuất ra màn hình một dòng văn bản chứa định dạng: VIDEO_PATH=<đường_dẫn_tuyệt_đối_thực_tế_của_file_vừa_tạo> sau khi tạo xong."
@@ -524,10 +433,6 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
             
         if file_paths:
             full_prompt += "\n[Ảnh tham khảo đính kèm]: " + ", ".join(file_paths)
-            
-        profiles_3d_summary = load_all_user_3d_profiles_summary()
-        if profiles_3d_summary:
-            full_prompt += f"\n{profiles_3d_summary}\n\n[QUY TẮC BẮT BUỘC THAO TÁC 3D ĐA NỀN TẢNG (Windows / Linux / macOS)]:\n- Khi xử lý các prompt yêu cầu điều chỉnh 3D Căn phòng 306, Nhân vật, Đồ vật, Sự kiện click, Góc nhìn camera, AI Agent BẮT BUỘC chỉ tương tác và ghi dữ liệu trực tiếp vào thư mục profile người dùng tại: Documents/ai.type/data/profiles/<username>/\n- Đường dẫn đĩa thực tế hỗ trợ đa hệ điều hành OS:\n  + Windows: C:\\Users\\<username>\\Documents\\ai.type\\data\\profiles\\<username>\\\n  + Linux / macOS: ~/Documents/ai.type/data/profiles/<username>/\n- Các tệp dữ liệu 3D: profile.json, character.json, room.json, animations.json, events.json, props.json.\n"
 
         full_prompt = f"[{system_instructions}]\n\nLƯU Ý: Nếu yêu cầu của người dùng LÀ MỘT TÁC VỤ CẦN THỰC THI TRÊN MÁY TÍNH (ví dụ: mở app, đóng app, gửi tin nhắn, thao tác file, đăng bài Facebook, v.v.), hãy BẮT BUỘC dùng công cụ `run_command` (terminal/bash) để hành động. TUYỆT ĐỐI KHÔNG ĐƯỢC CHỈ VIẾT MÃ BASH RA BẰNG MARKDOWN VÀ NÓI SUÔNG LÀ ĐÃ LÀM, BẠN PHẢI THỰC SỰ GỌI TOOL `run_command` ĐỂ MÁY TÍNH CHẠY LỆNH. Ngược lại, nếu người dùng CHỈ HỎI THÔNG TIN BÌNH THƯỜNG (ví dụ: lịch âm, thời tiết, giải toán, kiến thức, v.v.), HÃY TRẢ LỜI NGẮN GỌN BẰNG VĂN BẢN VÀ KHÔNG CẦN THỰC THI BẤT KỲ LỆNH NÀO.\nNếu cần mở trình duyệt, mở file hoặc mở url (ví dụ Youtube), cách tốt nhất và đáng tin cậy nhất là dùng trình duyệt Opera GX vì Firefox bị lỗi ẩn cửa sổ. ĐỂ TRÁNH TRÌNH DUYỆT BỊ ĐÓNG NGAY SAU KHI LỆNH KẾT THÚC, Lệnh bắt buộc là: `systemd-run --user --setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus --setenv=DISPLAY=:0 --setenv=WAYLAND_DISPLAY=wayland-0 --setenv=XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/opera-gx \"<url>\"` (ví dụ: `... /usr/bin/opera-gx \"https://youtube.com\"`). TUYỆT ĐỐI KHÔNG DÙNG setsid hoặc & vì tool sẽ đóng PTY và giết tiến trình.\nĐẶC BIỆT LƯU Ý VỚI YOUTUBE: Nếu người dùng yêu cầu 'bật bài hát' hay 'mở video', TUYỆT ĐỐI KHÔNG được mở một trang search. BẠN PHẢI TỰ TÌM URL CỦA VIDEO TRƯỚC bằng tool hoặc lệnh `yt-dlp \"ytsearch1:<tên>\" --get-id` để có được URL cuối cùng, sau đó mới gọi `/usr/bin/opera-gx` với URL trực tiếp đó!\nLƯU Ý ĐĂNG ẢNH LÊN FACEBOOK: TUYỆT ĐỐI KHÔNG click vào nút 'Ảnh/video' vì sẽ mở hộp thoại file của hệ thống gây treo/lỗi. Hãy tìm phần tử input file ẩn và dùng tool để upload trực tiếp.\n\nLịch sử trò chuyện và Yêu cầu mới:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng! (Nếu không gọi công cụ tạo ảnh thì bỏ qua lưu ý này)."
         
@@ -708,18 +613,6 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         except Exception:
             pass
 
-        # 🚀 Tự động trích xuất và ghi bản vá 3D JSON từ kết quả suy luận của LLM vào /home/yenai/Documents/ai.type/data/profiles/admin/
-        try:
-            json_matches = re.findall(r'```json\s*(\{[\s\S]*?\})\s*```|(\{[\s\S]*?\"modifyProp\"[\s\S]*?\})|(\{[\s\S]*?\"modify_prop\"[\s\S]*?\})', reply_text)
-            for m in json_matches:
-                raw_json = next((item for item in m if item), None)
-                if raw_json:
-                    parsed_patch = json.loads(raw_json)
-                    if isinstance(parsed_patch, dict):
-                        update_playcanvas_3d_profile("admin", parsed_patch)
-        except Exception as err:
-            print("[AI Agent] Error parsing LLM 3D patch:", err)
-        
         for path in file_paths:
             try: os.remove(path)
             except: pass
@@ -866,7 +759,9 @@ async def chat_endpoint(request: Request):
 
 # ============================================================
 # PROFILE SCENE DATA API — /api/profile/scene/{username}
-# Lưu dữ liệu riêng cho từng user: character, scene, assets...
+# Quy tắc Bắt buộc: CHỈ xử lý duy nhất các nghiệp vụ 3D PlayCanvas
+# (CRUD profile.json & assets GLB/textures) có trong Documents/ai.type/data/profiles.
+# TUYỆT ĐỐI KHÔNG xử lý bất kỳ công việc nào khác (KHÔNG LLM, KHÔNG chat, KHÔNG OS commands).
 # Storage: /home/yenai/Documents/ai.type/data/profiles/{username}/
 # ============================================================
 PROFILES_ROOT = os.path.expanduser(os.path.join("~", "Documents", "ai.type", "data", "profiles"))
@@ -942,31 +837,14 @@ async def get_profile_scene(username: str, request: Request):
 
 @app.put("/api/profile/scene/{username}")
 async def put_profile_scene(username: str, request: Request):
-    """Lưu profile data của user."""
+    """Lưu và đồng bộ profile data 3D của user vào profile.json và các tệp cấu hình 3D phụ."""
     x_api_key = request.headers.get("x-api-key")
     if x_api_key != SECRET_AGENT_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     body = await request.json()
-    profile_path = _profile_json_path(username)
-    
-    # Merge với data cũ (nếu có)
-    existing = {}
-    if os.path.exists(profile_path):
-        with open(profile_path, "r", encoding="utf-8") as f:
-            existing = json.load(f)
-    
-    # Deep merge: update top-level keys
-    updated = {**existing, **body}
-    updated["username"] = username
-    updated["updatedAt"] = datetime.datetime.utcnow().isoformat()
-    if not updated.get("createdAt"):
-        updated["createdAt"] = updated["updatedAt"]
-    
-    with open(profile_path, "w", encoding="utf-8") as f:
-        json.dump(updated, f, ensure_ascii=False, indent=2)
-    
-    return {"success": True, "data": updated}
+    updated_profile = update_playcanvas_3d_profile(username, body)
+    return {"success": True, "data": updated_profile}
 
 @app.post("/api/profile/scene/assets/{username}/{filename}")
 async def upload_profile_asset(username: str, filename: str, request: Request, file: UploadFile = File(...)):
