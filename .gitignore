@@ -51,6 +51,7 @@ dist/
 miniconda.sh
 models--*
 outputs/
+voiceclone-tts/OmniVoice/
 
 # Large model weights (PyTorch, TensorFlow, ONNX, SafeTensors)
 *.pt

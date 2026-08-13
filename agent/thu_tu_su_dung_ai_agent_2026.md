@@ -4,20 +4,24 @@ Tài liệu này quy định **thứ tự ưu tiên bắt buộc** và **sự ph
 
 ---
 
-## ⚠️ 0. PHÂN ĐỊNH TUYỆT ĐỐI GIỮA `/api/chat` VÀ `/api/profile/scene/`
+## ⚠️ 0. PHÂN ĐỊNH TUYỆT ĐỐI GIỮA `/api/chat`, `/api/automation` VÀ `/api/profile/scene/`
 
-Hệ thống chia làm **2 nhóm API chuyên biệt**:
+Hệ thống chia làm **3 nhóm API chuyên biệt**:
 
 1. **Nhóm API Chat & Sinh nội dung AI (`/api/chat`)**:
+   - Chuyên biệt cho Trò chuyện AI, Trả lời câu hỏi & Sinh nội dung tổng quát.
    - Áp dụng quy trình **Ưu tiên 3 Tầng & Fallback Rules** bên dưới (Sơn Tinh -> Mì Tôm -> Gemini Direct).
-   - **HOÀN TOÀN KHÔNG CHỨA LOGIC 3D**, không đụng tới `Documents/ai.type/data/profiles`, và không dính dáng gì tới `/api/profile/scene`.
-2. **Nhóm API Dữ liệu 3D Profile (`/api/profile/scene/`)**:
+   - **HOÀN TOÀN TÁCH BIỆT VỚI LOGIC AUTOMATION HỆ THỐNG**, không ép buộc quy tắc tự động hóa OS.
+2. **Nhóm API Tự động hóa Máy tính (`/api/automation` hoặc `/api/automate`)**:
+   - **CHUYÊN BIỆT CHO TÁC VỤ OS AUTOMATION** (mở ứng dụng desktop, tự động tìm & bật YouTube URL, thao tác file, đăng bài Facebook...).
+   - Được nạp sẵn các quy tắc bắt buộc thực thi OS (bắt buộc dùng `run_command`, `systemd-run` cho ứng dụng Wayland/GUI, `yt-dlp` lấy ID video...).
+3. **Nhóm API Dữ liệu 3D Profile (`/api/profile/scene/`)**:
    - **CHỈ XỬ LÝ NGHIỆP VỤ 3D PLAYCANVAS** nằm trong `Documents/ai.type/data/profiles/{username}/` (GET/PUT profile JSON, POST/GET 3D asset GLB/texture).
    - **TUYỆT ĐỐI KHÔNG XỬ LÝ BẤT KỲ CÔNG VIỆC GÌ KHÁC** (không gọi LLM, không qua chuỗi Fallback AI, không thực thi lệnh OS, không sinh ảnh/video/TTS).
 
 ---
 
-## 📌 THỨ TỰ ƯU TIÊN GỌI AI CHO `/api/chat` (PRIORITY ORDER)
+## 📌 THỨ TỰ ƯU TIÊN GỌI AI CHO `/api/chat` VÀ `/api/automation` (PRIORITY ORDER)
 
 ### 🥇 1. Ưu tiên số 1: Sơn Tinh Agent (`https://sontinh.type.vn`)
 - **Dịch vụ**: AI Agent Sơn Tinh (`https://sontinh.type.vn`).
@@ -40,10 +44,10 @@ Hệ thống chia làm **2 nhóm API chuyên biệt**:
 
 ---
 
-## ⚙️ SƠ ĐỒ LUỒNG XỬ LÝ CHO `/api/chat` (FLOWCHART)
+## ⚙️ SƠ ĐỒ LUỒNG XỬ LÝ CHO `/api/chat` VÀ `/api/automation` (FLOWCHART)
 
 ```
-                       [Người dùng yêu cầu sinh nội dung AI / Chat]
+                     [Người dùng gửi Yêu cầu Chat hoặc Automation]
                                           │
                                           ▼
                       ┌───────────────────────────────────────┐
@@ -72,11 +76,11 @@ Hệ thống chia làm **2 nhóm API chuyên biệt**:
 
 ## 🎨 BẢNG PHÂN ĐỊNH BIỆT LẬP
 
-| Tiêu chí | `/api/chat` | `/api/profile/scene/` |
-| :--- | :--- | :--- |
-| **Nhiệm vụ duy nhất** | Trò chuyện AI, sinh nội dung, phát TTS, thực thi lệnh máy tính | Chỉ đọc/ghi và lưu trữ dữ liệu 3D PlayCanvas tại `Documents/ai.type/data/profiles/{username}/` |
-| **Công việc khác** | Không chứa logic 3D | **Tuyệt đối Không** (không gọi LLM, không thực thi OS, không tạo TTS/media) |
-| **Liên kết giữa 2 API** | **Không dính dáng** | **Không dính dáng** |
-| **Giao thức** | Streaming SSE (`text/event-stream`) / WebSocket Relay | Standard REST JSON (GET/PUT) & Asset Upload/Download |
-| **Chuỗi Fallback AI** | Sơn Tinh -> Mì Tôm -> Gemini Direct | **Không áp dụng** (REST Data trực tiếp) |
-| **Thực thi OS (bash/run_command)** | Có (khi người dùng yêu cầu thao tác máy tính) | **Tuyệt đối Không** |
+| Tiêu chí | `/api/chat` | `/api/automation` | `/api/profile/scene/` |
+| :--- | :--- | :--- | :--- |
+| **Nhiệm vụ duy nhất** | Trò chuyện AI, sinh văn bản, trả lời QA | Thực thi các tác vụ tự động hóa OS (mở app, bật nhạc, điều khiển máy tính) | Chỉ đọc/ghi và lưu trữ dữ liệu 3D PlayCanvas tại `Documents/ai.type/data/profiles/{username}/` |
+| **Công việc khác** | Không chứa logic 3D hay ép OS | Không chứa logic 3D | **Tuyệt đối Không** (không gọi LLM, không thực thi OS, không tạo TTS/media) |
+| **Liên kết giữa các API** | **Không dính dáng** | **Không dính dáng** | **Không dính dáng** |
+| **Giao thức** | Streaming SSE / WS Relay | Streaming SSE / WS Relay | Standard REST JSON (GET/PUT) & Asset Upload/Download |
+| **Chuỗi Fallback AI** | Sơn Tinh -> Mì Tôm -> Gemini Direct | Sơn Tinh -> Mì Tôm -> Gemini Direct | **Không áp dụng** (REST Data trực tiếp) |
+| **Thực thi OS (bash/run_command)** | Không bắt buộc | **Bắt buộc** (Cho mọi tác vụ điều khiển) | **Tuyệt đối Không** |

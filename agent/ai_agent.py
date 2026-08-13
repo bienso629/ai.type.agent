@@ -396,6 +396,222 @@ def update_playcanvas_3d_profile(username: str = "admin", patch: dict = None) ->
 
     return prof_data
 
+def extract_file_content_and_info(file_path: str) -> dict:
+    """
+    Đọc hiểu và trích xuất nội dung từ các file tham chiếu (txt, pdf, docx, image, mp4, v.v.)
+    để Agent nắm bắt 100% ngữ cảnh file được truyền vào.
+    """
+    clean_path = os.path.abspath(os.path.expanduser(file_path))
+    if not os.path.exists(clean_path):
+        return {
+            "path": clean_path,
+            "filename": os.path.basename(clean_path),
+            "exists": False,
+            "error": "File không tồn tại trên đĩa"
+        }
+
+    filename = os.path.basename(clean_path)
+    file_size = os.path.getsize(clean_path)
+    ext = os.path.splitext(filename)[1].lower()
+
+    info = {
+        "path": clean_path,
+        "filename": filename,
+        "size": file_size,
+        "ext": ext,
+        "exists": True,
+        "text_content": None,
+        "type_category": "unknown"
+    }
+
+    # 1. Text & Code files
+    text_extensions = {
+        ".txt", ".md", ".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".csv",
+        ".xml", ".html", ".htm", ".css", ".scss", ".yaml", ".yml", ".sh", ".bash",
+        ".c", ".cpp", ".h", ".hpp", ".java", ".rs", ".go", ".sql", ".log", ".ini",
+        ".conf", ".env", ".rtf", ".properties"
+    }
+
+    if ext in text_extensions:
+        info["type_category"] = "text"
+        try:
+            with open(clean_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+                if len(content) > 100000:
+                    content = content[:100000] + f"\n\n[...Nội dung còn lại của file {filename} đã được cắt bớt do dung lượng vượt quá giới hạn ({file_size} bytes)...]"
+                info["text_content"] = content
+        except Exception as e:
+            info["error"] = f"Lỗi đọc file văn bản: {str(e)}"
+        return info
+
+    # 2. PDF files
+    if ext == ".pdf":
+        info["type_category"] = "pdf"
+        extracted_text = ""
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(clean_path)
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    extracted_text += t + "\n"
+        except Exception:
+            try:
+                import PyPDF2
+                reader = PyPDF2.PdfReader(clean_path)
+                for page in reader.pages:
+                    t = page.extract_text()
+                    if t:
+                        extracted_text += t + "\n"
+            except Exception:
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(clean_path)
+                    for page in doc:
+                        extracted_text += page.get_text() + "\n"
+                except Exception:
+                    try:
+                        res = subprocess.run(["pdftotext", clean_path, "-"], capture_output=True, text=True, timeout=10)
+                        if res.returncode == 0 and res.stdout:
+                            extracted_text = res.stdout
+                    except Exception:
+                        pass
+
+        if extracted_text.strip():
+            if len(extracted_text) > 100000:
+                extracted_text = extracted_text[:100000] + f"\n\n[...Nội dung PDF còn lại của file {filename} đã được cắt bớt...]"
+            info["text_content"] = extracted_text.strip()
+        else:
+            info["text_content"] = None
+            info["note"] = "Không trích xuất được văn bản (PDF dạng file quét ảnh hoặc không có layer text)."
+        return info
+
+    # 3. DOCX / DOC files
+    if ext in (".docx", ".doc"):
+        info["type_category"] = "document"
+        extracted_text = ""
+        try:
+            import docx
+            doc = docx.Document(clean_path)
+            full_text = []
+            for para in doc.paragraphs:
+                if para.text:
+                    full_text.append(para.text)
+            for table in doc.tables:
+                for row in table.rows:
+                    row_data = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                    if row_data:
+                        full_text.append(" | ".join(row_data))
+            extracted_text = "\n".join(full_text)
+        except Exception:
+            try:
+                import docx2txt
+                extracted_text = docx2txt.process(clean_path)
+            except Exception:
+                try:
+                    import zipfile
+                    from xml.etree import ElementTree as ET
+                    with zipfile.ZipFile(clean_path) as z:
+                        xml_content = z.read("word/document.xml")
+                        tree = ET.fromstring(xml_content)
+                        texts = []
+                        for elem in tree.iter():
+                            if elem.tag.endswith("}t") and elem.text:
+                                texts.append(elem.text)
+                        extracted_text = " ".join(texts)
+                except Exception:
+                    pass
+
+        if extracted_text.strip():
+            if len(extracted_text) > 100000:
+                extracted_text = extracted_text[:100000] + f"\n\n[...Nội dung DOCX còn lại của file {filename} đã được cắt bớt...]"
+            info["text_content"] = extracted_text.strip()
+        else:
+            info["text_content"] = None
+            info["note"] = "Không trích xuất được chữ từ file docx/doc."
+        return info
+
+    # 4. Image files
+    if ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".tiff"):
+        info["type_category"] = "image"
+        try:
+            from PIL import Image
+            with Image.open(clean_path) as img:
+                info["image_dimensions"] = f"{img.width}x{img.height}"
+                info["image_format"] = img.format
+        except Exception:
+            pass
+        return info
+
+    # 5. Video / Audio files
+    if ext in (".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".mp3", ".wav", ".m4a", ".ogg", ".flac"):
+        info["type_category"] = "media"
+        try:
+            cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", clean_path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if res.returncode == 0 and res.stdout.strip():
+                duration_sec = float(res.stdout.strip())
+                info["media_duration"] = f"{duration_sec:.2f}s"
+        except Exception:
+            pass
+        return info
+
+    # 6. Generic binary files
+    info["type_category"] = "binary"
+    return info
+
+
+def format_reference_files_prompt(file_infos: list) -> str:
+    """
+    Đóng gói danh sách file tham chiếu và nội dung trích xuất thành chuỗi prompt có cấu trúc cho LLM Agent.
+    """
+    if not file_infos:
+        return ""
+
+    prompt_blocks = ["\n\n========================================================"]
+    prompt_blocks.append("[DANH SÁCH & NỘI DUNG FILE THAM CHIẾU ĐÍNH KÈM (REFERENCE FILES)]")
+    prompt_blocks.append("Hệ thống đã đọc và trích xuất thông tin các file tham chiếu được truyền vào bên dưới. BẮT BUỘC đọc hiểu, phân tích và xử lý dựa trên các dữ liệu này:\n")
+
+    for idx, info in enumerate(file_infos, 1):
+        filename = info.get("filename", "")
+        filepath = info.get("path", "")
+        size = info.get("size", 0)
+        ext = info.get("ext", "")
+        cat = info.get("type_category", "")
+        text_content = info.get("text_content")
+
+        prompt_blocks.append(f"--- FILE #{idx}: {filename} ---")
+        prompt_blocks.append(f"- Đường dẫn tuyệt đối: {filepath}")
+        prompt_blocks.append(f"- Dung lượng: {size} bytes ({size/1024:.1f} KB)")
+        prompt_blocks.append(f"- Định dạng: {ext.upper()} (Phân loại: {cat})")
+
+        if "image_dimensions" in info:
+            prompt_blocks.append(f"- Kích thước ảnh: {info['image_dimensions']}")
+        if "media_duration" in info:
+            prompt_blocks.append(f"- Thời lượng media: {info['media_duration']}")
+        if info.get("note"):
+            prompt_blocks.append(f"- Ghi chú: {info['note']}")
+
+        if text_content:
+            prompt_blocks.append(f"\n[NỘI DUNG TRÍCH XUẤT TỪ FILE '{filename}']:\n```")
+            prompt_blocks.append(text_content)
+            prompt_blocks.append("```\n")
+        else:
+            if cat == "image":
+                prompt_blocks.append(f"[ĐÂY LÀ FILE HÌNH ẢNH tại đường dẫn thực tế: '{filepath}'. Bạn có thể dùng công cụ xem/phân tích hình ảnh để kiểm tra nội dung nếu cần.]\n")
+            elif cat == "media":
+                prompt_blocks.append(f"[ĐÂY LÀ FILE VIDEO/AUDIO tại đường dẫn thực tế: '{filepath}'. Bạn có thể dùng công cụ/lệnh hệ thống ffmpeg để xử lý file nếu cần.]\n")
+            elif cat == "pdf":
+                prompt_blocks.append(f"[ĐÂY LÀ FILE PDF tại đường dẫn thực tế: '{filepath}'. Dùng công cụ đọc file hoặc pdftotext để đọc thêm nếu cần.]\n")
+            elif cat == "document":
+                prompt_blocks.append(f"[ĐÂY LÀ FILE DOCX/DOC tại đường dẫn thực tế: '{filepath}'. Dùng công cụ đọc file để đọc thêm nếu cần.]\n")
+            else:
+                prompt_blocks.append(f"[FILE DỮ LIỆU TẠI ĐƯỜNG DẪN: '{filepath}'.]\n")
+
+    prompt_blocks.append("========================================================\n")
+    return "\n".join(prompt_blocks)
+
+
 async def run_agent_task_logic(req_data: dict, yield_callback):
     try:
         prompt = req_data.get("prompt", "")
@@ -406,13 +622,46 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         tts_voice = req_data.get("tts_voice", "vi-VN-HoaiMyNeural")
         tts_rate = req_data.get("tts_rate", "+0%")
         files_data = req_data.get("files_data", []) # [{"filename": "...", "content_base64": "..."}]
-        
+        input_file_paths = req_data.get("file_paths", []) # ["/path/to/file1.pdf", ...]
+        if isinstance(input_file_paths, str):
+            input_file_paths = [input_file_paths]
+
         file_paths = []
+        created_temp_files = []
+
+        # 1. Giải mã các file base64 được upload
         for f in files_data:
-            file_path = os.path.abspath(os.path.join(TMP_DIR, f["filename"]))
-            with open(file_path, "wb") as buffer:
-                buffer.write(base64.b64decode(f["content_base64"]))
-            file_paths.append(file_path)
+            if isinstance(f, dict) and "filename" in f:
+                filename = f["filename"]
+                file_path = os.path.abspath(os.path.join(TMP_DIR, filename))
+                if "content_base64" in f and f["content_base64"]:
+                    try:
+                        with open(file_path, "wb") as buffer:
+                            buffer.write(base64.b64decode(f["content_base64"]))
+                        file_paths.append(file_path)
+                        created_temp_files.append(file_path)
+                    except Exception as err:
+                        print(f"Lỗi giải mã base64 file {filename}: {err}")
+                elif "path" in f and os.path.exists(f["path"]):
+                    file_paths.append(f["path"])
+
+        # 2. Thêm các đường dẫn file truyền trực tiếp từ request body
+        for p in input_file_paths:
+            if isinstance(p, str) and p.strip():
+                clean_p = os.path.abspath(os.path.expanduser(p.strip()))
+                if clean_p not in file_paths:
+                    file_paths.append(clean_p)
+
+        # 3. Tự động phát hiện đường dẫn file có sẵn trên đĩa xuất hiện trong prompt
+        embedded_paths = re.findall(r'(?:/[a-zA-Z0-9_\-\.\+]+)+|[a-zA-Z]:\\[^\s]+', prompt)
+        for ep in embedded_paths:
+            ep_abs = os.path.abspath(os.path.expanduser(ep))
+            if os.path.isfile(ep_abs) and ep_abs not in file_paths:
+                file_paths.append(ep_abs)
+
+        # 4. Trích xuất thông tin và đọc nội dung toàn bộ file tham chiếu
+        file_infos = [extract_file_content_and_info(fp) for fp in file_paths]
+        ref_files_prompt = format_reference_files_prompt(file_infos)
 
         target_dir = os.path.abspath(TMP_DIR)
         is_video = prompt.startswith("Bắt buộc tạo video: ")
@@ -430,11 +679,35 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
             full_prompt += "\n\nHãy tạo video. Bắt buộc phải xuất ra màn hình một dòng văn bản chứa định dạng: VIDEO_PATH=<đường_dẫn_tuyệt_đối_thực_tế_của_file_vừa_tạo> sau khi tạo xong."
         elif is_image:
             full_prompt = full_prompt.replace("Bắt buộc tạo hình ảnh: ", "", 1).strip()
-            
-        if file_paths:
-            full_prompt += "\n[Ảnh tham khảo đính kèm]: " + ", ".join(file_paths)
 
-        full_prompt = f"[{system_instructions}]\n\nLƯU Ý: Nếu yêu cầu của người dùng LÀ MỘT TÁC VỤ CẦN THỰC THI TRÊN MÁY TÍNH (ví dụ: mở app, đóng app, gửi tin nhắn, thao tác file, đăng bài Facebook, v.v.), hãy BẮT BUỘC dùng công cụ `run_command` (terminal/bash) để hành động. TUYỆT ĐỐI KHÔNG ĐƯỢC CHỈ VIẾT MÃ BASH RA BẰNG MARKDOWN VÀ NÓI SUÔNG LÀ ĐÃ LÀM, BẠN PHẢI THỰC SỰ GỌI TOOL `run_command` ĐỂ MÁY TÍNH CHẠY LỆNH. Ngược lại, nếu người dùng CHỈ HỎI THÔNG TIN BÌNH THƯỜNG (ví dụ: lịch âm, thời tiết, giải toán, kiến thức, v.v.), HÃY TRẢ LỜI NGẮN GỌN BẰNG VĂN BẢN VÀ KHÔNG CẦN THỰC THI BẤT KỲ LỆNH NÀO.\nNếu cần mở trình duyệt, mở file hoặc mở url (ví dụ Youtube), cách tốt nhất và đáng tin cậy nhất là dùng trình duyệt Opera GX vì Firefox bị lỗi ẩn cửa sổ. ĐỂ TRÁNH TRÌNH DUYỆT BỊ ĐÓNG NGAY SAU KHI LỆNH KẾT THÚC, Lệnh bắt buộc là: `systemd-run --user --setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus --setenv=DISPLAY=:0 --setenv=WAYLAND_DISPLAY=wayland-0 --setenv=XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/opera-gx \"<url>\"` (ví dụ: `... /usr/bin/opera-gx \"https://youtube.com\"`). TUYỆT ĐỐI KHÔNG DÙNG setsid hoặc & vì tool sẽ đóng PTY và giết tiến trình.\nĐẶC BIỆT LƯU Ý VỚI YOUTUBE: Nếu người dùng yêu cầu 'bật bài hát' hay 'mở video', TUYỆT ĐỐI KHÔNG được mở một trang search. BẠN PHẢI TỰ TÌM URL CỦA VIDEO TRƯỚC bằng tool hoặc lệnh `yt-dlp \"ytsearch1:<tên>\" --get-id` để có được URL cuối cùng, sau đó mới gọi `/usr/bin/opera-gx` với URL trực tiếp đó!\nLƯU Ý ĐĂNG ẢNH LÊN FACEBOOK: TUYỆT ĐỐI KHÔNG click vào nút 'Ảnh/video' vì sẽ mở hộp thoại file của hệ thống gây treo/lỗi. Hãy tìm phần tử input file ẩn và dùng tool để upload trực tiếp.\n\nLịch sử trò chuyện và Yêu cầu mới:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng! (Nếu không gọi công cụ tạo ảnh thì bỏ qua lưu ý này)."
+        reference_instruction = (
+            "LƯU Ý BẮT BUỘC VỀ FILE THAM CHIẾU (REFERENCE FILES):\n"
+            "Nếu có bất kỳ file tham chiếu nào được đính kèm (hình ảnh, txt, docx, pdf, mp4,...), "
+            "bạn BẮT BUỘC phải ĐỌC HIỂU và PHÂN TÍCH kỹ nội dung từ các file tham chiếu đó để trả lời hoặc thực thi đúng yêu cầu của người dùng.\n"
+            "Nếu là file văn bản/pdf/docx, nội dung đã được trích xuất ở phần dưới. "
+            "Nếu là file hình ảnh/video/nhị phân, bạn có thể dùng các công cụ (như `run_command` / bash) để đọc hoặc xử lý file trực tiếp theo đường dẫn tuyệt đối đã cung cấp."
+        )
+
+        if ref_files_prompt:
+            full_prompt = f"{full_prompt}\n{ref_files_prompt}"
+
+        is_automation = req_data.get("is_automation", False)
+        if is_automation:
+            automation_instructions = (
+                "LƯU Ý QUAN TRỌNG - TÁC VỤ TỰ ĐỘNG HÓA MÁY TÍNH (AUTOMATION TASK):\n"
+                "Đây là yêu cầu TỰ ĐỘNG HÓA HỆ THỐNG MÁY TÍNH. Bạn BẮT BUỘC phải dùng công cụ `run_command` (terminal/bash) để thực thi hành động trực tiếp trên máy tính người dùng.\n"
+                "TUYỆT ĐỐI KHÔNG ĐƯỢC CHỈ VIẾT MÃ BASH RA BẰNG MARKDOWN VÀ NÓI SUÔNG LÀ ĐÃ LÀM, BẠN PHẢI THỰC SỰ GỌI TOOL `run_command` ĐỂ MÁY TÍNH CHẠY LỆNH.\n"
+                "Nếu cần mở trình duyệt, mở file hoặc mở url (ví dụ Youtube), cách tốt nhất và đáng tin cậy nhất là dùng trình duyệt Opera GX vì Firefox bị lỗi ẩn cửa sổ. ĐỂ TRÁNH TRÌNH DUYỆT BỊ ĐÓNG NGAY SAU KHI LỆNH KẾT THÚC, Lệnh bắt buộc là: `systemd-run --user --setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus --setenv=DISPLAY=:0 --setenv=WAYLAND_DISPLAY=wayland-0 --setenv=XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/opera-gx \"<url>\"` (ví dụ: `... /usr/bin/opera-gx \"https://youtube.com\"`). TUYỆT ĐỐI KHÔNG DÙNG setsid hoặc & vì tool sẽ đóng PTY và giết tiến trình.\n"
+                "ĐẶC BIỆT LƯU Ý VỚI YOUTUBE: Nếu người dùng yêu cầu 'bật bài hát' hay 'mở video', TUYỆT ĐỐI KHÔNG được mở một trang search. BẠN PHẢI TỰ TÌM URL CỦA VIDEO TRƯỚC bằng tool hoặc lệnh `yt-dlp \"ytsearch1:<tên>\" --get-id` để có được URL cuối cùng, sau đó mới gọi `/usr/bin/opera-gx` với URL trực tiếp đó!\n"
+                "LƯU Ý ĐĂNG ẢNH LÊN FACEBOOK: TUYỆT ĐỐI KHÔNG click vào nút 'Ảnh/video' vì sẽ mở hộp thoại file của hệ thống gây treo/lỗi. Hãy tìm phần tử input file ẩn và dùng tool để upload trực tiếp."
+            )
+            full_prompt = f"[{system_instructions}]\n\n{reference_instruction}\n\n{automation_instructions}\n\nYêu cầu Tự động hóa:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng! (Nếu không gọi công cụ tạo ảnh thì bỏ qua lưu ý này)."
+        else:
+            chat_instructions = (
+                "LƯU Ý: Bạn là trợ lý trò chuyện AI. Trả lời người dùng bằng văn bản tự nhiên, rõ ràng và hữu ích. "
+                "Nếu người dùng CHỈ HỎI THÔNG TIN BÌNH THƯỜNG (ví dụ: lịch âm, thời tiết, giải toán, kiến thức, v.v.), HÃY TRẢ LỜI NGẮN GỌN BẰNG VĂN BẢN VÀ KHÔNG CẦN THỰC THI BẤT KỲ LỆNH HỆ THỐNG NÀO."
+            )
+            full_prompt = f"[{system_instructions}]\n\n{reference_instruction}\n\n{chat_instructions}\n\nLịch sử trò chuyện và Yêu cầu mới:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng! (Nếu không gọi công cụ tạo ảnh thì bỏ qua lưu ý này)."
         
         is_claude_model = bool(model) and any(h in model.lower() for h in CLAUDE_MODEL_HINTS)
 
@@ -613,9 +886,13 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         except Exception:
             pass
 
-        for path in file_paths:
-            try: os.remove(path)
-            except: pass
+        # Xóa các file tạm giải mã từ base64 sau khi hoàn thành
+        for path in created_temp_files:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
                 
         image_base64 = None
         video_base64 = None
@@ -661,7 +938,23 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
             except: pass
         
         if image_base64 or video_base64:
-            final_chunk = {"success": True, "content": "", "image_base64": image_base64, "video_base64": video_base64, "conversation_id": conversation_id}
+            if image_base64:
+                data_uri = f"data:image/png;base64,{image_base64}"
+                img_md = f"\n\n![Ảnh 3D vừa tạo]({data_uri})\n\n"
+            else:
+                data_uri = f"data:video/mp4;base64,{video_base64}"
+                img_md = f"\n\n<video src=\"{data_uri}\" controls></video>\n\n"
+
+            final_chunk = {
+                "success": True,
+                "content": img_md,
+                "image": data_uri if image_base64 else None,
+                "url": data_uri,
+                "image_url": data_uri if image_base64 else None,
+                "image_base64": image_base64,
+                "video_base64": video_base64,
+                "conversation_id": conversation_id
+            }
             await yield_callback(f"data: {json.dumps(final_chunk)}\n\n")
         else:
             final_chunk = {"success": True, "content": "", "conversation_id": conversation_id}
@@ -672,87 +965,158 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         await yield_callback(f"data: {json.dumps(err_chunk)}\n\n")
 
 
-@app.post("/api/chat")
-async def chat_endpoint(request: Request):
-    x_api_key = request.headers.get("x-api-key")
-    if x_api_key != SECRET_AGENT_KEY:
-        raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
-    try:
-        form = await request.form()
+async def extract_request_data(request: Request, default_sys_instruction: str = "Bạn là trợ lý AI.", default_is_automation: bool = False) -> dict:
+    content_type = request.headers.get("content-type", "")
+    file_paths = []
+    files_data = []
+    
+    if "application/json" in content_type:
+        body = await request.json()
+        conversation_id = body.get("conversation_id") or str(uuid.uuid4())
         
-        conversation_id = form.get("conversation_id")
-        if not conversation_id: conversation_id = str(uuid.uuid4())
+        # 1. Parse files_data base64
+        raw_files_data = body.get("files_data", [])
+        if isinstance(raw_files_data, list):
+            for item in raw_files_data:
+                if isinstance(item, dict):
+                    if "filename" in item and "content_base64" in item:
+                        files_data.append(item)
+                    elif "path" in item:
+                        file_paths.append(item["path"])
+
+        # 2. Parse file_paths / files_path / file_path / reference_files / files
+        for key in ("file_paths", "files_path", "file_path", "reference_files", "files"):
+            raw_val = body.get(key)
+            if isinstance(raw_val, str) and raw_val.strip():
+                file_paths.append(raw_val.strip())
+            elif isinstance(raw_val, list):
+                for item in raw_val:
+                    if isinstance(item, str) and item.strip():
+                        file_paths.append(item.strip())
+                    elif isinstance(item, dict) and "path" in item and item["path"]:
+                        file_paths.append(item["path"])
+
+        prompt = body.get("prompt", "Xin chào" if not default_is_automation else "")
+        system_instructions = body.get("system_instructions", default_sys_instruction)
+        model = body.get("model")
+        gemini_api_key = body.get("gemini_api_key")
+        tts_voice = body.get("tts_voice", "vi-VN-HoaiMyNeural")
+        tts_rate = body.get("tts_rate", "+0%")
+        is_auto = body.get("is_automation", default_is_automation)
+    else:
+        form = await request.form()
+        conversation_id = form.get("conversation_id") or str(uuid.uuid4())
         
         files = form.getlist("files")
-        files_data = []
         for file in files:
-            if getattr(file, "filename", None):
+            if hasattr(file, "filename") and file.filename:
                 content = await file.read()
                 files_data.append({
                     "filename": file.filename,
                     "content_base64": base64.b64encode(content).decode('utf-8')
                 })
+            elif isinstance(file, str) and file.strip():
+                file_paths.append(file.strip())
 
-        req_data = {
-            "prompt": form.get("prompt", "Xin chào"),
-            "system_instructions": form.get("system_instructions", "Bạn là trợ lý AI."),
-            "model": form.get("model"),
-            "gemini_api_key": form.get("gemini_api_key"),
-            "conversation_id": conversation_id,
-            "tts_voice": form.get("tts_voice", "vi-VN-HoaiMyNeural"),
-            "tts_rate": form.get("tts_rate", "+0%"),
-            "files_data": files_data
-        }
+        for key in ("file_paths", "files_path", "file_path", "reference_files"):
+            for val in form.getlist(key):
+                if isinstance(val, str) and val.strip():
+                    file_paths.append(val.strip())
+
+        prompt = form.get("prompt", "Xin chào" if not default_is_automation else "")
+        system_instructions = form.get("system_instructions", default_sys_instruction)
+        model = form.get("model")
+        gemini_api_key = form.get("gemini_api_key")
+        tts_voice = form.get("tts_voice", "vi-VN-HoaiMyNeural")
+        tts_rate = form.get("tts_rate", "+0%")
+        is_auto = default_is_automation or bool(form.get("is_automation"))
+
+    return {
+        "prompt": prompt,
+        "system_instructions": system_instructions,
+        "model": model,
+        "gemini_api_key": gemini_api_key,
+        "conversation_id": conversation_id,
+        "tts_voice": tts_voice,
+        "tts_rate": tts_rate,
+        "files_data": files_data,
+        "file_paths": file_paths,
+        "is_automation": is_auto
+    }
+
+def handle_agent_streaming(req_data: dict):
+    if connected_pcs:
+        # Chuyển tiếp (Relay) qua WebSocket tới PC đầu tiên đang kết nối
+        task_id = str(uuid.uuid4())
+        pc_ws = connected_pcs[0]
+        req_data["task_id"] = task_id
+        active_tasks[task_id] = asyncio.Queue()
         
-        if connected_pcs:
-            # Chuyển tiếp (Relay) qua WebSocket tới PC đầu tiên đang kết nối
-            task_id = str(uuid.uuid4())
-            pc_ws = connected_pcs[0]
-            req_data["task_id"] = task_id
-            active_tasks[task_id] = asyncio.Queue()
-            
+        async def send_to_ws():
             await pc_ws.send_json(req_data)
-            
-            async def relay_stream():
-                try:
-                    while True:
-                        data = await active_tasks[task_id].get()
-                        if data.get("done"):
-                            break
-                        if "chunk" in data:
-                            yield data["chunk"]
-                finally:
-                    if task_id in active_tasks:
-                        del active_tasks[task_id]
-            
-            return StreamingResponse(relay_stream(), media_type="text/event-stream")
-        else:
-            # Chạy trực tiếp (Local execution)
-            async def generate_stream_local():
-                async def yielder(chunk):
-                    # For local execution, we need to pass a callback that just appends or we yield directly.
-                    # Wait, we can't yield from a callback directly in Python async generators.
-                    # Instead, we use a queue.
-                    pass # We will handle this below
-                
-                queue_local = asyncio.Queue()
-                async def local_yield(chunk):
-                    await queue_local.put(chunk)
-                
-                async def run_task_in_bg():
-                    await run_agent_task_logic(req_data, local_yield)
-                    await queue_local.put(None)
-                    
-                asyncio.create_task(run_task_in_bg())
-                
+        asyncio.create_task(send_to_ws())
+        
+        async def relay_stream():
+            try:
                 while True:
-                    chunk = await queue_local.get()
-                    if chunk is None:
+                    data = await active_tasks[task_id].get()
+                    if data.get("done"):
                         break
-                    yield chunk
-
-            return StreamingResponse(generate_stream_local(), media_type="text/event-stream")
+                    if "chunk" in data:
+                        yield data["chunk"]
+            finally:
+                if task_id in active_tasks:
+                    del active_tasks[task_id]
+        
+        return StreamingResponse(relay_stream(), media_type="text/event-stream")
+    else:
+        # Chạy trực tiếp (Local execution)
+        async def generate_stream_local():
+            queue_local = asyncio.Queue()
+            async def local_yield(chunk):
+                await queue_local.put(chunk)
             
+            async def run_task_in_bg():
+                await run_agent_task_logic(req_data, local_yield)
+                await queue_local.put(None)
+                
+            asyncio.create_task(run_task_in_bg())
+            
+            while True:
+                chunk = await queue_local.get()
+                if chunk is None:
+                    break
+                yield chunk
+
+        return StreamingResponse(generate_stream_local(), media_type="text/event-stream")
+
+@app.post("/api/chat")
+async def chat_endpoint(request: Request):
+    """
+    API Chuyên biệt cho Trò chuyện & Sinh nội dung AI tổng quát (General AI Chat).
+    """
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key != SECRET_AGENT_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
+    try:
+        req_data = await extract_request_data(request, default_sys_instruction="Bạn là trợ lý AI.", default_is_automation=False)
+        return handle_agent_streaming(req_data)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "result": "", "error": str(e)})
+
+@app.post("/api/automation")
+@app.post("/api/automate")
+async def automation_endpoint(request: Request):
+    """
+    API Chuyên biệt cho Tự động hóa hệ thống máy tính (OS Automation Task).
+    Tách biệt hoàn toàn với /api/chat để thực thi các tác vụ điều khiển desktop và hệ thống.
+    """
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key != SECRET_AGENT_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
+    try:
+        req_data = await extract_request_data(request, default_sys_instruction="Bạn là AI Agent tự động hóa hệ thống máy tính.", default_is_automation=True)
+        return handle_agent_streaming(req_data)
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "result": "", "error": str(e)})
 
