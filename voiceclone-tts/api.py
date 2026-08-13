@@ -1,4 +1,5 @@
 import os
+import numpy as np
 # Tối ưu hóa bộ nhớ cho Card đồ họa VRAM yếu (<= 8GB)
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -102,9 +103,11 @@ def load_model():
                     
         model_dtype = torch.float16 if device == "cuda:0" else torch.float32
         
-        # Ưu tiên lấy từ biến môi trường (do Electron set), nếu không có thì lấy thư mục tương đối 'models--k2-fsa--OmniVoice' cùng cấp với api.py
-        default_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models--k2-fsa--OmniVoice", "snapshots", "995b1b114ae423a4fd69b3834a6fd86423dd361c")
+        # Ưu tiên lấy từ biến môi trường (do Electron set), nếu không có thì lấy thư mục tương đối 'OmniVoice' cùng cấp với api.py
+        default_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "OmniVoice")
         model_path = os.environ.get("OMNIVOICE_MODEL_PATH", default_model_path)
+        if not os.path.exists(model_path):
+            model_path = default_model_path
 
         print(f"[INFO] Đang nạp mô hình OmniVoice từ: {model_path}")
         print(f"[INFO] Thiết bị xử lý: {device} | Định dạng: {model_dtype}")
@@ -258,21 +261,23 @@ def process_audio_background(task_id: str, request: GenerateAudioRequest):
                 
                 print(f"[{task_id}] -> Câu {i+1} chạy xong trong {time.time() - s_time:.2f} giây.")
                 
-                # Trích xuất tensor từ tuple/list
-                if isinstance(t, list):
+                # Trích xuất tensor từ tuple/list/ndarray
+                if isinstance(t, (list, tuple)):
                     t = t[0]
-                elif isinstance(t, tuple):
-                    t = t[0]
+                if isinstance(t, np.ndarray):
+                    t = torch.from_numpy(t)
+                if t.dim() == 1:
+                    t = t.unsqueeze(0)
                 
                 audio_tensors.append(t)
 
         # Ghép các câu lại thành 1 file âm thanh hoàn chỉnh
-        if isinstance(audio_tensors, list):
+        if len(audio_tensors) > 1:
             final_audio = torch.cat(audio_tensors, dim=1)
-        elif isinstance(audio_tensors, tuple):
+        elif len(audio_tensors) == 1:
             final_audio = audio_tensors[0]
         else:
-            final_audio = audio_tensors
+            raise ValueError("Không có dữ liệu âm thanh nào được tạo ra.")
             
         if final_audio.dim() == 1:
             final_audio = final_audio.unsqueeze(0)
