@@ -917,17 +917,20 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
                 try:
                     img = Image.open(img_path)
                     width, height = img.size
-                    target_width = None
-                    if "kích thước là 4k" in full_prompt.lower(): target_width = 3840
-                    elif "kích thước là 2k" in full_prompt.lower(): target_width = 2560
-                    if target_width and width < target_width:
+                    target_width = 2048  # Mặc định tối thiểu 2K HD cho mọi ảnh sinh ra
+                    if "4k" in full_prompt.lower(): 
+                        target_width = 3840
+                    elif "2k" in full_prompt.lower(): 
+                        target_width = 2560
+                    
+                    if width < target_width:
                         aspect = height / width
                         new_height = int(target_width * aspect)
                         resample_method = getattr(Image, "Resampling", Image).LANCZOS
                         img = img.resize((target_width, new_height), resample_method)
-                        img.save(img_path, quality=100)
+                        img.save(img_path, format="PNG", quality=100, optimize=True)
                 except Exception as e:
-                    print("Lỗi khi upscale ảnh:", e)
+                    print("Lỗi khi upscale/tối ưu chất lượng ảnh:", e)
                     pass
                 
             with open(img_path, "rb") as f:
