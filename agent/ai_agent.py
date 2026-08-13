@@ -1059,11 +1059,15 @@ def handle_agent_streaming(req_data: dict):
         async def relay_stream():
             try:
                 while True:
-                    data = await active_tasks[task_id].get()
-                    if data.get("done"):
-                        break
-                    if "chunk" in data:
-                        yield data["chunk"]
+                    try:
+                        data = await asyncio.wait_for(active_tasks[task_id].get(), timeout=15.0)
+                        if data.get("done"):
+                            break
+                        if "chunk" in data:
+                            yield data["chunk"]
+                    except asyncio.TimeoutError:
+                        # Gửi ping SSE comment định kỳ mỗi 15s để duy trì kết nối HTTP với Cloudflare (chống lỗi 524)
+                        yield ": ping\n\n"
             finally:
                 if task_id in active_tasks:
                     del active_tasks[task_id]
@@ -1083,10 +1087,14 @@ def handle_agent_streaming(req_data: dict):
             asyncio.create_task(run_task_in_bg())
             
             while True:
-                chunk = await queue_local.get()
-                if chunk is None:
-                    break
-                yield chunk
+                try:
+                    chunk = await asyncio.wait_for(queue_local.get(), timeout=15.0)
+                    if chunk is None:
+                        break
+                    yield chunk
+                except asyncio.TimeoutError:
+                    # Gửi ping SSE comment định kỳ mỗi 15s để duy trì kết nối HTTP với Cloudflare (chống lỗi 524)
+                    yield ": ping\n\n"
 
         return StreamingResponse(generate_stream_local(), media_type="text/event-stream")
 
