@@ -28,7 +28,7 @@ Test list format (JSONL, one JSON object per line):
     Required fields: "id", "text"
     Voice cloning:   "ref_audio", "ref_text"
     Voice design:    "instruct"
-    Optional:        "language_id", "language_name", "duration", "speed"
+    Optional:        "language_id", "duration", "speed"
 """
 
 import argparse
@@ -42,23 +42,15 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List, Optional, Tuple
 
 import torch
-import torchaudio
 from tqdm import tqdm
 
 from omnivoice.models.omnivoice import OmniVoice
+import soundfile as sf
+
 from omnivoice.utils.audio import load_audio
-from omnivoice.utils.common import str2bool
+from omnivoice.utils.common import get_best_device_with_count, str2bool
 from omnivoice.utils.data_utils import read_test_list
 from omnivoice.utils.duration import RuleDurationEstimator
-
-
-def get_best_device():
-    """Auto-detect the best available device: CUDA > MPS > CPU."""
-    if torch.cuda.is_available():
-        return "cuda", torch.cuda.device_count()
-    if torch.backends.mps.is_available():
-        return "mps", 1
-    return "cpu", 1
 
 
 worker_model = None
@@ -79,11 +71,16 @@ def get_parser():
         type=str,
         required=True,
         help="Path to the JSONL file containing test samples. "
-        'Each line is a JSON object: {"id": "name", "text": "...", '
-        '"ref_audio": "/path.wav", "ref_text": "...", '
-        '"language_id": "en", "language_name": "English", '
-        '"duration": 10.0, "speed": 1.2}. '
-        "language_id, language_name, duration, and speed are optional.",
+        "Each line is a JSON object with the following fields: "
+        '"id" (str, required): unique name for the output file; '
+        '"text" (str, required): text to synthesize; '
+        '"ref_audio" (str): path to reference audio for voice cloning; '
+        '"ref_text" (str): transcript of the reference audio; '
+        '"instruct" (str): instruction for voice design (used when ref_audio is absent); '
+        '"language_id" (str): language code, e.g. "en"; '
+        '"duration" (float): target duration in seconds; '
+        '"speed" (float): speaking speed multiplier. '
+        "Only id and text are required; all other fields are optional.",
     )
     parser.add_argument(
         "--res_dir",
@@ -135,8 +132,7 @@ def get_parser():
         "--batch_duration",
         type=float,
         default=1000.0,
-        help="Maximum total duration (reference + generated) per batch (seconds). "
-        "Only effective for parallel_chunk / no chunk mode.",
+        help="Maximum total duration (reference + generated) per batch (seconds).",
     )
     parser.add_argument(
         "--batch_size",
@@ -144,6 +140,13 @@ def get_parser():
         default=0,
         help="Fixed batch size (number of samples per batch). "
         "If > 0, use fixed-size batching instead of duration-based batching.",
+    )
+    parser.add_argument(
+        "--enable_flashinfer",
+        type=str2bool,
+        default=False,
+        help="Enable FlashInfer-accelerated decoding (sequence packing, fused "
+        "kernels; see optimize.md). Requires the flashinfer-python package.",
     )
     parser.add_argument(
         "--warmup",
@@ -194,13 +197,12 @@ def get_parser():
         type=str,
         default=None,
         help="Language id to use when test_list JSONL entries do not contain "
-        "language_id/language_name fields. If provided, both language_id and "
-        "language_name will be set to this value.",
+        "a language_id field.",
     )
     return parser
 
 
-def process_init(rank_queue, model_checkpoint, warmup=0):
+def process_init(rank_queue, model_checkpoint, warmup=0, enable_flashinfer=False):
     """Initializer for each worker process.
 
     Loads model (with tokenizers and duration estimator) onto a specific GPU
@@ -224,7 +226,7 @@ def process_init(rank_queue, model_checkpoint, warmup=0):
     elif device_type == "mps":
         worker_device = "mps"
     else:
-        worker_device = f"cuda:{device_id}"
+        worker_device = f"{device_type}:{device_id}"
 
     logging.info(f"Initializing worker on device: {worker_device}")
 
@@ -234,12 +236,20 @@ def process_init(rank_queue, model_checkpoint, warmup=0):
         dtype=torch.float16,
     )
 
+    # Opt-in flashinfer acceleration. Applied here because workers are
+    # spawned processes: patching the model in the parent does not propagate.
+    if enable_flashinfer:
+        from omnivoice.models.omnivoice_flashinfer import apply_flashinfer
+
+        apply_flashinfer(worker_model)
+        logging.info("flashinfer acceleration enabled")
+
     if warmup > 0:
         logging.info(f"Running {warmup} warmup iterations on {worker_device}")
         dummy_ref_audio = (
             torch.randn(1, SAMPLING_RATE),
             SAMPLING_RATE,
-        )  # 1s silence
+        )  # 1s dummy audio
         for i in range(warmup):
             worker_model.generate(
                 text=["hello"],
@@ -252,23 +262,67 @@ def process_init(rank_queue, model_checkpoint, warmup=0):
     logging.info(f"Worker on {worker_device} initialized successfully.")
 
 
+def _get_audio_duration(audio_path: str) -> float:
+    """Return the duration of an audio file in seconds.
+
+    Reads only the file header, so the samples are never decoded or resampled.
+    Falls back to a full decode for formats ``soundfile`` cannot inspect
+    (e.g. MP3/M4A on older libsndfile builds).
+    """
+    try:
+        info = sf.info(audio_path)
+        return info.frames / info.samplerate
+    except Exception:
+        wav = load_audio(audio_path, SAMPLING_RATE)
+        return wav.shape[-1] / SAMPLING_RATE
+
+
 def estimate_sample_total_duration(
     duration_estimator: RuleDurationEstimator,
     text: str,
-    ref_text: str,
-    ref_audio_path: str,
+    ref_text: Optional[str],
+    ref_audio_path: Optional[str],
     gen_duration: Optional[float] = None,
 ) -> float:
-    ref_wav = load_audio(ref_audio_path, SAMPLING_RATE)
-    ref_duration = ref_wav.shape[-1] / SAMPLING_RATE
+    """Estimate total duration (ref + generated) for a single sample.
+
+    When ``ref_audio_path`` is ``None`` (instruct / voice-design mode),
+    the reference duration is treated as 0 and only the estimated generated
+    duration contributes to the total.
+    """
+    if ref_audio_path is not None:
+        ref_duration = _get_audio_duration(ref_audio_path)
+    else:
+        ref_duration = 0
 
     if gen_duration is None:
-        gen_duration = duration_estimator.estimate_duration(
-            text, ref_text, ref_duration, low_threshold=2.0
-        )
+        if ref_audio_path is not None:
+            gen_duration = duration_estimator.estimate_duration(
+                text, ref_text or "", ref_duration, low_threshold=2.0
+            )
+        else:
+            gen_duration = duration_estimator.estimate_duration(
+                text, "Nice to meet you.", 0.5, low_threshold=2.0
+            )
 
     total_duration = ref_duration + gen_duration
     return total_duration
+
+
+def _sort_samples_by_duration(
+    samples: List[Tuple],
+    duration_estimator: RuleDurationEstimator,
+) -> List[Tuple[Tuple, float]]:
+    """Return (sample, total_duration) pairs sorted by duration descending."""
+    sample_with_duration = []
+    for sample in samples:
+        _, ref_text, ref_audio_path, text, _, dur, _, _ = sample
+        total_duration = estimate_sample_total_duration(
+            duration_estimator, text, ref_text, ref_audio_path, gen_duration=dur
+        )
+        sample_with_duration.append((sample, total_duration))
+    sample_with_duration.sort(key=lambda x: x[1], reverse=True)
+    return sample_with_duration
 
 
 def cluster_samples_by_duration(
@@ -276,19 +330,7 @@ def cluster_samples_by_duration(
     duration_estimator: RuleDurationEstimator,
     batch_duration: float,
 ) -> List[List[Tuple]]:
-    sample_with_duration = []
-    for sample in samples:
-        save_name, ref_text, ref_audio_path, text, lang_id, lang_name, dur, spd = sample
-        total_duration = estimate_sample_total_duration(
-            duration_estimator,
-            text,
-            ref_text,
-            ref_audio_path,
-            gen_duration=dur,
-        )
-        sample_with_duration.append((sample, total_duration))
-
-    sample_with_duration.sort(key=lambda x: x[1], reverse=True)
+    sample_with_duration = _sort_samples_by_duration(samples, duration_estimator)
     batches = []
     current_batch = []
     current_total_duration = 0.0
@@ -319,19 +361,7 @@ def cluster_samples_by_batch_size(
     batch_size: int,
 ) -> List[List[Tuple]]:
     """Split samples into fixed-size batches, sorted by duration to minimize padding."""
-    sample_with_duration = []
-    for sample in samples:
-        save_name, ref_text, ref_audio_path, text, lang_id, lang_name, dur, spd = sample
-        total_duration = estimate_sample_total_duration(
-            duration_estimator,
-            text,
-            ref_text,
-            ref_audio_path,
-            gen_duration=dur,
-        )
-        sample_with_duration.append((sample, total_duration))
-
-    sample_with_duration.sort(key=lambda x: x[1], reverse=True)
+    sample_with_duration = _sort_samples_by_duration(samples, duration_estimator)
     sorted_samples = [s for s, _ in sample_with_duration]
 
     batches = [
@@ -359,9 +389,10 @@ def run_inference_batch(
     langs = []
     durations = []
     speeds = []
+    instructs = []
 
     for sample in batch_samples:
-        save_name, ref_text, ref_audio_path, text, lang_id, lang_name, dur, spd = sample
+        save_name, ref_text, ref_audio_path, text, lang_id, dur, spd, instruct = sample
         save_names.append(save_name)
         ref_texts.append(ref_text)
         ref_audio_paths.append(ref_audio_path)
@@ -369,15 +400,19 @@ def run_inference_batch(
         langs.append(lang_id)
         durations.append(dur)
         speeds.append(spd)
+        instructs.append(instruct)
 
     start_time = time.time()
     audios = worker_model.generate(
         text=texts,
         language=langs,
-        ref_audio=ref_audio_paths,
-        ref_text=ref_texts,
+        ref_audio=ref_audio_paths
+        if any(p is not None for p in ref_audio_paths)
+        else None,
+        ref_text=ref_texts if any(t is not None for t in ref_texts) else None,
         duration=durations if any(d is not None for d in durations) else None,
         speed=speeds if any(s is not None for s in speeds) else None,
+        instruct=instructs if any(i is not None for i in instructs) else None,
         **gen_kwargs,
     )
     batch_synth_time = time.time() - start_time
@@ -385,7 +420,7 @@ def run_inference_batch(
     results = []
     for save_name, audio in zip(save_names, audios):
         save_path = os.path.join(res_dir, save_name + ".wav")
-        torchaudio.save(save_path, audio, worker_model.sampling_rate)
+        sf.write(save_path, audio, worker_model.sampling_rate)
         audio_duration = audio.shape[-1] / worker_model.sampling_rate
         results.append(
             (
@@ -407,7 +442,7 @@ def main():
     args = get_parser().parse_args()
     os.makedirs(args.res_dir, exist_ok=True)
 
-    device_type, num_devices = get_best_device()
+    device_type, num_devices = get_best_device_with_count()
     if device_type == "cpu":
         logging.warning(
             "No GPU found. Falling back to CPU inference. This might be slow."
@@ -427,22 +462,17 @@ def main():
     samples_raw = read_test_list(args.test_list)
     samples = []
     for s in samples_raw:
-        if args.lang_id is not None:
-            lang_id = args.lang_id
-            lang_name = args.lang_id
-        else:
-            lang_id = s.get("language_id")
-            lang_name = s.get("language_name")
+        lang_id = args.lang_id if args.lang_id is not None else s.get("language_id")
         samples.append(
             (
                 s["id"],
-                s["ref_text"],
-                s["ref_audio"],
+                s.get("ref_text"),
+                s.get("ref_audio"),
                 s["text"],
                 lang_id,
-                lang_name,
                 s.get("duration"),
                 s.get("speed"),
+                s.get("instruct"),
             )
         )
 
@@ -453,22 +483,36 @@ def main():
         with ProcessPoolExecutor(
             max_workers=num_processes,
             initializer=process_init,
-            initargs=(rank_queue, args.model, args.warmup),
+            initargs=(rank_queue, args.model, args.warmup, args.enable_flashinfer),
         ) as executor:
             futures = []
 
-            # parallel_chunk / no chunk
             logging.info("Running batch inference")
 
+            # Split samples by mode (voice-clone vs non-voice-clone) before
+            # clustering so that each batch is homogeneous.  Mixing ref_audio
+            # and non-ref_audio samples in the same batch would crash in
+            # generate() → create_voice_clone_prompt().
+            clone_samples = [s for s in samples if s[2] is not None]
+            other_samples = [s for s in samples if s[2] is None]
+
             duration_estimator = RuleDurationEstimator()
-            if args.batch_size > 0:
-                batches = cluster_samples_by_batch_size(
-                    samples, duration_estimator, args.batch_size
-                )
-            else:
-                batches = cluster_samples_by_duration(
-                    samples, duration_estimator, args.batch_duration
-                )
+            batches = []
+            for subset in (clone_samples, other_samples):
+                if not subset:
+                    continue
+                if args.batch_size > 0:
+                    batches.extend(
+                        cluster_samples_by_batch_size(
+                            subset, duration_estimator, args.batch_size
+                        )
+                    )
+                else:
+                    batches.extend(
+                        cluster_samples_by_duration(
+                            subset, duration_estimator, args.batch_duration
+                        )
+                    )
 
             args_dict = vars(args)
 

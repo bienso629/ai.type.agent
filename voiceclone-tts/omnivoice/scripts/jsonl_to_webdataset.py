@@ -65,10 +65,14 @@ from concurrent.futures import (
 from itertools import islice
 from pathlib import Path
 
+import torch
 import torchaudio
 import webdataset as wds
 from tqdm import tqdm
 
+import soundfile as sf
+
+from omnivoice.utils.audio import load_waveform
 from omnivoice.utils.common import str2bool
 
 
@@ -164,16 +168,18 @@ def process_audio_item(meta, target_sr):
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"{audio_path} not found")
 
-        waveform, sr = torchaudio.load(audio_path)
+        waveform, sr = load_waveform(audio_path)
         audio_duration = waveform.shape[1] / sr
         meta["audio_duration"] = audio_duration
 
         if target_sr and sr != target_sr:
-            waveform = torchaudio.functional.resample(waveform, sr, target_sr)
+            waveform = torchaudio.functional.resample(
+                torch.from_numpy(waveform), orig_freq=sr, new_freq=target_sr
+            ).numpy()
             sr = target_sr
 
         audio_buffer = io.BytesIO()
-        torchaudio.save(audio_buffer, waveform, sr, format="flac", bits_per_sample=16)
+        sf.write(audio_buffer, waveform.T, sr, format="FLAC")
         audio_bytes = audio_buffer.getvalue()
 
         sample = {
@@ -206,10 +212,10 @@ def process_single_shard(
     total_duration = 0.0
     errors = []
 
-    with wds.TarWriter(tar_fname) as sink, open(
-        jsonl_fname, "w", encoding="utf-8"
-    ) as jsonl_f:
-
+    with (
+        wds.TarWriter(tar_fname) as sink,
+        open(jsonl_fname, "w", encoding="utf-8") as jsonl_f,
+    ):
         with ThreadPoolExecutor(max_workers=num_threads) as thread_pool:
             futures = []
 
@@ -325,7 +331,6 @@ def pack_dataset(
     print(f"Total samples: {total_lines}, Estimated shards: {total_shards_est}")
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-
         futures = set()
 
         shard_idx = 0

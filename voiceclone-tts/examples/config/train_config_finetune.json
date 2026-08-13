@@ -16,7 +16,7 @@
     "resume_from_checkpoint": null,
     "init_from_checkpoint": "k2-fsa/OmniVoice",
 
-    "learning_rate": 5e-5,
+    "learning_rate": 1e-5,
     "weight_decay": 0.01,
     "max_grad_norm": 1.0,
     "steps": 5000,

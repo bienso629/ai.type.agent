@@ -49,14 +49,20 @@ audio = model.generate(text="Hello, this is a test of duration control", speed=1
 
 Priority: `duration` > `speed`.
 
+> **Note:** When using `duration`, the default post-processing step may trim trailing silence, causing the actual output to be slightly shorter than the requested duration. If you need the output duration to **exactly** match the specified value, set `postprocess_output=False` to disable silence removal.
+
 ## Pre/Post Processing
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `preprocess_prompt` | bool | True | Whether to apply preprocessing to the voice-clone prompt audio (remove long silences in reference audio, add punctuation in the end of reference text). |
 | `postprocess_output` | bool | True | Apply post-processing to generated audio (remove long silences). |
+| `pad_duration` | float | 0.1 | Silence padding duration per side in seconds. Set to 0 to disable. |
+| `fade_duration` | float | 0.1 | Fade-in/out curve duration in seconds. Set to 0 to disable. |
 
 ## Long-Form Generation
+
+To support stable long-form speech generation with low VRAM consumption, the text is automatically split into smaller segments when the estimated duration of the generated speech exceeds `audio_chunk_duration`, with each segment producing approximately `audio_chunk_duration` seconds of audio. This approach allows the model to accept arbitrarily long text and generate arbitrarily long speech with near-constant VRAM consumption.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|

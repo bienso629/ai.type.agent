@@ -55,6 +55,30 @@ class TrainingConfig:
     resume_from_checkpoint: Optional[str] = None
     init_from_checkpoint: Optional[str] = None
 
+    # LoRA (PEFT) Settings
+    use_lora: bool = False
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.05
+    lora_bias: str = "none"
+    lora_target_modules: List[str] = field(
+        default_factory=lambda: [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
+    )
+    # Non-LLM modules trained in full rather than via low-rank adapters,
+    # since they are OmniVoice-specific audio I/O layers, not general LLM
+    # knowledge, and are small relative to the LLM backbone.
+    lora_modules_to_save: List[str] = field(
+        default_factory=lambda: ["audio_embeddings", "audio_heads"]
+    )
+
     # Training Hyperparams
     learning_rate: float = 1e-4
     weight_decay: float = 0.01
@@ -76,6 +100,12 @@ class TrainingConfig:
     allow_tf32: bool = True
     use_deepspeed: bool = False
     deepspeed_config: Optional[str] = None
+    attn_implementation: str = "flex_attention"
+
+    # Length-grouped batching (only used when attn_implementation != "flex_attention")
+    max_sample_tokens: int = 2000
+    min_sample_tokens: int = 50
+    max_batch_size: int = 64
 
     # Logging
     logging_steps: int = 100

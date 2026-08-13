@@ -66,13 +66,13 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchaudio
 import webdataset as wds
 from torch.utils.data import DataLoader, IterableDataset
 from tqdm.auto import tqdm
 from transformers import AutoFeatureExtractor, HiggsAudioV2TokenizerModel
 
 from omnivoice.data.dataset import JsonlDatasetReader, WebDatasetReader
+from omnivoice.utils.audio import load_audio_bytes
 from omnivoice.utils.common import str2bool
 
 warnings.filterwarnings(
@@ -207,13 +207,7 @@ def serialise_numpy(key: str, tokens: np.ndarray) -> dict:
 
 def _load_aug_audio(data, sample_rate=24000):
     """Simple audio loader for augmentation files."""
-    with io.BytesIO(data) as b:
-        wav, sr = torchaudio.load(b)
-    if wav.shape[0] > 1:
-        wav = wav.mean(dim=0, keepdim=True)
-    if sr != sample_rate:
-        wav = torchaudio.functional.resample(wav, sr, sample_rate)
-    return wav
+    return torch.from_numpy(load_audio_bytes(data, sample_rate))
 
 
 class SimpleWorkerSampler:
@@ -297,7 +291,11 @@ def process_init(rank_queue, tokenizer_path, noise_manifest=None, rir_manifest=N
     Initialization function for each worker process.
     Assigns a specific GPU to the process and loads the tokenizer.
     """
-    global worker_tokenizer, worker_feature_extractor, worker_noise_sampler, worker_rir_sampler
+    global \
+        worker_tokenizer, \
+        worker_feature_extractor, \
+        worker_noise_sampler, \
+        worker_rir_sampler
 
     # Configure worker process logging
     formatter = (
@@ -517,14 +515,14 @@ def main() -> None:
     mp.set_start_method("spawn", force=True)
 
     # Validate input arguments
-    assert bool(args.input_manifest) != bool(
-        args.input_jsonl
-    ), "Exactly one of --input_manifest or --input_jsonl must be provided."
+    assert bool(args.input_manifest) != bool(args.input_jsonl), (
+        "Exactly one of --input_manifest or --input_jsonl must be provided."
+    )
 
     if args.num_machines > 1:
-        assert (
-            0 <= args.machine_index < args.num_machines
-        ), f"machine_index {args.machine_index} must be in [0, {args.num_machines})"
+        assert 0 <= args.machine_index < args.num_machines, (
+            f"machine_index {args.machine_index} must be in [0, {args.num_machines})"
+        )
 
     # Build base dataset and count total samples based on input mode
     if args.input_jsonl:
@@ -558,9 +556,9 @@ def main() -> None:
                 )
                 assert os.path.exists(tar_path), f"File {tar_path} does not exist."
                 assert os.path.exists(jsonl_path), f"File {jsonl_path} does not exist."
-                assert jsonl_path.endswith(
-                    ".jsonl"
-                ), f"File {jsonl_path} is not a .jsonl file."
+                assert jsonl_path.endswith(".jsonl"), (
+                    f"File {jsonl_path} is not a .jsonl file."
+                )
                 if (
                     args.num_machines > 1
                     and line_id % args.num_machines != args.machine_index

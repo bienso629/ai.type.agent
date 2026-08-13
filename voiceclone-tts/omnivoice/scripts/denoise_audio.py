@@ -73,6 +73,7 @@ from tqdm.auto import tqdm
 
 from omnivoice.data.batching import StreamLengthGroupDataset
 from omnivoice.data.dataset import JsonlDatasetReader, WebDatasetReader
+import soundfile as sf
 from omnivoice.utils.common import str2bool
 
 SIDON_INPUT_SAMPLE_RATE = 16_000
@@ -92,7 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input_jsonl",
         default=None,
-        help="Raw JSONL file. Each line: " '{"id": "...", "audio_path": "...", ...}',
+        help='Raw JSONL file. Each line: {"id": "...", "audio_path": "...", ...}',
     )
 
     # ── Output ──
@@ -367,10 +368,10 @@ def extract_seamless_m4t_features(
 
 def serialise_flac(key: str, waveform: torch.Tensor, sample_rate: int) -> dict:
     buffer = io.BytesIO()
-    audio = waveform.to(dtype=torch.float32).cpu()
-    if audio.ndim == 1:
-        audio = audio.unsqueeze(0)
-    torchaudio.save(buffer, audio, sample_rate, format="flac", bits_per_sample=16)
+    audio = waveform.to(dtype=torch.float32).cpu().numpy()
+    if audio.ndim == 2:
+        audio = audio.T  # (C, T) → (T, C) for soundfile
+    sf.write(buffer, audio, sample_rate, format="FLAC")
     return {"__key__": key, "flac": buffer.getvalue()}
 
 
@@ -751,14 +752,14 @@ def main() -> None:
     # Validate input arguments
     assert args.tar_output_pattern is not None, "--tar_output_pattern is required."
     assert args.jsonl_output_pattern is not None, "--jsonl_output_pattern is required."
-    assert bool(args.input_manifest) != bool(
-        args.input_jsonl
-    ), "Exactly one of --input_manifest or --input_jsonl must be provided."
+    assert bool(args.input_manifest) != bool(args.input_jsonl), (
+        "Exactly one of --input_manifest or --input_jsonl must be provided."
+    )
 
     if args.num_machines > 1:
-        assert (
-            0 <= args.machine_index < args.num_machines
-        ), f"machine_index {args.machine_index} must be in [0, {args.num_machines})"
+        assert 0 <= args.machine_index < args.num_machines, (
+            f"machine_index {args.machine_index} must be in [0, {args.num_machines})"
+        )
 
     # ── Build base dataset and count total samples ──
     if args.input_jsonl:
@@ -792,9 +793,9 @@ def main() -> None:
                 )
                 assert os.path.exists(tar_path), f"File {tar_path} does not exist."
                 assert os.path.exists(jsonl_path), f"File {jsonl_path} does not exist."
-                assert jsonl_path.endswith(
-                    ".jsonl"
-                ), f"File {jsonl_path} is not a .jsonl file."
+                assert jsonl_path.endswith(".jsonl"), (
+                    f"File {jsonl_path} is not a .jsonl file."
+                )
                 if (
                     args.num_machines > 1
                     and line_id % args.num_machines != args.machine_index

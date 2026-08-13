@@ -6,6 +6,7 @@ This directory contains scripts and configs for training, fine-tuning, and evalu
 |---|---|---|
 | Training from scratch | [run_emilia.sh](run_emilia.sh) | Full pipeline on the Emilia dataset (data check, tokenization, training) |
 | Fine-tuning | [run_finetune.sh](run_finetune.sh) | Fine-tune from a pretrained checkpoint using your own JSONL data |
+| LoRA fine-tuning | [run_finetune_lora.sh](run_finetune_lora.sh) | Parameter-efficient finetuning via PEFT LoRA adapters — see [../docs/lora_finetuning.md](../docs/lora_finetuning.md) |
 | Evaluation | [run_eval.sh](run_eval.sh) | Evaluate WER, speaker similarity, and UTMOS on standard test sets |
 
 ---
@@ -96,6 +97,8 @@ Main difference between fine-tuning config ([config/train_config_finetune.json](
 
 To use a different pretrained checkpoint, modify `init_from_checkpoint` in the config file.
 
+If you encounter issues with `flex_attention` on your GPU, use [config/train_config_finetune_sdpa.json](config/train_config_finetune_sdpa.json) instead, which uses SDPA attention for broader compatibility. See [docs/training.md](../docs/training.md#attention-implementation) for details.
+
 ---
 
 ## Evaluation
@@ -115,4 +118,3 @@ bash examples/run_eval.sh
 ```
 
 > See [docs/evaluation.md](../docs/evaluation.md) for metrics details, test set preparation, and running individual metrics.
-

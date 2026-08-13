@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnivoice"
-version = "0.1.1"
+version = "0.2.1"
 description = "OmniVoice: Towards Omnilingual Zero-Shot Text-to-Speech with Diffusion Language Models"
 readme = "README.md"
 license = "Apache-2.0"
@@ -30,8 +30,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "torch>=2.4.1",
-    "torchaudio>=2.4.1",
+    "torch>=2.4",
+    "torchaudio>=2.4",
     "transformers>=5.3.0",
     "accelerate",
     "pydub",
@@ -39,14 +39,19 @@ dependencies = [
     "tensorboardX",
     "webdataset",
     "numpy",
-    "soundfile"
+    "soundfile",
+    "librosa",
 ]
 
 [project.optional-dependencies]
 
+tn = [
+    "WeTextProcessing",   # zh/en text normalization (numbers, dates, currency)
+    "num2words",           # integer-to-words fallback for other languages
+]
+
 eval = [
     "jiwer==3.1.0",       # WER
-    "librosa",             # Audio processing
     "s3prl",               # Speech representation (HuBERT etc.)
     "funasr",              # ASR models
     "zhconv",              # Chinese character normalization
@@ -54,10 +59,15 @@ eval = [
     "unidecode",            # Unicode normalization
 ]
 
+lora = [
+    "peft>=0.20.0",       # LoRA fine-tuning support
+]
+
 [project.scripts]
 omnivoice-infer = "omnivoice.cli.infer:main"
 omnivoice-infer-batch = "omnivoice.cli.infer_batch:main"
 omnivoice-demo = "omnivoice.cli.demo:main"
+omnivoice-merge-lora = "omnivoice.cli.merge_lora:main"
 
 [project.urls]
 Homepage = "https://github.com/k2-fsa/OmniVoice"
@@ -79,9 +89,18 @@ torchaudio = [
 name = "pytorch-cuda"
 # Use PyTorch built for NVIDIA Toolkit version 12.8.
 # Available versions: https://pytorch.org/get-started/locally/
-url = "https://download.pytorch.org/whl/cu118"
+url = "https://download.pytorch.org/whl/cu128"
 # Only use this index when explicitly requested by `tool.uv.sources`.
 explicit = true
+
+[tool.uv]
+constraint-dependencies = [
+    "torch==2.8.0",
+    "torchaudio==2.8.0",
+]
+
+[tool.ruff.lint]
+ignore = ["F401", "E402", "F403", "F841", "E741"]
 
 [tool.hatch.build.targets.sdist]
 include = ["omnivoice"]

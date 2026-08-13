@@ -18,6 +18,7 @@
 """
 Calculate UTMOS score with automatic Mean Opinion Score (MOS) prediction system
 """
+
 import argparse
 import logging
 import multiprocessing as mp
@@ -32,7 +33,7 @@ import torch
 from tqdm import tqdm
 
 from omnivoice.eval.models.utmos import UTMOS22Strong
-from omnivoice.eval.utils import load_waveform
+from omnivoice.eval.utils import load_eval_waveform
 from omnivoice.utils.data_utils import read_test_list
 
 warnings.filterwarnings("ignore")
@@ -137,10 +138,16 @@ def run_utmos_worker(file_idx, wav_path, language_name):
     """Worker function to process a single audio file."""
     try:
         if not os.path.exists(wav_path):
-            return file_idx, wav_path, language_name, f"File not found: {wav_path}", "error"
+            return (
+                file_idx,
+                wav_path,
+                language_name,
+                f"File not found: {wav_path}",
+                "error",
+            )
 
         # Load and preprocess waveform
-        speech = load_waveform(wav_path, worker_sr, device=worker_device)
+        speech = load_eval_waveform(wav_path, worker_sr, device=worker_device)
 
         # Compute score
         # UTMOS expects input shape (Batch, Time)

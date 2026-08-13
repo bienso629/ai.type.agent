@@ -32,16 +32,8 @@ import numpy as np
 import torch
 
 from omnivoice import OmniVoice, OmniVoiceGenerationConfig
+from omnivoice.utils.common import get_best_device
 from omnivoice.utils.lang_map import LANG_NAMES, lang_display_name
-
-
-def get_best_device():
-    """Auto-detect the best available device: CUDA > MPS > CPU."""
-    if torch.cuda.is_available():
-        return "cuda"
-    if torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +128,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--share", action="store_true", default=False, help="Create public link."
     )
+    parser.add_argument(
+        "--no-asr",
+        action="store_true",
+        default=False,
+        help="Skip loading Whisper ASR model. Reference text auto-transcription"
+        " will be unavailable.",
+    )
+    parser.add_argument(
+        "--asr-model",
+        default="openai/whisper-large-v3-turbo",
+        help="ASR model path or HuggingFace repo id"
+        " (default: openai/whisper-large-v3-turbo).",
+    )
     return parser
 
 
@@ -149,7 +154,6 @@ def build_demo(
     checkpoint: str,
     generate_fn=None,
 ) -> gr.Blocks:
-
     sampling_rate = model.sampling_rate
 
     # -- shared generation core --
@@ -198,17 +202,15 @@ def build_demo(
                 ref_text=ref_text,
             )
 
-        if mode == "design":
-            if instruct and instruct.strip():
-                kw["instruct"] = instruct.strip()
+        if instruct and instruct.strip():
+            kw["instruct"] = instruct.strip()
 
         try:
             audio = model.generate(**kw)
         except Exception as e:
             return None, f"Error: {type(e).__name__}: {e}"
 
-        waveform = audio[0].squeeze(0).numpy()  # (T,)
-        waveform = (waveform * 32767).astype(np.int16)
+        waveform = (audio[0] * 32767).astype(np.int16)
         return (sampling_rate, waveform), "Done."
 
     # Allow external wrappers (e.g. spaces.GPU for ZeroGPU Spaces)
@@ -243,8 +245,8 @@ def build_demo(
     def _gen_settings():
         with gr.Accordion("Generation Settings (optional)", open=False):
             sp = gr.Slider(
-                0.7,
-                1.3,
+                0.5,
+                1.5,
                 value=1.0,
                 step=0.05,
                 label="Speed",
@@ -254,8 +256,7 @@ def build_demo(
                 value=None,
                 label="Duration (seconds)",
                 info=(
-                    "Leave empty to use speed."
-                    " Set a fixed duration to override speed."
+                    "Leave empty to use speed. Set a fixed duration to override speed."
                 ),
             )
             ns = gr.Slider(
@@ -303,7 +304,7 @@ State-of-the-art text-to-speech model for **600+ languages**, supporting:
 - **Voice Design** — Create custom voices with speaker attributes
 
 Built with [OmniVoice](https://github.com/k2-fsa/OmniVoice)
-by Xiaomi Next-gen Kaldi team.
+by Xiaomi AI Lab Next-gen Kaldi team.
 """
         )
 
@@ -330,12 +331,14 @@ by Xiaomi Next-gen Kaldi team.
                             "</span>"
                         )
                         vc_ref_text = gr.Textbox(
-                            label=("Reference Text (optional)" " / 参考音频文本（可选）"),
+                            label=("Reference Text (optional) / 参考音频文本（可选）"),
                             lines=2,
                             placeholder="Transcript of the reference audio. Leave empty"
                             " to auto-transcribe via ASR models.",
                         )
                         vc_lang = _lang_dropdown("Language (optional) / 语种 (可选)")
+                        with gr.Accordion("Instruct (optional)", open=False):
+                            vc_instruct = gr.Textbox(label="Instruct", lines=2)
                         (
                             vc_ns,
                             vc_gs,
@@ -354,13 +357,13 @@ by Xiaomi Next-gen Kaldi team.
                         vc_status = gr.Textbox(label="Status / 状态", lines=2)
 
                 def _clone_fn(
-                    text, lang, ref_aud, ref_text, ns, gs, dn, sp, du, pp, po
+                    text, lang, ref_aud, ref_text, instruct, ns, gs, dn, sp, du, pp, po
                 ):
                     return _gen(
                         text,
                         lang,
                         ref_aud,
-                        None,
+                        instruct,
                         ns,
                         gs,
                         dn,
@@ -379,6 +382,7 @@ by Xiaomi Next-gen Kaldi team.
                         vc_lang,
                         vc_ref_audio,
                         vc_ref_text,
+                        vc_instruct,
                         vc_ns,
                         vc_gs,
                         vc_dn,
@@ -514,7 +518,8 @@ def main(argv=None) -> int:
         checkpoint,
         device_map=device,
         dtype=torch.float16,
-        load_asr=True,
+        load_asr=not args.no_asr,
+        asr_model_name=args.asr_model,
     )
     print("Model loaded.")
 
