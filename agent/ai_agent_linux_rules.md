@@ -103,6 +103,7 @@ graph TD
     
     Route -->|POST /api/chat| Chat[General AI Chat & Streaming SSE]
     Route -->|POST /api/automation| Auto[OS System Automation SSE]
+    Route -->|POST /api/image| ImageEp[AI Image Generation SSE]
     Route -->|GET/PUT /api/profile/scene/*| Profile[3D PlayCanvas Persistence JSON]
     Route -->|POST /api/profile/scene/assets/*| AssetUp[Upload 3D Asset GLB/Texture]
     Route -->|GET /api/profile/scene/assets/*| AssetGet[Public Asset Static File]
@@ -113,7 +114,7 @@ graph TD
 
 #### 💬 Endpoint `/api/chat` (General Multimodal Chat)
 - **Endpoint URL:** `https://sontinh.type.vn/api/chat`
-- **Mục đích:** Xử lý hội thoại thông thường, trả lời câu hỏi, giải toán, tóm tắt tệp, phát âm thanh đọc bài (TTS), và sinh ảnh/video.
+- **Mục đích:** Xử lý hội thoại thông thường, trả lời câu hỏi, giải toán, tóm tắt tệp, phát âm thanh đọc bài (TTS).
 - **Giao thức:** SSE (`text/event-stream`).
 - **Quy tắc Phân loại Prompt:** Nếu người dùng chỉ hỏi thông tin bình thường (thời tiết, kiến thức, lịch âm,...), Agent phải trả lời ngắn gọn bằng văn bản và **KHÔNG THỰC THI BẤT KỲ LỆNH HỆ THỐNG NÀO**.
 
@@ -121,6 +122,11 @@ graph TD
 - **Endpoint URL:** `https://sontinh.type.vn/api/automation`
 - **Mục đích:** Chuyên biệt cho tác vụ tự động hóa và điều khiển máy tính.
 - **Tự động nạp Prompt Hệ thống:** Thiết lập `is_automation=True`, bổ sung các chỉ thị bắt buộc về `systemd-run`, Opera GX, `yt-dlp`, và `ImageName` UUID.
+
+#### 🖼️ Endpoint `/api/image` & `/api/generate-image` (AI Image Generation)
+- **Endpoint URL:** `https://sontinh.type.vn/api/image`
+- **Mục đích:** Chuyên biệt cho việc tạo và sinh hình ảnh nghệ thuật AI chất lượng cao (HD, 2K, 4K).
+- **Hỗ trợ tùy chọn:** Tự động nhận diện các tham số `aspect_ratio`, `quality`, `style`, `prompt`/`description` và tự động upscale kích thước ảnh tối thiểu 2K HD.
 
 #### 🎨 Endpoint `/api/profile/scene/{username}` & Assets (3D Data Persistence)
 - **Endpoint URL:** `https://sontinh.type.vn/api/profile/scene/{username}`

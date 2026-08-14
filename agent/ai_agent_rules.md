@@ -4,27 +4,25 @@ Dưới đây là các nguyên tắc cốt lõi và bắt buộc phải tuân th
 
 ---
 
-## 🛑 1. PHÂN ĐỊNH TUYỆT ĐỐI GIỮA `/api/chat` VÀ `/api/profile/scene/`
+## 🛑 1. PHÂN ĐỊNH TUYỆT ĐỐI GIỮA `/api/chat`, `/api/automation`, `/api/image` VÀ `/api/profile/scene/`
 
-Hệ thống chuyên môn hóa 100% nhiệm vụ cho hai nhóm API:
+Hệ thống chuyên môn hóa 100% nhiệm vụ cho các nhóm API:
 
 ### 💬 Nhóm 1: API `/api/chat` (LLM Agent Chat & Streaming Execution)
-- **Chức năng duy nhất**: Trò chuyện thông minh, sinh nội dung (văn bản, hình ảnh, video), phát tổng hợp TTS và thực thi lệnh hệ điều hành.
-- **Phương thức & Giao thức**: `POST /api/chat` dạng **Server-Sent Events (SSE)** streaming (`text/event-stream`). Hỗ trợ chế độ Relay WebSocket tới máy trạm PC Agent.
-- **Biệt lập nghiệp vụ**:
-  1. **KHÔNG CHỨA LOGIC 3D**: Tuyệt đối KHÔNG có bất kỳ logic kiểm tra prompt 3D, KHÔNG nạp ngữ cảnh 3D (`load_all_user_3d_profiles_summary`), KHÔNG đọc/ghi hay can thiệp vào thư mục `Documents/ai.type/data/profiles`, và KHÔNG dính dáng gì tới `/api/profile/scene`.
-  2. **Quy tắc Sử dụng AI & Fallback (3 Tầng)**:
-     - **Tầng 1 (Ưu tiên số 1)**: AI Agent Sơn Tinh (`https://sontinh.type.vn`). Khi `isAiAgentActive = true`, **bắt buộc** đi qua Sơn Tinh Agent và **ép cứng (force) model `gemini-3.6-flash`**. Nếu Tầng 1 lỗi, **TUYỆT ĐỐI KHÔNG FALLBACK** sang Tầng 2 mà phải báo lỗi trực tiếp.
-     - **Tầng 2 (Ưu tiên số 2)**: Mì Tôm AI (Backend ChatGPT API). Chỉ kích hoạt khi Sơn Tinh Agent TẮT và Mì Tôm AI BẬT.
-     - **Tầng 3 (Ưu tiên số 3)**: Gemini API Key miễn phí trực tiếp từ Google (`secretKey`). Kích hoạt khi cả 2 tầng trên TẮT.
-  3. **Quy tắc Thực thi Hệ điều hành (OS Execution Rules)**:
-     - Khi có tác vụ trên máy tính (mở app, xem Youtube, thao tác file, đăng bài), bắt buộc gọi tool `run_command` để bash/terminal thực thi thực tế.
-     - Mở GUI/Trình duyệt phải dùng `systemd-run --user` với các biến môi trường Wayland/X11, ưu tiên trình duyệt native (Opera GX).
-     - Tìm kiếm YouTube phải dùng `yt-dlp` lấy Video ID trước để mở URL trực tiếp.
+- **Chức năng duy nhất**: Trò chuyện thông minh, trả lời câu hỏi và sinh nội dung văn bản tự nhiên.
+- **Phương thức & Giao thức**: `POST /api/chat` dạng **Server-Sent Events (SSE)** streaming (`text/event-stream`).
+
+### ⚙️ Nhóm 2: API `/api/automation` (OS Automation Task)
+- **Chức năng duy nhất**: Thực thi tác vụ tự động hóa hệ điều hành (mở app, xem YouTube, thao tác file, đăng bài...).
+- **Phương thức & Giao thức**: `POST /api/automation` (hoặc `/api/automate`) dạng SSE streaming.
+
+### 🖼️ Nhóm 3: API `/api/image` (AI Image Generation)
+- **Chức năng duy nhất**: Chuyên biệt sinh và tạo hình ảnh AI chất lượng cao HD/2K/4K.
+- **Phương thức & Giao thức**: `POST /api/image` (hoặc `/api/generate-image`) dạng SSE streaming. Hỗ trợ tùy chỉnh `aspect_ratio`, `quality`, `style` và tự động upscale ảnh 2K/4K.
 
 ---
 
-### 🎨 Nhóm 2: API `/api/profile/scene/` (3D PlayCanvas Data Persistence)
+### 🎨 Nhóm 4: API `/api/profile/scene/` (3D PlayCanvas Data Persistence)
 Các endpoint: `/api/profile/scene/{username}` và `/api/profile/scene/assets/{username}/{filename}`.
 - **Chức năng duy nhất**: Chỉ xử lý các nghiệp vụ 3D PlayCanvas lưu trữ tại `Documents/ai.type/data/profiles/{username}/` (Nhân vật, Căn phòng 306, Đồ vật Props, Động tác Animations, Kịch bản Events, tệp asset 3D `.glb`, `.png`, `.jpg`...). **TUYỆT ĐỐI KHÔNG xử lý bất kỳ công việc nào khác**.
 - **Biệt lập nghiệp vụ**:

@@ -665,7 +665,9 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
 
         target_dir = os.path.abspath(TMP_DIR)
         is_video = prompt.startswith("Bắt buộc tạo video: ")
-        is_image = prompt.startswith("Bắt buộc tạo hình ảnh: ")
+        is_image = prompt.startswith("Bắt buộc tạo hình ảnh: ") or req_data.get("is_image", False)
+        if is_image and not prompt.startswith("Bắt buộc tạo hình ảnh: "):
+            prompt = f"Bắt buộc tạo hình ảnh: {prompt}"
 
         ext = ".mp4" if is_video else ".png"
         filename = f"media_{uuid.uuid4().hex[:8]}{ext}"
@@ -702,6 +704,13 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
                 "LƯU Ý ĐĂNG ẢNH LÊN FACEBOOK: TUYỆT ĐỐI KHÔNG click vào nút 'Ảnh/video' vì sẽ mở hộp thoại file của hệ thống gây treo/lỗi. Hãy tìm phần tử input file ẩn và dùng tool để upload trực tiếp."
             )
             full_prompt = f"[{system_instructions}]\n\n{reference_instruction}\n\n{automation_instructions}\n\nYêu cầu Tự động hóa:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng! (Nếu không gọi công cụ tạo ảnh thì bỏ qua lưu ý này)."
+        elif is_image:
+            image_instructions = (
+                "LƯU Ý QUAN TRỌNG - YÊU CẦU TẠO HÌNH ẢNH (IMAGE GENERATION TASK):\n"
+                "Đây là yêu cầu CHUYÊN BIỆT TẠO HÌNH ẢNH. Bạn BẮT BUỘC phải sử dụng công cụ sinh/tạo hình ảnh (`generate_image`) để sinh ra bức ảnh chất lượng cao, đúng mô tả nhất cho người dùng.\n"
+                "TUYỆT ĐỐI KHÔNG CHỈ TRẢ LỜI BẰNG VĂN BẢN MÀ KHÔNG GỌI TOOL TẠO HÌNH ẢNH."
+            )
+            full_prompt = f"[{system_instructions}]\n\n{reference_instruction}\n\n{image_instructions}\n\nYêu cầu Tạo hình ảnh:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng!"
         else:
             chat_instructions = (
                 "LƯU Ý: Bạn là trợ lý trò chuyện AI. Trả lời người dùng bằng văn bản tự nhiên, rõ ràng và hữu ích. "
@@ -968,11 +977,15 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         await yield_callback(f"data: {json.dumps(err_chunk)}\n\n")
 
 
-async def extract_request_data(request: Request, default_sys_instruction: str = "Bạn là trợ lý AI.", default_is_automation: bool = False) -> dict:
+async def extract_request_data(request: Request, default_sys_instruction: str = "Bạn là trợ lý AI.", default_is_automation: bool = False, default_is_image: bool = False) -> dict:
     content_type = request.headers.get("content-type", "")
     file_paths = []
     files_data = []
     
+    aspect_ratio = None
+    quality = None
+    style = None
+
     if "application/json" in content_type:
         body = await request.json()
         conversation_id = body.get("conversation_id") or str(uuid.uuid4())
@@ -999,13 +1012,18 @@ async def extract_request_data(request: Request, default_sys_instruction: str = 
                     elif isinstance(item, dict) and "path" in item and item["path"]:
                         file_paths.append(item["path"])
 
-        prompt = body.get("prompt", "Xin chào" if not default_is_automation else "")
+        prompt = body.get("prompt") or body.get("description") or body.get("text") or body.get("image_prompt") or ("Xin chào" if not (default_is_automation or default_is_image) else "")
         system_instructions = body.get("system_instructions", default_sys_instruction)
         model = body.get("model")
         gemini_api_key = body.get("gemini_api_key")
         tts_voice = body.get("tts_voice", "vi-VN-HoaiMyNeural")
         tts_rate = body.get("tts_rate", "+0%")
         is_auto = body.get("is_automation", default_is_automation)
+        is_img = body.get("is_image", default_is_image)
+
+        aspect_ratio = body.get("aspect_ratio")
+        quality = body.get("quality")
+        style = body.get("style")
     else:
         form = await request.form()
         conversation_id = form.get("conversation_id") or str(uuid.uuid4())
@@ -1026,13 +1044,29 @@ async def extract_request_data(request: Request, default_sys_instruction: str = 
                 if isinstance(val, str) and val.strip():
                     file_paths.append(val.strip())
 
-        prompt = form.get("prompt", "Xin chào" if not default_is_automation else "")
+        prompt = form.get("prompt") or form.get("description") or form.get("text") or form.get("image_prompt") or ("Xin chào" if not (default_is_automation or default_is_image) else "")
         system_instructions = form.get("system_instructions", default_sys_instruction)
         model = form.get("model")
         gemini_api_key = form.get("gemini_api_key")
         tts_voice = form.get("tts_voice", "vi-VN-HoaiMyNeural")
         tts_rate = form.get("tts_rate", "+0%")
         is_auto = default_is_automation or bool(form.get("is_automation"))
+        is_img = default_is_image or bool(form.get("is_image"))
+
+        aspect_ratio = form.get("aspect_ratio")
+        quality = form.get("quality")
+        style = form.get("style")
+
+    extra_specs = []
+    if aspect_ratio:
+        extra_specs.append(f"Tỷ lệ khung hình: {aspect_ratio}")
+    if quality:
+        extra_specs.append(f"Chất lượng: {quality}")
+    if style:
+        extra_specs.append(f"Phong cách: {style}")
+
+    if extra_specs and prompt:
+        prompt = f"{prompt} ({', '.join(extra_specs)})"
 
     return {
         "prompt": prompt,
@@ -1044,7 +1078,8 @@ async def extract_request_data(request: Request, default_sys_instruction: str = 
         "tts_rate": tts_rate,
         "files_data": files_data,
         "file_paths": file_paths,
-        "is_automation": is_auto
+        "is_automation": is_auto,
+        "is_image": is_img
     }
 
 def handle_agent_streaming(req_data: dict):
@@ -1127,6 +1162,27 @@ async def automation_endpoint(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
     try:
         req_data = await extract_request_data(request, default_sys_instruction="Bạn là AI Agent tự động hóa hệ thống máy tính.", default_is_automation=True)
+        return handle_agent_streaming(req_data)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "result": "", "error": str(e)})
+
+@app.post("/api/image")
+@app.post("/api/generate-image")
+async def image_endpoint(request: Request):
+    """
+    API Chuyên biệt cho Sinh / Tạo hình ảnh AI (AI Image Generation).
+    Tách biệt hoàn toàn với /api/chat để thực thi việc tạo hình ảnh chất lượng cao 2K/4K.
+    """
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key != SECRET_AGENT_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
+    try:
+        req_data = await extract_request_data(
+            request,
+            default_sys_instruction="Bạn là AI chuyên gia thiết kế sáng tạo và tạo hình ảnh nghệ thuật HD/4K.",
+            default_is_automation=False,
+            default_is_image=True
+        )
         return handle_agent_streaming(req_data)
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "result": "", "error": str(e)})
