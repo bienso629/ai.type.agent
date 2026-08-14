@@ -65,7 +65,7 @@ $simple_chatbot_api = get_option('simple_chatbot_api', 'https://bot.type.vn');
         <a href="?page=connect_type" class="nav-tab ">Danh sách nút</a>
         <a href="?page=connect_type_chatbot" class="nav-tab nav-tab-active">Chatbot</a>
         <a href="?page=connect_type_cdn" class="nav-tab ">CDN và Cache</a>
-        
+        <a href="?page=connect_type_status" class="nav-tab ">Trạng thái</a>
         <a href="?page=simpleSEOAdminOptions" class="nav-tab ">SEO</a>
         <a href="?page=connect_type_setting" class="nav-tab ">Cài đặt</a>
     </h2>

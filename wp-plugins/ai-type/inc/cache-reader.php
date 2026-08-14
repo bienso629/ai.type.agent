@@ -424,25 +424,46 @@ function clbntb_cdn_rewrite_html($html) {
             if ($tmp !== null) $html = $tmp;
         }
         
+        // Universal rewrite for ANY domain's /wp-content/uploads/ to CDN /media/
+        $target_media = $cdn_base . '/media/';
+        $pattern_univ_uploads = '#https?://[^/"\'\)\s]+/wp-content/uploads/([^"\'\)\s]*\.(?:jpg|jpeg|png|gif|webp|svg|ico)(?:\?[^"\'\)\s]*)?)#i';
+        $tmp = preg_replace($pattern_univ_uploads, $target_media . '$1', $html);
+        if ($tmp !== null) $html = $tmp;
+
+        $target_media_escaped = str_replace('/', '\/', $target_media);
+        $pattern_univ_uploads_escaped = '#https?:\\\\/\\\\/[^/"\'\)\s]+\\\\/\wp-content\\\\/uploads\\\\/([^"\'\)\s]*\.(?:jpg|jpeg|png|gif|webp|svg|ico)(?:\?[^"\'\)\s]*)?)#i';
+        $tmp = preg_replace($pattern_univ_uploads_escaped, $target_media_escaped . '$1', $html);
+        if ($tmp !== null) $html = $tmp;
+
         // --- WEBP REWRITE ---
         if (get_option('clbntb_rewrite_webp') == '1') {
+            $c_ver = function_exists('clbntb_get_cache_version') ? clbntb_get_cache_version() : time();
             $upload_url = wp_upload_dir()['baseurl'];
             $pattern_webp = '#' . preg_quote($upload_url, '#') . '([^"\'\)\s]*\.)(jpg|jpeg|png|webp)(?:\?[^"\'\)\s]*)?#i';
-            $html = preg_replace($pattern_webp, $upload_url . '$1webp?v=clb5', $html);
+            $html = preg_replace($pattern_webp, $upload_url . '$1webp?v=' . $c_ver, $html);
             
             $upload_url_escaped = str_replace('/', '\/', $upload_url);
             $pattern_webp_escaped = '#' . preg_quote($upload_url_escaped, '#') . '([^"\'\)\s]*\.)(jpg|jpeg|png|webp)(?:\?[^"\'\)\s]*)?#i';
-            $html = preg_replace($pattern_webp_escaped, $upload_url_escaped . '$1webp?v=clb5', $html);
+            $html = preg_replace($pattern_webp_escaped, $upload_url_escaped . '$1webp?v=' . $c_ver, $html);
             
             // Apply to CDN urls as well
             if (!empty($cdn_base)) {
                 $cdn_upload = $cdn_base . '/wp-content/uploads';
                 $pattern_webp_cdn = '#' . preg_quote($cdn_upload, '#') . '([^"\'\)\s]*\.)(jpg|jpeg|png|webp)(?:\?[^"\'\)\s]*)?#i';
-                $html = preg_replace($pattern_webp_cdn, $cdn_upload . '$1webp?v=clb5', $html);
+                $html = preg_replace($pattern_webp_cdn, $cdn_upload . '$1webp?v=' . $c_ver, $html);
                 
                 $cdn_upload_escaped = str_replace('/', '\/', $cdn_upload);
                 $pattern_webp_cdn_escaped = '#' . preg_quote($cdn_upload_escaped, '#') . '([^"\'\)\s]*\.)(jpg|jpeg|png|webp)(?:\?[^"\'\)\s]*)?#i';
-                $html = preg_replace($pattern_webp_cdn_escaped, $cdn_upload_escaped . '$1webp?v=clb5', $html);
+                $html = preg_replace($pattern_webp_cdn_escaped, $cdn_upload_escaped . '$1webp?v=' . $c_ver, $html);
+
+                // Apply to CDN /media/ urls as well
+                $cdn_media_base = $cdn_base . '/media';
+                $pattern_webp_media = '#' . preg_quote($cdn_media_base, '#') . '([^"\'\)\s]*\.)(jpg|jpeg|png|webp)(?:\?[^"\'\)\s]*)?#i';
+                $html = preg_replace($pattern_webp_media, $cdn_media_base . '$1webp?v=' . $c_ver, $html);
+
+                $cdn_media_base_escaped = str_replace('/', '\/', $cdn_media_base);
+                $pattern_webp_media_escaped = '#' . preg_quote($cdn_media_base_escaped, '#') . '([^"\'\)\s]*\.)(jpg|jpeg|png|webp)(?:\?[^"\'\)\s]*)?#i';
+                $html = preg_replace($pattern_webp_media_escaped, $cdn_media_base_escaped . '$1webp?v=' . $c_ver, $html);
             }
             
             // Fallback JS: 4-Stage Ultimate Fallback (CDN jpg -> CDN png -> Origin jpg -> Origin png) + Newspaper MegaMenu Fix

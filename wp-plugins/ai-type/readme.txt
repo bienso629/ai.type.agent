@@ -4,7 +4,7 @@ Tags: phone, zalo, facebook, tiktok, whatsapp, ai chatbot
 Requires at least: 4.7
 Tested up to: 6.9
 Requires PHP: 7.0
-Stable Tag: 1.0.70
+Stable Tag: 1.0.82
 License: Free
 License URI: 
 
@@ -85,6 +85,49 @@ For support, visit: https://type.vn/
 
 = 1.0.56 =
 * Ổn định hóa toàn bộ module Redis, Status Dashboard, Gợi ý tối ưu
+
+= 1.0.82 =
+* Add dynamic timestamp-based cache buster engine via clbntb_get_cache_version() so Cloudflare edge cache automatically invalidates on recrop without plugin reinstalls
+
+= 1.0.81 =
+* Force upload cropped WebP images for all unattached images and update cache buster parameter to v=clb11
+
+= 1.0.80 =
+* Add universal upload domain regex rewrite in clbntb_cdn_rewrite_html to replace legacy domain upload URLs (e.g. newspaper.type.vn) with CDN media WebP URLs
+
+= 1.0.79 =
+* Completely eliminate hardcoded crop dimensions by querying all active Theme and WordPress image sizes dynamically via clbntb_get_all_registered_crop_sizes()
+* Update CDN cache buster parameter to v=clb10
+
+= 1.0.78 =
+* Add Newspaper theme specific crop dimensions (696x442, 696x385, 534x464, 356x220, 218x150, 80x60...)
+* Update CDN WebP cache buster parameter to v=clb9
+
+= 1.0.77 =
+* Add standalone image crop engine for direct image URLs in post_content and postmeta without attachment IDs
+* Fix filename extension regex in clbntb_crop_and_sync_standalone_file
+* Update CDN cache buster parameter to v=clb8
+
+= 1.0.76 =
+* Add automatic image filename attachment resolution for all post content images
+* Fix recrop support for posts without attached parent image IDs
+
+= 1.0.75 =
+* Overwrite CDN image with real 48KB cropped WebP image and update cache buster parameter to v=clb7
+
+= 1.0.74 =
+* Update CDN WebP cache buster parameter to bypass Cloudflare 404 Edge Cache
+* Ensure fresh binary WebP delivery from CDN
+
+= 1.0.73 =
+* Add force GD image crop engine for all theme crop sizes (696x464, 324x400...)
+* Add HTML error response validation filter to prevent uploading 404 HTML text to CDN
+* Fix CDN download fallback for missing local files
+
+= 1.0.72 =
+* Fix WebP crop scanning and automatic database post_content & postmeta URL updates to CDN WebP
+* Add automatic category archive HTML cache invalidation on recrop
+* Add recrop action links to post and media row actions
 
 = 1.0.70 =
 * Fix lỗi Uncaught TypeError: e.indexOf is not a function trên jQuery 3.7+

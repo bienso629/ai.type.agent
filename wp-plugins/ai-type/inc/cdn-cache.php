@@ -221,6 +221,29 @@ $cdn_url = get_option('clbntb_cdn_url', '');
     </div>
     <span id="webp-spinner" class="spinner"></span>
     <p id="webp-result" style="color: green; font-weight: bold;"></p>
+
+    <hr>
+    <h2>7. 🖼️ Tạo lại Thumbnail Bài Viết & Đồng bộ CDN (Regenerate Thumbnails)</h2>
+    <p>Giải quyết vấn đề ảnh thumbnail/crop bị thiếu hoặc không hiển thị trên CDN. Chức năng sẽ đọc lại ảnh gốc, cắt lại đúng kích thước theo Theme/Plugin hiện tại, tự động chuyển WebP và đẩy tất cả kích thước mới lên CDN.</p>
+    
+    <div style="background: #f8f9fa; border: 1px solid #ccd0d4; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+        <h4 style="margin-top:0;">Tạo lại theo ID Bài Viết hoặc ID Ảnh:</h4>
+        <div style="display:flex; gap:10px; align-items:center;">
+            <select id="recrop-type" style="padding: 4px 8px;">
+                <option value="single_post">ID Bài viết (Post ID)</option>
+                <option value="single_attachment">ID Ảnh (Attachment ID)</option>
+            </select>
+            <input type="number" id="recrop-target-id" placeholder="Nhập ID..." style="width: 150px;">
+            <button class="button button-primary" id="btn-recrop-single">🚀 Tạo lại Thumbnail & Sync CDN</button>
+        </div>
+        <p id="recrop-single-result" style="margin-top: 8px; font-weight: bold;"></p>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <button class="button button-secondary" id="btn-recrop-all-posts" style="background: #2271b1; color: #fff; border-color: #2271b1;">🔄 Tạo lại Thumbnail cho TẤT CẢ Bài Viết</button>
+        <span id="recrop-spinner" class="spinner"></span>
+        <p id="recrop-batch-result" style="color: green; font-weight: bold; margin-top: 8px;"></p>
+    </div>
 </div>
 
 <script>
@@ -441,6 +464,93 @@ jQuery(document).ready(function($) {
             }
         }
         nextUpload();
+    });
+
+    // Single Recrop
+    $('#btn-recrop-single').on('click', function(e) {
+        e.preventDefault();
+        let mode = $('#recrop-type').val();
+        let id = $('#recrop-target-id').val();
+        if (!id) {
+            alert('Vui lòng nhập ID!');
+            return;
+        }
+
+        let btn = $(this);
+        btn.prop('disabled', true).text('Đang tạo lại & Sync CDN...');
+        $('#recrop-single-result').css('color', 'black').text('Đang xử lý...');
+
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'clbntb_regenerate_thumbnails',
+                mode: mode,
+                id: id
+            },
+            success: function(res) {
+                btn.prop('disabled', false).text('🚀 Tạo lại Thumbnail & Sync CDN');
+                if (res.success) {
+                    $('#recrop-single-result').css('color', 'green').text(res.data);
+                } else {
+                    $('#recrop-single-result').css('color', 'red').text('Lỗi: ' + res.data);
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false).text('🚀 Tạo lại Thumbnail & Sync CDN');
+                $('#recrop-single-result').css('color', 'red').text('Lỗi kết nối server.');
+            }
+        });
+    });
+
+    // Batch Recrop All Posts
+    $('#btn-recrop-all-posts').on('click', function(e) {
+        e.preventDefault();
+        if (!confirm('Bạn có chắc muốn quét và tạo lại Thumbnail cho TẤT CẢ bài viết trên website?')) return;
+
+        $('#recrop-spinner').addClass('is-active');
+        $('#recrop-batch-result').css('color', 'black').text('Đang khởi tạo danh sách bài viết...');
+        $('#btn-recrop-all-posts').prop('disabled', true);
+
+        let is_first = 1;
+        let total_posts = 0;
+        let total_imgs = 0;
+
+        function runBatchRecrop() {
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'clbntb_regenerate_thumbnails',
+                    mode: 'batch_posts',
+                    is_first: is_first
+                },
+                success: function(res) {
+                    is_first = 0;
+                    if (res.success) {
+                        if (res.data.done) {
+                            $('#recrop-spinner').removeClass('is-active');
+                            $('#btn-recrop-all-posts').prop('disabled', false);
+                            $('#recrop-batch-result').css('color', 'green').text(res.data.message + ' (Đã xử lý tổng cộng: ' + total_posts + ' bài viết, ' + total_imgs + ' ảnh)');
+                        } else {
+                            total_posts += res.data.processed_posts || 0;
+                            total_imgs += res.data.regenerated_images || 0;
+                            $('#recrop-batch-result').css('color', 'black').text('🔄 Đang tạo lại thumbnail... Đã xử lý ' + total_posts + ' bài viết (' + total_imgs + ' ảnh mới), Còn lại: ' + res.data.remaining + ' bài');
+                            runBatchRecrop();
+                        }
+                    } else {
+                        $('#recrop-spinner').removeClass('is-active');
+                        $('#btn-recrop-all-posts').prop('disabled', false);
+                        $('#recrop-batch-result').css('color', 'red').text('Lỗi: ' + res.data);
+                    }
+                },
+                error: function() {
+                    $('#recrop-batch-result').css('color', 'red').text('Kết nối gián đoạn. Tự động thử lại sau 3s...');
+                    setTimeout(runBatchRecrop, 3000);
+                }
+            });
+        }
+        runBatchRecrop();
     });
 });
 </script>

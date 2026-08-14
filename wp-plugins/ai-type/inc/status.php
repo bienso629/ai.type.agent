@@ -9,7 +9,7 @@ if (defined('AITYPE_LICENSE_INVALID')) {
 }
 ?>
 <div class="wrap">
-    <h1>📊 Trạng Thái Hệ Thống</h1>
+    <h1>Trạng Thái Hệ Thống</h1>
     <h2 class="nav-tab-wrapper">
         <a href="?page=connect_type" class="nav-tab ">Danh sách nút</a>
         <a href="?page=connect_type_chatbot" class="nav-tab ">Chatbot</a>

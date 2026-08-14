@@ -48,6 +48,7 @@ class Options {
 		$content .= '<a href="?page=connect_type" class="nav-tab">Danh sách nút</a>';
 		$content .= '<a href="?page=connect_type_chatbot" class="nav-tab">Chatbot</a>';
 		$content .= '<a href="?page=connect_type_cdn" class="nav-tab">CDN và Cache</a>';
+		$content .= '<a href="?page=connect_type_status" class="nav-tab">Trạng thái</a>';
 		$content .= '<a href="?page=simpleSEOAdminOptions" class="nav-tab nav-tab-active">SEO</a>';
 		$content .= '<a href="?page=connect_type_setting" class="nav-tab">Cài đặt</a>';
 		$content .= '</h2><br>';

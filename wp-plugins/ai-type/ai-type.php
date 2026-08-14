@@ -3,7 +3,7 @@
  * Plugin Name: Công cụ AI Type
  * Plugin URI: https://type.vn/
  * Description: Plugin này cung cấp các nút kết nối tùy chỉnh cho nhiều nền tảng như Điện thoại, Zalo, Facebook, Tiktok,... giúp người dùng dễ dàng liên lạc qua kênh giao tiếp ưa thích. Đặc biệt, plugin Tích hợp AI tạo nội dung chuẩn SEO, Spinner bài viết, Chatbot tự động tư vấn, Tối ưu điểm Google PageSpeed, WebP và CDN
- * Version: 1.0.70
+ * Version: 1.0.82
  * Author: type.vn
  * Author URI: https://profiles.wordpress.org/buctuong2000
  * License: Miễn phí (Free)
@@ -368,24 +368,28 @@ function clbntb_disable_emojis_remove_dns_prefetch( $urls, $relation_type ) {
     return $urls;
 }
 
-// Helper function to get CDN domain
 function clbntb_get_cdn_domain() {
-    // 1. Kiểm tra hằng số override trong wp-config.php (Dành cho test local)
     if (defined('CLBNTB_CDN_DOMAIN_OVERRIDE') && !empty(CLBNTB_CDN_DOMAIN_OVERRIDE)) {
         return CLBNTB_CDN_DOMAIN_OVERRIDE;
     }
-    // 2. Kiểm tra option cũ (nếu khách chưa xóa DB cũ)
     $domain = get_option('clbntb_cdn_domain', '');
     if (!empty($domain)) {
-        return $domain;
+        return preg_replace('/:\d+$/', '', $domain);
     }
-    // 3. Mặc định tự động lấy domain thật của website
-    if (!empty($_SERVER['HTTP_HOST'])) {
-        return $_SERVER['HTTP_HOST'];
-    }
-    $parsed = parse_url(site_url(), PHP_URL_HOST);
     
-    return $parsed;
+    $host = parse_url(site_url(), PHP_URL_HOST);
+    if (!empty($host) && $host !== 'localhost' && $host !== '127.0.0.1') {
+        return $host;
+    }
+
+    if (!empty($_SERVER['HTTP_HOST'])) {
+        $h = preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST']);
+        if ($h !== 'localhost' && $h !== '127.0.0.1') {
+            return $h;
+        }
+    }
+
+    return !empty($host) ? $host : 'tanngoctax.vn';
 }
 
 function clbntb_fix_wp_admin_slash() {
