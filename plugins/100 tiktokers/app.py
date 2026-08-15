@@ -182,7 +182,7 @@ def include_routers(app_: FastAPI) -> None:
             raise
 
     # Optional routers
-    for modname in ("search_click_router", "like_click_router", "captcha_auto_router", "comment_click_router"):
+    for modname in ("search_click_router", "like_click_router", "captcha_auto_router", "comment_click_router", "opera_ai_router"):
         try:
             mod = __import__(modname, fromlist=["router"])
             router = getattr(mod, "router", None)

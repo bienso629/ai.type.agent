@@ -6,6 +6,7 @@ import random
 import socket
 import subprocess
 import sqlite3         # <— NEW: cần cho include_accounts
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal
 from urllib.parse import urlparse, quote
@@ -32,12 +33,19 @@ router = APIRouter(prefix="/v1/opera/profiles", tags=["opera-profiles"])
 
 # -------- Defaults --------
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PROFILES_ROOT = r"D:\\OperaProfiles"
+DEFAULT_PROFILES_ROOT = r"D:\OperaProfiles" if os.name == 'nt' else str(Path.home() / "OperaProfiles")
 DEFAULT_OPERA_PATHS = [
-    r"C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Opera\\opera.exe",
-    r"C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Opera GX\\opera.exe",
-    r"C:\\Program Files\\Opera\\opera.exe",
-    r"C:\\Program Files\\Opera GX\\opera.exe",
+    # Linux
+    "/usr/bin/opera-gx",
+    "/usr/bin/opera",
+    "/usr/bin/opera-developer",
+    "/usr/bin/opera-beta",
+    "/snap/bin/opera",
+    # Windows
+    r"C:\Users\%USERNAME%\AppData\Local\Programs\Opera\opera.exe",
+    r"C:\Users\%USERNAME%\AppData\Local\Programs\Opera GX\opera.exe",
+    r"C:\Program Files\Opera\opera.exe",
+    r"C:\Program Files\Opera GX\opera.exe",
 ]
 
 # -------- Utils --------
@@ -51,23 +59,31 @@ def _expand_vars(p: str) -> str:
 def _find_opera_exe(custom: Optional[str] = None) -> str:
     if custom and os.path.exists(custom):
         return custom
+    for name in ["opera-gx", "opera", "opera-developer", "opera-beta"]:
+        w = shutil.which(name)
+        if w and os.path.exists(w):
+            return w
     for p in DEFAULT_OPERA_PATHS:
         pp = _expand_vars(p)
         if os.path.exists(pp):
             return pp
-    return "opera.exe"
+    return "opera.exe" if os.name == 'nt' else "opera"
 
 
 def _canon_path(p: str) -> str:
     try:
-        p2 = os.path.abspath(p).replace('/', '\\')
-        if p2.startswith('\\??\\UNC\\'):
-            p2 = '\\\\' + p2[8:]
-        elif p2.startswith('\\??\\'):
-            p2 = p2[4:]
-        return os.path.normcase(os.path.normpath(p2))
+        p2 = os.path.abspath(p)
+        if os.name == 'nt':
+            p2 = p2.replace('/', '\\')
+            if p2.startswith('\\??\\UNC\\'):
+                p2 = '\\\\' + p2[8:]
+            elif p2.startswith('\\??\\'):
+                p2 = p2[4:]
+            return os.path.normcase(os.path.normpath(p2))
+        else:
+            return os.path.normpath(p2)
     except Exception:
-        return (p or "").lower()
+        return (p or "")
 
 
 # --- Avatar helper ---
@@ -340,16 +356,26 @@ def _collect_pids_by_cmdline(root: str, image_names: List[str]) -> List[int]:
 
 def _taskkill_by_images(image_names: List[str]) -> Dict[str, Any]:
     stats = {"attempts": 0, "ok": 0, "errors": []}
-    for img in image_names or []:
-        try:
-            r = subprocess.run(["taskkill", "/F", "/T", "/IM", img], capture_output=True, text=True, timeout=5)
-            stats["attempts"] += 1
-            if r.returncode in (0, 128, 255):
-                stats["ok"] += 1
-            else:
-                stats["errors"].append({"image": img, "code": r.returncode, "out": r.stdout, "err": r.stderr})
-        except Exception as e:
-            stats["errors"].append({"image": img, "ex": f"{type(e).__name__}: {e}"})
+    if os.name == 'nt':
+        for img in image_names or []:
+            try:
+                r = subprocess.run(["taskkill", "/F", "/T", "/IM", img], capture_output=True, text=True, timeout=5)
+                stats["attempts"] += 1
+                if r.returncode in (0, 128, 255):
+                    stats["ok"] += 1
+                else:
+                    stats["errors"].append({"image": img, "code": r.returncode, "out": r.stdout, "err": r.stderr})
+            except Exception as e:
+                stats["errors"].append({"image": img, "ex": f"{type(e).__name__}: {e}"})
+    else:
+        for img in ["opera-gx", "opera", "opera-beta"]:
+            try:
+                r = subprocess.run(["pkill", "-f", img], capture_output=True, text=True, timeout=5)
+                stats["attempts"] += 1
+                if r.returncode in (0, 1):
+                    stats["ok"] += 1
+            except Exception as e:
+                stats["errors"].append({"image": img, "ex": f"{type(e).__name__}: {e}"})
     return stats
 
 
@@ -512,6 +538,7 @@ def _launch_opera(
     initial_url: Optional[str] = None,
     window_state: Literal["normal", "maximized", "fullscreen", "kiosk"] = "fullscreen",
     window_title_prefix: Optional[str] = None,
+    headless: bool = False,
 ) -> Dict[str, Any]:
     exe = _find_opera_exe(opera_path)
     args = [
@@ -524,6 +551,9 @@ def _launch_opera(
         "--disable-background-networking",
         "--disable-features=Translate,BackgroundMode,ExtensionsToolbarMenu",
     ]
+
+    if headless:
+        args.append("--headless=new")
 
     ws = (window_state or "fullscreen").lower()
     if ws == "maximized":
@@ -542,7 +572,7 @@ def _launch_opera(
     proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     title_info = None
-    if window_title_prefix:
+    if window_title_prefix and not headless:
         try:
             title_info = _set_window_title_for_pid(proc.pid, window_title_prefix)
         except Exception:
@@ -1456,3 +1486,114 @@ def open_urls(req: OpenUrlsReq) -> Dict[str, Any]:
         })
 
     return {"count": len(results), "results": results}
+
+
+# -------- VPN CONFIGURATION API --------
+class SetVPNReq(BaseModel):
+    enabled: bool = True
+    location: Literal["auto", "optimal", "asia", "americas", "europe"] = "optimal"
+    profiles_root: str = Field(DEFAULT_PROFILES_ROOT)
+
+
+class SetVPNRangeReq(BaseModel):
+    start: int
+    end: int
+    zero_pad: int = 3
+    prefix: str = "Profile"
+    enabled: bool = True
+    location: Literal["auto", "optimal", "asia", "americas", "europe", "rotate"] = "optimal"
+    profiles_root: str = Field(DEFAULT_PROFILES_ROOT)
+
+
+def _set_nested_dict(d: dict, keys: list, value: Any):
+    for key in keys[:-1]:
+        d = d.setdefault(key, {})
+    d[keys[-1]] = value
+
+
+def _patch_profile_vpn(profile_dir: Path, enabled: bool, location: str) -> bool:
+    loc_map = {
+        "auto": "optimal",
+        "optimal": "optimal",
+        "asia": "asia",
+        "americas": "americas",
+        "europe": "europe",
+    }
+    target_loc = loc_map.get((location or "optimal").lower(), "optimal")
+
+    pref_paths = [
+        profile_dir / "Default" / "Preferences",
+        profile_dir / "Preferences",
+    ]
+
+    updated = False
+    for pref_file in pref_paths:
+        try:
+            pref_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {}
+            if pref_file.exists():
+                with open(pref_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+            _set_nested_dict(data, ["browser", "vpn", "enabled"], bool(enabled))
+            _set_nested_dict(data, ["browser", "vpn", "last_chosen_location"], target_loc)
+            _set_nested_dict(data, ["vpn", "enabled"], bool(enabled))
+            _set_nested_dict(data, ["vpn", "last_chosen_location"], target_loc)
+
+            with open(pref_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            updated = True
+        except Exception:
+            pass
+
+    return updated
+
+
+@router.post("/{profile}/vpn")
+def set_profile_vpn(profile: str, req: SetVPNReq) -> Dict[str, Any]:
+    pdir = _profile_dir(req.profiles_root, profile)
+    if not pdir.exists():
+        raise HTTPException(status_code=404, detail=f"Profile directory '{profile}' not found at {pdir}")
+
+    ok = _patch_profile_vpn(pdir, req.enabled, req.location)
+    return {
+        "profile": profile,
+        "enabled": req.enabled,
+        "location": req.location,
+        "updated": ok,
+        "path": str(pdir)
+    }
+
+
+@router.post("/vpn-range")
+def set_profile_vpn_range(req: SetVPNRangeReq) -> Dict[str, Any]:
+    locations_pool = ["asia", "americas", "europe"]
+    results = []
+
+    start = int(req.start)
+    end = int(req.end)
+    zero = int(req.zero_pad)
+
+    for i in range(start, end + 1):
+        prof = f"{req.prefix}{str(i).zfill(zero)}"
+        pdir = _profile_dir(req.profiles_root, prof)
+
+        if not pdir.exists():
+            results.append({"profile": prof, "ok": False, "detail": "not_found"})
+            continue
+
+        if req.location == "rotate":
+            loc = locations_pool[(i - start) % len(locations_pool)]
+        else:
+            loc = req.location
+
+        ok = _patch_profile_vpn(pdir, req.enabled, loc)
+        results.append({
+            "profile": prof,
+            "enabled": req.enabled,
+            "location": loc,
+            "ok": ok
+        })
+
+    return {"count": len(results), "results": results}
+
