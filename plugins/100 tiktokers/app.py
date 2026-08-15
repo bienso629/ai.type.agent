@@ -612,48 +612,132 @@ def find_opera_path(cli_path: Optional[str]) -> str:
     env = os.environ.get("OPERA_PATH")
     if env and Path(env).exists():
         return env
+
+    import shutil
+    for name in ["opera-gx", "opera", "opera-stable", "opera-developer", "opera-beta", "google-chrome", "chromium"]:
+        w = shutil.which(name)
+        if w and Path(w).exists():
+            return w
+
     if IS_WIN:
         candidates = [
             Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Opera" / "opera.exe",
             Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Opera GX" / "opera.exe",
             Path("C:/Program Files/Opera/opera.exe"),
             Path("C:/Program Files (x86)/Opera/opera.exe"),
+            Path("C:/Program Files/Opera GX/opera.exe"),
         ]
     else:
         candidates = [
+            Path("/usr/bin/opera-gx"),
             Path("/usr/bin/opera"),
             Path("/usr/bin/opera-stable"),
+            Path("/usr/bin/google-chrome"),
+            Path("/Applications/Opera GX.app/Contents/MacOS/Opera GX"),
             Path("/Applications/Opera.app/Contents/MacOS/Opera"),
         ]
     for c in candidates:
         if c and c.exists():
             return str(c)
-    return str(candidates[-1])
+    return str(candidates[0])
 
-def ensure_opera(profile: Optional[str], port: int, opera_path: Optional[str], launch_if_needed: bool) -> None:
+def resolve_profile_dir(profile: Optional[str], profiles_root: Optional[str] = None) -> Path:
+    if not profile:
+        profile = "Profile000"
+    p = Path(profile)
+    if p.is_absolute():
+        return p
+    root_dir = Path(profiles_root) if (profiles_root and profiles_root.strip()) else (Path.home() / "OperaProfiles")
+    return root_dir / profile
+
+def is_profile_running(prof_dir: Path) -> bool:
+    try:
+        from profiles_router import _collect_pids_by_cmdline
+        pids = _collect_pids_by_cmdline(str(prof_dir))
+        return len(pids) > 0
+    except Exception:
+        return False
+
+def find_running_profile_port(prof_dir: Path) -> Optional[int]:
+    try:
+        import psutil
+        prof_str = str(prof_dir).lower()
+        for proc in psutil.process_iter(["cmdline"]):
+            try:
+                cmd = proc.info.get("cmdline") or []
+                cmd_str = " ".join(cmd).lower()
+                if prof_str in cmd_str:
+                    for arg in cmd:
+                        if arg.startswith("--remote-debugging-port="):
+                            port = int(arg.split("=", 1)[1])
+                            if devtools_up(port):
+                                return port
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+def get_active_profile_port(prof_dir: Path, fallback_port: int = 9222) -> int:
+    proc_port = find_running_profile_port(prof_dir)
+    if proc_port:
+        return proc_port
+
+    for rel in ["DevToolsActivePort", "Default/DevToolsActivePort"]:
+        fp = prof_dir / rel
+        try:
+            if fp.exists():
+                first = fp.read_text(encoding="utf-8", errors="ignore").splitlines()[0].strip()
+                port = int(first)
+                if devtools_up(port):
+                    return port
+        except Exception:
+            continue
+    return fallback_port
+
+def ensure_opera(profile: Optional[str], port: int, opera_path: Optional[str], launch_if_needed: bool, profiles_root: Optional[str] = None) -> int:
+    prof_dir = resolve_profile_dir(profile, profiles_root)
+    active_port = get_active_profile_port(prof_dir, fallback_port=port)
+    if devtools_up(active_port):
+        return active_port
     if devtools_up(port):
-        return
+        return port
+
+    if is_profile_running(prof_dir):
+        for _ in range(30):
+            active_port = get_active_profile_port(prof_dir, fallback_port=port)
+            if devtools_up(active_port):
+                return active_port
+            if devtools_up(port):
+                return port
+            time.sleep(0.1)
+        return active_port if active_port else port
+
     if not launch_if_needed:
         raise HTTPException(
             status_code=412,
             detail=(
-                f"DevTools port {port} is not running. Start Opera with: "
-                f'Opera.exe --user-data-dir="{profile or "<profile>"}" --remote-debugging-port={port}'
+                f"DevTools port is not running for profile {prof_dir}. Start Opera with: "
+                f'opera --user-data-dir="{prof_dir}" --remote-debugging-port={port}'
             ),
         )
-    if not profile:
-        raise HTTPException(status_code=400, detail="profile is required to launch Opera")
 
     with LAUNCH_LOCK:
-        if devtools_up(port):
-            return
+        if is_profile_running(prof_dir):
+            for _ in range(30):
+                active_port = get_active_profile_port(prof_dir, fallback_port=port)
+                if devtools_up(active_port):
+                    return active_port
+                time.sleep(0.1)
+            return active_port if active_port else port
+
         exe = find_opera_path(opera_path)
         if (not exe) or (not Path(exe).exists()):
             raise HTTPException(status_code=400, detail="opera_path not found; provide valid opera.exe")
 
         args = [
             exe,
-            f"--user-data-dir={profile}",
+            f"--user-data-dir={prof_dir}",
             f"--remote-debugging-port={port}",
             "--remote-allow-origins=*",
             "--no-first-run",
@@ -675,10 +759,13 @@ def ensure_opera(profile: Optional[str], port: int, opera_path: Optional[str], l
         subprocess.Popen(args, stdout=PIPE, stderr=PIPE, creationflags=creationflags, preexec_fn=preexec_fn)
 
         for _ in range(120):
+            active_port = get_active_profile_port(prof_dir, fallback_port=port)
+            if devtools_up(active_port):
+                return active_port
             if devtools_up(port):
-                return
+                return port
             time.sleep(0.1)
-        raise HTTPException(status_code=500, detail=f"DevTools port {port} not available after launch")
+        return port
 
 # ---- Kill Opera by profile/port ----
 def kill_opera(profile: Optional[str], port: Optional[int]) -> Dict[str, Any]:
@@ -744,7 +831,8 @@ def kill_opera(profile: Optional[str], port: Optional[int]) -> Dict[str, Any]:
 
 # ---- Scanner / Watcher ----
 class ScanParams(BaseModel):
-    profile: str = Field(..., description="Opera --user-data-dir path")
+    profile: str = Field(..., description="Opera --user-data-dir path or profile name")
+    profiles_root: Optional[str] = None
     opera_path: Optional[str] = None
     port: int = 9222
     live_url: str = "https://www.tiktok.com/live"
@@ -929,30 +1017,24 @@ def _navigate_or_open(browser: Any, url: str) -> Any:
         return tab
 
 def _close_all_tabs_and_open(browser: Any, url: str) -> Any:
-    try:
-        tabs = browser.list_tab()
-        for t in list(tabs):
-            with contextlib.suppress(Exception):
-                t.start()
-                browser.close_tab(t)
-        tnew = browser.new_tab(url=url)
-        with contextlib.suppress(Exception):
-            tnew.start()
-            tnew.call_method("Page.bringToFront")
-        return tnew
-    except Exception:
-        return _navigate_or_open(browser, url)
+    return _navigate_or_open(browser, url)
 
 def scan_once(p: "ScanParams") -> Dict[str, Any]:
     feeds_root_dir = feeds_root(p.feeds_dir)
     scanner_dir = feeds_scanner_dir(p.feeds_dir)
     targets = normalize_targets(p.targets)
 
-    ensure_opera(profile=p.profile, port=p.port, opera_path=p.opera_path, launch_if_needed=p.launch_if_needed)
+    actual_port = ensure_opera(
+        profile=p.profile,
+        port=p.port,
+        opera_path=p.opera_path,
+        launch_if_needed=p.launch_if_needed,
+        profiles_root=getattr(p, "profiles_root", None)
+    )
 
     import pychrome  # runtime import
     _patch_pychrome_recv_loop()
-    browser = pychrome.Browser(url=f"http://127.0.0.1:{p.port}")
+    browser = pychrome.Browser(url=f"http://127.0.0.1:{actual_port}")
     tab = _pick_best_tab(browser)
 
     collected: List[Dict[str, Any]] = []
@@ -1108,21 +1190,27 @@ WATCHERS: Dict[str, Watcher] = {}
 
 def watcher_loop(w: Watcher) -> None:
     try:
-        ensure_opera(
+        actual_port = ensure_opera(
             profile=w.params.profile,
             port=w.params.port,
             opera_path=w.params.opera_path,
             launch_if_needed=w.params.launch_if_needed,
+            profiles_root=getattr(w.params, "profiles_root", None),
         )
+        w.params.port = actual_port
         import pychrome
         _patch_pychrome_recv_loop()
-        browser = pychrome.Browser(url=f"http://127.0.0.1:{w.params.port}")
+        browser = pychrome.Browser(url=f"http://127.0.0.1:{actual_port}")
         _close_all_tabs_and_open(browser, (w.params.live_url or "https://www.tiktok.com/live").strip())
 
         w.status = "running"
+        scan_params = w.params.model_copy() if hasattr(w.params, "model_copy") else w.params.copy()
+        scan_params.port = actual_port
+        scan_params.launch_if_needed = False
+
         while not w._stop.is_set():
             try:
-                res = scan_once(w.params)
+                res = scan_once(scan_params)
                 for info in res.get("rooms", []):
                     rid = str(info.get("id") or "")
                     if rid:

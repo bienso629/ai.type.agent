@@ -35,6 +35,13 @@ router = APIRouter(prefix="/v1/opera/profiles", tags=["opera-profiles"])
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PROFILES_ROOT = r"D:\OperaProfiles" if os.name == 'nt' else str(Path.home() / "OperaProfiles")
 DEFAULT_OPERA_PATHS = [
+    # macOS
+    "/Applications/Opera GX.app/Contents/MacOS/Opera GX",
+    "/Applications/Opera.app/Contents/MacOS/Opera",
+    "/Applications/Opera Developer.app/Contents/MacOS/Opera Developer",
+    "/Applications/Opera Beta.app/Contents/MacOS/Opera Beta",
+    os.path.expanduser("~/Applications/Opera GX.app/Contents/MacOS/Opera GX"),
+    os.path.expanduser("~/Applications/Opera.app/Contents/MacOS/Opera"),
     # Linux
     "/usr/bin/opera-gx",
     "/usr/bin/opera",
@@ -300,8 +307,19 @@ def _ensure_port(p: Optional[int], host: str = DEFAULT_HOST) -> int:
     return 49499
 
 
+def _sanitize_profiles_root(root: Optional[str]) -> Path:
+    if not root or str(root).strip().lower() in ("undefined", "null", "none", ""):
+        root = DEFAULT_PROFILES_ROOT
+    p = Path(root)
+    if not p.exists():
+        def_p = Path(DEFAULT_PROFILES_ROOT)
+        if def_p.exists():
+            return def_p
+    return p
+
+
 def _profile_dir(root: str, profile: str) -> Path:
-    return Path(root) / profile
+    return _sanitize_profiles_root(root) / profile
 
 
 def _read_devtools_port(profile_dir: Path) -> Optional[int]:
@@ -319,6 +337,9 @@ def _read_devtools_port(profile_dir: Path) -> Optional[int]:
 def _extract_uddir_from_cmdline(cmd: List[str]) -> Optional[str]:
     if not cmd:
         return None
+    for arg in cmd:
+        if arg.startswith("--user-data-dir="):
+            return arg.split("=", 1)[1].strip('"\'')
     s = " ".join(cmd)
     key = "--user-data-dir="
     i = s.lower().find(key)
@@ -337,17 +358,24 @@ def _extract_uddir_from_cmdline(cmd: List[str]) -> Optional[str]:
     return val
 
 
-def _collect_pids_by_cmdline(root: str, image_names: List[str]) -> List[int]:
+def _collect_pids_by_cmdline(root: str, image_names: List[str] = None) -> List[int]:
     root_c = _canon_path(root)
-    lower_images = {n.lower() for n in image_names or []}
+    profile_name = Path(root).name.lower()
     pids: List[int] = []
     for p in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
-            name = (p.info.get("name") or "").lower()
-            if name not in lower_images:
+            cmdline = p.info.get("cmdline") or []
+            if not cmdline:
                 continue
-            udd = _extract_uddir_from_cmdline(p.info.get("cmdline") or [])
-            if udd and _canon_path(udd).startswith(root_c):
+            udd = _extract_uddir_from_cmdline(cmdline)
+            if udd:
+                udd_c = _canon_path(udd)
+                udd_name = Path(udd).name.lower()
+                if udd_c == root_c or udd_c.startswith(root_c) or (profile_name and udd_name == profile_name):
+                    pids.append(p.pid)
+                    continue
+            cmd_str = " ".join(cmdline).lower()
+            if root_c in cmd_str or (profile_name and f"user-data-dir={profile_name}" in cmd_str):
                 pids.append(p.pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -548,6 +576,9 @@ def _launch_opera(
         "--remote-debugging-address=127.0.0.1",
         "--remote-allow-origins=*",
         "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-default-apps",
+        "--disable-infobars",
         "--disable-background-networking",
         "--disable-features=Translate,BackgroundMode,ExtensionsToolbarMenu",
     ]
@@ -734,6 +765,21 @@ def _handle_cache_action(profiles_root: str, host: str, action: str) -> Dict[str
     return details
 
 
+# -------- CONFIG (GET) --------
+@router.get("/config")
+def get_profiles_config() -> Dict[str, Any]:
+    """Trả về cấu hình mặc định (Đường dẫn ProfilesRoot, Đường dẫn OperaExe, Hệ điều hành...)"""
+    import platform
+    opera_exe = _find_opera_exe()
+    return {
+        "system": platform.system(),
+        "profiles_root": DEFAULT_PROFILES_ROOT,
+        "opera_exe": opera_exe,
+        "default_host": DEFAULT_HOST,
+        "default_cdp_port": 54900,
+    }
+
+
 # -------- LIST (GET) --------
 @router.get("/list")
 def list_profiles(
@@ -760,7 +806,7 @@ def list_profiles(
     # Lọc danh sách ACCOUNTS hiển thị theo nền tảng; KHÔNG loại profile
     platform: Literal["all", "tiktok", "facebook"] = Query("all"),
 ) -> Dict[str, Any]:
-    root_path = Path(profiles_root)
+    root_path = _sanitize_profiles_root(profiles_root)
     if not root_path.exists():
         return {"ok": True, "root": str(root_path), "count": 0, "total": 0, "results": []}
 
@@ -1539,6 +1585,8 @@ def _patch_profile_vpn(profile_dir: Path, enabled: bool, location: str) -> bool:
             _set_nested_dict(data, ["browser", "vpn", "last_chosen_location"], target_loc)
             _set_nested_dict(data, ["vpn", "enabled"], bool(enabled))
             _set_nested_dict(data, ["vpn", "last_chosen_location"], target_loc)
+            _set_nested_dict(data, ["browser", "check_default_browser"], False)
+            _set_nested_dict(data, ["browser", "has_seen_welcome_page"], True)
 
             with open(pref_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

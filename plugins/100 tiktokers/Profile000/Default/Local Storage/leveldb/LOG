@@ -1,0 +1,24 @@
+2026/08/15-21:05:29.906 8 Reusing MANIFEST /home/yenai/Documents/Projects/Typing/apps/plugins/100 tiktokers/Profile000/Default/Local Storage/leveldb/MANIFEST-000001
+2026/08/15-21:05:29.910 8 Recovering log #10
+2026/08/15-21:05:29.911 8 Reusing old log /home/yenai/Documents/Projects/Typing/apps/plugins/100 tiktokers/Profile000/Default/Local Storage/leveldb/000010.log 
+2026/08/15-21:06:29.913 a Level-0 table #14: started
+2026/08/15-21:06:29.920 a Level-0 table #14: 32689 bytes OK
+2026/08/15-21:06:29.924 a Delete type=0 #10
+2026/08/15-21:08:18.582 a Level-0 table #16: started
+2026/08/15-21:08:18.589 a Level-0 table #16: 122217 bytes OK
+2026/08/15-21:08:18.596 a Delete type=0 #13
+2026/08/15-21:08:18.596 a Compacting 4@0 + 1@1 files
+2026/08/15-21:08:18.608 a Generated table #17@0: 40 keys, 125913 bytes
+2026/08/15-21:08:18.608 a Compacted 4@0 + 1@1 files => 125913 bytes
+2026/08/15-21:08:18.621 a compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/15-21:08:18.622 a Delete type=2 #14
+2026/08/15-21:08:18.622 a Delete type=2 #11
+2026/08/15-21:08:18.622 a Delete type=2 #16
+2026/08/15-21:08:18.622 a Delete type=2 #9
+2026/08/15-21:08:18.622 a Delete type=2 #7
+2026/08/15-21:09:30.607 a Level-0 table #19: started
+2026/08/15-21:09:30.616 a Level-0 table #19: 24486 bytes OK
+2026/08/15-21:09:30.626 a Delete type=0 #15
+2026/08/15-21:11:30.607 a Level-0 table #21: started
+2026/08/15-21:11:30.613 a Level-0 table #21: 24586 bytes OK
+2026/08/15-21:11:30.621 a Delete type=0 #18

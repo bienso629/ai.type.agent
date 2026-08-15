@@ -1,12 +1,13 @@
 # 📚 Tài Liệu Hướng Dẫn Sử Dụng API Mới Nhất (100tiktok Platform)
 
 > Hệ thống tự động hóa đa Profile Opera, quản lý VPN, tương tác TikTok và tích hợp AI Opera (Aria).
+> Hỗ trợ đa nền tảng 100%: **Linux**, **Windows**, và **macOS**.
 
 ---
 
 ## 🚀 1. Khởi Chạy Server API
 
-### Trên Ubuntu / Linux:
+### Trên Linux / macOS / Windows:
 ```bash
 python3 app.py
 # hoặc
@@ -15,8 +16,35 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 - **Swagger UI (Tài liệu tương tác)**: `http://localhost:8000/docs`
 - **Health Check**: `http://localhost:8000/health`
+- **Lấy Cấu Hình Mặc Định Hệ Thống**: `GET /v1/opera/profiles/config`
 
 ---
+
+## ⚙️ 0. API Lấy Đường Dẫn & Cấu Hình Mặc Định (`GET /v1/opera/profiles/config`)
+
+Client chỉ cần gọi endpoint này để **tự động lấy đường dẫn `profiles_root`** và file thực thi `opera_exe` chuẩn của hệ điều hành hiện tại (**Linux / Windows / macOS**) mà không cần tự nhập thủ công:
+
+- **Response JSON ví dụ (trên Linux)**:
+```json
+{
+  "system": "Linux",
+  "profiles_root": "/home/yenai/OperaProfiles",
+  "opera_exe": "/usr/bin/opera-gx",
+  "default_host": "127.0.0.1",
+  "default_cdp_port": 54900
+}
+```
+
+- **Response JSON ví dụ (trên macOS)**:
+```json
+{
+  "system": "Darwin",
+  "profiles_root": "/Users/username/OperaProfiles",
+  "opera_exe": "/Applications/Opera GX.app/Contents/MacOS/Opera GX",
+  "default_host": "127.0.0.1",
+  "default_cdp_port": 54900
+}
+```
 
 ## 🤖 2. API Opera AI (Aria AI Automation) - MỚI NHẤT
 

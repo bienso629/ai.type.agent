@@ -53,19 +53,57 @@ class ClickSuggestionReq(BaseModel):
     timeout_s: float = Field(30.0, description="Thời gian chờ nhận câu trả lời (giây)")
 
 
-def _get_devtools_port(profile_dir: Path) -> Optional[int]:
-    """Đọc cổng DevTools từ file DevToolsActivePort trong profile."""
-    active_port_file = profile_dir / "DevToolsActivePort"
-    if not active_port_file.exists():
-        active_port_file = profile_dir / "Default" / "DevToolsActivePort"
+def _is_port_open(port: int, host: str = "127.0.0.1") -> bool:
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.5)
+            return sock.connect_ex((host, port)) == 0
+    except Exception:
+        return False
 
-    if active_port_file.exists():
-        try:
-            content = active_port_file.read_text(encoding="utf-8").strip().splitlines()
-            if content:
-                return int(content[0].strip())
-        except Exception:
-            pass
+
+def _get_devtools_port(profile_dir: Path) -> Optional[int]:
+    """
+    Tìm cổng DevTools đang mở của Opera Profile:
+    1. Ưu tiên quét tiến trình Opera đang chạy (psutil) để lấy cổng --remote-debugging-port thực tế.
+    2. Dự phòng: Đọc từ các file DevToolsActivePort trong thư mục profile.
+    """
+    pdir_str = str(profile_dir.resolve()).lower()
+
+    # 1. Tìm từ cmdline của tiến trình Opera đang chạy
+    try:
+        import psutil
+        for p in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                cmdline = p.info.get("cmdline") or []
+                cmd_str = " ".join(cmdline).lower()
+                if pdir_str in cmd_str:
+                    for arg in cmdline:
+                        if "--remote-debugging-port=" in arg.lower():
+                            port_str = arg.split("=")[-1].strip()
+                            if port_str.isdigit():
+                                port = int(port_str)
+                                if _is_port_open(port):
+                                    return port
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception:
+        pass
+
+    # 2. Dự phòng: Đọc từ file DevToolsActivePort
+    for rel in ["DevToolsActivePort", "Default/DevToolsActivePort", "Opera Stable/DevToolsActivePort"]:
+        fp = profile_dir / rel
+        if fp.exists():
+            try:
+                content = fp.read_text(encoding="utf-8", errors="ignore").splitlines()
+                if content:
+                    port = int(content[0].strip())
+                    if _is_port_open(port):
+                        return port
+            except Exception:
+                pass
+
     return None
 
 
@@ -103,16 +141,22 @@ def _get_aria_ws_url(host: str, port: int) -> str:
     tabs = r.json()
 
     target_tab = None
+    # CHỈ DÙNG OPERA AI (ARIA) - KHÔNG DÙNG BẤT KỲ FALLBACK KHÁC
+    opera_ai_keywords = ["aria.opera.com", "opera-ai", "aria"]
     for tab in tabs:
-        url = tab.get("url", "")
-        if "aria.opera.com" in url or "opera-ai" in url:
+        url = tab.get("url", "").lower()
+        title = tab.get("title", "").lower()
+        if any(kw in url or kw in title for kw in opera_ai_keywords) and "404" not in title:
             target_tab = tab
             break
 
     if not target_tab:
-        page_tabs = [t for t in tabs if t.get("type") == "page"]
-        if page_tabs:
-            target_tab = page_tabs[0]
+        user_tabs = [
+            t for t in tabs
+            if t.get("type") == "page" and not t.get("url", "").startswith(("chrome://", "chrome-extension://", "opera://", "about:"))
+        ]
+        if user_tabs:
+            target_tab = user_tabs[0]
             ws_url = target_tab.get("webSocketDebuggerUrl")
             ws = websocket.create_connection(ws_url, timeout=5.0, suppress_origin=True)
             ws.send(json.dumps({"id": 1, "method": "Page.navigate", "params": {"url": "https://aria.opera.com"}}))
@@ -120,15 +164,200 @@ def _get_aria_ws_url(host: str, port: int) -> str:
             time.sleep(2.5)
 
     if not target_tab or "webSocketDebuggerUrl" not in target_tab:
-        raise RuntimeError("Không tìm thấy webSocketDebuggerUrl của Opera!")
+        raise RuntimeError("Không tìm thấy kết nối Opera AI (Aria). Vui lòng mở trợ lý Opera AI (Aria) trong Opera!")
 
     return target_tab["webSocketDebuggerUrl"]
+
+
+def _send_cdp_human_input(ws_url: str, prompt: str) -> None:
+    """Gửi câu hỏi bằng sự kiện phần cứng CDP (Input.insertText + Enter) để tương thích 100% mọi khung chat AI."""
+    ws = websocket.create_connection(ws_url, timeout=10.0, suppress_origin=True)
+    try:
+        # Focus vào ô nhập liệu
+        js_focus = """
+        (() => {
+            let el = document.querySelector('textarea, #prompt-textarea, [contenteditable="true"], input[type="text"]');
+            if (el) {
+                el.focus();
+                try {
+                    let nativeSetter = (Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value") || {}).set;
+                    if (nativeSetter) nativeSetter.call(el, "");
+                } catch(e){}
+                return true;
+            }
+            return false;
+        })()
+        """
+        ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {"expression": js_focus, "returnByValue": True}}))
+        ws.recv()
+
+        # Gửi chuỗi văn bản qua CDP Input API
+        ws.send(json.dumps({"id": 2, "method": "Input.insertText", "params": {"text": prompt}}))
+        ws.recv()
+
+        time.sleep(0.3)
+
+        # Bấm phím Enter phần cứng
+        ws.send(json.dumps({"id": 3, "method": "Input.dispatchKeyEvent", "params": {"type": "rawKeyDown", "windowsVirtualKeyCode": 13, "key": "Enter", "code": "Enter"}}))
+        ws.recv()
+        ws.send(json.dumps({"id": 4, "method": "Input.dispatchKeyEvent", "params": {"type": "keyUp", "windowsVirtualKeyCode": 13, "key": "Enter", "code": "Enter"}}))
+        ws.recv()
+
+        # Click nút Send làm dự phòng
+        js_click_send = """
+        (() => {
+            let btn = document.querySelector('button[type="submit"], button[aria-label*="Send"], button[aria-label*="Gửi"], button[aria-label*="Ask"], button[data-testid="send-button"]');
+            if (btn) btn.click();
+        })()
+        """
+        ws.send(json.dumps({"id": 5, "method": "Runtime.evaluate", "params": {"expression": js_click_send, "returnByValue": True}}))
+        ws.recv()
+    finally:
+        ws.close()
+
+
+def _extract_ai_response(ws_url: str, timeout_s: float = 25.0) -> Dict[str, Any]:
+    """Theo dõi dòng phản hồi (response streaming) và trích xuất câu trả lời đầy đủ."""
+    ws = websocket.create_connection(ws_url, timeout=10.0, suppress_origin=True)
+    try:
+        js_extract = """
+        (() => {
+            let responseText = "";
+            let suggestions = [];
+
+            // 1. Marker-based text parsing (ChatGPT said:, Aria said:, Assistant:, etc.)
+            let bodyText = document.body.innerText || "";
+            let markers = ["ChatGPT said:", "ChatGPT nói:", "Aria said:", "Aria nói:", "Assistant:", "AI:"];
+            for (let m of markers) {
+                if (bodyText.includes(m)) {
+                    let parts = bodyText.split(m);
+                    let rawAns = parts[parts.length - 1].trim();
+                    let footerIndex = rawAns.search(/ChatGPT is AI|Terms & Privacy|Log in to get answers|Terms of Service|Chính sách bảo mật/i);
+                    if (footerIndex > 0) {
+                        rawAns = rawAns.slice(0, footerIndex).trim();
+                    }
+                    if (rawAns && rawAns.length > 5) {
+                        responseText = rawAns;
+                        break;
+                    }
+                }
+            }
+
+            // 2. ChatGPT Assistant role selectors
+            if (!responseText) {
+                let gptMsgs = document.querySelectorAll('[data-message-author-role="assistant"]');
+                if (gptMsgs.length > 0) {
+                    responseText = gptMsgs[gptMsgs.length - 1].innerText.trim();
+                }
+            }
+
+            // 3. Generic Markdown / Response message selectors
+            if (!responseText) {
+                let msgs = document.querySelectorAll('.message-content, .markdown-body, [class*="response"], [class*="message"], article');
+                if (msgs.length > 0) {
+                    responseText = msgs[msgs.length - 1].innerText.trim();
+                }
+            }
+
+            // 3. Fallback: Lấy văn bản từ thẻ p hoặc div cuối cùng
+            if (!responseText) {
+                let main = document.querySelector('main') || document.body;
+                let pars = main.querySelectorAll('p, div[class*="content"]');
+                if (pars.length > 0) {
+                    let lastP = pars[pars.length - 1];
+                    responseText = lastP.innerText.trim();
+                }
+            }
+
+            // Gợi ý tiếp theo (Suggestions)
+            let sugElements = document.querySelectorAll(
+                'button[class*="suggestion"], div[class*="suggestion"], [class*="prompt-pill"], [class*="follow-up"], .chip-item, button.chip'
+            );
+            sugElements.forEach(el => {
+                let txt = (el.innerText || el.textContent || "").trim();
+                if (txt && !suggestions.includes(txt) && txt.length > 2) {
+                    suggestions.push(txt);
+                }
+            });
+
+            return { answer: responseText, suggestions: suggestions };
+        })()
+        """
+
+        start_t = time.time()
+        last_answer = ""
+        stable_count = 0
+
+        # Đợi 1.5 giây cho AI bắt đầu trả lời
+        time.sleep(1.5)
+
+        while time.time() - start_t < timeout_s:
+            ws.send(json.dumps({"id": 10, "method": "Runtime.evaluate", "params": {"expression": js_extract, "returnByValue": True}}))
+            resp = json.loads(ws.recv())
+            res = resp.get("result", {}).get("result", {}).get("value") or {}
+            ans = (res.get("answer") or "").strip()
+
+            if ans and ans in ["Searching the web", "Thinking", "Thinking...", "Deep research...", "Searching...", "Analyzing..."]:
+                ans = ""
+
+            if ans and ans == last_answer:
+                stable_count += 1
+                if stable_count >= 2:  # Văn bản ổn định 2 lần quét liên tiếp -> AI đã sinh lời phản hồi xong
+                    return res
+            else:
+                if ans:
+                    last_answer = ans
+                    stable_count = 0
+
+            time.sleep(1.0)
+
+        return {"answer": last_answer, "suggestions": []}
+    finally:
+        ws.close()
+
+
+def _extract_active_page_context(host: str, port: int) -> Optional[str]:
+    """Trích xuất tiêu đề và nội dung chính của trang web người dùng đang xem trong Opera."""
+    try:
+        r = requests.get(f"http://{host}:{port}/json", timeout=3.0)
+        tabs = r.json()
+        ai_keywords = ["chatgpt.com", "chat.openai.com", "claude.ai", "gemini.google.com", "poe.com", "aria.opera.com", "duck.ai"]
+
+        content_tabs = [
+            t for t in tabs
+            if t.get("type") == "page"
+            and not t.get("url", "").startswith(("chrome://", "chrome-extension://", "opera://", "about:"))
+            and not any(kw in t.get("url", "").lower() for kw in ai_keywords)
+        ]
+
+        if content_tabs:
+            target = content_tabs[0]
+            ws_url = target.get("webSocketDebuggerUrl")
+            if ws_url:
+                ws = websocket.create_connection(ws_url, timeout=3.0, suppress_origin=True)
+                js_get_text = """
+                (() => {
+                    let title = document.title || "";
+                    let text = document.body.innerText || "";
+                    text = text.replace(/\\s+/g, " ").trim().slice(0, 3000);
+                    return { url: window.location.href, title: title, content: text };
+                })()
+                """
+                ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {"expression": js_get_text, "returnByValue": True}}))
+                resp = json.loads(ws.recv())
+                ws.close()
+                val = resp.get("result", {}).get("result", {}).get("value")
+                if val and val.get("content") and len(val.get("content")) > 30:
+                    return f"[Nội dung trang web đang xem: {val.get('title', '')} ({val.get('url', '')})]:\n{val['content']}"
+    except Exception:
+        pass
+    return None
 
 
 @router.post("/ask")
 def ask_opera_ai(req: AskAIReq) -> Dict[str, Any]:
     """
-    Gửi câu hỏi cho AI của Opera (Aria) và nhận câu trả lời cùng danh sách câu hỏi gợi ý.
+    Gửi câu hỏi cho AI của Opera/ChatGPT và nhận câu trả lời cùng danh sách câu hỏi gợi ý.
     """
     if not websocket:
         raise HTTPException(status_code=500, detail="Vui lòng cài đặt websocket-client: pip install websocket-client")
@@ -139,73 +368,30 @@ def ask_opera_ai(req: AskAIReq) -> Dict[str, Any]:
     if not port:
         raise HTTPException(
             status_code=400,
-            detail=f"Profile '{req.profile}' chưa chạy hoặc không mở DevTools port! Hãy bật profile trước."
+            detail=f"Profile '{req.profile}' chưa chạy hoặc cổng DevTools đã đóng. Vui lòng bật/khởi động lại profile."
         )
 
     try:
         ws_url = _get_aria_ws_url(req.host, port)
+    except requests.exceptions.RequestException:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Không thể kết nối cổng DevTools ({port}) của '{req.profile}'. Vui lòng bật lại profile."
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 1. Điền câu hỏi và gửi
-    prompt_escaped = json.dumps(req.prompt)
-    js_inject = f"""
-    (async () => {{
-        let input = document.querySelector('textarea, div[contenteditable="true"], input[type="text"]');
-        if (!input) return {{ error: "Không tìm thấy ô nhập câu hỏi của Aria" }};
+    page_context = _extract_active_page_context(req.host, port)
+    final_prompt = req.prompt
+    if page_context:
+        final_prompt = f"{page_context}\n\nYêu cầu của người dùng: {req.prompt}"
 
-        input.focus();
-        if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {{
-            input.value = {prompt_escaped};
-        }} else {{
-            input.innerText = {prompt_escaped};
-        }}
-        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-        input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    try:
+        _send_cdp_human_input(ws_url, final_prompt)
+    except Exception as e:
+        return {"ok": False, "detail": f"Không thể điền câu hỏi: {e}"}
 
-        let sendBtn = document.querySelector('button[type="submit"], button[aria-label*="Send"], button[aria-label*="Gửi"]');
-        if (sendBtn) {{
-            sendBtn.click();
-        }} else {{
-            input.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }}));
-        }}
-        return {{ success: true }};
-    }})()
-    """
-
-    res = _cdp_eval(ws_url, js_inject, timeout=5.0)
-    if isinstance(res, dict) and res.get("error"):
-        return {"ok": False, "detail": res["error"]}
-
-    # 2. Đợi và trích xuất câu trả lời + câu hỏi gợi ý (Suggestions)
-    js_extract = """
-    (async () => {
-        let responseText = "";
-        let messages = document.querySelectorAll('.message-content, .markdown-body, [class*="response"], [class*="message"], article');
-        if (messages.length > 0) {
-            responseText = (messages[messages.length - 1].innerText || "").trim();
-        }
-
-        let suggestions = [];
-        let sugElements = document.querySelectorAll(
-            'button[class*="suggestion"], div[class*="suggestion"], [class*="prompt-pill"], [class*="follow-up"], .chip-item, button.chip'
-        );
-        sugElements.forEach(el => {
-            let txt = (el.innerText || el.textContent || "").trim();
-            if (txt && !suggestions.includes(txt) && txt.length > 2) {
-                suggestions.push(txt);
-            }
-        });
-
-        return {
-            answer: responseText,
-            suggestions: suggestions
-        };
-    })()
-    """
-
-    time.sleep(3.5)
-    extracted = _cdp_eval(ws_url, js_extract, timeout=req.timeout_s) or {}
+    extracted = _extract_ai_response(ws_url, timeout_s=req.timeout_s) or {}
 
     return {
         "ok": True,
@@ -231,78 +417,43 @@ def click_aria_suggestion(req: ClickSuggestionReq) -> Dict[str, Any]:
     if not port:
         raise HTTPException(
             status_code=400,
-            detail=f"Profile '{req.profile}' chưa chạy hoặc không mở DevTools port!"
+            detail=f"Profile '{req.profile}' chưa chạy hoặc cổng DevTools đã đóng. Vui lòng bật/khởi động lại profile."
         )
 
     try:
         ws_url = _get_aria_ws_url(req.host, port)
+    except requests.exceptions.RequestException:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Không thể kết nối cổng DevTools ({port}) của '{req.profile}'. Vui lòng bật lại profile."
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    match_text = json.dumps(req.suggestion_text) if req.suggestion_text else "null"
+    match_text_json = json.dumps(req.suggestion_text) if req.suggestion_text else "null"
     idx = int(req.suggestion_index)
 
-    js_click = f"""
-    (async () => {{
-        let sugElements = Array.from(document.querySelectorAll(
-            'button[class*="suggestion"], div[class*="suggestion"], [class*="prompt-pill"], [class*="follow-up"], .chip-item, button.chip'
-        ));
-
-        if (sugElements.length === 0) {{
-            return {{ error: "Không tìm thấy câu hỏi gợi ý nào trên màn hình" }};
-        }}
-
-        let target = null;
-        let matchTxt = {match_text};
-        if (matchTxt) {{
-            target = sugElements.find(el => (el.innerText || "").includes(matchTxt));
-        }}
-
-        if (!target && {idx} < sugElements.length) {{
-            target = sugElements[{idx}];
-        }}
-
-        if (!target) {{
-            return {{ error: "Không tìm thấy câu gợi ý phù hợp" }};
-        }}
-
-        let clickedText = (target.innerText || target.textContent || "").trim();
-        target.click();
-        return {{ success: true, clicked_prompt: clickedText }};
-    }})()
-    """
+    js_click = (
+        "(async () => {\n"
+        "    let sugElements = Array.from(document.querySelectorAll('button[class*=\"suggestion\"], div[class*=\"suggestion\"], [class*=\"prompt-pill\"], [class*=\"follow-up\"], .chip-item, button.chip'));\n"
+        "    if (sugElements.length === 0) return { error: 'Không tìm thấy câu hỏi gợi ý nào trên màn hình' };\n"
+        "    let target = null;\n"
+        "    let matchTxt = " + match_text_json + ";\n"
+        "    if (matchTxt) target = sugElements.find(el => (el.innerText || '').includes(matchTxt));\n"
+        "    if (!target && " + str(idx) + " < sugElements.length) target = sugElements[" + str(idx) + "];\n"
+        "    if (!target) return { error: 'Không tìm thấy câu gợi ý phù hợp' };\n"
+        "    let clickedText = (target.innerText || target.textContent || '').trim();\n"
+        "    target.click();\n"
+        "    return { success: true, clicked_prompt: clickedText };\n"
+        "})()\n"
+    )
 
     res = _cdp_eval(ws_url, js_click, timeout=5.0)
     if isinstance(res, dict) and res.get("error"):
         return {"ok": False, "detail": res["error"]}
 
     clicked_prompt = res.get("clicked_prompt", "") if isinstance(res, dict) else ""
-
-    time.sleep(3.5)
-    js_extract = """
-    (async () => {
-        let responseText = "";
-        let messages = document.querySelectorAll('.message-content, .markdown-body, [class*="response"], [class*="message"], article');
-        if (messages.length > 0) {
-            responseText = (messages[messages.length - 1].innerText || "").trim();
-        }
-
-        let suggestions = [];
-        let sugElements = document.querySelectorAll(
-            'button[class*="suggestion"], div[class*="suggestion"], [class*="prompt-pill"], [class*="follow-up"], .chip-item, button.chip'
-        );
-        sugElements.forEach(el => {
-            let txt = (el.innerText || el.textContent || "").trim();
-            if (txt && !suggestions.includes(txt) && txt.length > 2) {
-                suggestions.push(txt);
-            }
-        });
-
-        return { answer: responseText, suggestions: suggestions };
-    })()
-    """
-
-    extracted = _cdp_eval(ws_url, js_extract, timeout=req.timeout_s) or {}
+    extracted = _extract_ai_response(ws_url, timeout_s=req.timeout_s) or {}
 
     return {
         "ok": True,

@@ -36,6 +36,13 @@ DEFAULT_PROFILES_ROOT = Path("D:/OperaProfiles") if IS_WIN else Path.home() / "O
 
 # List of common Opera binary paths
 OPERA_PATHS = [
+    # macOS
+    "/Applications/Opera GX.app/Contents/MacOS/Opera GX",
+    "/Applications/Opera.app/Contents/MacOS/Opera",
+    "/Applications/Opera Developer.app/Contents/MacOS/Opera Developer",
+    "/Applications/Opera Beta.app/Contents/MacOS/Opera Beta",
+    os.path.expanduser("~/Applications/Opera GX.app/Contents/MacOS/Opera GX"),
+    os.path.expanduser("~/Applications/Opera.app/Contents/MacOS/Opera"),
     # Linux
     "/usr/bin/opera-gx",
     "/usr/bin/opera",

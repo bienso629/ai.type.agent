@@ -1,0 +1,110 @@
+{
+   "checksum": "f7fac27683d884aead3e2d59a2a30045",
+   "roots": {
+      "bookmark_bar": {
+         "children": [  ],
+         "date_added": "13431273290000980",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+         "id": "1",
+         "name": "Bookmarks bar",
+         "type": "folder"
+      },
+      "custom_root": {
+         "pinboard": {
+            "children": [  ],
+            "date_added": "13431273290001018",
+            "date_last_used": "0",
+            "date_modified": "0",
+            "guid": "00000000-0000-4000-a000-000000000907",
+            "id": "7",
+            "name": "Pinboard",
+            "type": "folder"
+         },
+         "speedDial": {
+            "children": [ {
+               "children": [  ],
+               "date_added": "13431273290041273",
+               "date_last_used": "0",
+               "date_modified": "13431273290041273",
+               "guid": "309d451b-1ab6-4595-a053-90990bbd8c27",
+               "id": "10",
+               "meta_info": {
+                  "speed_dial_root_folder_guid": "10ce9879-25be-47c3-8e67-3ebd1c666e37"
+               },
+               "name": "coder",
+               "type": "folder"
+            } ],
+            "date_added": "13431273290001015",
+            "date_last_used": "0",
+            "date_modified": "0",
+            "guid": "00000000-0000-4000-a000-000000000904",
+            "id": "6",
+            "name": "Speed Dials",
+            "type": "folder"
+         },
+         "trash": {
+            "children": [  ],
+            "date_added": "13431273290001023",
+            "date_last_used": "0",
+            "date_modified": "0",
+            "guid": "00000000-0000-4000-a000-000000000905",
+            "id": "9",
+            "name": "Trash",
+            "type": "folder"
+         },
+         "unsorted": {
+            "children": [  ],
+            "date_added": "13431273290001010",
+            "date_last_used": "0",
+            "date_modified": "0",
+            "guid": "00000000-0000-4000-a000-000000000901",
+            "id": "4",
+            "name": "Unsorted bookmarks",
+            "type": "folder"
+         },
+         "unsyncedPinboard": {
+            "children": [  ],
+            "date_added": "13431273290001021",
+            "date_last_used": "0",
+            "date_modified": "0",
+            "guid": "00000000-0000-4000-a000-000000000908",
+            "id": "8",
+            "name": "Unsynchronized Pinboard",
+            "type": "folder"
+         },
+         "userRoot": {
+            "children": [  ],
+            "date_added": "13431273290001013",
+            "date_last_used": "0",
+            "date_modified": "0",
+            "guid": "00000000-0000-4000-a000-000000000902",
+            "id": "5",
+            "name": "Other bookmarks",
+            "type": "folder"
+         }
+      },
+      "other": {
+         "children": [  ],
+         "date_added": "13431273290000980",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+         "id": "2",
+         "name": "Imported bookmarks",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [  ],
+         "date_added": "13431273290000980",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+         "id": "3",
+         "name": "Mobile bookmarks",
+         "type": "folder"
+      }
+   },
+   "version": 1
+}

@@ -1,0 +1,14 @@
+2026/08/15-20:14:50.017 8 Creating DB /home/yenai/Documents/Projects/Typing/apps/plugins/100 tiktokers/Profile000/Default/Local Storage/leveldb since it was missing.
+2026/08/15-20:14:50.043 8 Reusing MANIFEST /home/yenai/Documents/Projects/Typing/apps/plugins/100 tiktokers/Profile000/Default/Local Storage/leveldb/MANIFEST-000001
+2026/08/15-20:17:19.993 a Level-0 table #5: started
+2026/08/15-20:17:20.001 a Level-0 table #5: 23313 bytes OK
+2026/08/15-20:17:20.008 a Delete type=0 #3
+2026/08/15-20:19:19.993 a Level-0 table #7: started
+2026/08/15-20:19:20.000 a Level-0 table #7: 24406 bytes OK
+2026/08/15-20:19:20.012 a Delete type=0 #4
+2026/08/15-20:21:19.993 a Level-0 table #9: started
+2026/08/15-20:21:20.001 a Level-0 table #9: 24428 bytes OK
+2026/08/15-20:21:20.013 a Delete type=0 #6
+2026/08/15-20:24:19.993 a Level-0 table #11: started
+2026/08/15-20:24:19.999 a Level-0 table #11: 25209 bytes OK
+2026/08/15-20:24:20.011 a Delete type=0 #8

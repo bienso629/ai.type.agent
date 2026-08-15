@@ -32,11 +32,20 @@ IS_WIN = platform.system() == "Windows"
 DEFAULT_PROFILES_ROOT = Path("D:/OperaProfiles") if IS_WIN else Path.home() / "OperaProfiles"
 
 OPERA_PATHS = [
+    # macOS
+    "/Applications/Opera GX.app/Contents/MacOS/Opera GX",
+    "/Applications/Opera.app/Contents/MacOS/Opera",
+    "/Applications/Opera Developer.app/Contents/MacOS/Opera Developer",
+    "/Applications/Opera Beta.app/Contents/MacOS/Opera Beta",
+    os.path.expanduser("~/Applications/Opera GX.app/Contents/MacOS/Opera GX"),
+    os.path.expanduser("~/Applications/Opera.app/Contents/MacOS/Opera"),
+    # Linux
     "/usr/bin/opera-gx",
     "/usr/bin/opera",
     "/usr/bin/opera-developer",
     "/usr/bin/opera-beta",
     "/snap/bin/opera",
+    # Windows
     r"C:\Program Files\Opera GX\opera.exe",
     r"C:\Program Files\Opera\opera.exe",
     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera GX\opera.exe"),
