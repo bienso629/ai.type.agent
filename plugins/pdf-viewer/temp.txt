@@ -1,1 +1,0 @@
-[('1. Trường hợp hộ kinh doanh, cá nhân kinh doanh th', [0.129, 0.884, 0.902, 0.927])]

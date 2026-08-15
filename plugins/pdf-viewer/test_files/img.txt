@@ -1,1 +1,0 @@
-[{'type': 'image', 'bbox': [0.572, 0.375, 0.999, 0.528], 'angle': 0, 'content': 'KT. BỘ TRƯỜNG\nTHU TRƯỜNG\nNguyễn Đức Tâm', 'sub_type': 'text_image'}]

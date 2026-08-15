@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pydantic
+psutil
+httpx
+playwright
+selenium
+webdriver-manager
+faster-whisper
+requests
+pycryptodomex
+websocket-client
+pywin32
+pychrome
+ctranslate2

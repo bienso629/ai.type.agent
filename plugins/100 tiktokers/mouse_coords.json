@@ -1,0 +1,146 @@
+{
+  "sites": {
+    "tiktok.com": [
+      {
+        "title": "Explore",
+        "screenX": 249,
+        "screenY": 478,
+        "ts": "2025-09-01T20:52:18"
+      },
+      {
+        "title": "LIVE",
+        "screenX": 230,
+        "screenY": 793,
+        "ts": "2025-09-01T20:59:26"
+      },
+      {
+        "title": "Upload",
+        "screenX": 160,
+        "screenY": 1024,
+        "ts": "2025-09-02T11:15:10"
+      },
+      {
+        "title": "Profile",
+        "screenX": 160,
+        "screenY": 1101,
+        "ts": "2025-09-02T11:30:34"
+      },
+      {
+        "title": "More",
+        "screenX": 147,
+        "screenY": 1180,
+        "ts": "2025-09-02T11:30:50"
+      },
+      {
+        "title": "LIVE-Following",
+        "screenX": 728,
+        "screenY": 221,
+        "ts": "2025-09-02T11:31:35"
+      },
+      {
+        "title": "LIVE-Back",
+        "screenX": 269,
+        "screenY": 307,
+        "ts": "2025-09-02T11:32:00"
+      },
+      {
+        "title": "Search",
+        "screenX": 195,
+        "screenY": 311,
+        "ts": "2025-09-02T11:33:55"
+      },
+      {
+        "title": "Search-Follow",
+        "screenX": 2665,
+        "screenY": 387,
+        "ts": "2025-09-02T11:35:35"
+      },
+      {
+        "title": "Skip",
+        "screenX": 1757,
+        "screenY": 1341,
+        "ts": "2025-09-02T20:41:19"
+      },
+      {
+        "title": "Captcha-Audio",
+        "screenX": 1678,
+        "screenY": 1403,
+        "ts": "2025-09-02T21:30:18"
+      },
+      {
+        "title": "Captcha-Enter what you hear",
+        "screenX": 1693,
+        "screenY": 1322,
+        "ts": "2025-09-02T21:30:52"
+      },
+      {
+        "title": "Captcha-Verify",
+        "screenX": 2132,
+        "screenY": 1322,
+        "ts": "2025-09-02T21:31:10"
+      },
+      {
+        "title": "Thả tim",
+        "screenX": 3113,
+        "screenY": 1460,
+        "ts": "2025-09-03T11:59:05"
+      },
+      {
+        "title": "Thả tim trong Live",
+        "screenX": 1881,
+        "screenY": 990,
+        "ts": "2025-09-03T11:59:05"
+      },
+      {
+        "title": "Viết comment",
+        "screenX": 3109,
+        "screenY": 1585,
+        "ts": "2025-09-03T11:59:49"
+      },
+      {
+        "title": "Viết comment trong Live",
+        "screenX": 3109,
+        "screenY": 1585,
+        "ts": "2025-09-03T11:59:49"
+      },
+      {
+        "title": "Bookmark",
+        "screenX": 3247,
+        "screenY": 555,
+        "ts": "2025-09-03T12:00:37"
+      },
+      {
+        "title": "Follow nhanh",
+        "screenX": 3681,
+        "screenY": 250,
+        "ts": "2025-09-03T12:01:05"
+      },
+      {
+        "title": "Login nhanh",
+        "screenX": 3699,
+        "screenY": 231,
+        "ts": "2025-09-03T12:02:00"
+      },
+      {
+        "title": "Login - Facebook",
+        "screenX": 1895,
+        "screenY": 1030,
+        "ts": "2025-09-03T12:02:59"
+      },
+      {
+        "title": "Đồng ý login bằng Facebook",
+        "screenX": 1908,
+        "screenY": 1274,
+        "ts": "2025-09-03T12:06:18"
+      }
+    ],
+    "A1": [
+      {
+        "title": "Select Video",
+        "screenX": 2121,
+        "screenY": 1044,
+        "ts": "2025-09-02T11:16:07"
+      }
+    ]
+  }
+}
