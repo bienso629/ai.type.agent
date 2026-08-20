@@ -8,7 +8,7 @@ import subprocess
 import sqlite3         # <— NEW: cần cho include_accounts
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal, Union
 from urllib.parse import urlparse, quote
 
 import psutil
@@ -375,11 +375,35 @@ def _collect_pids_by_cmdline(root: str, image_names: List[str] = None) -> List[i
                     pids.append(p.pid)
                     continue
             cmd_str = " ".join(cmdline).lower()
-            if root_c in cmd_str or (profile_name and f"user-data-dir={profile_name}" in cmd_str):
-                pids.append(p.pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return pids
+
+
+def _is_port_open(host: str, port: int, timeout_s: float = 0.05) -> bool:
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout_s):
+            return True
+    except Exception:
+        return False
+
+
+def _collect_running_profile_dirs() -> Set[str]:
+    running_dirs = set()
+    try:
+        for p in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                cmdline = p.info.get("cmdline") or []
+                if not cmdline:
+                    continue
+                udd = _extract_uddir_from_cmdline(cmdline)
+                if udd:
+                    running_dirs.add(_canon_path(udd))
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception:
+        pass
+    return running_dirs
 
 
 def _taskkill_by_images(image_names: List[str]) -> Dict[str, Any]:
@@ -558,6 +582,142 @@ def _open_tab_multi(host: str, port: int, url: str, activate: bool = True) -> Di
     return details
 
 
+# -------- PROXY MANAGEMENT & EXTENSION BUILDER --------
+
+def _parse_proxy_string(proxy_str: str) -> Optional[Dict[str, Any]]:
+    s = (proxy_str or "").strip()
+    if not s:
+        return None
+
+    scheme = "http"
+    if "://" in s:
+        scheme_part, rest = s.split("://", 1)
+        scheme = scheme_part.lower()
+        s = rest
+
+    user = None
+    password = None
+    if "@" in s:
+        auth_part, host_part = s.split("@", 1)
+        if ":" in auth_part:
+            user, password = auth_part.split(":", 1)
+        else:
+            user = auth_part
+        s = host_part
+
+    parts = s.split(":")
+    if len(parts) == 4:
+        host = parts[0]
+        port = int(parts[1])
+        user = parts[2]
+        password = parts[3]
+    elif len(parts) == 2:
+        host = parts[0]
+        port = int(parts[1])
+    else:
+        return None
+
+    raw_clean = f"{scheme}://"
+    if user and password:
+        raw_clean += f"{user}:{password}@"
+    raw_clean += f"{host}:{port}"
+
+    return {
+        "scheme": scheme,
+        "host": host,
+        "port": port,
+        "user": user,
+        "pass": password,
+        "raw": raw_clean
+    }
+
+
+def _proxies_file_path(profiles_root: str) -> Path:
+    return Path(profiles_root) / "proxies.json"
+
+
+def _load_proxies_map(profiles_root: str) -> Dict[str, str]:
+    fp = _proxies_file_path(profiles_root)
+    if fp.exists():
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_proxies_map(profiles_root: str, data: Dict[str, str]):
+    fp = _proxies_file_path(profiles_root)
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    with open(fp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _setup_proxy_extension_for_profile(profile_dir: Path, proxy_info: Dict[str, Any]) -> Optional[Path]:
+    ext_dir = profile_dir / "proxy_extension"
+    ext_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_json = {
+        "version": "1.0.0",
+        "manifest_version": 2,
+        "name": f"Profile Proxy ({proxy_info['host']}:{proxy_info['port']})",
+        "permissions": [
+            "proxy",
+            "tabs",
+            "unlimitedStorage",
+            "storage",
+            "<all_urls>",
+            "webRequest",
+            "webRequestBlocking"
+        ],
+        "background": {
+            "scripts": ["background.js"]
+        }
+    }
+
+    scheme = proxy_info["scheme"]
+    scheme_js = "socks5" if scheme in ("socks", "socks5") else "http"
+    user_js = proxy_info.get("user") or ""
+    pass_js = proxy_info.get("pass") or ""
+
+    background_js = f"""var config = {{
+    mode: "fixed_servers",
+    rules: {{
+        singleProxy: {{
+            scheme: "{scheme_js}",
+            host: "{proxy_info['host']}",
+            port: {proxy_info['port']}
+        }},
+        bypassList: ["localhost", "127.0.0.1"]
+    }}
+}};
+
+chrome.proxy.settings.set({{value: config, scope: "regular"}}, function() {{}});
+
+function callbackFn(details) {{
+    return {{
+        authCredentials: {{
+            username: "{user_js}",
+            password: "{pass_js}"
+        }}
+    }};
+}}
+
+if ("{user_js}" !== "") {{
+    chrome.webRequest.onAuthRequired.addListener(
+        callbackFn,
+        {{urls: ["<all_urls>"]}},
+        ['blocking']
+    );
+}}
+"""
+
+    (ext_dir / "manifest.json").write_text(json.dumps(manifest_json, indent=2), encoding="utf-8")
+    (ext_dir / "background.js").write_text(background_js, encoding="utf-8")
+    return ext_dir
+
+
 def _launch_opera(
     profile_dir: Path,
     port: int,
@@ -582,6 +742,22 @@ def _launch_opera(
         "--disable-background-networking",
         "--disable-features=Translate,BackgroundMode,ExtensionsToolbarMenu",
     ]
+
+    # Auto-attach Residential Proxy if configured
+    try:
+        root_dir = profile_dir.parent
+        pmap = _load_proxies_map(str(root_dir))
+        proxy_raw = pmap.get(profile_dir.name)
+        if proxy_raw:
+            parsed_proxy = _parse_proxy_string(proxy_raw)
+            if parsed_proxy:
+                ext_path = _setup_proxy_extension_for_profile(profile_dir, parsed_proxy)
+                if ext_path:
+                    args.append(f"--load-extension={str(ext_path)}")
+                args.append(f"--proxy-server={parsed_proxy['scheme']}://{parsed_proxy['host']}:{parsed_proxy['port']}")
+                _patch_profile_vpn(profile_dir, False, "optimal")
+    except Exception:
+        pass
 
     if headless:
         args.append("--headless=new")
@@ -631,6 +807,7 @@ class StartRangeReq(BaseModel):
     post_open_wait_ms: int = 0
     activate_opened_tab: bool = True
     window_state: Literal["normal", "maximized", "fullscreen", "kiosk"] = "fullscreen"
+    headless: bool = False
     # Title prefix options
     prefix_title_with_profile: bool = True
     title_prefix_text: Optional[str] = None  # supports placeholders {profile} / {PROFILE}
@@ -691,6 +868,7 @@ class StartProfilesReq(BaseModel):
     post_open_wait_ms: int = 0
     activate_opened_tab: bool = True
     window_state: Literal["normal", "maximized", "fullscreen", "kiosk"] = "fullscreen"
+    headless: bool = False
     # Title prefix options
     prefix_title_with_profile: bool = True
     title_prefix_text: Optional[str] = None
@@ -778,6 +956,40 @@ def get_profiles_config() -> Dict[str, Any]:
         "default_host": DEFAULT_HOST,
         "default_cdp_port": 54900,
     }
+
+
+def _read_profile_vpn_info(pdir: Path) -> Dict[str, Any]:
+    pref_file = pdir / "Default" / "Preferences"
+    if not pref_file.exists():
+        pref_file = pdir / "Preferences"
+
+    if pref_file.exists():
+        try:
+            with open(pref_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            freedom = data.get("freedom", {}).get("proxy_switcher", {})
+            enabled = freedom.get("enabled", True)
+            auto_conn = freedom.get("automatic_connection", True)
+            code = str(freedom.get("country_code", "")).upper()
+
+            if not enabled:
+                loc = "off"
+            elif auto_conn or code == "OPTIMAL":
+                loc = "optimal"
+            elif code == "AM":
+                loc = "americas"
+            elif code == "AS":
+                loc = "asia"
+            elif code == "EU":
+                loc = "europe"
+            else:
+                loc = data.get("browser", {}).get("vpn", {}).get("last_chosen_location", "optimal")
+
+            return {"enabled": enabled, "location": loc}
+        except Exception:
+            pass
+    return {"enabled": True, "location": "optimal"}
 
 
 # -------- LIST (GET) --------
@@ -886,15 +1098,26 @@ def list_profiles(
         except Exception as e:
             accounts_error = f"{type(e).__name__}: {e}"
 
+
+
+
+    running_dirs = _collect_running_profile_dirs()
+    proxies_map = _load_proxies_map(str(root_path))
     rows_out: List[Dict[str, Any]] = []
 
     for name in names:
         pdir = root_path / name
+        pdir_canon = _canon_path(str(pdir))
         info: Dict[str, Any] = {"profile": name, "dir": str(pdir)}
 
         # avatar (nếu có)
         avatar_path = _find_avatar_file(root_path, name)
         info["avatar"] = avatar_path
+
+        # Cấu hình VPN & Proxy
+        info["vpn"] = _read_profile_vpn_info(pdir)
+        proxy_raw = proxies_map.get(name)
+        info["proxy"] = _parse_proxy_string(proxy_raw) if proxy_raw else None
 
         # Đọc port (dù include_ports=False vẫn cần để xác định trạng thái/sort)
         port_candidate: Optional[int] = None
@@ -911,14 +1134,10 @@ def list_profiles(
 
         # running?
         running = False
-        if verify and port_candidate:
-            try:
-                r = requests.get(f"http://{host_use}:{port_candidate}/json/version", timeout=verify_timeout_ms / 1000.0)
-                running = bool(r.ok)
-            except Exception:
-                running = False
-        else:
-            running = bool(port_candidate)
+        if pdir_canon in running_dirs:
+            running = True
+        elif verify and port_candidate:
+            running = _is_port_open(host_use, port_candidate, timeout_s=min(0.05, verify_timeout_ms / 1000.0))
 
         # Áp dụng filter chạy/tắt
         if filter_ == "running" and not running:
@@ -1045,6 +1264,7 @@ def start_range(req: StartRangeReq) -> Dict[str, Any]:
                 pdir, int(use_port), req.opera_path, req.extra_args,
                 initial_url=req.new_tab_url, window_state=req.window_state,
                 window_title_prefix=prof if req.prefix_title_with_profile or req.title_prefix_text else None,
+                headless=req.headless,
             )
             launched_new = True
         elif req.mode == "reuse" and existing_port and not is_running:
@@ -1053,6 +1273,7 @@ def start_range(req: StartRangeReq) -> Dict[str, Any]:
                 pdir, int(use_port), req.opera_path, req.extra_args,
                 initial_url=req.new_tab_url, window_state=req.window_state,
                 window_title_prefix=prof if req.prefix_title_with_profile or req.title_prefix_text else None,
+                headless=req.headless,
             )
             launched_new = True
         elif not is_running:
@@ -1061,6 +1282,7 @@ def start_range(req: StartRangeReq) -> Dict[str, Any]:
                 pdir, int(use_port), req.opera_path, req.extra_args,
                 initial_url=req.new_tab_url, window_state=req.window_state,
                 window_title_prefix=prof if req.prefix_title_with_profile or req.title_prefix_text else None,
+                headless=req.headless,
             )
             launched_new = True
         else:
@@ -1194,6 +1416,7 @@ def start_profiles(req: StartProfilesReq) -> Dict[str, Any]:
                 pdir, int(use_port), req.opera_path, req.extra_args,
                 initial_url=req.new_tab_url, window_state=req.window_state,
                 window_title_prefix=prof if req.prefix_title_with_profile or req.title_prefix_text else None,
+                headless=req.headless,
             )
             launched_new = True
         elif req.mode == "reuse" and existing_port and not is_running:
@@ -1202,6 +1425,7 @@ def start_profiles(req: StartProfilesReq) -> Dict[str, Any]:
                 pdir, int(use_port), req.opera_path, req.extra_args,
                 initial_url=req.new_tab_url, window_state=req.window_state,
                 window_title_prefix=prof if req.prefix_title_with_profile or req.title_prefix_text else None,
+                headless=req.headless,
             )
             launched_new = True
         elif not is_running:
@@ -1210,6 +1434,7 @@ def start_profiles(req: StartProfilesReq) -> Dict[str, Any]:
                 pdir, int(use_port), req.opera_path, req.extra_args,
                 initial_url=req.new_tab_url, window_state=req.window_state,
                 window_title_prefix=prof if req.prefix_title_with_profile or req.title_prefix_text else None,
+                headless=req.headless,
             )
             launched_new = True
         else:
@@ -1567,6 +1792,16 @@ def _patch_profile_vpn(profile_dir: Path, enabled: bool, location: str) -> bool:
     }
     target_loc = loc_map.get((location or "optimal").lower(), "optimal")
 
+    # Opera built-in VPN (Freedom Proxy) country codes:
+    # AM: Americas, AS: Asia, EU: Europe, optimal: Optimal
+    country_code_map = {
+        "americas": "AM",
+        "asia": "AS",
+        "europe": "EU",
+        "optimal": "optimal",
+    }
+    target_code = country_code_map.get(target_loc, "AS")
+
     pref_paths = [
         profile_dir / "Default" / "Preferences",
         profile_dir / "Preferences",
@@ -1581,6 +1816,19 @@ def _patch_profile_vpn(profile_dir: Path, enabled: bool, location: str) -> bool:
                 with open(pref_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
+            # Freedom Proxy Switcher (Opera built-in VPN settings)
+            _set_nested_dict(data, ["freedom", "proxy_switcher", "enabled"], bool(enabled))
+            _set_nested_dict(data, ["freedom", "proxy_switcher", "ui_visible"], True)
+            if target_loc in ["optimal", "auto"]:
+                _set_nested_dict(data, ["freedom", "proxy_switcher", "automatic_connection"], True)
+                _set_nested_dict(data, ["freedom", "proxy_switcher", "country_code"], "AS")
+            else:
+                _set_nested_dict(data, ["freedom", "proxy_switcher", "automatic_connection"], False)
+                _set_nested_dict(data, ["freedom", "proxy_switcher", "country_code"], target_code)
+
+            _set_nested_dict(data, ["freedom", "proxy_switcher", "chosen_location_id"], target_loc.upper())
+
+            # Supplementary / legacy keys
             _set_nested_dict(data, ["browser", "vpn", "enabled"], bool(enabled))
             _set_nested_dict(data, ["browser", "vpn", "last_chosen_location"], target_loc)
             _set_nested_dict(data, ["vpn", "enabled"], bool(enabled))
@@ -1644,4 +1892,189 @@ def set_profile_vpn_range(req: SetVPNRangeReq) -> Dict[str, Any]:
         })
 
     return {"count": len(results), "results": results}
+
+
+# -------- RESIDENTIAL PROXY CONFIGURATION API --------
+
+class SetProxyReq(BaseModel):
+    profile: str
+    proxy: str
+    profiles_root: str = Field(DEFAULT_PROFILES_ROOT)
+
+
+class ImportProxyReq(BaseModel):
+    proxy_list: Union[str, List[str]]
+    start_index: int = 1
+    prefix: str = "Profile"
+    zero_pad: int = 3
+    profiles_root: str = Field(DEFAULT_PROFILES_ROOT)
+
+
+class RemoveProxyReq(BaseModel):
+    profiles: Optional[List[str]] = None
+    profiles_root: str = Field(DEFAULT_PROFILES_ROOT)
+
+
+@router.get("/proxy/list")
+def list_proxies(profiles_root: str = Query(DEFAULT_PROFILES_ROOT)) -> Dict[str, Any]:
+    proxies_map = _load_proxies_map(profiles_root)
+    parsed_map = {}
+    for prof, pstr in proxies_map.items():
+        parsed_map[prof] = {
+            "raw": pstr,
+            "parsed": _parse_proxy_string(pstr)
+        }
+    return {
+        "ok": True,
+        "count": len(proxies_map),
+        "profiles_root": profiles_root,
+        "proxies": parsed_map
+    }
+
+
+@router.post("/proxy/set")
+def set_profile_proxy(req: SetProxyReq) -> Dict[str, Any]:
+    parsed = _parse_proxy_string(req.proxy)
+    if not parsed:
+        raise HTTPException(status_code=400, detail="Định dạng Proxy không hợp lệ! Hỗ trợ ip:port:user:pass hoặc http://user:pass@ip:port hoặc socks5://...")
+
+    pmap = _load_proxies_map(req.profiles_root)
+    pmap[req.profile] = parsed["raw"]
+    _save_proxies_map(req.profiles_root, pmap)
+
+    pdir = _profile_dir(req.profiles_root, req.profile)
+    if pdir.exists():
+        _setup_proxy_extension_for_profile(pdir, parsed)
+        _patch_profile_vpn(pdir, False, "optimal")
+
+    return {
+        "ok": True,
+        "profile": req.profile,
+        "proxy": parsed,
+        "detail": f"Đã gán thành công Proxy cho {req.profile}"
+    }
+
+
+@router.post("/proxy/import")
+def import_proxies_bulk(req: ImportProxyReq) -> Dict[str, Any]:
+    lines = []
+    if isinstance(req.proxy_list, str):
+        lines = [line.strip() for line in req.proxy_list.splitlines() if line.strip()]
+    elif isinstance(req.proxy_list, list):
+        lines = [str(x).strip() for x in req.proxy_list if str(x).strip()]
+
+    if not lines:
+        raise HTTPException(status_code=400, detail="Danh sách Proxy rỗng!")
+
+    pmap = _load_proxies_map(req.profiles_root)
+    imported = []
+    failed = []
+
+    for idx, pstr in enumerate(lines):
+        prof_num = req.start_index + idx
+        prof_name = f"{req.prefix}{str(prof_num).zfill(req.zero_pad)}"
+        parsed = _parse_proxy_string(pstr)
+        if parsed:
+            pmap[prof_name] = parsed["raw"]
+            imported.append({"profile": prof_name, "proxy": parsed["raw"]})
+
+            pdir = _profile_dir(req.profiles_root, prof_name)
+            if pdir.exists():
+                _setup_proxy_extension_for_profile(pdir, parsed)
+                _patch_profile_vpn(pdir, False, "optimal")
+        else:
+            failed.append({"index": idx, "raw": pstr, "reason": "invalid_format"})
+
+    _save_proxies_map(req.profiles_root, pmap)
+
+    return {
+        "ok": True,
+        "count_imported": len(imported),
+        "count_failed": len(failed),
+        "imported": imported,
+        "failed": failed,
+        "detail": f"Đã gán {len(imported)} Proxy cho các Profile từ Profile{str(req.start_index).zfill(req.zero_pad)}"
+    }
+
+
+@router.delete("/proxy/remove")
+def remove_proxies(req: RemoveProxyReq) -> Dict[str, Any]:
+    pmap = _load_proxies_map(req.profiles_root)
+    removed = []
+
+    if req.profiles is None:
+        removed = list(pmap.keys())
+        pmap.clear()
+    else:
+        for p in req.profiles:
+            if p in pmap:
+                del pmap[p]
+                removed.append(p)
+
+    _save_proxies_map(req.profiles_root, pmap)
+    return {
+        "ok": True,
+        "count_removed": len(removed),
+        "removed": removed
+    }
+
+
+# -------- CLEAR SESSION & COOKIE API --------
+
+def _clean_profile_session(profile_dir: Path):
+    session_items = [
+        "Network/Cookies",
+        "Network/Cookies-journal",
+        "Network/Cookies-wal",
+        "Sessions",
+        "Local Storage",
+        "IndexedDB",
+        "Default/Network/Cookies",
+        "Default/Network/Cookies-journal",
+        "Default/Network/Cookies-wal",
+        "Default/Sessions",
+        "Default/Local Storage",
+        "Default/IndexedDB",
+    ]
+    for item in session_items:
+        p = profile_dir / item
+        if p.exists():
+            try:
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+class ClearSessionRangeReq(BaseModel):
+    start: int
+    end: int
+    zero_pad: int = 3
+    prefix: str = "Profile"
+    profiles_root: str = Field(DEFAULT_PROFILES_ROOT)
+
+
+@router.post("/{profile}/clear-session")
+def clear_profile_session(profile: str, profiles_root: str = Query(DEFAULT_PROFILES_ROOT)) -> Dict[str, Any]:
+    pdir = _profile_dir(profiles_root, profile)
+    if not pdir.exists():
+        raise HTTPException(status_code=404, detail=f"Profile '{profile}' not found at {pdir}")
+    _clean_profile_session(pdir)
+    return {"ok": True, "profile": profile, "detail": "Đã làm sạch toàn bộ Cookie & Session."}
+
+
+@router.post("/clear-session-range")
+def clear_profile_session_range(req: ClearSessionRangeReq) -> Dict[str, Any]:
+    cleared = []
+    for i in range(int(req.start), int(req.end) + 1):
+        prof = f"{req.prefix}{str(i).zfill(req.zero_pad)}"
+        pdir = _profile_dir(req.profiles_root, prof)
+        if pdir.exists():
+            _clean_profile_session(pdir)
+            cleared.append(prof)
+    return {"ok": True, "count": len(cleared), "cleared": cleared}
+
+
 

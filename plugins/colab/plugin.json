@@ -1,0 +1,10 @@
+{
+  "id": "colab_agent",
+  "name": "Colab GPU Agent",
+  "version": "1.0.1",
+  "description": "Tự động hóa kết nối Google Colab GPU, bóc tách MinerU và thực thi code từ xa.",
+  "binary": "colab_agent_linux",
+  "script": "colab_agent.py",
+  "author": "Typing AI Team",
+  "updated_at": "2026-08-19"
+}

@@ -57,6 +57,12 @@ Open:
 | POST | `/v1/opera/profiles/start` | Start Opera with a profile (remote debugging on) |
 | POST | `/v1/opera/profiles/start-range` | Start a range of profiles |
 | POST | `/v1/opera/profiles/kill-all` | Close all running profiles (graceful/force) |
+| GET  | `/v1/opera/profiles/proxy/list` | List all assigned residential proxies |
+| POST | `/v1/opera/profiles/proxy/import` | Bulk import proxy list for profiles (assign Proxy 1 -> Profile001, etc.) |
+| POST | `/v1/opera/profiles/proxy/set` | Set residential proxy for a single profile |
+| DELETE | `/v1/opera/profiles/proxy/remove` | Clear assigned proxy configuration |
+| POST | `/v1/opera/profiles/{profile}/clear-session` | Clear cookies & session databases for a profile |
+| POST | `/v1/opera/profiles/clear-session-range` | Clear cookies & session databases for a range of profiles |
 | POST | `/v1/opera/accounts/quick` | **FAST**: Check login status via cookies (Windows) |
 | POST | `/v1/opera/accounts/resolve` | **DEEP**: Resolve TikTok/Facebook account details via CDP |
 

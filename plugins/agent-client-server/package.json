@@ -1,0 +1,52 @@
+{
+  "name": "tadu-cloud-ai-agent",
+  "version": "1.3.0",
+  "description": "Tadu Cloud AI Agent Control Center Desktop Application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "tadu",
+    "cloud",
+    "ai-agent",
+    "glm-5.3",
+    "terminal",
+    "electron"
+  ],
+  "author": "Tadu Cloud Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.tadu.aiagent",
+    "productName": "Tadu Cloud AI Agent",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "templates/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "templates/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "templates/icon.png"
+    }
+  }
+}

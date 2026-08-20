@@ -695,7 +695,7 @@ def get_active_profile_port(prof_dir: Path, fallback_port: int = 9222) -> int:
             continue
     return fallback_port
 
-def ensure_opera(profile: Optional[str], port: int, opera_path: Optional[str], launch_if_needed: bool, profiles_root: Optional[str] = None) -> int:
+def ensure_opera(profile: Optional[str], port: int, opera_path: Optional[str], launch_if_needed: bool, profiles_root: Optional[str] = None, headless: bool = False) -> int:
     prof_dir = resolve_profile_dir(profile, profiles_root)
     active_port = get_active_profile_port(prof_dir, fallback_port=port)
     if devtools_up(active_port):
@@ -748,6 +748,8 @@ def ensure_opera(profile: Optional[str], port: int, opera_path: Optional[str], l
             "--start-maximized",
             "--disable-notifications",
         ]
+        if headless:
+            args.append("--headless=new")
         creationflags = 0
         preexec_fn = None
         if IS_WIN:
@@ -843,6 +845,7 @@ class ScanParams(BaseModel):
     idle_sec: int = Field(default=8, ge=1)
     max_duration: Optional[int] = Field(default=None, ge=1)
     launch_if_needed: bool = Field(default=False, description="Launch Opera if DevTools port is not up")
+    headless: bool = Field(default=False, description="Launch Opera in headless mode")
 
 def feeds_root(custom: Optional[str]) -> Path:
     if custom:
@@ -1196,6 +1199,7 @@ def watcher_loop(w: Watcher) -> None:
             opera_path=w.params.opera_path,
             launch_if_needed=w.params.launch_if_needed,
             profiles_root=getattr(w.params, "profiles_root", None),
+            headless=getattr(w.params, "headless", False),
         )
         w.params.port = actual_port
         import pychrome

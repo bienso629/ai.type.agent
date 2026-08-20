@@ -21,6 +21,7 @@ python open_profiles.py --kill-all
 import os
 import sys
 import time
+import json
 import shutil
 import subprocess
 import argparse
@@ -30,6 +31,44 @@ from typing import List, Optional
 
 IS_WIN = platform.system() == "Windows"
 DEFAULT_PROFILES_ROOT = Path("D:/OperaProfiles") if IS_WIN else Path.home() / "OperaProfiles"
+
+
+def _load_proxies_map(root_dir: Path) -> dict:
+    fp = root_dir / "proxies.json"
+    if fp.exists():
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _parse_proxy_string(proxy_str: str) -> Optional[dict]:
+    s = (proxy_str or "").strip()
+    if not s:
+        return None
+    scheme = "http"
+    if "://" in s:
+        scheme_part, rest = s.split("://", 1)
+        scheme = scheme_part.lower()
+        s = rest
+    user, password = None, None
+    if "@" in s:
+        auth_part, host_part = s.split("@", 1)
+        if ":" in auth_part:
+            user, password = auth_part.split(":", 1)
+        else:
+            user = auth_part
+        s = host_part
+    parts = s.split(":")
+    if len(parts) == 4:
+        host, port, user, password = parts[0], int(parts[1]), parts[2], parts[3]
+    elif len(parts) == 2:
+        host, port = parts[0], int(parts[1])
+    else:
+        return None
+    return {"scheme": scheme, "host": host, "port": port, "user": user, "pass": password}
 
 OPERA_PATHS = [
     # macOS
@@ -90,10 +129,13 @@ def open_profiles_range(
     headless: bool = False
 ):
     root_dir = root_dir.resolve()
+    proxies_map = _load_proxies_map(root_dir)
     print(f"\n=======================================================")
     print(f"🚀 MỞ DẢI PROFILE OPERA ({start_idx} -> {end_idx}) [Headless: {headless}]")
     print(f"📂 Thư mục: {root_dir}")
     print(f"▶ Cổng CDP bắt đầu từ: {base_port}")
+    if proxies_map:
+        print(f"🌐 Đã phát hiện {len(proxies_map)} Proxy cấu hình sẵn trong proxies.json")
     print(f"=======================================================\n")
 
     launched = []
@@ -106,7 +148,11 @@ def open_profiles_range(
             continue
 
         port = base_port + (i - start_idx)
-        print(f"▶ Launching [{name}] | CDP Port: {port} | Headless: {headless}")
+        proxy_str = proxies_map.get(name)
+        parsed_proxy = _parse_proxy_string(proxy_str) if proxy_str else None
+
+        p_info = f" | Proxy: {parsed_proxy['host']}:{parsed_proxy['port']}" if parsed_proxy else ""
+        print(f"▶ Launching [{name}] | CDP Port: {port}{p_info} | Headless: {headless}")
 
         cmd = [
             opera_bin,
@@ -117,6 +163,12 @@ def open_profiles_range(
             "--no-first-run",
             "--disable-background-networking",
         ]
+
+        if parsed_proxy:
+            ext_dir = profile_dir / "proxy_extension"
+            if ext_dir.exists():
+                cmd.append(f"--load-extension={ext_dir}")
+            cmd.append(f"--proxy-server={parsed_proxy['scheme']}://{parsed_proxy['host']}:{parsed_proxy['port']}")
 
         if headless:
             cmd.append("--headless=new")

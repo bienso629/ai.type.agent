@@ -11,12 +11,19 @@ import unicodedata
 from io import BytesIO
 from typing import List, Dict, Optional, Tuple
 
+from pathlib import Path
+
 # --- THÊM DÒNG NÀY ĐỂ CHỐNG DEADLOCK TRÊN WINDOWS ---
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # ---------- Config ----------
-PDF_BASE_DIR = os.getenv("PDF_DIR", "pdfs")
-INDEX_BASE_DIR = os.getenv("INDEX_DIR", "faiss_pdf_index")
+ROOT_DIR = Path(__file__).resolve().parent
+_pdf_env = os.getenv("PDF_DIR", "pdfs")
+PDF_BASE_DIR = str(Path(_pdf_env) if os.path.isabs(_pdf_env) else (ROOT_DIR / _pdf_env).resolve())
+
+_idx_env = os.getenv("INDEX_DIR", "faiss_pdf_index")
+INDEX_BASE_DIR = str(Path(_idx_env) if os.path.isabs(_idx_env) else (ROOT_DIR / _idx_env).resolve())
+
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL", "AITeamVN/Vietnamese_Embedding")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "3000")) 
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "300"))

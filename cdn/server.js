@@ -3,7 +3,6 @@ const express = require('express');
 const app = express();
 const port = 3333;
 
-const request = require('request').defaults({ encoding: null });
 const url = require('url');
 const path = require('path');
 const fs = require('fs');
@@ -53,9 +52,22 @@ const ASSETS_ROOT = path.join(__dirname, 'assets');
 // Helpers
 function ensureDirSync(dirPath) { try { fs.mkdirSync(dirPath, { recursive: true }); } catch (_) { } }
 
+function safeNormalizeUrl(rawUrl) {
+  if (!rawUrl) return rawUrl;
+  try {
+    return new URL(rawUrl).href;
+  } catch (e) {
+    try {
+      return new URL(encodeURI(rawUrl)).href;
+    } catch (_) {
+      return rawUrl;
+    }
+  }
+}
+
 function parseCdnTargetToLocalPath(targetUrl) {
   try {
-    const u = new URL(targetUrl);
+    const u = new URL(safeNormalizeUrl(targetUrl));
     let p = decodeURIComponent(u.pathname || '');
     p = p.replace(/^\//, ''); // Remove leading slash
 
@@ -83,23 +95,31 @@ function parseCdnTargetToLocalPath(targetUrl) {
   } catch (e) { return null; }
 }
 
-function downloadToBuffer(fileUrl, headers = {}) {
-  return new Promise((resolve, reject) => {
-    request.get(
-      {
-        url: fileUrl, encoding: null, headers: Object.assign({
-          'User-Agent': 'Mozilla/5.0',
-          'Accept': '*/*',
-          'Cache-Control': 'no-cache'
-        }, headers)
-      },
-      (err, resp, body) => {
-        if (err) return reject(err);
-        if (!resp || resp.statusCode >= 400) return reject(new Error(`Download failed: ${resp && resp.statusCode}`));
-        resolve(Buffer.isBuffer(body) ? body : Buffer.from(body || ''));
-      }
-    );
-  });
+async function downloadToBuffer(fileUrl, headers = {}) {
+  const safeUrl = safeNormalizeUrl(fileUrl);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const resp = await fetch(safeUrl, {
+      signal: controller.signal,
+      headers: Object.assign({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Cache-Control': 'no-cache'
+      }, headers)
+    });
+    if (!resp.ok) {
+      const err = new Error(`Download failed: ${resp.status}`);
+      err.status = resp.status;
+      err.url = safeUrl;
+      throw err;
+    }
+    const arrayBuffer = await resp.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ——— CSS url() -> tuyệt đối về /assets/{host}/… để font/images không lệch ———
@@ -210,6 +230,7 @@ app.use('/', express.static(ASSETS_ROOT, {
 // Khi CSS (đã được Push) gọi url('font.woff'), trình duyệt sẽ nạp /assets/yenai.vn/...
 // Nếu file chưa có trên đĩa, tĩnh express.static sẽ bỏ qua. Route này sẽ "bắt" và Pull về.
 app.get(/^\/assets\/([^\/]+)\/(.+)$/, async (req, res, next) => {
+  let originUrl = '';
   try {
     const host = req.params[0];
     const rel = req.params[1];
@@ -222,11 +243,11 @@ app.get(/^\/assets\/([^\/]+)\/(.+)$/, async (req, res, next) => {
     if (host.includes('127.0.0.1') || host.includes('localhost') || host.startsWith('192.168.')) return next();
 
     const protocol = (host.includes('localhost') || host === '127.0.0.1') ? 'http' : 'https';
-    const originUrl = `${protocol}://${host}/${rel}${search}`;
+    originUrl = `${protocol}://${host}/${rel}${search}`;
     const ext = path.extname(rel).toLowerCase();
 
     if (ext && !ALLOWED_EXTS.includes(ext)) {
-      return res.redirect(302, originUrl);
+      return res.redirect(302, safeNormalizeUrl(originUrl));
     }
 
     const localAbs = path.join(ASSETS_ROOT, 'assets', host, rel);
@@ -241,12 +262,19 @@ app.get(/^\/assets\/([^\/]+)\/(.+)$/, async (req, res, next) => {
     res.setHeader('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=86400');
     return res.sendFile(localAbs);
   } catch (e) {
+    const targetUrl = e.url || originUrl || req.originalUrl;
+    if (e.status === 404) {
+      console.warn(`[PULL 404] Not found on origin: ${targetUrl}`);
+    } else {
+      console.error(`[PULL ERROR] Assets pull failed for ${targetUrl}:`, e.message || e);
+    }
     return next();
   }
 });
 
 // Pull-through: nếu file chưa có => tự tải từ origin, rewrite CSS url(), minify, lưu rồi trả
 app.get(/^\/([^\/]+)\/(.+)$/, async (req, res, next) => {
+  let originUrl = '';
   try {
     const host = req.params[0];
     if (['assets', 'public', 'upload', 'debug-log'].includes(host)) return next();
@@ -291,12 +319,12 @@ app.get(/^\/([^\/]+)\/(.+)$/, async (req, res, next) => {
     if (host.includes('127.0.0.1') || host.includes('localhost') || host.startsWith('192.168.')) return next();
 
     const protocol = (host.includes('localhost') || host === '127.0.0.1') ? 'http' : 'https';
-    const originUrl = `${protocol}://${host}/${mappedRel}${search}`;
+    originUrl = `${protocol}://${host}/${mappedRel}${search}`;
 
     // NẾU LÀ TỆP KHÔNG ĐƯỢC HỖ TRỢ (VÍ DỤ VIDEO MP4) -> CHUYỂN HƯỚNG VỀ NGUỒN GỐC ĐỂ KHÔNG BỊ LỖI WEB
     const ext = path.extname(mappedRel).toLowerCase();
     if (ext && !ALLOWED_EXTS.includes(ext)) {
-      return res.redirect(302, originUrl);
+      return res.redirect(302, safeNormalizeUrl(originUrl));
     }
     const buf = await downloadToBuffer(originUrl);
     ensureDirSync(path.dirname(localAbs));
@@ -310,7 +338,12 @@ app.get(/^\/([^\/]+)\/(.+)$/, async (req, res, next) => {
     res.setHeader('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=86400');
     return res.sendFile(localAbs);
   } catch (e) {
-    console.error('[PULL ERROR]', e);
+    const targetUrl = e.url || originUrl || req.originalUrl;
+    if (e.status === 404) {
+      console.warn(`[PULL 404] Not found on origin: ${targetUrl}`);
+    } else {
+      console.error(`[PULL ERROR] Failed pulling ${targetUrl}:`, e.message || e);
+    }
     return next(); // để static/404 xử lý
   }
 });

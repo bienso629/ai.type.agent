@@ -154,3 +154,21 @@ POST /v1/opera/scripts/make-profiles — gọi Opera_MakeProfiles_v2.ps1 (nếu 
 POST /v1/opera/scripts/open-range — gọi Open_Profiles_Range.ps1.
 
 POST /v1/opera/scripts/cleanup — gọi Cleanup_Profiles.ps1.
+
+## Quản lý Proxy Dân Cư (Residential Proxy)
+
+POST /v1/opera/profiles/proxy/import — Import danh sách Proxy hàng loạt (ip:port:user:pass hoặc http://user:pass@ip:port).
+
+GET /v1/opera/profiles/proxy/list — Xem danh sách Proxy đã phân bổ cho từng Profile.
+
+POST /v1/opera/profiles/proxy/set — Gán Proxy cho một Profile cụ thể.
+
+DELETE /v1/opera/profiles/proxy/remove — Xóa Proxy đã gán.
+
+## Làm sạch Session & Cookies
+
+POST /v1/opera/profiles/{profile}/clear-session — Xóa toàn bộ Cookie & Session của một profile.
+
+POST /v1/opera/profiles/clear-session-range — Xóa Cookie & Session của dải profile.
+
+

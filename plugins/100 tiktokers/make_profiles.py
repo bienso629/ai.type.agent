@@ -141,6 +141,34 @@ def _ignore_special_files(dirpath, filenames):
     return ignored
 
 
+def clean_profile_session(profile_dir: Path):
+    """Remove session databases, cookies, and local storage so cloned profiles start with a fresh login state."""
+    session_items = [
+        "Network/Cookies",
+        "Network/Cookies-journal",
+        "Network/Cookies-wal",
+        "Sessions",
+        "Local Storage",
+        "IndexedDB",
+        "Default/Network/Cookies",
+        "Default/Network/Cookies-journal",
+        "Default/Network/Cookies-wal",
+        "Default/Sessions",
+        "Default/Local Storage",
+        "Default/IndexedDB",
+    ]
+    for item in session_items:
+        p = profile_dir / item
+        if p.exists():
+            try:
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
 def format_profile_name(prefix: str, index: int, zero_pad: int) -> str:
     return f"{prefix}{index:0{zero_pad}d}"
 
@@ -157,9 +185,8 @@ def setup_base_profile(opera_bin: str, root_dir: Path, base_name: str):
     print(f"▶ Trình duyệt: {opera_bin}")
     print(f"=======================================================")
     print("👉 Hãy thực hiện trong cửa sổ Opera mới hiện lên:")
-    print("   1. Đăng nhập tài khoản TikTok / Facebook.")
-    print("   2. Bật VPN Opera hoặc cài đặt các Extension cần thiết.")
-    print("   3. Tùy chỉnh Cài đặt (Settings) theo nhu cầu.")
+    print("   1. Cài đặt các Extension cần thiết / Cấu hình VPN.")
+    print("   2. Tùy chỉnh Cài đặt (Settings) theo nhu cầu.")
     print("👉 Sau khi cài đặt xong, HÃY ĐÓNG CỬA SỔ OPERA.")
     print("-------------------------------------------------------\n")
 
@@ -188,7 +215,8 @@ def clone_profiles(
     start_idx: int,
     end_idx: int,
     zero_pad: int,
-    force: bool = False
+    force: bool = False,
+    clean_session: bool = True
 ):
     """Clone Base Profile (Profile000) to Profile001..Profile099."""
     base_dir = root_dir / base_name
@@ -202,7 +230,7 @@ def clone_profiles(
 
     total_to_create = (end_idx - start_idx) + 1
     print(f"\n=======================================================")
-    print(f"📦 BẮT ĐẦU NHÂN BẢN {total_to_create} PROFILE")
+    print(f"📦 BẮT ĐẦU NHÂN BẢN {total_to_create} PROFILE (Clear Session: {clean_session})")
     print(f"📂 Profile mẫu gốc: {base_dir}")
     print(f"🎯 Đích: Từ {format_profile_name(prefix, start_idx, zero_pad)} đến {format_profile_name(prefix, end_idx, zero_pad)}")
     print(f"=======================================================\n")
@@ -226,6 +254,8 @@ def clone_profiles(
             print(f"  [📋 CLONE] {base_name} -> {target_name}...", end="", flush=True)
             shutil.copytree(base_dir, target_dir, dirs_exist_ok=True, ignore=_ignore_special_files)
             clean_profile_locks(target_dir)
+            if clean_session:
+                clean_profile_session(target_dir)
             print(" [OK]")
             success_count += 1
         except Exception as e:
@@ -248,8 +278,9 @@ def main():
     parser.add_argument("--from", "-f", dest="start_idx", type=int, default=1, help="Chỉ số bắt đầu (Mặc định: 1)")
     parser.add_argument("--to", "-t", dest="end_idx", type=int, default=99, help="Chỉ số kết thúc (Mặc định: 99)")
     parser.add_argument("--zero-pad", "-z", type=int, default=3, help="Số chữ số (Mặc định: 3, ví dụ 001, 002...)")
-    parser.add_argument("--setup-base", action="store_true", help="Bật Profile000 mẫu để người dùng đăng nhập & cấu hình trước khi clone")
+    parser.add_argument("--setup-base", action="store_true", help="Bật Profile000 mẫu để người dùng cài đặt extension/cấu hình trước khi clone")
     parser.add_argument("--force", action="store_true", help="Ghi đè nếu Profile đã tồn tại")
+    parser.add_argument("--keep-session", action="store_true", help="Giữ nguyên cookie/session từ Profile000 (Mặc định sẽ làm sạch session khi clone)")
     parser.add_argument("--opera-path", type=str, default=None, help="Đường dẫn file thực thi Opera (Tùy chọn)")
 
     args = parser.parse_args()
@@ -272,7 +303,8 @@ def main():
             start_idx=args.start_idx,
             end_idx=args.end_idx,
             zero_pad=args.zero_pad,
-            force=args.force
+            force=args.force,
+            clean_session=not args.keep_session
         )
 
 

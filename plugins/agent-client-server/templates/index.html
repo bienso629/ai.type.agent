@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="vi" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tadu Cloud AI Agent Control Center - GLM-5.3</title>
+    <link rel="icon" type="image/jpeg" href="data:image/jpeg;base64,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">
+    
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5.3.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- FontAwesome 6.6.0 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    
+    <!-- Marked Markdown Parser CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Highlight.js CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <style>
+        :root {
+            --bs-body-bg: #0b0f19;
+            --bs-body-color: #e2e8f0;
+            --tadu-primary: #4f46e5;
+            --tadu-primary-hover: #4338ca;
+            --tadu-card-bg: #111827;
+            --tadu-sidebar-bg: #0d121f;
+            --tadu-border: #1e293b;
+            --tadu-input-bg: #070b14;
+            --tadu-radius: 6px;
+            --tadu-radius-sm: 4px;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bs-body-bg);
+            color: var(--bs-body-color);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        code, pre, .font-mono {
+            font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace !important;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Icon & Text Spacing Fixes */
+        .btn i, .btn svg {
+            margin-right: 6px !important;
+        }
+
+        .badge i {
+            margin-right: 4px !important;
+        }
+
+        .chat-action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.76rem;
+            color: #94a3b8;
+            text-decoration: none !important;
+            background: transparent;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .chat-action-btn:hover {
+            color: #f8fafc;
+            background-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .chat-action-btn i, .chat-action-btn svg {
+            margin-right: 0 !important;
+            font-size: 0.74rem;
+        }
+
+        .chat-action-btn.btn-retry {
+            color: #818cf8;
+        }
+
+        .chat-action-btn.btn-retry:hover {
+            color: #a5b4fc;
+            background-color: rgba(99, 102, 241, 0.12);
+        }
+
+        .chat-action-bar {
+            margin-top: 9px !important;
+            gap: 8px;
+        }
+
+        .icon-text-gap {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        
+        
+        /* Terminal Input Box Styling */
+        .terminal-input-box {
+            background-color: var(--tadu-input-bg);
+            border: 1px solid var(--tadu-border);
+            border-radius: var(--tadu-radius-sm);
+            transition: all 0.2s ease;
+        }
+
+        .terminal-input-box:focus-within {
+            border-color: rgba(99, 102, 241, 0.5) !important;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+        }
+
+        #terminal-input,
+        #terminal-input:focus,
+        #terminal-input:active {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            background-color: transparent !important;
+        }
+
+        /* Main Container Full Width Styling */
+        .main-container {
+            flex: 1 1 0%;
+            min-width: 0;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: var(--bs-body-bg);
+        }
+
+        #tab-chat, #tab-server, #tab-terminal, #tab-logs, #tab-settings {
+            width: 100% !important;
+            min-width: 0 !important;
+        }
+
+        /* Sidebar Styling */
+        .sidebar-container {
+            width: 260px;
+            background-color: var(--tadu-sidebar-bg);
+            border-right: 1px solid var(--tadu-border);
+            height: 100vh;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+        }
+
+        .sidebar-nav {
+            padding: 0 14px !important;
+        }
+
+        .tadu-nav-btn {
+            color: #94a3b8;
+            border-radius: var(--tadu-radius-sm);
+            padding: 10px 14px;
+            font-size: 0.86rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            border: none;
+            background: transparent;
+            text-align: left;
+            transition: all 0.15s ease;
+            margin-bottom: 4px;
+        }
+
+        .tadu-nav-btn i {
+            margin-right: 0 !important;
+            flex-shrink: 0;
+        }
+
+        .tadu-nav-btn:hover {
+            color: #ffffff;
+            background-color: #1e293b;
+        }
+
+        .tadu-nav-btn.active {
+            color: #ffffff;
+            background-color: var(--tadu-primary);
+            font-weight: 600;
+        }
+
+        .tadu-card {
+            background-color: var(--tadu-card-bg);
+            border: 1px solid var(--tadu-border);
+            border-radius: var(--tadu-radius);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .live-pulse {
+            animation: pulse-dot 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Chat Bubbles */
+        .chat-bubble-ai {
+            background-color: var(--tadu-card-bg);
+            border: 1px solid var(--tadu-border);
+            border-radius: var(--tadu-radius);
+            color: #e2e8f0;
+            padding: 16px 20px;
+            line-height: 1.6;
+        }
+
+        .chat-bubble-user {
+            background-color: var(--tadu-primary);
+            border-radius: var(--tadu-radius);
+            color: #ffffff;
+            padding: 12px 18px;
+            line-height: 1.5;
+        }
+
+        .chat-input-box {
+            background-color: var(--tadu-card-bg);
+            border: 1px solid var(--tadu-border);
+            border-radius: var(--tadu-radius-sm);
+            transition: all 0.2s ease;
+        }
+
+        .chat-input-box:focus-within {
+            border-color: rgba(99, 102, 241, 0.5) !important;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12) !important;
+        }
+
+        .chat-input-box textarea,
+        .chat-input-box textarea:focus,
+        .chat-input-box textarea:active,
+        #chat-input,
+        #chat-input:focus,
+        #chat-input:active {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            background-color: transparent !important;
+            border-radius: 0 !important;
+        }
+
+        .prose p:last-child { margin-bottom: 0; }
+        .prose p { margin-bottom: 0.6rem; }
+        .prose ul, .prose ol { margin-left: 1.25rem; margin-bottom: 0.6rem; }
+        .prose li { margin-bottom: 0.25rem; }
+
+        .prose pre {
+            background-color: #030712 !important;
+            border-radius: var(--tadu-radius-sm);
+            padding: 12px 16px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+
+        .prose code {
+            color: #38bdf8;
+            padding: 2px 6px;
+            background: rgba(56, 189, 248, 0.1);
+            border-radius: var(--tadu-radius-sm);
+            font-size: 0.85em;
+        }
+
+        .tool-call-box {
+            background-color: #030712;
+            border-left: 3px solid #38bdf8;
+            border-radius: var(--tadu-radius-sm);
+            padding: 12px 16px;
+        }
+
+        /* Form Inputs */
+        .form-control, .form-select {
+            background-color: var(--tadu-input-bg) !important;
+            border: 1px solid var(--tadu-border) !important;
+            color: #f1f5f9 !important;
+            border-radius: var(--tadu-radius-sm);
+            padding: 9px 14px;
+            font-size: 0.85rem;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--tadu-primary) !important;
+            box-shadow: none !important;
+        }
+
+        .form-label {
+            font-weight: 500;
+            font-size: 0.78rem;
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+
+        /* Buttons */
+        .btn {
+            border-radius: var(--tadu-radius-sm) !important;
+            font-size: 0.82rem;
+            font-weight: 500;
+            padding: 8px 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-primary {
+            background-color: var(--tadu-primary);
+            border-color: var(--tadu-primary);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--tadu-primary-hover);
+            border-color: var(--tadu-primary-hover);
+        }
+
+        .btn-group-custom {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px !important;
+        }
+
+        .toast-container-custom {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 2000;
+        }
+    </style>
+</head>
+<body class="d-flex">
+
+    <!-- ============================================================= -->
+    <!-- SIDEBAR NAVIGATION -->
+    <!-- ============================================================= -->
+    <aside class="sidebar-container">
+        <div>
+            <!-- Brand Logo -->
+            <div class="p-3 border-bottom border-secondary-subtle d-flex align-items-center gap-3" style="border-color: var(--tadu-border) !important;">
+                <img src="data:image/jpeg;base64,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" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 38px; height: 38px; object-fit: cover;">
+                <div class="overflow-hidden">
+                    <div class="fw-bold d-flex align-items-center gap-2 text-white" style="font-size: 0.92rem;">
+                        <span>Tadu Cloud</span>
+                        <span class="badge text-bg-primary rounded-1" style="font-size: 0.62rem; background-color: rgba(99, 102, 241, 0.25) !important; color: #a5b4fc !important;">GLM-5.3</span>
+                    </div>
+                    <small class="text-secondary text-truncate d-block" style="font-size: 0.7rem;">Control Center</small>
+                </div>
+            </div>
+
+            <!-- Server Status Widget -->
+            <div class="p-3 mx-3 my-3 rounded-1 d-flex align-items-center justify-content-between" style="background-color: rgba(3, 7, 18, 0.6); border: 1px solid var(--tadu-border);">
+                <div class="d-flex align-items-center overflow-hidden" style="gap: 10px;">
+                    <span id="sidebar-status-dot" class="live-dot bg-warning live-pulse"></span>
+                    <div class="overflow-hidden">
+                        <div id="sidebar-status-text" class="fw-semibold text-white text-truncate" style="font-size: 0.75rem;">Đang kiểm tra...</div>
+                        <small id="sidebar-server-ip" class="text-secondary font-mono text-truncate d-block" style="font-size: 0.7rem;">127.0.0.1</small>
+                    </div>
+                </div>
+                <button onclick="refreshAllStatus()" class="btn btn-sm btn-link text-secondary p-1 text-decoration-none" title="Làm mới trạng thái">
+                    <i class="fa-solid fa-rotate-right" style="font-size: 0.8rem; margin-right: 0 !important;"></i>
+                </button>
+            </div>
+
+            <!-- Nav Tabs -->
+            <nav class="sidebar-nav d-flex flex-column gap-1">
+                <button onclick="switchTab('chat')" id="nav-chat" class="tadu-nav-btn active">
+                    <i class="fa-solid fa-comments text-center" style="width: 20px;"></i>
+                    <span>Trò Chuyện AI</span>
+                </button>
+
+                <button onclick="switchTab('server')" id="nav-server" class="tadu-nav-btn">
+                    <i class="fa-solid fa-server text-center" style="width: 20px;"></i>
+                    <span>Quản Lý Server & Deploy</span>
+                </button>
+
+                <button onclick="switchTab('terminal')" id="nav-terminal" class="tadu-nav-btn">
+                    <i class="fa-solid fa-terminal text-center" style="width: 20px;"></i>
+                    <span>SSH Terminal</span>
+                </button>
+
+                <button onclick="switchTab('logs')" id="nav-logs" class="tadu-nav-btn">
+                    <i class="fa-solid fa-file-lines text-center" style="width: 20px;"></i>
+                    <span>Nhật Ký Service (Logs)</span>
+                </button>
+
+                <button onclick="switchTab('settings')" id="nav-settings" class="tadu-nav-btn">
+                    <i class="fa-solid fa-gear text-center" style="width: 20px;"></i>
+                    <span>Cấu Hình Hệ Thống</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-3 px-4 border-top d-flex align-items-center justify-content-between text-secondary" style="border-color: var(--tadu-border) !important; font-size: 0.72rem;">
+            <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-shield-halved text-success" style="margin-right: 0 !important;"></i>
+                <span>Tadu Cloud Desktop</span>
+            </div>
+            <span class="font-mono text-secondary" style="font-size: 0.7rem;">v1.3.0</span>
+        </div>
+    </aside>
+
+    <!-- ============================================================= -->
+    <!-- MAIN CONTENT AREA -->
+    <!-- ============================================================= -->
+    <main class="main-container">
+
+        <!-- ============================================================= -->
+        <!-- TAB 1: CHAT VỚI AI AGENT -->
+        <!-- ============================================================= -->
+        <section id="tab-chat" class="d-flex flex-column h-100">
+            <!-- Topbar Header -->
+            <div class="px-4 py-3 border-bottom d-flex align-items-center justify-content-between" style="border-color: var(--tadu-border) !important;">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="live-dot bg-success live-pulse"></span>
+                    <div>
+                        <div class="fw-semibold text-white d-flex align-items-center gap-2" style="font-size: 0.88rem;">
+                            <span>Tadu Cloud AI Assistant</span>
+                            <span id="chat-model-badge" class="badge text-bg-dark rounded-1" style="font-size: 0.68rem; color: #a5b4fc; background-color: #1e293b !important;">glm-5.3</span>
+                        </div>
+                        <small class="text-secondary" style="font-size: 0.72rem;">Có quyền thực thi lệnh bash an toàn trên máy chủ Linux</small>
+                    </div>
+                </div>
+
+                <div>
+                    <button onclick="clearChatHistory()" class="btn btn-sm btn-outline-secondary px-3 py-2" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-trash-can"></i>
+                        <span>Xoá hội thoại</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Chat Message List -->
+            <div id="chat-messages" class="flex-grow-1 overflow-y-auto px-4 py-3 d-flex flex-column gap-3">
+                <!-- Welcome Greeting Message -->
+                <div class="d-flex align-items-start gap-3 w-100">
+                    <img src="data:image/jpeg;base64,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" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                    <div class="chat-bubble-ai prose">
+                        <p class="mb-1">👋 Xin chào! Tôi là <strong>Tadu Cloud AI Agent (GLM-5.3)</strong> kết nối trực tiếp với Server của bạn.</p>
+                        <p class="mb-3 text-secondary" style="font-size: 0.85rem;">Tôi có thể giải đáp thắc mắc, phân tích hệ thống và <strong>tự động chạy lệnh Terminal</strong> khi bạn yêu cầu!</p>
+                        <div class="pt-3 border-top" style="border-color: var(--tadu-border) !important;">
+                            <div class="text-secondary fw-semibold mb-2" style="font-size: 0.75rem;">GỢI Ý CÂU LỆNH MẪU:</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button onclick="quickPrompt('Kiểm tra dung lượng ổ đĩa và RAM hiện tại')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-chart-pie text-info"></i> Kiểm tra RAM & Ổ đĩa</button>
+                                <button onclick="quickPrompt('Xem danh sách tiến trình đang chạy và chiếm nhiều CPU nhất')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-bolt text-warning"></i> Top tiến trình CPU</button>
+                                <button onclick="quickPrompt('Kiểm tra các cổng mạng đang mở (listening ports)')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-network-wired text-primary"></i> Cổng đang mở</button>
+                                <button onclick="quickPrompt('Kiểm tra trạng thái service nginx và uvicorn')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-arrows-rotate text-success"></i> Trạng thái Services</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input Bar (Textarea + Inner Attach & Send Buttons) -->
+            <div class="p-3 border-top d-flex justify-content-center" style="border-color: var(--tadu-border) !important;">
+                <form id="chat-form" onsubmit="handleChatSubmit(event)" class="w-100">
+                    <!-- Hidden file input for Attachments -->
+                    <input type="file" id="file-picker" multiple style="display: none;" onchange="handleFileSelect(event)">
+                    
+                    <div class="chat-input-box p-3 d-flex flex-column" style="gap: 8px;">
+                        <!-- Attachment Chips Container -->
+                        <div id="attachment-list" class="d-none d-flex flex-wrap gap-2 pb-2 mb-1 border-bottom" style="border-color: var(--tadu-border) !important;"></div>
+
+                        <!-- Multi-line Textarea -->
+                        <textarea 
+                            id="chat-input" 
+                            rows="2" 
+                            placeholder="Nhập yêu cầu hoặc câu hỏi cho AI Agent (Shift+Enter xuống dòng)..."
+                            class="form-control p-0 border-0 bg-transparent text-white"
+                            style="resize: none; font-size: 0.88rem; min-height: 48px; max-height: 180px; box-shadow: none !important; line-height: 1.5;"
+                            oninput="autoResizeTextarea(this)"
+                            onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if(!isChatGenerating) handleChatSubmit(event); }"
+                        ></textarea>
+
+                        <!-- Bottom Controls Inside Textarea Box -->
+                        <div class="d-flex align-items-center justify-content-between pt-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center" onclick="document.getElementById('file-picker').click()" title="Đính kèm file (Code, Log, Txt, Config...)">
+                                    <i class="fa-solid fa-paperclip text-info me-2"></i>
+                                    <span>Attach files</span>
+                                </button>
+                                <small class="text-secondary d-none d-sm-inline" style="font-size: 0.73rem;">(Hỗ trợ code, log, config, txt)</small>
+                            </div>
+
+                            <button type="submit" id="btn-send" class="btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center">
+                                <i class="fa-solid fa-paper-plane me-1.5"></i>
+                                <span>Gửi</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- TAB 2: QUẢN LÝ SERVER & DEPLOY -->
+        <!-- ============================================================= -->
+        <section id="tab-server" class="d-none flex-grow-1 overflow-y-auto p-4 w-100">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <div>
+                    <h5 class="fw-bold text-white mb-1">Quản Lý Máy Chủ & Dịch Vụ Systemd</h5>
+                    <small class="text-secondary" style="font-size: 0.8rem;">Triển khai code lên VPS/Server và quản lý tiến trình nền</small>
+                </div>
+                <button onclick="fetchSystemInfo()" class="btn btn-outline-light btn-sm px-3 py-2">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span>Cập nhật</span>
+                </button>
+            </div>
+
+            <!-- Server Status Cards Grid -->
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-3">
+                    <div class="tadu-card p-4 h-100">
+                        <div class="d-flex align-items-center justify-content-between text-secondary mb-2" style="font-size: 0.78rem;">
+                            <span>Trạng thái Service</span>
+                            <span id="card-service-dot" class="live-dot bg-warning live-pulse"></span>
+                        </div>
+                        <div id="card-service-status" class="fs-5 fw-bold text-warning mb-1">Đang kiểm tra...</div>
+                        <small class="text-secondary font-mono" style="font-size: 0.7rem;">ai-agent.service</small>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <div class="tadu-card p-4 h-100">
+                        <div class="d-flex align-items-center justify-content-between text-secondary mb-2" style="font-size: 0.78rem;">
+                            <span>Địa chỉ Máy Chủ</span>
+                            <i class="fa-solid fa-globe text-info" style="margin-right: 0 !important;"></i>
+                        </div>
+                        <div id="card-server-ip" class="fs-5 fw-bold text-white mb-1 font-mono">127.0.0.1</div>
+                        <small class="text-secondary font-mono" style="font-size: 0.7rem;">Cổng API: <span id="card-api-port">8000</span></small>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <div class="tadu-card p-4 h-100">
+                        <div class="d-flex align-items-center justify-content-between text-secondary mb-2" style="font-size: 0.78rem;">
+                            <span>Mô hình AI</span>
+                            <i class="fa-solid fa-microchip text-primary" style="margin-right: 0 !important;"></i>
+                        </div>
+                        <div id="card-ai-model" class="fs-5 fw-bold text-white mb-1">glm-5.3</div>
+                        <small class="text-secondary" style="font-size: 0.7rem;">Function Calling</small>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <div class="tadu-card p-4 h-100">
+                        <div class="d-flex align-items-center justify-content-between text-secondary mb-2" style="font-size: 0.78rem;">
+                            <span>Thời gian chạy (Uptime)</span>
+                            <i class="fa-solid fa-clock text-success" style="margin-right: 0 !important;"></i>
+                        </div>
+                        <div id="card-uptime" class="fw-bold text-white mb-1" style="font-size: 0.95rem;">--</div>
+                        <small id="card-os" class="text-secondary font-mono" style="font-size: 0.7rem;">Linux</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Service Action Buttons -->
+            <div class="tadu-card p-4 mb-4">
+                <h6 class="fw-semibold text-white mb-3 icon-text-gap" style="font-size: 0.85rem;">
+                    <i class="fa-solid fa-power-off text-primary"></i>
+                    <span>Điều Khiển Dịch Vụ AI Agent (Systemd)</span>
+                </h6>
+                <div class="btn-group-custom">
+                    <button onclick="handleServiceAction('start')" class="btn btn-success btn-sm px-4 py-2">
+                        <i class="fa-solid fa-play"></i>
+                        <span>Khởi Động</span>
+                    </button>
+                    <button onclick="handleServiceAction('restart')" class="btn btn-warning btn-sm px-4 py-2 text-dark fw-bold">
+                        <i class="fa-solid fa-rotate-right"></i>
+                        <span>Khởi Động Lại</span>
+                    </button>
+                    <button onclick="handleServiceAction('stop')" class="btn btn-danger btn-sm px-4 py-2">
+                        <i class="fa-solid fa-stop"></i>
+                        <span>Tắt</span>
+                    </button>
+                    <button onclick="handleServiceAction('status')" class="btn btn-secondary btn-sm px-4 py-2">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>Chi Tiết Status</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 1-Click Deploy Section -->
+            <div class="tadu-card p-4 mb-4">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div>
+                        <h6 class="fw-semibold text-white mb-1 icon-text-gap" style="font-size: 0.85rem;">
+                            <i class="fa-solid fa-cloud-arrow-up text-info"></i>
+                            <span>1-Click Deploy & Tự Động Thiết Lập Trọn Gói</span>
+                        </h6>
+                        <small class="text-secondary d-block mt-1" style="font-size: 0.78rem; line-height: 1.5;">Tự động cài đặt thư viện Python, upload file code<br>và khởi tạo Systemd service trên VPS</small>
+                    </div>
+                    <button id="btn-deploy" onclick="startDeploy()" class="btn btn-primary px-4 py-2">
+                        <i class="fa-solid fa-rocket"></i>
+                        <span>Bắt đầu Deploy</span>
+                    </button>
+                </div>
+
+                <!-- Deploy Output Box -->
+                <div id="deploy-console" class="d-none bg-black rounded-1 p-4 font-mono text-secondary" style="font-size: 0.78rem; max-height: 200px; overflow-y: auto; line-height: 1.6;"></div>
+            </div>
+
+            <!-- Server Resource Metrics -->
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <div class="tadu-card p-4">
+                        <h6 class="fw-semibold text-white mb-3 icon-text-gap" style="font-size: 0.82rem;">
+                            <i class="fa-solid fa-hard-drive text-info"></i>
+                            <span>Dung lượng Ổ đĩa (Disk Usage)</span>
+                        </h6>
+                        <pre id="sys-disk" class="bg-black text-light p-3 rounded-1 mb-0 font-mono" style="font-size: 0.75rem;">Đang tải...</pre>
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="tadu-card p-4">
+                        <h6 class="fw-semibold text-white mb-3 icon-text-gap" style="font-size: 0.82rem;">
+                            <i class="fa-solid fa-memory text-primary"></i>
+                            <span>Bộ nhớ RAM (Memory Usage)</span>
+                        </h6>
+                        <pre id="sys-mem" class="bg-black text-light p-3 rounded-1 mb-0 font-mono" style="font-size: 0.75rem;">Đang tải...</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- TAB 3: REMOTE SSH TERMINAL -->
+        <!-- ============================================================= -->
+        <section id="tab-terminal" class="d-none flex-grow-1 d-flex flex-column h-100 p-4">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <div>
+                    <h6 class="fw-bold text-white mb-1 icon-text-gap">
+                        <i class="fa-solid fa-terminal text-success"></i>
+                        <span>Remote SSH Terminal Console</span>
+                    </h6>
+                    <small class="text-secondary d-block mt-1" style="font-size: 0.75rem; line-height: 1.5;">Thực thi lệnh shell trực tiếp trên máy chủ<br>qua kết nối SSH an toàn</small>
+                </div>
+                <button onclick="clearTerminalLog()" class="btn btn-sm btn-outline-secondary px-3 py-2">
+                    <i class="fa-solid fa-eraser"></i>
+                    <span>Xoá màn hình</span>
+                </button>
+            </div>
+
+            <!-- Terminal Output Window -->
+            <div id="terminal-screen" class="flex-grow-1 bg-black rounded-1 p-4 font-mono overflow-y-auto mb-3" style="font-size: 0.82rem; color: #38bdf8; line-height: 1.6;">
+                <div class="text-secondary">=== Tadu Cloud Remote SSH Terminal Console Sẵn Sàng ===</div>
+            </div>
+
+            <!-- Command Input Bar -->
+            <form id="terminal-form" onsubmit="executeTerminalCommand(event)">
+                <div class="terminal-input-box d-flex align-items-center p-2 rounded-1">
+                    <span class="text-success font-mono px-3 fw-bold flex-shrink-0" style="font-size: 0.84rem;">root@server:~#</span>
+                    <input type="text" id="terminal-input" placeholder="Nhập lệnh shell (vd: ls -la, df -h, systemctl status nginx)..." class="form-control p-0 border-0 bg-transparent font-mono text-white flex-grow-1" style="font-size: 0.84rem; outline: none; box-shadow: none !important;">
+                    <button type="submit" class="btn btn-primary px-3 py-1.5 ms-2 flex-shrink-0 d-inline-flex align-items-center">
+                        <i class="fa-solid fa-play me-1.5" style="font-size: 0.75rem;"></i>
+                        <span>Chạy</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- TAB 4: NHẬT KÝ SERVICE (LOGS) -->
+        <!-- ============================================================= -->
+        <section id="tab-logs" class="d-none flex-grow-1 d-flex flex-column h-100 p-4">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <div>
+                    <h6 class="fw-bold text-white mb-1 icon-text-gap">
+                        <i class="fa-solid fa-file-lines text-warning"></i>
+                        <span>Nhật Ký Dịch Vụ Systemd (Journalctl Logs)</span>
+                    </h6>
+                    <small class="text-secondary" style="font-size: 0.75rem;">Nhật ký realtime của tiến trình <code>ai-agent.service</code></small>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="form-check form-switch mb-0 d-flex align-items-center gap-2">
+                        <input class="form-check-input" type="checkbox" id="auto-refresh-logs">
+                        <label class="form-check-label text-secondary fw-medium" for="auto-refresh-logs" style="font-size: 0.78rem;">Tự động làm mới (3s)</label>
+                    </div>
+                    <button onclick="fetchServiceLogs()" class="btn btn-sm btn-outline-secondary px-3 py-2">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span>Làm mới</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Logs Display Screen -->
+            <div class="flex-grow-1 bg-black rounded-1 p-4 font-mono overflow-y-auto" style="font-size: 0.78rem;">
+                <pre id="logs-content" class="text-light mb-0" style="white-space: pre-wrap; word-break: break-all; line-height: 1.6;">Đang tải nhật ký...</pre>
+            </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- TAB 5: CÀI ĐẶT CẤU HÌNH (SETTINGS) -->
+        <!-- ============================================================= -->
+        <section id="tab-settings" class="d-none flex-grow-1 overflow-y-auto p-4 w-100">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <div>
+                    <h5 class="fw-bold text-white mb-1">Cấu Hình Kết Nối & Thông Số Hệ Thống</h5>
+                    <small class="text-secondary" style="font-size: 0.8rem;">Thông tin được lưu an toàn tại file <code>config.json</code></small>
+                </div>
+                <button onclick="saveSettings()" class="btn btn-primary px-4 py-2 fw-bold">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Lưu Cấu Hình</span>
+                </button>
+            </div>
+
+            <div class="d-flex flex-column gap-3">
+                <!-- Group 1: Remote Server SSH -->
+                <div class="tadu-card p-4">
+                    <h6 class="fw-bold text-light pb-3 mb-3 border-bottom icon-text-gap" style="border-color: var(--tadu-border) !important; font-size: 0.88rem;">
+                        <i class="fa-solid fa-server text-info"></i>
+                        <span>1. Thông Tin Máy Chủ Remote SSH</span>
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Địa chỉ Server IP</label>
+                            <input type="text" id="cfg-server-ip" placeholder="192.168.1.100" class="form-control">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Cổng SSH (Port)</label>
+                            <input type="number" id="cfg-ssh-port" placeholder="22" class="form-control">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">SSH Username</label>
+                            <input type="text" id="cfg-ssh-user" placeholder="root" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">SSH Mật Khẩu (Password)</label>
+                            <input type="password" id="cfg-ssh-pass" placeholder="••••••••••••" class="form-control">
+                        </div>
+                    </div>
+                    <div class="mt-3 text-end">
+                        <button onclick="testSSH()" class="btn btn-outline-info btn-sm px-4 py-2">
+                            <i class="fa-solid fa-plug"></i>
+                            <span>Kiểm Tra Kết Nối SSH</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Group 2: AI Model & Proxy API -->
+                <div class="tadu-card p-4">
+                    <h6 class="fw-bold text-light pb-3 mb-3 border-bottom icon-text-gap" style="border-color: var(--tadu-border) !important; font-size: 0.88rem;">
+                        <i class="fa-solid fa-microchip text-primary"></i>
+                        <span>2. Cấu Hình AI Model & Proxy API</span>
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">AI Model Name</label>
+                            <input type="text" id="cfg-ai-model" value="glm-5.3" class="form-control">
+                            <small class="text-secondary mt-1 d-block" style="font-size: 0.72rem;">Mặc định thiết lập là <strong>glm-5.3</strong></small>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Proxy Base URL</label>
+                            <input type="text" id="cfg-proxy-base-url" placeholder="https://openrouter.ai/api/v1" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Proxy API Key</label>
+                            <input type="password" id="cfg-proxy-api-key" placeholder="sk-or-v1-..." class="form-control">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Group 3: Security & Service -->
+                <div class="tadu-card p-4">
+                    <h6 class="fw-bold text-light pb-3 mb-3 border-bottom icon-text-gap" style="border-color: var(--tadu-border) !important; font-size: 0.88rem;">
+                        <i class="fa-solid fa-shield-halved text-success"></i>
+                        <span>3. Bảo Mật & Thông Số Service</span>
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Cổng API Service (Port)</label>
+                            <input type="number" id="cfg-api-port" value="8000" class="form-control">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Thư mục Remote Deploy</label>
+                            <input type="text" id="cfg-remote-dir" value="/opt/ai_agent" class="form-control">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Mã Token Bảo Mật</label>
+                            <input type="text" id="cfg-secret-token" value="super_secret_token_123" class="form-control">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container-custom d-flex flex-column gap-2"></div>
+
+    <!-- Bootstrap 5.3.3 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // State
+        let chatHistory = [];
+        let logInterval = null;
+        let selectedFiles = [];
+
+        function autoResizeTextarea(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+        }
+
+        async function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+            for (const file of files) {
+                try {
+                    const text = await readFileAsText(file);
+                    selectedFiles.push({
+                        name: file.name,
+                        content: text,
+                        size: file.size
+                    });
+                } catch (err) {
+                    showToast(`Không thể đọc file ${file.name}: ${err.message}`, 'error');
+                }
+            }
+            e.target.value = '';
+            renderAttachments();
+        }
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (ev) => resolve(ev.target.result);
+                reader.onerror = (err) => reject(err);
+                reader.readAsText(file);
+            });
+        }
+
+        function renderAttachments() {
+            const list = document.getElementById('attachment-list');
+            if (selectedFiles.length === 0) {
+                list.classList.add('d-none');
+                list.innerHTML = '';
+                return;
+            }
+            list.classList.remove('d-none');
+            list.innerHTML = selectedFiles.map((f, idx) => `
+                <div class="badge text-bg-dark border border-secondary px-3 py-2 rounded-1 d-flex align-items-center gap-2" style="font-size: 0.75rem;">
+                    <i class="fa-solid fa-file-code text-info"></i>
+                    <span class="font-mono">${escapeHtml(f.name)}</span>
+                    <button type="button" onclick="removeAttachment(${idx})" class="btn btn-link text-danger p-0 text-decoration-none ms-1" style="font-size: 0.75rem;" title="Gỡ file">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function removeAttachment(idx) {
+            selectedFiles.splice(idx, 1);
+            renderAttachments();
+        }
+
+        // Custom Toast Notification Function
+        
+        // Reusable Bootstrap Confirm Dialog
+        function showConfirmDialog({ title = "Xác nhận thao tác", message = "Bạn có chắc chắn muốn tiếp tục?", confirmText = "Đồng ý", cancelText = "Huỷ bỏ", type = "primary", icon = "fa-circle-question" }) {
+            return new Promise((resolve) => {
+                const modalEl = document.getElementById('taduConfirmModal');
+                const modal = new bootstrap.Modal(modalEl);
+                
+                document.getElementById('confirm-modal-title').innerText = title;
+                document.getElementById('confirm-modal-message').innerText = message;
+                
+                const confirmBtn = document.getElementById('confirm-modal-btn-confirm');
+                const cancelBtn = document.getElementById('confirm-modal-btn-cancel');
+                const iconWrapper = document.getElementById('confirm-modal-icon-wrapper');
+                const iconEl = document.getElementById('confirm-modal-icon');
+                
+                confirmBtn.className = `btn btn-${type} px-4 py-2 d-inline-flex align-items-center`;
+                confirmBtn.innerHTML = `<i class="fa-solid fa-check me-1.5"></i> <span>${escapeHtml(confirmText)}</span>`;
+                cancelBtn.innerHTML = `<i class="fa-solid fa-xmark me-1.5"></i> <span>${escapeHtml(cancelText)}</span>`;
+                iconEl.className = `fa-solid ${icon} fa-2xl`;
+                
+                if (type === 'danger') {
+                    iconWrapper.style.background = 'rgba(239, 68, 68, 0.15)';
+                    iconWrapper.style.color = '#ef4444';
+                } else if (type === 'warning') {
+                    iconWrapper.style.background = 'rgba(245, 158, 11, 0.15)';
+                    iconWrapper.style.color = '#f59e0b';
+                } else {
+                    iconWrapper.style.background = 'rgba(99, 102, 241, 0.15)';
+                    iconWrapper.style.color = 'var(--tadu-primary)';
+                }
+
+                let isConfirmed = false;
+
+                const onConfirm = () => {
+                    isConfirmed = true;
+                    modal.hide();
+                };
+
+                const onHidden = () => {
+                    confirmBtn.removeEventListener('click', onConfirm);
+                    modalEl.removeEventListener('hidden.bs.modal', onHidden);
+                    resolve(isConfirmed);
+                };
+
+                confirmBtn.addEventListener('click', onConfirm);
+                modalEl.addEventListener('hidden.bs.modal', onHidden);
+
+                modal.show();
+            });
+        }
+
+        // Reusable Bootstrap Info/Output Modal
+        function showInfoModal(title, text) {
+            document.getElementById('info-modal-title').innerHTML = `<i class="fa-solid fa-circle-info text-info"></i> <span>${escapeHtml(title)}</span>`;
+            document.getElementById('info-modal-content').innerText = text || '';
+            const modal = new bootstrap.Modal(document.getElementById('taduInfoModal'));
+            modal.show();
+        }
+
+        function showToast(msg, type = "info") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgClass = "bg-dark border-secondary text-white";
+            let icon = "fa-circle-info text-info";
+            if (type === "success") {
+                bgClass = "bg-success text-white border-success";
+                icon = "fa-circle-check";
+            } else if (type === "error") {
+                bgClass = "bg-danger text-white border-danger";
+                icon = "fa-triangle-exclamation";
+            }
+
+            toast.className = `p-3 rounded-1 shadow border d-flex align-items-center gap-3 ${bgClass}`;
+            toast.style.minWidth = "300px";
+            toast.style.maxWidth = "460px";
+            toast.style.fontSize = "0.85rem";
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(msg)}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.transition = "opacity 0.3s ease";
+                toast.style.opacity = "0";
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        // Switch Navigation Tabs
+        function switchTab(tabId) {
+            const tabs = ['chat', 'server', 'terminal', 'logs', 'settings'];
+            tabs.forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                const nav = document.getElementById(`nav-${t}`);
+                if (t === tabId) {
+                    el.classList.remove('d-none');
+                    nav.classList.add('active');
+                } else {
+                    el.classList.add('d-none');
+                    nav.classList.remove('active');
+                }
+            });
+
+            if (tabId === 'logs') fetchServiceLogs();
+            if (tabId === 'server') fetchSystemInfo();
+            if (tabId === 'settings') loadSettings();
+        }
+
+        // Quick Prompts
+        function quickPrompt(text) {
+            document.getElementById('chat-input').value = text;
+            handleChatSubmit(new Event('submit'));
+        }
+
+        // Clear Chat History
+        function clearChatHistory() {
+            chatHistory = [];
+            selectedFiles = [];
+            renderAttachments();
+            document.getElementById('chat-messages').innerHTML = `
+                <div class="d-flex align-items-start gap-3 w-100">
+                    <img src="data:image/jpeg;base64,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" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                    <div class="chat-bubble-ai prose">
+                        <p class="mb-0 text-secondary">Hội thoại đã được xoá sạch. Tôi sẵn sàng cho các yêu cầu mới!</p>
+                    </div>
+                </div>
+            `;
+            showToast("Đã dọn dẹp lịch sử trò chuyện!", "info");
+        }
+
+
+        // Time & Action helpers for Chat Messages
+        function formatTime(timeStr) {
+            if (!timeStr) {
+                const now = new Date();
+                return now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            }
+            try {
+                let d = new Date(timeStr);
+                if (isNaN(d.getTime())) {
+                    d = new Date(timeStr.replace(' ', 'T') + 'Z');
+                }
+                if (isNaN(d.getTime())) return timeStr;
+                return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' - ' + d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+            } catch (e) {
+                return timeStr;
+            }
+        }
+
+        async function copyText(btn, text) {
+            if (!text) return;
+            try {
+                await navigator.clipboard.writeText(text);
+                const origHtml = btn.innerHTML;
+                btn.innerHTML = `<i class="fa-solid fa-check text-success"></i> <span class="text-success">Đã sao chép</span>`;
+                showToast("Đã sao chép nội dung vào bộ nhớ tạm!", "success");
+                setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
+            } catch (err) {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast("Đã sao chép nội dung!", "success");
+            }
+        }
+
+        function retryQuestion(question) {
+            if (!question) return;
+            const input = document.getElementById('chat-input');
+            input.value = question;
+            input.focus();
+            showToast("Đang gửi lại yêu cầu cho AI Agent...", "info");
+            handleChatSubmit(new Event('submit'));
+        }
+
+        // Load Chat History from SQLite
+        async function loadChatHistory() {
+            try {
+                const res = await fetch('/api/chat/history');
+                const data = await res.json();
+                if (data.status === 'success' && data.messages && data.messages.length > 0) {
+                    const container = document.getElementById('chat-messages');
+                    container.innerHTML = '';
+                    chatHistory = [];
+                    data.messages.forEach(msg => {
+                        chatHistory.push({ role: msg.role, content: msg.content });
+                        if (msg.role === 'user') {
+                            appendUserMessage(msg.content, msg.attachments, msg.created_at);
+                        } else if (msg.role === 'assistant') {
+                            appendAiMessage(msg.content, msg.tool_calls, msg.created_at);
+                        }
+                    });
+                    container.scrollTop = container.scrollHeight;
+                }
+            } catch (e) {
+                console.error("Lỗi tải lịch sử chat từ SQLite:", e);
+            }
+        }
+
+                        // Global state for chat generation & abort controller
+        let isChatGenerating = false;
+        let currentChatAbortController = null;
+
+        function setChatGeneratingState(isGenerating) {
+            isChatGenerating = isGenerating;
+            const btnSend = document.getElementById('btn-send');
+            if (!btnSend) return;
+
+            if (isGenerating) {
+                btnSend.type = "button";
+                btnSend.className = "btn btn-danger px-3.5 py-1.5 d-inline-flex align-items-center shadow-sm";
+                btnSend.innerHTML = `
+                    <div class="spinner-border spinner-border-sm text-light me-1.5" style="width: 13px; height: 13px; border-width: 2px;" role="status"></div>
+                    <span>Dừng</span>
+                `;
+                btnSend.onclick = stopAiGeneration;
+            } else {
+                btnSend.type = "submit";
+                btnSend.className = "btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center shadow-sm";
+                btnSend.innerHTML = `
+                    <i class="fa-solid fa-paper-plane me-1.5"></i>
+                    <span>Gửi</span>
+                `;
+                btnSend.onclick = null;
+                currentChatAbortController = null;
+            }
+        }
+
+        function stopAiGeneration() {
+            if (currentChatAbortController) {
+                currentChatAbortController.abort();
+                currentChatAbortController = null;
+                showToast("Đã dừng câu trả lời của AI.", "info");
+            }
+            setChatGeneratingState(false);
+        }
+
+        // Submit Chat Message with Real-time Token Streaming (SSE + JSON fallback)
+        async function handleChatSubmit(e) {
+            if (e) e.preventDefault();
+            if (isChatGenerating) return;
+
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text && selectedFiles.length === 0) return;
+
+            const filesToSend = [...selectedFiles];
+            input.value = '';
+            input.style.height = 'auto';
+            selectedFiles = [];
+            renderAttachments();
+
+            appendUserMessage(text, filesToSend);
+
+            // Bật trạng thái Loading & Nút Dừng
+            setChatGeneratingState(true);
+            currentChatAbortController = new AbortController();
+
+            // Khung bong bóng AI
+            const container = document.getElementById('chat-messages');
+            const aiMsgWrapper = document.createElement('div');
+            aiMsgWrapper.className = "d-flex align-items-start gap-3 w-100";
+
+            const bubbleContainerId = 'bubble-box-' + Date.now();
+            const toolsContainerId = 'tools-box-' + Date.now();
+            const textContainerId = 'text-box-' + Date.now();
+            const statusContainerId = 'status-box-' + Date.now();
+            const actionBarId = 'action-bar-' + Date.now();
+
+            aiMsgWrapper.innerHTML = `
+                <img src="data:image/jpeg;base64,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" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                <div class="d-flex flex-column flex-grow-1 min-w-0">
+                    <!-- Compact Thinking Badge while waiting -->
+                    <div id="${statusContainerId}" class="d-inline-flex align-items-center gap-2 px-3 py-2 rounded-1 text-secondary" style="background: var(--tadu-card-bg); border: 1px solid var(--tadu-border); font-size: 0.8rem; width: fit-content;">
+                        <div class="spinner-border spinner-border-sm text-info" style="width: 14px; height: 14px; border-width: 2px;"></div>
+                        <span class="status-text font-mono">Đang suy nghĩ...</span>
+                    </div>
+
+                    <!-- Actual AI Bubble (Hidden initially, appears on 1st token or tool) -->
+                    <div id="${bubbleContainerId}" class="chat-bubble-ai prose d-none" style="font-size: 0.88rem;">
+                        <div id="${toolsContainerId}" class="d-flex flex-column gap-3 mb-2"></div>
+                        <div id="${textContainerId}" class="prose-body"></div>
+                    </div>
+
+                    <!-- Action Bar (Hidden initially, appears on done) -->
+                    <div id="${actionBarId}" class="chat-action-bar d-none d-flex align-items-center text-secondary ms-1">
+                        <span class="opacity-75 font-mono d-inline-flex align-items-center msg-time" style="font-size: 0.73rem; margin-right: 4px;"><i class="fa-regular fa-clock me-1"></i>${formatTime()}</span>
+                        <button type="button" class="chat-action-btn btn-copy-reply">
+                            <i class="fa-regular fa-copy"></i>
+                            <span>Sao chép</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            container.appendChild(aiMsgWrapper);
+            container.scrollTop = container.scrollHeight;
+
+            const bubbleEl = document.getElementById(bubbleContainerId);
+            const toolsEl = document.getElementById(toolsContainerId);
+            const statusEl = document.getElementById(statusContainerId);
+            const textEl = document.getElementById(textContainerId);
+            const actionBarEl = document.getElementById(actionBarId);
+
+            let accumulatedText = "";
+            let executedTools = [];
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, history: chatHistory, attachments: filesToSend }),
+                    signal: currentChatAbortController.signal
+                });
+
+                if (!res.ok) {
+                    if (statusEl) statusEl.remove();
+                    if (bubbleEl) bubbleEl.classList.remove("d-none");
+                    textEl.innerHTML = `<span class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i> Lỗi kết nối HTTP ${res.status}: ${res.statusText}</span>`;
+                    setChatGeneratingState(false);
+                    return;
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = "";
+                let rawBody = "";
+
+                function processEvent(eventData) {
+                    if (eventData.type === "status") {
+                        if (statusEl) {
+                            statusEl.classList.remove("d-none");
+                            const statusSpan = statusEl.querySelector(".status-text");
+                            if (statusSpan) statusSpan.textContent = eventData.message || "Đang thực thi...";
+                        }
+                    } else if (eventData.type === "tool") {
+                        if (statusEl) statusEl.classList.add("d-none");
+                        if (bubbleEl) bubbleEl.classList.remove("d-none");
+                        
+                        const tc = eventData.tool;
+                        executedTools.push(tc);
+
+                        const toolBox = document.createElement("div");
+                        toolBox.className = "tool-call-box";
+                        toolBox.innerHTML = `
+                            <div class="text-info fw-semibold mb-2 font-mono" style="font-size: 0.8rem;"><i class="fa-solid fa-terminal"></i> Đã thực thi shell: <code>${escapeHtml(tc.command)}</code></div>
+                            ${tc.output ? `<pre class="text-light mb-0 font-mono" style="font-size: 0.75rem; white-space: pre-wrap; line-height: 1.55;">${escapeHtml(tc.output)}</pre>` : ''}
+                        `;
+                        toolsEl.appendChild(toolBox);
+                    } else if (eventData.type === "token") {
+                        if (statusEl) statusEl.remove();
+                        if (bubbleEl) bubbleEl.classList.remove("d-none");
+                        accumulatedText += eventData.delta;
+                        textEl.innerHTML = marked.parse(accumulatedText);
+                    } else if (eventData.type === "done") {
+                        if (statusEl) statusEl.remove();
+                        if (bubbleEl) bubbleEl.classList.remove("d-none");
+                        if (eventData.reply) accumulatedText = eventData.reply;
+                        textEl.innerHTML = marked.parse(accumulatedText);
+                        hljs.highlightAll();
+                    } else if (eventData.type === "error") {
+                        if (statusEl) statusEl.remove();
+                        if (bubbleEl) bubbleEl.classList.remove("d-none");
+                        textEl.innerHTML += `<div class="text-danger mt-2"><i class="fa-solid fa-triangle-exclamation me-1"></i> ${escapeHtml(eventData.message)}</div>`;
+                    }
+                }
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+                    rawBody += chunk;
+                    
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop(); // giữ lại phần chưa đủ dòng
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+
+                        if (trimmed.startsWith("data: ")) {
+                            try {
+                                const eventData = JSON.parse(trimmed.substring(6));
+                                processEvent(eventData);
+                            } catch (e) {
+                                console.error("Lỗi parse SSE:", e);
+                            }
+                        }
+                    }
+                    container.scrollTop = container.scrollHeight;
+                }
+
+                // Xử lý dòng cuối cùng còn sót trong buffer nếu có
+                if (buffer.trim().startsWith("data: ")) {
+                    try {
+                        const eventData = JSON.parse(buffer.trim().substring(6));
+                        processEvent(eventData);
+                    } catch (e) {}
+                }
+
+                // Fallback nếu server trả về JSON nguyên khối (hoặc không theo chuẩn data:)
+                if (!accumulatedText && rawBody) {
+                    try {
+                        const directJson = JSON.parse(rawBody.trim());
+                        if (directJson.reply || directJson.tool_calls) {
+                            if (statusEl) statusEl.remove();
+                            if (bubbleEl) bubbleEl.classList.remove("d-none");
+                            
+                            if (directJson.tool_calls && directJson.tool_calls.length > 0) {
+                                directJson.tool_calls.forEach(tc => {
+                                    executedTools.push(tc);
+                                    const toolBox = document.createElement("div");
+                                    toolBox.className = "tool-call-box";
+                                    toolBox.innerHTML = `
+                                        <div class="text-info fw-semibold mb-2 font-mono" style="font-size: 0.8rem;"><i class="fa-solid fa-terminal"></i> Đã thực thi shell: <code>${escapeHtml(tc.command)}</code></div>
+                                        ${tc.output ? `<pre class="text-light mb-0 font-mono" style="font-size: 0.75rem; white-space: pre-wrap; line-height: 1.55;">${escapeHtml(tc.output)}</pre>` : ''}
+                                    `;
+                                    toolsEl.appendChild(toolBox);
+                                });
+                            }
+                            
+                            accumulatedText = directJson.reply || '';
+                            textEl.innerHTML = marked.parse(accumulatedText);
+                            hljs.highlightAll();
+                        }
+                    } catch (e) {}
+                }
+
+                // Dọn dẹp status spinner nếu vẫn còn
+                if (statusEl && statusEl.parentNode) statusEl.remove();
+
+                // Đảm bảo bubble hiển thị nếu có nội dung
+                if (accumulatedText || executedTools.length > 0) {
+                    if (bubbleEl) bubbleEl.classList.remove("d-none");
+                    textEl.innerHTML = marked.parse(accumulatedText);
+                    hljs.highlightAll();
+                }
+
+                // Bật Action Bar (Timestamp & Nút Copy)
+                actionBarEl.classList.remove("d-none");
+                const copyBtn = actionBarEl.querySelector(".btn-copy-reply");
+                if (copyBtn) {
+                    copyBtn.onclick = function() {
+                        copyText(this, accumulatedText);
+                    };
+                }
+
+                chatHistory.push({ role: "user", content: text });
+                chatHistory.push({ role: "assistant", content: accumulatedText });
+
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    if (statusEl && statusEl.parentNode) statusEl.remove();
+                    if (bubbleEl) bubbleEl.classList.remove("d-none");
+                    textEl.innerHTML += `<div class="text-warning opacity-75 font-mono mt-2" style="font-size: 0.78rem;"><i class="fa-solid fa-stop-circle me-1"></i> [Đã dừng bởi người dùng]</div>`;
+                    actionBarEl.classList.remove("d-none");
+                    const copyBtn = actionBarEl.querySelector(".btn-copy-reply");
+                    if (copyBtn) {
+                        copyBtn.onclick = function() {
+                            copyText(this, accumulatedText);
+                        };
+                    }
+                    if (accumulatedText) {
+                        chatHistory.push({ role: "user", content: text });
+                        chatHistory.push({ role: "assistant", content: accumulatedText });
+                    }
+                } else {
+                    if (statusEl && statusEl.parentNode) statusEl.remove();
+                    if (bubbleEl) bubbleEl.classList.remove("d-none");
+                    textEl.innerHTML = `<span class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i> Lỗi kết nối: ${err.message}</span>`;
+                }
+            } finally {
+                setChatGeneratingState(false);
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function appendUserMessage(msg, attachments = [], timeStr = null) {
+            const container = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.className = "d-flex flex-column align-items-end w-100";
+
+            let filesHtml = '';
+            if (attachments && attachments.length > 0) {
+                filesHtml = `<div class="d-flex flex-wrap gap-2 mb-2">` + attachments.map(f => `
+                    <div class="badge text-bg-dark border border-secondary px-2 py-1 rounded-1 font-mono" style="font-size: 0.72rem;">
+                        <i class="fa-solid fa-paperclip text-info"></i> ${escapeHtml(f.name)}
+                    </div>
+                `).join('') + `</div>`;
+            }
+
+            const formattedTime = formatTime(timeStr);
+            const rawMsgAttr = encodeURIComponent(msg || '');
+
+            wrapper.innerHTML = `
+                <div class="chat-bubble-user" style="max-width: 85%;">
+                    ${filesHtml}
+                    ${msg ? `<p class="mb-0" style="font-size: 0.88rem; white-space: pre-wrap;">${escapeHtml(msg)}</p>` : ''}
+                </div>
+                <div class="chat-action-bar d-flex align-items-center justify-content-end text-secondary me-1">
+                    <span class="opacity-75 font-mono d-inline-flex align-items-center" style="font-size: 0.73rem; margin-right: 4px;"><i class="fa-regular fa-clock me-1"></i>${formattedTime}</span>
+                    <button type="button" onclick="copyText(this, decodeURIComponent('${rawMsgAttr}'))" class="chat-action-btn">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>Sao chép</span>
+                    </button>
+                    <button type="button" onclick="retryQuestion(decodeURIComponent('${rawMsgAttr}'))" class="chat-action-btn btn-retry">
+                        <i class="fa-solid fa-rotate-right"></i>
+                        <span>Hỏi lại</span>
+                    </button>
+                </div>
+            `;
+            container.appendChild(wrapper);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendAiMessage(reply, toolCalls = []) {
+            const container = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.className = "d-flex align-items-start gap-3 w-100";
+
+            let toolsHtml = '';
+            if (toolCalls && toolCalls.length > 0) {
+                toolsHtml = '<div class="d-flex flex-column gap-3 mb-3">';
+                toolCalls.forEach(tc => {
+                    const cmd = tc.command || (tc.arguments ? (typeof tc.arguments === 'object' ? (tc.arguments.command || JSON.stringify(tc.arguments)) : tc.arguments) : '');
+                    const result = tc.output || tc.result || '';
+                    toolsHtml += `
+                        <div class="tool-call-box">
+                            <div class="text-info fw-semibold mb-2 font-mono" style="font-size: 0.8rem;"><i class="fa-solid fa-terminal"></i> Đã thực thi shell: <code>${escapeHtml(cmd)}</code></div>
+                            ${result ? `<pre class="text-light mb-0 font-mono" style="font-size: 0.75rem; white-space: pre-wrap; line-height: 1.55;">${escapeHtml(result)}</pre>` : ''}
+                        </div>
+                    `;
+                });
+                toolsHtml += '</div>';
+            }
+
+            const parsedMarkdown = marked.parse(reply || '');
+            wrapper.innerHTML = `
+                <img src="data:image/jpeg;base64,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" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                <div class="chat-bubble-ai prose flex-grow-1" style="font-size: 0.88rem;">
+                    ${toolsHtml}
+                    <div>${parsedMarkdown}</div>
+                </div>
+            `;
+            container.appendChild(wrapper);
+            container.scrollTop = container.scrollHeight;
+            hljs.highlightAll();
+        }
+
+        function appendLoadingMessage() {
+            const id = 'loading-' + Date.now();
+            const container = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.id = id;
+            wrapper.className = "d-flex align-items-center gap-3 text-secondary py-2 w-100";
+            wrapper.style.fontSize = "0.85rem";
+            wrapper.innerHTML = `
+                <div class="spinner-border spinner-border-sm text-primary" role="status" style="margin-right: 8px;"></div>
+                <span>Tadu Cloud AI Agent đang thực thi...</span>
+            `;
+            container.appendChild(wrapper);
+            container.scrollTop = container.scrollHeight;
+            return id;
+        }
+
+        function appendErrorMessage(msg) {
+            const container = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.className = "d-flex align-items-center gap-3 p-3 bg-danger-subtle text-danger rounded-1 w-100";
+            wrapper.style.fontSize = "0.85rem";
+            wrapper.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> <span>${escapeHtml(msg)}</span>`;
+            container.appendChild(wrapper);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function removeElement(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // -------------------------------------------------------------
+        // SERVER & SYSTEM INFO LOGIC
+        // -------------------------------------------------------------
+        async function fetchSystemInfo() {
+            try {
+                const res = await fetch('/api/server/system-info');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const info = data.info;
+                    document.getElementById('card-os').innerText = info.os || 'Linux';
+                    document.getElementById('card-uptime').innerText = info.uptime || '--';
+                    document.getElementById('sys-disk').innerText = info.disk || 'Không có dữ liệu';
+                    document.getElementById('sys-mem').innerText = info.memory || 'Không có dữ liệu';
+                    
+                    const isAct = info.service_active === 'active';
+                    document.getElementById('card-service-status').innerText = isAct ? 'Đang Chạy' : (info.service_active === 'inactive' ? 'Đã Tắt' : (info.service_active || 'Đã Tắt'));
+                    document.getElementById('card-service-status').className = isAct ? "fs-5 fw-bold text-success mb-1" : "fs-5 fw-bold text-danger mb-1";
+                    document.getElementById('card-service-dot').className = isAct ? "live-dot bg-success live-pulse" : "live-dot bg-danger";
+                    
+                    document.getElementById('sidebar-status-dot').className = isAct ? "live-dot bg-success live-pulse" : "live-dot bg-warning";
+                    document.getElementById('sidebar-status-text').innerText = isAct ? "Dịch Vụ Online" : "Dịch Vụ Chưa Bật";
+                } else {
+                    document.getElementById('sidebar-status-dot').className = "live-dot bg-danger";
+                    document.getElementById('sidebar-status-text').innerText = "Chưa Kết Nối";
+                }
+            } catch (err) {
+                console.error("Lỗi fetch system info:", err);
+                document.getElementById('sidebar-status-dot').className = "live-dot bg-danger";
+                document.getElementById('sidebar-status-text').innerText = "Chưa Kết Nối";
+            }
+        }
+
+        async function handleServiceAction(action) {
+            showToast(`Đang thực thi ${action} service...`, 'info');
+            try {
+                const res = await fetch('/api/server/service-action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(`Thực thi ${action} thành công!`, 'success');
+                    if (action === 'status') {
+                        showInfoModal("Kết quả trạng thái Service (Systemd Status)", data.output || "Không có dữ liệu status.");
+                    }
+                    setTimeout(fetchSystemInfo, 1000);
+                } else {
+                    showToast(`Lỗi: ${data.message}`, 'error');
+                }
+            } catch (err) {
+                showToast(`Lỗi kết nối: ${err.message}`, 'error');
+            }
+        }
+
+        async function startDeploy() {
+            const confirmed = await showConfirmDialog({
+                title: "Xác nhận Deploy AI Agent Service",
+                message: "Hệ thống sẽ tải mã nguồn ai_agent_service.py lên VPS và tự động cài đặt môi trường, khởi tạo Systemd service. Bạn có muốn bắt đầu không?",
+                confirmText: "Tiến hành Deploy",
+                type: "primary",
+                icon: "fa-rocket"
+            });
+            if (!confirmed) return;
+            
+            const btn = document.getElementById('btn-deploy');
+            const consoleBox = document.getElementById('deploy-console');
+            btn.disabled = true;
+            consoleBox.classList.remove('d-none');
+            consoleBox.innerHTML = '<div class="text-info">🚀 Bắt đầu quá trình Deploy...</div>';
+
+            try {
+                const res = await fetch('/api/server/deploy', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.logs) {
+                    data.logs.forEach(log => {
+                        const line = document.createElement('div');
+                        line.innerText = log;
+                        consoleBox.appendChild(line);
+                    });
+                }
+
+                if (data.status === 'success') {
+                    showToast("Deploy hoàn tất thành công!", "success");
+                    setTimeout(fetchSystemInfo, 2000);
+                } else {
+                    showToast("Deploy thất bại: " + (data.message || ""), "error");
+                }
+            } catch (err) {
+                consoleBox.innerHTML += `<div class="text-danger">❌ Lỗi: ${err.message}</div>`;
+                showToast("Lỗi kết nối khi Deploy: " + err.message, "error");
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // -------------------------------------------------------------
+        // TERMINAL LOGIC
+        // -------------------------------------------------------------
+        async function executeTerminalCommand(e) {
+            e.preventDefault();
+            const input = document.getElementById('terminal-input');
+            const cmd = input.value.trim();
+            if (!cmd) return;
+
+            input.value = '';
+            const screen = document.getElementById('terminal-screen');
+            
+            const cmdEl = document.createElement('div');
+            cmdEl.className = "text-success fw-bold mt-2 font-mono";
+            cmdEl.innerText = `root@server:~# ${cmd}`;
+            screen.appendChild(cmdEl);
+
+            try {
+                const res = await fetch('/api/terminal/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd })
+                });
+                const data = await res.json();
+                const outEl = document.createElement('pre');
+                outEl.className = data.exit_code === 0 ? "text-light mb-0 font-mono" : "text-danger mb-0 font-mono";
+                outEl.style.whiteSpace = "pre-wrap";
+                outEl.innerText = data.combined || "(Không có kết quả trả về)";
+                screen.appendChild(outEl);
+            } catch (err) {
+                const errEl = document.createElement('div');
+                errEl.className = "text-danger font-mono";
+                errEl.innerText = `Lỗi thực thi: ${err.message}`;
+                screen.appendChild(errEl);
+            }
+
+            screen.scrollTop = screen.scrollHeight;
+        }
+
+        function clearTerminalLog() {
+            document.getElementById('terminal-screen').innerHTML = '<div class="text-secondary font-mono">=== Màn hình đã được dọn dẹp ===</div>';
+        }
+
+        // -------------------------------------------------------------
+        // LOGS LOGIC
+        // -------------------------------------------------------------
+        async function fetchServiceLogs() {
+            const logsEl = document.getElementById('logs-content');
+            try {
+                const res = await fetch('/api/server/logs?lines=80');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    logsEl.innerText = data.logs;
+                } else {
+                    logsEl.innerText = `Lỗi: ${data.message}`;
+                }
+            } catch (err) {
+                logsEl.innerText = `Lỗi kết nối khi lấy log: ${err.message}`;
+            }
+        }
+
+        document.getElementById('auto-refresh-logs').addEventListener('change', function(e) {
+            if (e.target.checked) {
+                logInterval = setInterval(fetchServiceLogs, 3000);
+            } else {
+                clearInterval(logInterval);
+            }
+        });
+
+        // -------------------------------------------------------------
+        // SETTINGS LOGIC
+        // -------------------------------------------------------------
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/config');
+                const cfg = await res.json();
+                document.getElementById('cfg-server-ip').value = cfg.server_ip || '';
+                document.getElementById('cfg-ssh-port').value = cfg.ssh_port || 22;
+                document.getElementById('cfg-ssh-user').value = cfg.ssh_user || 'root';
+                document.getElementById('cfg-ssh-pass').value = cfg.ssh_pass || '';
+                document.getElementById('cfg-proxy-api-key').value = cfg.proxy_api_key || '';
+                document.getElementById('cfg-proxy-base-url').value = cfg.proxy_base_url || 'https://openrouter.ai/api/v1';
+                document.getElementById('cfg-ai-model').value = cfg.ai_model || 'glm-5.3';
+                document.getElementById('cfg-remote-dir').value = cfg.remote_work_dir || '/opt/ai_agent';
+                document.getElementById('cfg-api-port').value = cfg.api_port || 8000;
+                document.getElementById('cfg-secret-token').value = cfg.secret_token || 'super_secret_token_123';
+
+                // Sync UI widgets
+                document.getElementById('card-server-ip').innerText = cfg.server_ip || '127.0.0.1';
+                document.getElementById('card-api-port').innerText = cfg.api_port || 8000;
+                document.getElementById('card-ai-model').innerText = cfg.ai_model || 'glm-5.3';
+                document.getElementById('chat-model-badge').innerText = cfg.ai_model || 'glm-5.3';
+                document.getElementById('sidebar-server-ip').innerText = cfg.server_ip || '127.0.0.1';
+            } catch (err) {
+                showToast("Lỗi tải cài đặt: " + err.message, "error");
+            }
+        }
+
+        async function saveSettings() {
+            const payload = {
+                server_ip: document.getElementById('cfg-server-ip').value.trim(),
+                ssh_port: parseInt(document.getElementById('cfg-ssh-port').value) || 22,
+                ssh_user: document.getElementById('cfg-ssh-user').value.trim(),
+                ssh_pass: document.getElementById('cfg-ssh-pass').value,
+                proxy_api_key: document.getElementById('cfg-proxy-api-key').value.trim(),
+                proxy_base_url: document.getElementById('cfg-proxy-base-url').value.trim(),
+                ai_model: document.getElementById('cfg-ai-model').value.trim() || 'glm-5.3',
+                remote_work_dir: document.getElementById('cfg-remote-dir').value.trim() || '/opt/ai_agent',
+                api_port: parseInt(document.getElementById('cfg-api-port').value) || 8000,
+                secret_token: document.getElementById('cfg-secret-token').value.trim()
+            };
+
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast("Đã lưu cấu hình thành công!", "success");
+                    loadSettings();
+                } else {
+                    showToast("Lỗi lưu cấu hình: " + data.message, "error");
+                }
+            } catch (err) {
+                showToast("Lỗi mạng khi lưu: " + err.message, "error");
+            }
+        }
+
+        async function testSSH() {
+            const serverIp = document.getElementById('cfg-server-ip').value.trim();
+            const sshPort = parseInt(document.getElementById('cfg-ssh-port').value) || 22;
+            const sshUser = document.getElementById('cfg-ssh-user').value.trim();
+            const sshPass = document.getElementById('cfg-ssh-pass').value;
+
+            if (!serverIp) {
+                showToast("Vui lòng nhập Server IP!", "error");
+                return;
+            }
+
+            showToast(`Đang kiểm tra kết nối SSH tới ${serverIp}:${sshPort}...`, "info");
+            try {
+                const res = await fetch('/api/ssh/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        server_ip: serverIp,
+                        ssh_port: sshPort,
+                        ssh_user: sshUser,
+                        ssh_pass: sshPass
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(data.message, "success");
+                    await saveSettings();
+                    fetchSystemInfo();
+                } else {
+                    showToast(data.message, "error");
+                    alert(data.message);
+                }
+            } catch (err) {
+                showToast("Lỗi kiểm tra SSH: " + err.message, "error");
+            }
+        }
+
+        function refreshAllStatus() {
+            showToast("Đang làm mới thông tin hệ thống...", "info");
+            loadSettings();
+            fetchSystemInfo();
+        }
+
+        // INITIAL LOAD
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            fetchSystemInfo();
+            loadChatHistory();
+        });
+    </script>
+
+    <!-- TADU CONFIRM MODAL (BOOTSTRAP 5) -->
+    <div class="modal fade" id="taduConfirmModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 450px;">
+            <div class="modal-content border border-secondary border-opacity-25 shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius-md);">
+                <div class="modal-body p-4 text-center">
+                    <div id="confirm-modal-icon-wrapper" class="d-inline-flex align-items-center justify-content-center rounded-circle mb-3" style="width: 58px; height: 58px; background: rgba(99, 102, 241, 0.15); color: var(--tadu-primary);">
+                        <i id="confirm-modal-icon" class="fa-solid fa-circle-question fa-2xl"></i>
+                    </div>
+                    <h5 class="modal-title fw-bold text-white mb-2" id="confirm-modal-title">Xác nhận thao tác</h5>
+                    <p class="text-secondary mb-4 px-2" style="font-size: 0.88rem; line-height: 1.55;" id="confirm-modal-message">Nội dung xác nhận</p>
+                    <div class="d-flex justify-content-center gap-3">
+                        <button type="button" class="btn btn-secondary px-4 py-2" data-bs-dismiss="modal" id="confirm-modal-btn-cancel">
+                            <i class="fa-solid fa-xmark me-1.5"></i> Huỷ bỏ
+                        </button>
+                        <button type="button" class="btn btn-primary px-4 py-2" id="confirm-modal-btn-confirm">
+                            <i class="fa-solid fa-check me-1.5"></i> Đồng ý
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TADU INFO/OUTPUT MODAL (BOOTSTRAP 5) -->
+    <div class="modal fade" id="taduInfoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border border-secondary border-opacity-25 shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius-md);">
+                <div class="modal-header border-bottom border-secondary border-opacity-25 px-4 py-3">
+                    <h6 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="info-modal-title">
+                        <i class="fa-solid fa-circle-info text-info"></i>
+                        <span>Chi tiết thông tin</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <pre id="info-modal-content" class="bg-black text-light p-3 rounded font-mono mb-0" style="font-size: 0.82rem; max-height: 450px; overflow-y: auto; white-space: pre-wrap; line-height: 1.55;"></pre>
+                </div>
+                <div class="modal-footer border-top border-secondary border-opacity-25 px-4 py-2.5">
+                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

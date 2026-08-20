@@ -4,7 +4,7 @@
   "description": "CDN dành cho Typing",
   "main": "start.js",
   "scripts": {
-    "start": "node ./bin/www",
+    "start": "node start.js",
     "build": "babel server.js -d builded"
   },
   "keywords": [

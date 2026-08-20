@@ -1,0 +1,12 @@
+{
+  "server_ip": "103.90.232.157",
+  "ssh_user": "root",
+  "ssh_pass": "AsC00zx1e400",
+  "ssh_port": 7878,
+  "proxy_api_key": "uNs6JWCNxWAjQj9m65386fF9-b653-4c9a-9Af6-A4B848C1",
+  "proxy_base_url": "https://api-us-ca.umodelverse.ai/v1",
+  "ai_model": "glm-5.3",
+  "remote_work_dir": "/opt/ai_agent",
+  "api_port": 8000,
+  "secret_token": "super_secret_token_123"
+}

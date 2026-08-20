@@ -77,10 +77,10 @@ except Exception:
     print("[WARN] Không tìm thấy indexing_utils.py. Tính năng Smart Indexing sẽ không hoạt động.")
 
 # ============================================================================
-# CONFIG
-# ============================================================================
-
-PDF_DIR = os.getenv("PDF_DIR", "pdfs")
+ROOT_DIR = Path(__file__).resolve().parent
+_pdf_env = os.getenv("PDF_DIR", "pdfs")
+PDF_DIR = str(Path(_pdf_env) if os.path.isabs(_pdf_env) else (ROOT_DIR / _pdf_env).resolve())
+USER_DBS_DIR = str((ROOT_DIR / "user_dbs").resolve())
 WEBSITE_API_URL = os.getenv("WEBSITE_API_URL", "http://127.0.0.1:8003").strip().strip('"').strip("'")
 
 # ============================================================================
@@ -364,7 +364,10 @@ async def get_current_user_email(optional_email: Optional[str] = Depends(get_opt
 
 app = FastAPI(title="Chatbot API (with Account & Smart Indexing)")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_origin_regex=".*", allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["*"], max_age=86400)
-app.mount("/pdfs", StaticFiles(directory="pdfs"), name="pdfs")
+
+os.makedirs(PDF_DIR, exist_ok=True)
+os.makedirs(USER_DBS_DIR, exist_ok=True)
+app.mount("/pdfs", StaticFiles(directory=PDF_DIR), name="pdfs")
 
 # --- THÊM MỚI TỪ ĐÂY ---
 # Biến toàn cục chứa HTTPX Client dùng chung
@@ -520,8 +523,10 @@ async def crawl_domains_status(job_id: str): return {"status": "not_found", "mes
 # ROUTES: DATABASE & FILES (Files management)
 # ============================================================================
 
+USER_DBS_DIR = str((ROOT_DIR / "user_dbs").resolve())
+
 def get_user_db(username: str):
-    db_path = f"user_dbs/chatbot_user_{username}.db"
+    db_path = os.path.join(USER_DBS_DIR, f"chatbot_user_{username}.db")
     if not os.path.exists(db_path): raise HTTPException(404, "User database not found.")
     conn = sqlite3.connect(db_path, check_same_thread=False)
     return conn, conn.cursor()
@@ -531,11 +536,11 @@ def init_user_tables(conn):
     conn.execute("""CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER, role TEXT, content TEXT, sources TEXT, created TEXT, ip_address TEXT, sender_info TEXT)""")
     conn.commit()
 
-SETTINGS_DB_PATH = os.path.join("user_dbs", "chatbot_settings.db")
+SETTINGS_DB_PATH = os.path.join(USER_DBS_DIR, "chatbot_settings.db")
 def _sha256(s: str) -> str: return hashlib.sha256((s or "").encode("utf-8")).hexdigest()
 
 def init_settings_db():
-    os.makedirs("user_dbs", exist_ok=True)
+    os.makedirs(USER_DBS_DIR, exist_ok=True)
     conn = sqlite3.connect(SETTINGS_DB_PATH, check_same_thread=False)
     conn.execute("""CREATE TABLE IF NOT EXISTS chatbot_settings (username TEXT PRIMARY KEY, api_key_hash TEXT, data_source TEXT, doc_types_json TEXT, domains_json TEXT, custom_prompt TEXT, updated_at TEXT)""")
     try: conn.execute("ALTER TABLE chatbot_settings ADD COLUMN domains_json TEXT")
@@ -592,8 +597,8 @@ async def debug_env(): return {"ok": True}
 
 @app.post("/init-db/{username}")
 async def init_user_db(username: str, current_email: str = Depends(lambda: "")): 
-    os.makedirs("user_dbs", exist_ok=True)
-    db_path = f"user_dbs/chatbot_user_{username}.db"
+    os.makedirs(USER_DBS_DIR, exist_ok=True)
+    db_path = os.path.join(USER_DBS_DIR, f"chatbot_user_{username}.db")
     if os.path.exists(db_path): return {"message": "Database already exists."}
     conn = sqlite3.connect(db_path)
     init_user_tables(conn); conn.close()
@@ -762,11 +767,11 @@ async def list_user_files(username: str):
     # 2. Quét từng thư mục để lấy danh sách file và đối chiếu trạng thái
     for dt in doc_types_to_scan:
         if dt:
-            pdf_dir = os.path.abspath(os.path.join(indexing_utils.PDF_BASE_DIR, dt, username))
-            index_dir = os.path.abspath(os.path.join(indexing_utils.INDEX_BASE_DIR, dt, username))
+            pdf_dir = os.path.join(indexing_utils.PDF_BASE_DIR, dt, username)
+            index_dir = os.path.join(indexing_utils.INDEX_BASE_DIR, dt, username)
         else:
-            pdf_dir = os.path.abspath(os.path.join(indexing_utils.PDF_BASE_DIR, username))
-            index_dir = os.path.abspath(os.path.join(indexing_utils.INDEX_BASE_DIR, username))
+            pdf_dir = os.path.join(indexing_utils.PDF_BASE_DIR, username)
+            index_dir = os.path.join(indexing_utils.INDEX_BASE_DIR, username)
         
         # --- BƯỚC QUAN TRỌNG: Đọc danh sách các file ĐÃ INDEX ---
         indexed_paths = set()
@@ -798,8 +803,8 @@ async def list_user_files(username: str):
                     
                     logical_name = f"{base_name}.pdf"
                     
-                    abs_pdf = os.path.abspath(os.path.join(pdf_dir, logical_name))
-                    abs_json = os.path.abspath(os.path.join(pdf_dir, f"{base_name}.mineru.json"))
+                    abs_pdf = os.path.join(pdf_dir, logical_name)
+                    abs_json = os.path.join(pdf_dir, f"{base_name}.mineru.json")
                     is_indexed = abs_pdf in indexed_paths or abs_json in indexed_paths
                     
                     file_stat = f.stat()
@@ -1111,7 +1116,7 @@ async def post_msg(req: MessageFullRequest, c_email: str = Depends(get_current_u
         print(f"🚀 [PROFILER/STREAMING] Nhận tin nhắn từ: {req.username} | Thread: {req.thread_id}")
         print(f"📝 Câu hỏi: {req.message}")
         
-        db_path = f"user_dbs/chatbot_user_{req.username}.db"
+        db_path = os.path.join(USER_DBS_DIR, f"chatbot_user_{req.username}.db")
         final_src = []
         
         try:
