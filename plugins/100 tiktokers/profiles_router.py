@@ -2021,20 +2021,74 @@ def remove_proxies(req: RemoveProxyReq) -> Dict[str, Any]:
 
 # -------- CLEAR SESSION & COOKIE API --------
 
+def _kill_profile_processes(profile_dir: Path):
+    canon = _canon_path(str(profile_dir))
+    for p in psutil.process_iter(['pid', 'cmdline']):
+        try:
+            cmd = p.info.get('cmdline') or []
+            cmd_str = " ".join(cmd)
+            if f"--user-data-dir={str(profile_dir)}" in cmd_str or canon in _canon_path(cmd_str):
+                p.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+
 def _clean_profile_session(profile_dir: Path):
+    # Dừng mọi tiến trình Opera đang chạy profile này trước khi xóa
+    _kill_profile_processes(profile_dir)
+    time.sleep(0.3)
+
     session_items = [
-        "Network/Cookies",
-        "Network/Cookies-journal",
-        "Network/Cookies-wal",
+        "Cookies",
+        "Cookies-journal",
+        "Cookies-wal",
+        "Extension Cookies",
+        "Extension Cookies-journal",
+        "Safe Browsing Cookies",
+        "Safe Browsing Cookies-journal",
+        "Login Data",
+        "Login Data-journal",
+        "Web Data",
+        "Web Data-journal",
+        "Network",
+        "Network Persistent State",
+        "Network Persistent State.backup",
         "Sessions",
+        "Session Storage",
         "Local Storage",
         "IndexedDB",
-        "Default/Network/Cookies",
-        "Default/Network/Cookies-journal",
-        "Default/Network/Cookies-wal",
+        "Service Worker",
+        "SharedStorage",
+        "SharedStorage-wal",
+        "DIPS",
+        "DIPS-wal",
+        "Sync Data",
+        "blob_storage",
+        "Default/Cookies",
+        "Default/Cookies-journal",
+        "Default/Cookies-wal",
+        "Default/Extension Cookies",
+        "Default/Extension Cookies-journal",
+        "Default/Safe Browsing Cookies",
+        "Default/Safe Browsing Cookies-journal",
+        "Default/Login Data",
+        "Default/Login Data-journal",
+        "Default/Web Data",
+        "Default/Web Data-journal",
+        "Default/Network",
+        "Default/Network Persistent State",
+        "Default/Network Persistent State.backup",
         "Default/Sessions",
+        "Default/Session Storage",
         "Default/Local Storage",
         "Default/IndexedDB",
+        "Default/Service Worker",
+        "Default/SharedStorage",
+        "Default/SharedStorage-wal",
+        "Default/DIPS",
+        "Default/DIPS-wal",
+        "Default/Sync Data",
+        "Default/blob_storage",
     ]
     for item in session_items:
         p = profile_dir / item

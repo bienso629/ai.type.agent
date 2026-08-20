@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tadu Cloud AI Agent Control Center - GLM-5.3</title>
-    <link rel="icon" type="image/jpeg" href="data:image/jpeg;base64,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">
+    <link rel="icon" type="image/jpeg" href="/logo.jpg">
     
     <!-- Google Fonts: Inter & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -248,6 +248,201 @@
             50% { opacity: 0.4; }
         }
 
+                :root {
+            --tadu-primary: #4f46e5;
+            --tadu-primary-hover: #4338ca;
+            --tadu-surface: #0f172a;
+            --tadu-border: #1e293b;
+            --tadu-text: #f8fafc;
+            --tadu-text-muted: #94a3b8;
+            --tadu-header-height: 66px;
+        }
+
+        /* Unified Headers (Sidebar Brand & Main Body Topbar) */
+        .sidebar-brand-header {
+            height: var(--tadu-header-height);
+            min-height: var(--tadu-header-height);
+            max-height: var(--tadu-header-height);
+            padding: 0 1.25rem;
+            border-bottom: 1px solid var(--tadu-border) !important;
+            display: flex;
+            align-items: center;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            width: 100%;
+        }
+        .tab-topbar {
+            height: var(--tadu-header-height);
+            min-height: var(--tadu-header-height);
+            max-height: var(--tadu-header-height);
+            padding: 0 1.5rem;
+            border-bottom: 1px solid var(--tadu-border) !important;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: var(--bs-body-bg);
+            box-sizing: border-box;
+            flex-shrink: 0;
+            width: 100%;
+        }
+        .tab-topbar-icon {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+        .tab-topbar-icon i, .tab-topbar-icon svg {
+            margin-right: 0 !important;
+        }
+        .tab-topbar-title {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: #f8fafc;
+            line-height: 1.2;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tab-topbar-subtitle {
+            font-size: 0.73rem;
+            color: var(--tadu-text-muted);
+            margin-top: 3px;
+            line-height: 1.2;
+            display: block;
+        }
+
+        #btn-toggle-right-sidebar {
+            width: 32px !important;
+            height: 32px !important;
+            min-width: 32px !important;
+            min-height: 32px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border-radius: var(--tadu-radius-sm) !important;
+            border: none !important;
+            background: transparent !important;
+            color: var(--tadu-text-muted) !important;
+            transition: all 0.15s ease !important;
+            box-shadow: none !important;
+            line-height: 0 !important;
+            cursor: pointer;
+            box-sizing: border-box !important;
+        }
+        #btn-toggle-right-sidebar i {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 16px !important;
+            height: 16px !important;
+            line-height: 1 !important;
+            font-size: 0.95rem !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            text-align: center !important;
+        }
+        #btn-toggle-right-sidebar:hover {
+            color: #ffffff !important;
+            background: rgba(255, 255, 255, 0.08) !important;
+        }
+        #btn-toggle-right-sidebar.active {
+            color: #818cf8 !important;
+        }
+        #btn-toggle-right-sidebar.active:hover {
+            color: #a5b4fc !important;
+            background: rgba(99, 102, 241, 0.15) !important;
+        }
+
+        /* Right Sidebar: Chat Sessions */
+        .chat-sessions-sidebar {
+            transition: all 0.2s ease-in-out;
+        }
+        .session-item {
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-radius: var(--tadu-radius-sm);
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .session-item:hover {
+            background-color: #1e293b;
+            border-color: rgba(255, 255, 255, 0.05);
+        }
+        .session-item.active {
+            background-color: rgba(79, 70, 229, 0.18);
+            border-color: rgba(99, 102, 241, 0.4);
+        }
+        .session-item.active .session-title {
+            color: #a5b4fc !important;
+            font-weight: 600 !important;
+        }
+        .session-item.active i.session-icon {
+            color: #818cf8 !important;
+        }
+        .session-actions {
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+        .session-item:hover .session-actions,
+        .session-item.active .session-actions {
+            opacity: 1;
+        }
+        .session-action-btn {
+            width: 26px !important;
+            height: 26px !important;
+            min-width: 26px !important;
+            min-height: 26px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            border-radius: 4px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            color: var(--tadu-text-muted) !important;
+            cursor: pointer !important;
+            transition: all 0.15s ease !important;
+            box-sizing: border-box !important;
+            line-height: 0 !important;
+            box-shadow: none !important;
+        }
+        .session-action-btn i {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 14px !important;
+            height: 14px !important;
+            line-height: 1 !important;
+            font-size: 0.78rem !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            text-align: center !important;
+        }
+        .session-action-btn:hover {
+            background-color: rgba(255, 255, 255, 0.12) !important;
+            color: #ffffff !important;
+        }
+        .session-action-btn.btn-rename:hover {
+            background-color: rgba(99, 102, 241, 0.2) !important;
+            color: #a5b4fc !important;
+        }
+        .session-action-btn.btn-delete {
+            color: rgba(239, 68, 68, 0.75) !important;
+        }
+        .session-action-btn.btn-delete:hover {
+            background-color: rgba(239, 68, 68, 0.2) !important;
+            color: #fca5a5 !important;
+        }
+
         /* Chat Bubbles & Overflow Prevention */
         #chat-messages {
             overflow-x: hidden !important;
@@ -451,8 +646,8 @@
     <aside class="sidebar-container">
         <div>
             <!-- Brand Logo -->
-            <div class="p-3 border-bottom border-secondary-subtle d-flex align-items-center gap-3" style="border-color: var(--tadu-border) !important;">
-                <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/7QCEUGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAGgcAigAYkZCTUQwYTAwMGFkNTAxMDAwMGYzMDUwMDAwNzQwNzAwMDAxYTA5MDAwMGQ0MDkwMDAwMjUwYjAwMDBiZjBkMDAwMDcwMTAwMDAwODAxMTAwMDBkNzExMDAwMDc2MTQwMDAwAP/bAIQABQYGCwgLCwsLCw0LCwsNDg4NDQ4ODw0ODg4NDxAQEBEREBAQEA8TEhMPEBETFBQTERMWFhYTFhUVFhkWGRYWEgEFBQUKBwoICQkICwgKCAsKCgkJCgoMCQoJCgkMDQsKCwsKCw0MCwsICwsMDAwNDQwMDQoLCg0MDQ0MExQTExOc/8IAEQgB4AHgAwEiAAIRAQMRAf/EAKAAAQACAwEBAAAAAAAAAAAAAAAEBwEFBgMCEAACAgEEAwEBAQAAAAAAAAABAgMEUAASMDEQESATkAURAAACBgYGCAYDAAAAAAAAAAEDAgURITFAAAQSEyDiBhAyQbLBIiMzQkNScIJRYWJyorFxwtESAQAAAwUGBQQCAwEAAAAAAAEAETEhQVBRYSAwQHGBsQIQYqHxEpHB8DKQcNHhgP/aAAwDAQACAQMBAAABjjS2YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABjOz1n14h8+wAAAAAAAAAAAAAAAAAAAAAAAAAAGNt9WZJ0fzT9z0x9xsCH0oAAAAAAAAAAAAAAAAAAAAAAAAADaelmSdHmQbHj/KmLnpiF02BC6YAAAAAAAAAAAAAAAAAAAAAAAADG1+7OlaNINhx4HlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAABja/dnStG92dhx4AHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAABja/VnydH8yTYcfkZAAeFM25UMHqPoQ+kAAAAAAAAAAAAAAAAAAAAAAxts2fJ0fxKNhyGRnAAA8TleBnwdV3geWwAAAAAAAAAAAAAAAAAAAAAxt1nydH8SjYchkZwAABivPfjoPT5EPpQAAAAAAAAAAAAAAAAAAAAMbf5tGTo/iUbDkMjOAABgxX/1yMHp8iH0oAAAAAAAAAAAAAAAAAAAADb6u4JGmSTY8ZkZAADBiv8A65GD0+RD6UAAAAAAAAAAAAAAAAAAAAAD7uCnNxI01qZj++y4zIABgRXkaHgbc52Jv+EEDrAZAAAAAAAAAAAAAAAAAAAAAA21n0zuJOitXMWTseQyDEV5AAHO8JbvMQ+h4kQerAAAAAAAAAAAAAAAAAAAAAAA21n0zuJOitXz8vvY8jGJbHj9yB459R8PscPxV2cLC6TjRC6gAAAAAAAAAAAAAAAAAAAAAADb2bTW3k6Ky5kWTseQyAABjIqzSWZWes7jI8NoAAAAAAAAAAAAAAAAAAAAAABt7OpnbSdFa+Y/vseQyAACNTN1UxB6fAh9KAAAAAAAAAAAAAAAAAAAAAAABuLNpnbSdFbDw99jyAAHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAAABuLNpnbSdFbDw99jyAHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAAAABubMpnbSdFbDw99jyHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAAAAABuLMprbydFaNM3BT/ANx8CH0oAAAAAAAAAAAAAAAAAAAAAAAAAAAG01eM/XiHz7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/2gAIAQEAAQUC/lxBXMubrVjMdgVczWrGYogQN1mK1czFECDTdZetWMxRAg8N1lq9czFECDy3WVrVjMUQIPhuspXrGYogQfLdZOtWMxRAg+m6yVesZiiBB9v1ka1YzFECDgsNtTIV6xmMcYQcP+lJ6XH1q5mKIEHCzetTy/q2OrVjMY4wg4r1rfj61czFECDiuXfePrVjMY4wg4rtvdj61czFECDiuXd2PrVjMUQIOK7b3Y9V3GNAg4rlzdkFbaY3DjhJ1aq/poj1kK1kwlHDj7J826v6ZGrZMJRww+Sfm1V35GtaMJSQOPLH7t1d2Rq2PxKOGGm87dbNbdbdbdetXKeRrWjCUkDhvAHBdqZGrZ/EqwcAcVyD82yFe0YSjhxw3490eRrWTCUcMOCQe1yVayYSjhx9t1k61kwlHDD6brKV7JhKOHHy3WVrWTCUcMPhustWsmEo4YeW6y9WyYSjhx4brMVrJhKOGGm6zNW0YSjhw3Waq2TCd4Zc3BYMX8rP/9oACAEDAQE/AfShE5FIUkURejtTq0WlyAll7fx8uamj4tvhH6ec4tFpcgJZb0/j5c1BFrxpo943t5za0Wly1AvtOHNQRa8dWj3je3nNLRaXIWC+04c1BFrxjr0e8b285laLS56BfacOagi14xwaPI9E0fmjMLRaASF2Xt8Oagi14xwADaK2q3BSCIxHpJfzLrRaASF2Xt8Oagi14xwqlWMYaYD+4j/b/JdaLS56tDtOHNQRa8Y4VUqmMNNB/cQ5jLrZYDV0QRR2zPxoIteMcKqVbGGmB9iPMZhbVAawiCSO2X+VBBjhjhVS0u2FmD0e6l5cv6mVqqwN6wvb4s1BBjhjhVS0ssKMF3dS8vy+39TK1Vd8F4Xt8WagoscMcKqWsCjR+1LkPKZWirvesL7TizUEGOGOFUVm+KBsUOilMrRV3oXhfacWaggxwxwaPC47285paKq96wvb4s1BBjh16PeN7ec2tFVetML2+LNQQY4dWj3je3nOLRV3rTC9vizUEGOGmj3je3nOrRVXrTC9v4ebNTR8GXwD9POeRJRRFJJFF6W16Rf/2gAIAQIBAT8B9KBRYDRnSCLTxhSt7pwki08Yaq3umySLTxhrre6aJItPGGCt7pkki08YYa2MJggi08YUAGYTU7SQy5BFp4woAMw1g7uhLkE2njCgAzCefuCXIKtvGCOKsH7gmKubZduSxHkNeEZkg+y4YYjyGvCZIPsuGGI8jvBMkH2XDDEehZSdMkH2XDDDW900QfZcMMFb3TZB9lww11vdOEH2XDDVW906QfZcMKVvdPCkIgwfSL//2gAIAQECBj8C/q4yC/G/SVYkUljXpvYkWEOM+kqxIp5OMem+JFPNxf0lX9viRQ2HFvTfEimy4rl4b2JFNpxT03xI23E8vDexIobh5Yl6b4kbnxOmI5eG9iRYG6PDn+MQ9JViRTdTh8X25Yfl4b2JFhu/o8P8SuuH+kqxIpu/o8HVw/Lw3sSLDd/R4Gy9zw/0lWJG7+nwUvcP9N8SLDd/R4aXueHhmygDdvg8NgVcQHJnAl+7mfy74j6comWm7+rw/wAu+I+lqRMpu/q8P8u+I5+G8iZabv6vD/K8z/7iPpakTKbv6/B1MRz8N5Ey0d39fg6mI+lqRMpu9PFTEc/DeR9RaO6fTbiXpviZTcvLE8/DeRMpuHFPTfEym24rn4byJlHacW9N8TKbLi/pvImU2HGPTlEynm4z6WpEynk41n4comWkON+lqRMyxyVRu/qs/9oACAEBAgE/If6uJs0VuoyzxvKPwRr2+0EiJBSOkN/XGcsD9DWDxyKEe0e0N/XGJJp8Ea9vtMAEhQ8vaPaG/ri+WBV+DWBByFPP2j2hv64tZ2Z8GZ9n2EQUqBse0e0N/XFcoCr8GsCDkKGz7R7Q39cUspMPhM3t7Jg5Chte0e0N/XE8oCr8GsADkFNv2j2hv64lZyw+Aze3tBo5UDce6YllAVfg1gAcg3Omy7QYhlw+A17QCO4G6zRc3la7yMQyz8Aa9oAHIboCpkBNeUPclBop964fkw+A17QCORQ3c5MzOYu5Hflh+WfgDXtAA5Dd2hLKH2H84fkg/Q1gEcihupyi12BS9g5Z50zw+WafBGvb7QAOQbpYtDZBv5P5w/JAq/BrBo5FA3Sxb103sNM86YfpOfcygSpAbtlaQmdKoaa4hpOfYzhCpgnup/KANM/ofwwiRJJU1xDPCrk1P9QYcSibify85C43U5eeUd/fk4hmH7hma9/tAJJqm1P5bJz2F8u/7hJWNid8QzgfIa6QQeZR2JvLbpax0Gmj3xFb1+QNe8Anmr/JSPMTpHNEsSxJlEmUVwtqXc10xHMh8hrpfBBygYp8pfPcS5lqXc/J1xFM35A17xMZNUYtuW5YpedkG8/PxiOdD5DXS+CygLE3U2X2HSvtPEs4Kj8msAkmtzKOa7QYlmw+U17+8GHmrR3HtHtDf1xPPDoy1IBLNU2/aPaG/ril/F+Qye/vAB50Ha9o9ob+uK54dGWpAJZqjs+0e0N/XFsyP5DXvAJJqjse0e0N/XF80OuTUgQ81R8/aPaG/rjGcfmjXv8AaASTVHy9o9ob+uM5ga5NT/UGHmUSPaPaG/rjWYfmDXvBMiY2HpDf1xufUL7nL+qz/9oADAMBAgICAwIAABAIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIKMIIIIIIIIIIIIIIIIIIIIIIIIIIIK4IIIIIIIIIIIIIIIIIIIIIIIIIIIIaEMIIIIIIIIIIIIIIIIIIIIIIIIIKgHwMIIIIIIIIIIIIIIIIIIIIIIIILxnzwMIIIIIIIIIIIIIIIIIIIIIIIL7/zzw8IIIIIIIIIIIIIIIIIIIIIIL7zzzxXMIIIIIIIIIIIIIIIIIIIIILbzzzzgYIIIIIIIIIIIIIIIIIIIIIL7zzzzh4IIIIIIIIIIIIIIIIIIIIII7/zzzwYIIIIIIIIIIIIIIIIIIIIIILKXzzyBUsIIIIIIIIIIIIIIIIIIIIIIJ6XyAABcIIIIIIIIIIIIIIIIIIIIIIIL7gBwxyMIIIIIIIIIIIIIIIIIIIIIIIK63zzzzYIIIIIIIIIIIIIIIIIIIIIIIL6XzzzMIIIIIIIIIIIIIIIIIIIIIIIIL4HzwMIIIIIIIIIIIIIIIIIIIIIIIIIL5HwMIIIIIIIIIIIIIIIIIIIIIIIIIII5EMIIIIIIIIIIIIIIIIIIIIIIIIIIIL6sIIIIIIIIIIIIIIIIIIIIIIIIIIIIJsIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIL/2gAIAQMCAT8Q/wAUTusvlnxoWgdbhg1Yna4waCfW4YI6i1ziniwYtSq3H9dIRzJrVv8AKnigcytVcsEdRWq+dPEgTOmqt0TuorVb9hNWX2nxExE3VuMHdRVdiYkVY/2Ivd04eYibq3GDuoquy7z8vd+s+HA1VVywd1FVz2ec0n78jh+cCZf9w7qKrnsna9ZPZ/HxHLHMv+4RyJCo7M1N3EBnS2fEA9SRO5EhUbNm93jSvEBSDUiRyJCyTZsyqbR+JwXQVImbYCxnY7K13rGT9uJPrAiR0BYmWxZHFAHqSJEhJKnnTxYA2Q1MsESEkqeVPGATQalxgiQklSKeNAGyGtwwZWBLXHJXSXzy/wARf//aAAgBAgIBPxD/ABQvGgkJY4y0JTjWKnGsVONQglYbFoeJCoDZnXiBKA2Zvu8QJQGzM4fmIIJWHGmDmirx841ePmNXj5GGfH0GrsVcXGr/AOHUZGRlB//aAAgBAQIBPxD+nyeOSHtCwnMKQNkzJxqVrXQydnKBCrmxlex/M0iMuGQftfJyrmxhLyav16wpjyyDzQq5sXXtfzYBeCyBsIVc2LJamahGSRokg2UKubFV6X82IVAsg2kKubFEnzHSjKXgsgiW0hVzYmvS/mxDoHkCDbUq5sSSvMuNM7JJB+2u4ctPsxOfW3EcwvnsQ6B5AbkHYY2SyMQs1NNGFCyCQftrruhHuZiEF+kc5iDoFkBui5LIbAg7a+Sw8V6k6rCBZDIP2113U5RM7SWOHoEtWojk6BZAbpZRzJArGSkYdexWo6RBZDIP2113TUbCHSA0kWwiiyww6X03QSKgeQG6AJrIIfUxPsyoBKzDr+M5sA7IZforupFrYF8TtirEYflQBklMAkUmA3SgToET5qAioALKYegFSoAohAkG4UCd0U5R7xRFehgkDNklTEEmM3a0EPkZorE9pQJtkU5/152QSG24QUSYiBkiSDiBMdquXCQZizRsqBO6Kc/62QBSCYQESExJGpiCTma9QhC8hmH7XTYoxse+3LtnJhiMF7i5TEBwLMF8ETWV9nnbjY1gGb7Qa0aK9YBuRKufaJ2kiriMXiVqkIDyEw/a6RS5+R23/jbYuc0aOFtpiGZlMrmJOCLMIavm3IEk3xN01sRgl8nVbSETxAMlE9yQpSxKiWW18liBmLMSDcAjaBgELalmJCpWvWI2XgshE9wpVzYmltm3mog+FmhruFKubFFk5jHmckkwv20KubFUtM2w4ehZg12kKubFl+216duEV5ZhfsoVc2LpKZt1oBUCzBrsIVc2MM/TkxoE5Zhf5oVc2MpCZp1oIPIZosfJSrmxpepHKYlSd5C+FXNjaqyk5pSvMkLNXNnjcv6cP//Z" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 38px; height: 38px; object-fit: cover;">
+            <div class="sidebar-brand-header gap-3">
+                <img src="/logo.jpg" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 38px; height: 38px; object-fit: cover;">
                 <div class="overflow-hidden">
                     <div class="fw-bold d-flex align-items-center gap-2 text-white" style="font-size: 0.92rem;">
                         <span>Tadu Cloud</span>
@@ -480,12 +675,12 @@
             <nav class="sidebar-nav d-flex flex-column gap-1">
                 <button onclick="switchTab('chat')" id="nav-chat" class="tadu-nav-btn active">
                     <i class="fa-solid fa-comments text-center" style="width: 20px;"></i>
-                    <span>Trò Chuyện AI</span>
+                    <span>Trợ lý AI</span>
                 </button>
 
                 <button onclick="switchTab('server')" id="nav-server" class="tadu-nav-btn">
                     <i class="fa-solid fa-server text-center" style="width: 20px;"></i>
-                    <span>Quản Lý Server & Deploy</span>
+                    <span>Thiết lập</span>
                 </button>
 
                 <button onclick="switchTab('terminal')" id="nav-terminal" class="tadu-nav-btn">
@@ -495,12 +690,12 @@
 
                 <button onclick="switchTab('logs')" id="nav-logs" class="tadu-nav-btn">
                     <i class="fa-solid fa-file-lines text-center" style="width: 20px;"></i>
-                    <span>Nhật Ký Service (Logs)</span>
+                    <span>Logs</span>
                 </button>
 
                 <button onclick="switchTab('settings')" id="nav-settings" class="tadu-nav-btn">
                     <i class="fa-solid fa-gear text-center" style="width: 20px;"></i>
-                    <span>Cấu Hình Hệ Thống</span>
+                    <span>Hệ thống</span>
                 </button>
             </nav>
         </div>
@@ -521,35 +716,45 @@
     <main class="main-container">
 
         <!-- ============================================================= -->
-        <!-- TAB 1: CHAT VỚI AI AGENT -->
+        <!-- TAB 1: TRỢ LÝ AI (VỚI RIGHT SIDEBAR HỘP HỘI THOẠI) -->
         <!-- ============================================================= -->
         <section id="tab-chat" class="d-flex flex-column h-100">
             <!-- Topbar Header -->
-            <div class="px-4 py-3 border-bottom d-flex align-items-center justify-content-between" style="border-color: var(--tadu-border) !important;">
-                <div class="d-flex align-items-center gap-3">
-                    <span class="live-dot bg-success live-pulse"></span>
-                    <div>
-                        <div class="fw-semibold text-white d-flex align-items-center gap-2" style="font-size: 0.88rem;">
-                            <span>Tadu Cloud AI Assistant</span>
+            <div class="tab-topbar">
+                <div class="d-flex align-items-center gap-3 overflow-hidden">
+                    <div class="tab-topbar-icon position-relative">
+                        <i class="fa-solid fa-robot text-primary"></i>
+                        <span class="live-dot bg-success live-pulse position-absolute" style="top: 0; right: -2px; width: 7px; height: 7px;"></span>
+                    </div>
+                    <div class="d-flex flex-column justify-content-center overflow-hidden">
+                        <div class="tab-topbar-title">
+                            <span id="current-session-title" class="text-truncate" style="max-width: 320px;">Tadu Cloud AI Assistant</span>
                             <span id="chat-model-badge" class="badge text-bg-dark rounded-1" style="font-size: 0.68rem; color: #a5b4fc; background-color: #1e293b !important;">glm-5.3</span>
                         </div>
-                        <small class="text-secondary" style="font-size: 0.72rem;">Có quyền thực thi lệnh bash an toàn trên máy chủ Linux</small>
+                        <small class="tab-topbar-subtitle">Có quyền thực thi lệnh bash an toàn trên máy chủ Linux</small>
                     </div>
                 </div>
 
-                <div>
-                    <button onclick="clearChatHistory()" class="btn btn-sm btn-outline-secondary px-3 py-2" style="font-size: 0.75rem;">
-                        <i class="fa-solid fa-trash-can"></i>
-                        <span>Xoá hội thoại</span>
+                <div class="d-flex align-items-center gap-2">
+                    <button onclick="toggleRightSidebar()" id="btn-toggle-right-sidebar" class="active" title="Đóng/Mở danh sách hộp hội thoại">
+                        <i class="fa-solid fa-table-columns"></i>
+                    </button>
+                    <button onclick="createNewSession()" class="btn btn-sm btn-primary px-3 py-1.5 d-inline-flex align-items-center gap-1.5" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Hội thoại mới</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Chat Message List -->
-            <div id="chat-messages" class="flex-grow-1 overflow-y-auto overflow-x-hidden px-4 py-3 d-flex flex-column gap-3 w-100 min-w-0">
-                <!-- Welcome Greeting Message -->
-                <div class="d-flex align-items-start gap-3 w-100">
-                    <img src="data:image/jpeg;base64,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" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+            <!-- Workspace: Chat Center + Right Sidebar -->
+            <div class="flex-grow-1 d-flex overflow-hidden w-100">
+                <!-- Center: Chat Feed & Input -->
+                <div class="flex-grow-1 d-flex flex-column h-100 overflow-hidden min-w-0">
+                    <!-- Chat Message List -->
+                    <div id="chat-messages" class="flex-grow-1 overflow-y-auto overflow-x-hidden px-4 py-3 d-flex flex-column gap-3 w-100 min-w-0">
+                        <!-- Welcome Greeting Message -->
+                        <div class="d-flex align-items-start gap-3 w-100">
+                            <img src="/logo.jpg" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
                     <div class="chat-bubble-ai prose">
                         <p class="mb-1">👋 Xin chào! Tôi là <strong>Tadu Cloud AI Agent (GLM-5.3)</strong> kết nối trực tiếp với Server của bạn.</p>
                         <p class="mb-3 text-secondary" style="font-size: 0.85rem;">Tôi có thể giải đáp thắc mắc, phân tích hệ thống và <strong>tự động chạy lệnh Terminal</strong> khi bạn yêu cầu!</p>
@@ -605,22 +810,60 @@
                     </div>
                 </form>
             </div>
-        </section>
+        </div>
 
-        <!-- ============================================================= -->
-        <!-- TAB 2: QUẢN LÝ SERVER & DEPLOY -->
-        <!-- ============================================================= -->
-        <section id="tab-server" class="d-none flex-grow-1 overflow-y-auto p-4 w-100">
-            <div class="d-flex align-items-center justify-content-between mb-4">
-                <div>
-                    <h5 class="fw-bold text-white mb-1">Quản Lý Máy Chủ & Dịch Vụ Systemd</h5>
-                    <small class="text-secondary" style="font-size: 0.8rem;">Triển khai code lên VPS/Server và quản lý tiến trình nền</small>
-                </div>
-                <button onclick="fetchSystemInfo()" class="btn btn-outline-light btn-sm px-3 py-2">
-                    <i class="fa-solid fa-arrows-rotate"></i>
-                    <span>Cập nhật</span>
+        <!-- Right Sidebar: Danh Sách Hộp Hội Thoại -->
+        <aside id="chat-right-sidebar" class="chat-sessions-sidebar d-flex flex-column border-start flex-shrink-0" style="width: 260px; border-color: var(--tadu-border) !important; background-color: rgba(15, 23, 42, 0.4);">
+            <div class="px-3 py-2.5 border-bottom d-flex align-items-center justify-content-between" style="border-color: var(--tadu-border) !important; min-height: 46px;">
+                <span class="fw-semibold text-white d-flex align-items-center gap-2" style="font-size: 0.78rem;">
+                    <i class="fa-solid fa-layer-group text-primary"></i>
+                    <span>Hộp Hội Thoại</span>
+                </span>
+            </div>
+
+            <!-- Danh sách phiên (Scrollable) -->
+            <div id="sessions-list" class="flex-grow-1 overflow-y-auto p-2 d-flex flex-column gap-1">
+                <!-- Rendered by JS -->
+            </div>
+
+            <!-- Footer nhỏ của Right Sidebar -->
+            <div class="px-3 py-2 border-top d-flex align-items-center justify-content-between text-secondary" style="border-color: var(--tadu-border) !important; font-size: 0.7rem;">
+                <span id="session-count-badge">0 hội thoại</span>
+                <button onclick="clearCurrentSessionMessages()" class="btn btn-sm btn-link text-danger p-0 text-decoration-none" style="font-size: 0.7rem;" title="Xoá toàn bộ tin nhắn trong hộp này">
+                    <i class="fa-solid fa-trash-can me-1"></i>Xoá chat
                 </button>
             </div>
+        </aside>
+    </div>
+</section>
+
+        <!-- ============================================================= -->
+        <!-- TAB 2: THIẾT LẬP (QUẢN LÝ SERVER & DEPLOY) -->
+        <!-- ============================================================= -->
+        <section id="tab-server" class="d-none flex-grow-1 d-flex flex-column h-100 w-100">
+            <!-- Topbar Header -->
+            <div class="tab-topbar">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="tab-topbar-icon">
+                        <i class="fa-solid fa-server text-info"></i>
+                    </div>
+                    <div class="d-flex flex-column justify-content-center">
+                        <div class="tab-topbar-title">
+                            <span>Quản Lý Máy Chủ & Dịch Vụ Systemd</span>
+                        </div>
+                        <small class="tab-topbar-subtitle">Triển khai code lên VPS/Server và quản lý tiến trình nền</small>
+                    </div>
+                </div>
+                <div>
+                    <button onclick="fetchSystemInfo()" class="btn btn-outline-light btn-sm px-3 py-1.5" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span>Cập nhật</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-grow-1 overflow-y-auto p-4 w-100">
 
             <!-- Server Status Cards Grid -->
             <div class="row g-3 mb-4">
@@ -703,11 +946,11 @@
                             <i class="fa-solid fa-cloud-arrow-up text-info"></i>
                             <span>1-Click Deploy & Tự Động Thiết Lập Trọn Gói</span>
                         </h6>
-                        <small class="text-secondary d-block mt-1" style="font-size: 0.78rem; line-height: 1.5;">Tự động cài đặt thư viện Python, upload file code<br>và khởi tạo Systemd service trên VPS</small>
+                        <small class="text-secondary d-block mt-1" style="font-size: 0.78rem; line-height: 1.5;">Tự động cài đặt thư viện Python, upload file code và khởi tạo Systemd service trên VPS</small>
                     </div>
                     <button id="btn-deploy" onclick="startDeploy()" class="btn btn-primary px-4 py-2">
                         <i class="fa-solid fa-rocket"></i>
-                        <span>Bắt đầu Deploy</span>
+                        <span>Bắt đầu thiết lập</span>
                     </button>
                 </div>
 
@@ -741,83 +984,114 @@
         <!-- ============================================================= -->
         <!-- TAB 3: REMOTE SSH TERMINAL -->
         <!-- ============================================================= -->
-        <section id="tab-terminal" class="d-none flex-grow-1 d-flex flex-column h-100 p-4">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div>
-                    <h6 class="fw-bold text-white mb-1 icon-text-gap">
+        <section id="tab-terminal" class="d-none flex-grow-1 d-flex flex-column h-100 w-100">
+            <!-- Topbar Header -->
+            <div class="tab-topbar">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="tab-topbar-icon">
                         <i class="fa-solid fa-terminal text-success"></i>
-                        <span>Remote SSH Terminal Console</span>
-                    </h6>
-                    <small class="text-secondary d-block mt-1" style="font-size: 0.75rem; line-height: 1.5;">Thực thi lệnh shell trực tiếp trên máy chủ<br>qua kết nối SSH an toàn</small>
+                    </div>
+                    <div class="d-flex flex-column justify-content-center">
+                        <div class="tab-topbar-title">
+                            <span>Remote SSH Terminal Console</span>
+                        </div>
+                        <small class="tab-topbar-subtitle">Thực thi lệnh shell trực tiếp trên máy chủ qua kết nối SSH an toàn</small>
+                    </div>
                 </div>
-                <button onclick="clearTerminalLog()" class="btn btn-sm btn-outline-secondary px-3 py-2">
-                    <i class="fa-solid fa-eraser"></i>
-                    <span>Xoá màn hình</span>
-                </button>
-            </div>
-
-            <!-- Terminal Output Window -->
-            <div id="terminal-screen" class="flex-grow-1 bg-black rounded-1 p-4 font-mono overflow-y-auto mb-3" style="font-size: 0.82rem; color: #38bdf8; line-height: 1.6;">
-                <div class="text-secondary">=== Tadu Cloud Remote SSH Terminal Console Sẵn Sàng ===</div>
-            </div>
-
-            <!-- Command Input Bar -->
-            <form id="terminal-form" onsubmit="executeTerminalCommand(event)">
-                <div class="terminal-input-box d-flex align-items-center p-2 rounded-1">
-                    <span class="text-success font-mono px-3 fw-bold flex-shrink-0" style="font-size: 0.84rem;">root@server:~#</span>
-                    <input type="text" id="terminal-input" placeholder="Nhập lệnh shell (vd: ls -la, df -h, systemctl status nginx)..." class="form-control p-0 border-0 bg-transparent font-mono text-white flex-grow-1" style="font-size: 0.84rem; outline: none; box-shadow: none !important;">
-                    <button type="submit" class="btn btn-primary px-3 py-1.5 ms-2 flex-shrink-0 d-inline-flex align-items-center">
-                        <i class="fa-solid fa-play me-1.5" style="font-size: 0.75rem;"></i>
-                        <span>Chạy</span>
+                <div>
+                    <button onclick="clearTerminalLog()" class="btn btn-sm btn-outline-secondary px-3 py-1.5" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-eraser"></i>
+                        <span>Xoá màn hình</span>
                     </button>
                 </div>
-            </form>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-grow-1 d-flex flex-column p-4 overflow-hidden">
+                <!-- Terminal Output Window -->
+                <div id="terminal-screen" class="flex-grow-1 bg-black rounded-1 p-4 font-mono overflow-y-auto mb-3" style="font-size: 0.82rem; color: #38bdf8; line-height: 1.6;">
+                    <div class="text-secondary">=== Tadu Cloud Remote SSH Terminal Console Sẵn Sàng ===</div>
+                </div>
+
+                <!-- Command Input Bar -->
+                <form id="terminal-form" onsubmit="executeTerminalCommand(event)">
+                    <div class="terminal-input-box d-flex align-items-center p-2 rounded-1">
+                        <span class="text-success font-mono px-3 fw-bold flex-shrink-0" style="font-size: 0.84rem;">root@server:~#</span>
+                        <input type="text" id="terminal-input" placeholder="Nhập lệnh shell (vd: ls -la, df -h, systemctl status nginx)..." class="form-control p-0 border-0 bg-transparent font-mono text-white flex-grow-1" style="font-size: 0.84rem; outline: none; box-shadow: none !important;">
+                        <button type="submit" class="btn btn-primary px-3 py-1.5 ms-2 flex-shrink-0 d-inline-flex align-items-center">
+                            <i class="fa-solid fa-play me-1.5" style="font-size: 0.75rem;"></i>
+                            <span>Chạy</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
         </section>
 
         <!-- ============================================================= -->
         <!-- TAB 4: NHẬT KÝ SERVICE (LOGS) -->
         <!-- ============================================================= -->
-        <section id="tab-logs" class="d-none flex-grow-1 d-flex flex-column h-100 p-4">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div>
-                    <h6 class="fw-bold text-white mb-1 icon-text-gap">
+        <section id="tab-logs" class="d-none flex-grow-1 d-flex flex-column h-100 w-100">
+            <!-- Topbar Header -->
+            <div class="tab-topbar">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="tab-topbar-icon">
                         <i class="fa-solid fa-file-lines text-warning"></i>
-                        <span>Nhật Ký Dịch Vụ Systemd (Journalctl Logs)</span>
-                    </h6>
-                    <small class="text-secondary" style="font-size: 0.75rem;">Nhật ký realtime của tiến trình <code>ai-agent.service</code></small>
+                    </div>
+                    <div class="d-flex flex-column justify-content-center">
+                        <div class="tab-topbar-title">
+                            <span>Nhật Ký Dịch Vụ Systemd (Journalctl Logs)</span>
+                        </div>
+                        <small class="tab-topbar-subtitle">Nhật ký realtime của tiến trình <code>ai-agent.service</code></small>
+                    </div>
                 </div>
                 <div class="d-flex align-items-center gap-3">
                     <div class="form-check form-switch mb-0 d-flex align-items-center gap-2">
-                        <input class="form-check-input" type="checkbox" id="auto-refresh-logs">
-                        <label class="form-check-label text-secondary fw-medium" for="auto-refresh-logs" style="font-size: 0.78rem;">Tự động làm mới (3s)</label>
+                        <input class="form-check-input" type="checkbox" id="auto-refresh-logs" checked>
+                        <label class="form-check-label text-secondary fw-medium" for="auto-refresh-logs" style="font-size: 0.76rem;">Tự động làm mới (3s)</label>
                     </div>
-                    <button onclick="fetchServiceLogs()" class="btn btn-sm btn-outline-secondary px-3 py-2">
+                    <button onclick="fetchServiceLogs()" class="btn btn-sm btn-outline-secondary px-3 py-1.5" style="font-size: 0.75rem;">
                         <i class="fa-solid fa-arrows-rotate"></i>
                         <span>Làm mới</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Logs Display Screen -->
-            <div class="flex-grow-1 bg-black rounded-1 p-4 font-mono overflow-y-auto" style="font-size: 0.78rem;">
-                <pre id="logs-content" class="text-light mb-0" style="white-space: pre-wrap; word-break: break-all; line-height: 1.6;">Đang tải nhật ký...</pre>
+            <!-- Content Area -->
+            <div class="flex-grow-1 d-flex flex-column p-4 overflow-hidden position-relative">
+                <!-- Logs Display Screen -->
+                <div id="logs-container" class="flex-grow-1 bg-black rounded-1 p-4 font-mono overflow-y-auto" style="font-size: 0.78rem; scroll-behavior: smooth;">
+                    <pre id="logs-content" class="text-light mb-0" style="white-space: pre-wrap; word-break: break-all; line-height: 1.6;">Đang tải nhật ký...</pre>
+                </div>
             </div>
         </section>
 
         <!-- ============================================================= -->
-        <!-- TAB 5: CÀI ĐẶT CẤU HÌNH (SETTINGS) -->
+        <!-- TAB 5: HỆ THỐNG (SETTINGS) -->
         <!-- ============================================================= -->
-        <section id="tab-settings" class="d-none flex-grow-1 overflow-y-auto p-4 w-100">
-            <div class="d-flex align-items-center justify-content-between mb-4">
-                <div>
-                    <h5 class="fw-bold text-white mb-1">Cấu Hình Kết Nối & Thông Số Hệ Thống</h5>
-                    <small class="text-secondary" style="font-size: 0.8rem;">Thông tin được lưu an toàn tại file <code>config.json</code></small>
+        <section id="tab-settings" class="d-none flex-grow-1 d-flex flex-column h-100 w-100">
+            <!-- Topbar Header -->
+            <div class="tab-topbar">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="tab-topbar-icon">
+                        <i class="fa-solid fa-gear text-primary"></i>
+                    </div>
+                    <div class="d-flex flex-column justify-content-center">
+                        <div class="tab-topbar-title">
+                            <span>Cấu Hình Kết Nối & Thông Số Hệ Thống</span>
+                        </div>
+                        <small class="tab-topbar-subtitle">Thông tin được lưu an toàn tại file <code>config.json</code></small>
+                    </div>
                 </div>
-                <button onclick="saveSettings()" class="btn btn-primary px-4 py-2 fw-bold">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                    <span>Lưu Cấu Hình</span>
-                </button>
+                <div>
+                    <button onclick="saveSettings()" class="btn btn-primary btn-sm px-3.5 py-1.5 fw-semibold" style="font-size: 0.78rem;">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Lưu Cấu Hình</span>
+                    </button>
+                </div>
             </div>
+
+            <!-- Content Area -->
+            <div class="flex-grow-1 overflow-y-auto p-4 w-100">
 
             <div class="d-flex flex-column gap-3">
                 <!-- Group 1: Remote Server SSH -->
@@ -971,6 +1245,26 @@
 
         // Custom Toast Notification Function
         
+        // Helper for Confirm Modals
+        async function showConfirmModal(title, message, confirmText = "Đồng ý", btnClass = "btn-danger") {
+            try {
+                const modalEl = document.getElementById('taduConfirmModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    return await showConfirmDialog({
+                        title: title,
+                        message: message,
+                        confirmText: confirmText,
+                        cancelText: "Huỷ bỏ",
+                        type: btnClass.replace('btn-', '') || 'danger',
+                        icon: btnClass.includes('danger') ? 'fa-triangle-exclamation' : 'fa-circle-question'
+                    });
+                }
+            } catch (e) {
+                console.warn("Bootstrap modal error:", e);
+            }
+            return window.confirm(`${title}\n\n${message}`);
+        }
+
         // Reusable Bootstrap Confirm Dialog
         function showConfirmDialog({ title = "Xác nhận thao tác", message = "Bạn có chắc chắn muốn tiếp tục?", confirmText = "Đồng ý", cancelText = "Huỷ bỏ", type = "primary", icon = "fa-circle-question" }) {
             return new Promise((resolve) => {
@@ -1083,6 +1377,284 @@
             handleChatSubmit(new Event('submit'));
         }
 
+        // =============================================================
+        // MULTI-SESSION / HỘP HỘI THOẠI LOGIC
+        // =============================================================
+        let currentSessionId = 'default';
+        let chatSessions = [];
+
+        async function loadSessions() {
+            try {
+                const res = await fetch('/api/chat/sessions');
+                const data = await res.json();
+                if (data.status === 'success' && data.sessions) {
+                    chatSessions = data.sessions;
+                    renderSessionsList();
+                }
+            } catch (err) {
+                console.error("Lỗi tải danh sách sessions:", err);
+            }
+        }
+
+        function renderSessionsList() {
+            const listEl = document.getElementById('sessions-list');
+            const countBadge = document.getElementById('session-count-badge');
+            const titleEl = document.getElementById('current-session-title');
+            if (!listEl) return;
+
+            if (countBadge) {
+                countBadge.innerText = `${chatSessions.length} hội thoại`;
+            }
+
+            let activeSession = chatSessions.find(s => s.id === currentSessionId);
+            if (!activeSession && chatSessions.length > 0) {
+                currentSessionId = chatSessions[0].id;
+                activeSession = chatSessions[0];
+            }
+
+            if (titleEl && activeSession) {
+                titleEl.innerText = activeSession.title || 'Tadu Cloud AI Assistant';
+                titleEl.title = activeSession.title || 'Tadu Cloud AI Assistant';
+            }
+
+            listEl.innerHTML = '';
+            chatSessions.forEach(s => {
+                const isActive = (s.id === currentSessionId);
+                const item = document.createElement('div');
+                item.className = `session-item d-flex align-items-center justify-content-between p-2 rounded-1 ${isActive ? 'active' : ''}`;
+                item.onclick = () => selectSession(s.id);
+                
+                const safeTitle = escapeHtml(s.title || 'Cuộc hội thoại');
+                const timeStr = formatTime(s.updated_at || s.created_at);
+
+                item.innerHTML = `
+                    <div class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1 me-1">
+                        <i class="fa-regular fa-message session-icon text-secondary flex-shrink-0" style="font-size: 0.8rem;"></i>
+                        <div class="overflow-hidden w-100">
+                            <div class="session-title text-truncate" style="font-size: 0.8rem; color: #f1f5f9;" title="${safeTitle}">${safeTitle}</div>
+                            <small class="session-time text-secondary d-block text-truncate" style="font-size: 0.68rem;">${timeStr}</small>
+                        </div>
+                    </div>
+                    <div class="session-actions d-flex align-items-center gap-1 flex-shrink-0">
+                        <button type="button" class="session-action-btn btn-rename" title="Đổi tên hội thoại">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button type="button" class="session-action-btn btn-delete" title="Xóa hộp hội thoại này">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                `;
+
+                const renameBtn = item.querySelector('.btn-rename');
+                if (renameBtn) {
+                    renameBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        renameSessionPrompt(s.id, s.title || '');
+                    };
+                }
+                const deleteBtn = item.querySelector('.btn-delete');
+                if (deleteBtn) {
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        deleteSessionConfirm(s.id);
+                    };
+                }
+
+                listEl.appendChild(item);
+            });
+        }
+
+        async function selectSession(sessionId) {
+            if (currentSessionId === sessionId) return;
+            currentSessionId = sessionId;
+            renderSessionsList();
+            await loadChatHistory(currentSessionId);
+        }
+
+        async function createNewSession() {
+            try {
+                const res = await fetch('/api/chat/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: 'Cuộc hội thoại mới' })
+                });
+                const data = await res.json();
+                if (data.status === 'success' && data.session) {
+                    currentSessionId = data.session.id;
+                    await loadSessions();
+                    renderEmptyGreeting();
+                    showToast("Đã tạo hộp hội thoại mới!", "success");
+                    const inp = document.getElementById('chat-input');
+                    if (inp) inp.focus();
+                }
+            } catch (err) {
+                showToast("Lỗi khi tạo hội thoại: " + err.message, "error");
+            }
+        }
+
+        function showPromptModal({ title = "Đổi tên hộp hội thoại", label = "Nhập tên mới:", defaultValue = "", confirmText = "Lưu thay đổi" }) {
+            return new Promise((resolve) => {
+                const modalEl = document.getElementById('taduPromptModal');
+                const inputEl = document.getElementById('prompt-modal-input');
+                const titleEl = document.getElementById('prompt-modal-title');
+                const labelEl = document.getElementById('prompt-modal-label');
+                const confirmBtn = document.getElementById('prompt-modal-btn-confirm');
+                
+                titleEl.innerHTML = `<i class="fa-solid fa-pen-to-square text-primary"></i> <span>${escapeHtml(title)}</span>`;
+                labelEl.innerText = label;
+                inputEl.value = defaultValue;
+                
+                const modal = new bootstrap.Modal(modalEl);
+                let result = null;
+
+                const submit = () => {
+                    result = inputEl.value.trim();
+                    modal.hide();
+                };
+
+                const onConfirm = () => submit();
+                const onKeydown = (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submit();
+                    }
+                };
+
+                const onShown = () => {
+                    inputEl.focus();
+                    inputEl.select();
+                };
+
+                const onHidden = () => {
+                    confirmBtn.removeEventListener('click', onConfirm);
+                    inputEl.removeEventListener('keydown', onKeydown);
+                    modalEl.removeEventListener('shown.bs.modal', onShown);
+                    modalEl.removeEventListener('hidden.bs.modal', onHidden);
+                    resolve(result);
+                };
+
+                confirmBtn.addEventListener('click', onConfirm);
+                inputEl.addEventListener('keydown', onKeydown);
+                modalEl.addEventListener('shown.bs.modal', onShown);
+                modalEl.addEventListener('hidden.bs.modal', onHidden);
+
+                modal.show();
+            });
+        }
+
+        async function renameSessionPrompt(sessionId, currentTitle) {
+            const newTitle = await showPromptModal({
+                title: "Đổi tên hộp hội thoại",
+                label: "Nhập tiêu đề mới cho hộp hội thoại:",
+                defaultValue: currentTitle || "",
+                confirmText: "Lưu thay đổi"
+            });
+            if (newTitle === null || newTitle.trim() === "" || newTitle.trim() === currentTitle) return;
+            try {
+                const res = await fetch(`/api/chat/sessions/${sessionId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle.trim() })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast("Đã đổi tên hộp hội thoại!", "success");
+                    await loadSessions();
+                } else {
+                    showToast("Lỗi khi đổi tên: " + (data.message || "Không thể cập nhật"), "error");
+                }
+            } catch (err) {
+                showToast("Lỗi khi đổi tên: " + err.message, "error");
+            }
+        }
+
+        async function deleteSessionConfirm(sessionId) {
+            const ok = await showConfirmModal(
+                "Xác nhận xóa hộp hội thoại",
+                "Bạn có chắc chắn muốn xóa hộp hội thoại này? Mọi tin nhắn trong hộp sẽ bị xóa vĩnh viễn.",
+                "Xóa ngay",
+                "btn-danger"
+            );
+            if (!ok) return;
+
+            try {
+                const res = await fetch(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast("Đã xóa hộp hội thoại!", "info");
+                    const sessionRes = await fetch('/api/chat/sessions');
+                    const sData = await sessionRes.json();
+                    chatSessions = sData.sessions || [];
+                    if (currentSessionId === sessionId) {
+                        if (chatSessions.length > 0) {
+                            currentSessionId = chatSessions[0].id;
+                            renderSessionsList();
+                            await loadChatHistory(currentSessionId);
+                        } else {
+                            await createNewSession();
+                        }
+                    } else {
+                        renderSessionsList();
+                    }
+                }
+            } catch (err) {
+                showToast("Lỗi xóa hội thoại: " + err.message, "error");
+            }
+        }
+
+        function toggleRightSidebar() {
+            const sb = document.getElementById('chat-right-sidebar');
+            const btn = document.getElementById('btn-toggle-right-sidebar');
+            if (!sb) return;
+            sb.classList.toggle('d-none');
+            if (btn) btn.classList.toggle('active');
+        }
+
+        function renderEmptyGreeting() {
+            chatHistory = [];
+            selectedFiles = [];
+            renderAttachments();
+            const container = document.getElementById('chat-messages');
+            if (!container) return;
+            container.innerHTML = `
+                <div class="d-flex align-items-start gap-3 w-100">
+                    <img src="/logo.jpg" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                    <div class="chat-bubble-ai prose">
+                        <p class="mb-1">👋 Xin chào! Tôi là <strong>Tadu Cloud AI Agent (GLM-5.3)</strong> kết nối trực tiếp với Server của bạn.</p>
+                        <p class="mb-3 text-secondary" style="font-size: 0.85rem;">Tôi có thể giải đáp thắc mắc, phân tích hệ thống và <strong>tự động chạy lệnh Terminal</strong> khi bạn yêu cầu!</p>
+                        <div class="pt-3 border-top" style="border-color: var(--tadu-border) !important;">
+                            <div class="text-secondary fw-semibold mb-2" style="font-size: 0.75rem;">GỢI Ý CÂU LỆNH MẪU:</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button onclick="quickPrompt('Kiểm tra dung lượng ổ đĩa và RAM hiện tại')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-chart-pie text-info"></i> Kiểm tra RAM & Ổ đĩa</button>
+                                <button onclick="quickPrompt('Xem danh sách tiến trình đang chạy và chiếm nhiều CPU nhất')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-bolt text-warning"></i> Top tiến trình CPU</button>
+                                <button onclick="quickPrompt('Kiểm tra các cổng mạng đang mở (listening ports)')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-network-wired text-primary"></i> Cổng đang mở</button>
+                                <button onclick="quickPrompt('Kiểm tra trạng thái service nginx và uvicorn')" class="btn btn-sm btn-dark border border-secondary px-3 py-2" style="font-size: 0.75rem;"><i class="fa-solid fa-arrows-rotate text-success"></i> Trạng thái Services</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function clearCurrentSessionMessages() {
+            const ok = await showConfirmModal(
+                "Xoá nội dung hội thoại",
+                "Bạn có chắc muốn xoá toàn bộ tin nhắn trong hộp hội thoại hiện tại?",
+                "Xóa tin nhắn",
+                "btn-danger"
+            );
+            if (!ok) return;
+            try {
+                await fetch(`/api/chat/clear?session_id=${currentSessionId}`, { method: 'POST' });
+                renderEmptyGreeting();
+                showToast("Đã dọn dẹp nội dung tin nhắn!", "info");
+                await loadSessions();
+            } catch (e) {
+                showToast("Lỗi khi xoá tin nhắn: " + e.message, "error");
+            }
+        }
+
+
         // Clear Chat History
         function clearChatHistory() {
             chatHistory = [];
@@ -1090,7 +1662,7 @@
             renderAttachments();
             document.getElementById('chat-messages').innerHTML = `
                 <div class="d-flex align-items-start gap-3 w-100">
-                    <img src="data:image/jpeg;base64,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" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                    <img src="/logo.jpg" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
                     <div class="chat-bubble-ai prose">
                         <p class="mb-0 text-secondary">Hội thoại đã được xoá sạch. Tôi sẵn sàng cho các yêu cầu mới!</p>
                     </div>
@@ -1307,6 +1879,33 @@
         </div>
     </div>
 
+    <!-- TADU PROMPT / RENAME MODAL (BOOTSTRAP 5) -->
+    <div class="modal fade" id="taduPromptModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
+            <div class="modal-content border border-secondary border-opacity-25 shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius-md);">
+                <div class="modal-header border-bottom border-secondary border-opacity-25 px-4 py-3">
+                    <h6 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="prompt-modal-title">
+                        <i class="fa-solid fa-pen-to-square text-primary"></i>
+                        <span>Đổi tên hộp hội thoại</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <label class="form-label text-secondary mb-2" style="font-size: 0.8rem;" id="prompt-modal-label">Nhập tên mới cho hộp hội thoại:</label>
+                    <input type="text" id="prompt-modal-input" class="form-control bg-black text-light border-secondary" placeholder="Tên hộp hội thoại..." style="font-size: 0.88rem; padding: 10px 14px;">
+                </div>
+                <div class="modal-footer border-top border-secondary border-opacity-25 px-4 py-2.5 d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-secondary px-3 py-1.5" data-bs-dismiss="modal" id="prompt-modal-btn-cancel" style="font-size: 0.8rem;">
+                        <i class="fa-solid fa-xmark me-1"></i> Huỷ bỏ
+                    </button>
+                    <button type="button" class="btn btn-primary px-3 py-1.5" id="prompt-modal-btn-confirm" style="font-size: 0.8rem;">
+                        <i class="fa-solid fa-check me-1"></i> Lưu thay đổi
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </body>
                     </html>
                 `);
@@ -1356,14 +1955,14 @@
         }
 
         // Load Chat History from SQLite
-        async function loadChatHistory() {
+        async function loadChatHistory(sessionId = currentSessionId) {
             try {
-                const res = await fetch('/api/chat/history');
+                const res = await fetch(`/api/chat/history?session_id=${sessionId}`);
                 const data = await res.json();
+                const container = document.getElementById('chat-messages');
+                chatHistory = [];
                 if (data.status === 'success' && data.messages && data.messages.length > 0) {
-                    const container = document.getElementById('chat-messages');
                     container.innerHTML = '';
-                    chatHistory = [];
                     data.messages.forEach(msg => {
                         chatHistory.push({ role: msg.role, content: msg.content });
                         if (msg.role === 'user') {
@@ -1373,6 +1972,8 @@
                         }
                     });
                     container.scrollTop = container.scrollHeight;
+                } else {
+                    renderEmptyGreeting();
                 }
             } catch (e) {
                 console.error("Lỗi tải lịch sử chat từ SQLite:", e);
@@ -1450,7 +2051,7 @@
             const actionBarId = 'action-bar-' + Date.now();
 
             aiMsgWrapper.innerHTML = `
-                <img src="data:image/jpeg;base64,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" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                <img src="/logo.jpg" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
                 <div class="d-flex flex-column flex-grow-1 min-w-0">
                     <!-- Compact Thinking Badge while waiting -->
                     <div id="${statusContainerId}" class="d-inline-flex align-items-center gap-2 px-3 py-2 rounded-1 text-secondary" style="background: var(--tadu-card-bg); border: 1px solid var(--tadu-border); font-size: 0.8rem; width: fit-content;">
@@ -1499,7 +2100,7 @@
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text, history: chatHistory, attachments: filesToSend }),
+                    body: JSON.stringify({ message: text, session_id: currentSessionId, history: chatHistory, attachments: filesToSend }),
                     signal: currentChatAbortController.signal
                 });
 
@@ -1548,6 +2149,7 @@
                         if (eventData.reply) accumulatedText = eventData.reply;
                         textEl.innerHTML = marked.parse(accumulatedText);
                         hljs.highlightAll();
+                        loadSessions();
                     } else if (eventData.type === "error") {
                         if (statusEl) statusEl.remove();
                         if (bubbleEl) bubbleEl.classList.remove("d-none");
@@ -1731,7 +2333,7 @@
             const parsedMarkdown = marked.parse(reply || '');
 
             wrapper.innerHTML = `
-                <img src="data:image/jpeg;base64,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" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                <img src="/logo.jpg" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
                 <div class="d-flex flex-column flex-grow-1 min-w-0">
                     <div class="chat-bubble-ai prose" style="font-size: 0.88rem;">
                         ${toolsHtml}
@@ -1852,9 +2454,9 @@
 
         async function startDeploy() {
             const confirmed = await showConfirmDialog({
-                title: "Xác nhận Deploy AI Agent Service",
+                title: "Xác nhận thiết lập AI Agent Service",
                 message: "Hệ thống sẽ tải mã nguồn ai_agent_service.py lên VPS và tự động cài đặt môi trường, khởi tạo Systemd service. Bạn có muốn bắt đầu không?",
-                confirmText: "Tiến hành Deploy",
+                confirmText: "Tiến hành thiết lập",
                 type: "primary",
                 icon: "fa-rocket"
             });
@@ -1864,7 +2466,7 @@
             const consoleBox = document.getElementById('deploy-console');
             btn.disabled = true;
             consoleBox.classList.remove('d-none');
-            consoleBox.innerHTML = '<div class="text-info">🚀 Bắt đầu quá trình Deploy...</div>';
+            consoleBox.innerHTML = '<div class="text-info">🚀 Bắt đầu quá trình thiết lập...</div>';
 
             try {
                 const res = await fetch('/api/server/deploy', { method: 'POST' });
@@ -1940,22 +2542,38 @@
         // -------------------------------------------------------------
         async function fetchServiceLogs() {
             const logsEl = document.getElementById('logs-content');
+            const container = document.getElementById('logs-container') || (logsEl ? logsEl.parentElement : null);
+            if (!logsEl) return;
             try {
-                const res = await fetch('/api/server/logs?lines=80');
+                const res = await fetch('/api/server/logs?lines=100');
                 const data = await res.json();
                 if (data.status === 'success') {
-                    logsEl.innerText = data.logs;
+                    logsEl.innerText = data.logs || 'Chưa có nhật ký nào gần đây.';
                 } else {
                     logsEl.innerText = `Lỗi: ${data.message}`;
                 }
             } catch (err) {
                 logsEl.innerText = `Lỗi kết nối khi lấy log: ${err.message}`;
+            } finally {
+                // Continuously auto-scroll to the very bottom
+                if (container) {
+                    setTimeout(() => {
+                        container.scrollTop = container.scrollHeight;
+                    }, 40);
+                }
             }
         }
 
         document.getElementById('auto-refresh-logs').addEventListener('change', function(e) {
             if (e.target.checked) {
-                logInterval = setInterval(fetchServiceLogs, 3000);
+                fetchServiceLogs();
+                clearInterval(logInterval);
+                logInterval = setInterval(() => {
+                    const logsTab = document.getElementById('tab-logs');
+                    if (logsTab && !logsTab.classList.contains('d-none')) {
+                        fetchServiceLogs();
+                    }
+                }, 3000);
             } else {
                 clearInterval(logInterval);
             }
@@ -2066,10 +2684,11 @@
         }
 
         // INITIAL LOAD
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             loadSettings();
+            await loadSessions();
+            await loadChatHistory(currentSessionId);
             fetchSystemInfo();
-            loadChatHistory();
         });
     </script>
 
@@ -2153,6 +2772,33 @@
                     <button type="button" class="btn btn-primary btn-sm px-3.5 py-2 d-inline-flex align-items-center gap-2" onclick="sendEmailViaClient()">
                         <i class="fa-solid fa-paper-plane"></i>
                         <span>Mở ứng dụng Email</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TADU PROMPT / RENAME MODAL (BOOTSTRAP 5) -->
+    <div class="modal fade" id="taduPromptModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
+            <div class="modal-content border border-secondary border-opacity-25 shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius-md);">
+                <div class="modal-header border-bottom border-secondary border-opacity-25 px-4 py-3">
+                    <h6 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="prompt-modal-title">
+                        <i class="fa-solid fa-pen-to-square text-primary"></i>
+                        <span>Đổi tên hộp hội thoại</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <label class="form-label text-secondary mb-2" style="font-size: 0.8rem;" id="prompt-modal-label">Nhập tên mới cho hộp hội thoại:</label>
+                    <input type="text" id="prompt-modal-input" class="form-control bg-black text-light border-secondary" placeholder="Tên hộp hội thoại..." style="font-size: 0.88rem; padding: 10px 14px;">
+                </div>
+                <div class="modal-footer border-top border-secondary border-opacity-25 px-4 py-2.5 d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-secondary px-3 py-1.5" data-bs-dismiss="modal" id="prompt-modal-btn-cancel" style="font-size: 0.8rem;">
+                        <i class="fa-solid fa-xmark me-1"></i> Huỷ bỏ
+                    </button>
+                    <button type="button" class="btn btn-primary px-3 py-1.5" id="prompt-modal-btn-confirm" style="font-size: 0.8rem;">
+                        <i class="fa-solid fa-check me-1"></i> Lưu thay đổi
                     </button>
                 </div>
             </div>

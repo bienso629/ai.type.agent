@@ -77,47 +77,69 @@ async def ensure_opera(profile_dir: str, port: int):
 # CORE LOGIC: LIKE CLICKER
 # ==================================================
 
+def _read_profile_port(prof_path: Path) -> Optional[int]:
+    port_file = prof_path / "DevToolsActivePort"
+    if port_file.exists():
+        try:
+            txt = port_file.read_text(encoding="utf-8").strip().splitlines()
+            if txt and txt[0].isdigit():
+                return int(txt[0])
+        except Exception:
+            pass
+    return None
+
 async def _handle_like(req: LikeClickReq, prof: str, sx: int, sy: int) -> Dict:
     prof_path = Path(req.profiles_root) / prof
-    await ensure_opera(str(prof_path), req.port)
+    port = _read_profile_port(prof_path) or req.port
+    await ensure_opera(str(prof_path), port)
     
     try:
-        r = requests.get(f"http://{req.host}:{req.port}/json", timeout=2)
-        ws_url = next(t["webSocketDebuggerUrl"] for t in r.json() if t["type"] == "page")
-    except: return {"profile": prof, "ok": False, "err": "ws_fail"}
+        r = requests.get(f"http://{req.host}:{port}/json", timeout=3)
+        pages = [t for t in r.json() if t.get("type") == "page"]
+        if not pages:
+            return {"profile": prof, "ok": False, "err": "no_page_found"}
+        ws_url = pages[0]["webSocketDebuggerUrl"]
+    except Exception as e:
+        return {"profile": prof, "ok": False, "err": f"ws_fail: {e}"}
 
     try:
-        async with websockets.connect(ws_url) as ws:
+        async with websockets.connect(ws_url, max_size=10_000_000) as ws:
             nav_url = req.profile_urls.get(prof)
             if nav_url:
                 await ws.send(json.dumps({"id": 1, "method": "Page.navigate", "params": {"url": nav_url}}))
-                await asyncio.sleep(6.0) # Đợi trang Live load
+                await asyncio.sleep(4.0) # Đợi trang video load
 
-            # CHIẾN THUẬT: Đợi Selector xuất hiện rồi mới click tọa độ
-            if req.title == "Thả tim trong Live":
-                found = False
-                for attempt in range(10): # Thử 10 lần quét DOM
-                    find_js = f"document.querySelector('{req.like_selector}') !== null"
-                    await ws.send(json.dumps({"id": 100+attempt, "method": "Runtime.evaluate", "params": {"expression": find_js, "returnByValue": True}}))
-                    
-                    msg = await ws.recv()
-                    res = json.loads(msg).get("result", {}).get("result", {}).get("value")
-                    
-                    if res is True:
-                        log.info(f"Đã thấy selector {req.like_selector}, tiến hành click.")
-                        _native_click(sx, sy)
-                        found = True
-                        break
-                    await asyncio.sleep(1.5)
-                
-                if not found: return {"profile": prof, "ok": False, "err": "like_selector_not_found"}
-                return {"profile": prof, "ok": True, "mode": "live_selector_verified"}
+            # Cố gắng click qua CDP DOM trước (hoạt động tốt trên cả Linux và Windows)
+            dom_click_js = (
+                "(() => {"
+                "  const selectors = ['button[data-e2e=\"like-icon\"]', '[data-e2e=\"browse-like-icon\"]', '[data-e2e=\"video-like-icon\"]', '[data-e2e=\"feed-like-icon\"]', 'span[data-e2e=\"like-icon\"]', 'div[data-e2e=\"like-icon\"]', 'button[aria-label*=\"Like\"]', 'button[aria-label*=\"like\"]'];"
+                "  for (const s of selectors) {"
+                "    const el = document.querySelector(s);"
+                "    if (el) { el.click(); return true; }"
+                "  }"
+                "  return false;"
+                "})()"
+            )
 
-            # LOGIC CŨ: Cho các title khác
-            _native_click(sx, sy)
-            return {"profile": prof, "ok": True, "mode": "standard_click"}
+            found = False
+            for attempt in range(6):
+                await ws.send(json.dumps({"id": 100 + attempt, "method": "Runtime.evaluate", "params": {"expression": dom_click_js, "returnByValue": True}}))
+                msg = await ws.recv()
+                res = json.loads(msg).get("result", {}).get("result", {}).get("value")
+                if res is True:
+                    log.info(f"[{prof}] Đã click Like thành công qua CDP DOM!")
+                    found = True
+                    break
+                await asyncio.sleep(1.0)
 
-    except Exception as e: return {"profile": prof, "ok": False, "err": str(e)}
+            if not found and _IS_WIN:
+                _native_click(sx, sy)
+                found = True
+
+            return {"profile": prof, "ok": True, "mode": "dom_and_native_click"}
+
+    except Exception as e:
+        return {"profile": prof, "ok": False, "err": str(e)}
 
 class LikeClickReq(BaseModel):
     site: str
