@@ -23,6 +23,8 @@
     <!-- Highlight.js CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- html2pdf.js for exporting AI reports to PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <style>
         :root {
@@ -94,6 +96,26 @@
             color: #818cf8;
         }
 
+        .chat-action-btn.btn-pdf {
+            color: #f87171;
+            border-color: rgba(248, 113, 113, 0.25);
+            background: rgba(248, 113, 113, 0.06);
+        }
+        .chat-action-btn.btn-pdf:hover {
+            background: rgba(248, 113, 113, 0.15);
+            color: #fca5a5;
+            border-color: rgba(248, 113, 113, 0.4);
+        }
+        .chat-action-btn.btn-mail {
+            color: #a78bfa;
+            border-color: rgba(167, 139, 250, 0.25);
+            background: rgba(167, 139, 250, 0.06);
+        }
+        .chat-action-btn.btn-mail:hover {
+            background: rgba(167, 139, 250, 0.15);
+            color: #c4b5fd;
+            border-color: rgba(167, 139, 250, 0.4);
+        }
         .chat-action-btn.btn-retry:hover {
             color: #a5b4fc;
             background-color: rgba(99, 102, 241, 0.12);
@@ -226,7 +248,12 @@
             50% { opacity: 0.4; }
         }
 
-        /* Chat Bubbles */
+        /* Chat Bubbles & Overflow Prevention */
+        #chat-messages {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+        }
+
         .chat-bubble-ai {
             background-color: var(--tadu-card-bg);
             border: 1px solid var(--tadu-border);
@@ -234,6 +261,12 @@
             color: #e2e8f0;
             padding: 16px 20px;
             line-height: 1.6;
+            max-width: 100%;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            word-break: break-word;
+            overflow-wrap: break-word;
         }
 
         .chat-bubble-user {
@@ -242,6 +275,8 @@
             color: #ffffff;
             padding: 12px 18px;
             line-height: 1.5;
+            word-break: break-word;
+            overflow-wrap: break-word;
         }
 
         .chat-input-box {
@@ -270,10 +305,44 @@
             border-radius: 0 !important;
         }
 
+        /* Markdown / Prose Typography Standards */
+        .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+            color: #f8fafc;
+            font-weight: 600;
+            line-height: 1.4;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .prose h1:first-child, .prose h2:first-child, .prose h3:first-child,
+        .prose h4:first-child, .prose h5:first-child, .prose h6:first-child {
+            margin-top: 0 !important;
+        }
+        .prose h1 { font-size: 1.15rem; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 4px; }
+        .prose h2 { font-size: 1.05rem; font-weight: 600; }
+        .prose h3 { font-size: 0.98rem; font-weight: 600; }
+        .prose h4 { font-size: 0.92rem; font-weight: 600; }
+        .prose h5 { font-size: 0.88rem; font-weight: 600; }
+        .prose h6 { font-size: 0.82rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+
         .prose p:last-child { margin-bottom: 0; }
-        .prose p { margin-bottom: 0.6rem; }
+        .prose p { margin-bottom: 0.6rem; line-height: 1.6; }
         .prose ul, .prose ol { margin-left: 1.25rem; margin-bottom: 0.6rem; }
         .prose li { margin-bottom: 0.25rem; }
+        .prose hr { border-color: var(--tadu-border); margin: 1rem 0; opacity: 0.5; }
+        .prose blockquote {
+            border-left: 3px solid #4f46e5;
+            padding-left: 12px;
+            margin-left: 0;
+            color: #94a3b8;
+            font-style: italic;
+        }
+
+        .prose {
+            max-width: 100%;
+            min-width: 0;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
 
         .prose pre {
             background-color: #030712 !important;
@@ -281,6 +350,10 @@
             padding: 12px 16px;
             margin-top: 8px;
             margin-bottom: 8px;
+            max-width: 100%;
+            white-space: pre-wrap !important;
+            word-break: break-word !important;
+            overflow-wrap: anywhere !important;
         }
 
         .prose code {
@@ -289,6 +362,9 @@
             background: rgba(56, 189, 248, 0.1);
             border-radius: var(--tadu-radius-sm);
             font-size: 0.85em;
+            white-space: pre-wrap !important;
+            word-break: break-word !important;
+            overflow-wrap: anywhere !important;
         }
 
         .tool-call-box {
@@ -296,6 +372,18 @@
             border-left: 3px solid #38bdf8;
             border-radius: var(--tadu-radius-sm);
             padding: 12px 16px;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .tool-call-box code, .tool-call-box pre {
+            white-space: pre-wrap !important;
+            word-break: break-word !important;
+            overflow-wrap: anywhere !important;
+            max-width: 100%;
         }
 
         /* Form Inputs */
@@ -458,7 +546,7 @@
             </div>
 
             <!-- Chat Message List -->
-            <div id="chat-messages" class="flex-grow-1 overflow-y-auto px-4 py-3 d-flex flex-column gap-3">
+            <div id="chat-messages" class="flex-grow-1 overflow-y-auto overflow-x-hidden px-4 py-3 d-flex flex-column gap-3 w-100 min-w-0">
                 <!-- Welcome Greeting Message -->
                 <div class="d-flex align-items-start gap-3 w-100">
                     <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/7QCEUGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAGgcAigAYkZCTUQwYTAwMGFkNTAxMDAwMGYzMDUwMDAwNzQwNzAwMDAxYTA5MDAwMGQ0MDkwMDAwMjUwYjAwMDBiZjBkMDAwMDcwMTAwMDAwODAxMTAwMDBkNzExMDAwMDc2MTQwMDAwAP/bAIQABQYGCwgLCwsLCw0LCwsNDg4NDQ4ODw0ODg4NDxAQEBEREBAQEA8TEhMPEBETFBQTERMWFhYTFhUVFhkWGRYWEgEFBQUKBwoICQkICwgKCAsKCgkJCgoMCQoJCgkMDQsKCwsKCw0MCwsICwsMDAwNDQwMDQoLCg0MDQ0MExQTExOc/8IAEQgB4AHgAwEiAAIRAQMRAf/EAKAAAQACAwEBAAAAAAAAAAAAAAAEBwEFBgMCEAACAgEEAwEBAQAAAAAAAAABAgMEUAASMDEQESATkAURAAACBgYGCAYDAAAAAAAAAAEDAgURITFAAAQSEyDiBhAyQbLBIiMzQkNScIJRYWJyorFxwtESAQAAAwUGBQQCAwEAAAAAAAEAETEhQVBRYSAwQHGBsQIQYqHxEpHB8DKQcNHhgP/aAAwDAQACAQMBAAABjjS2YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABjOz1n14h8+wAAAAAAAAAAAAAAAAAAAAAAAAAAGNt9WZJ0fzT9z0x9xsCH0oAAAAAAAAAAAAAAAAAAAAAAAAADaelmSdHmQbHj/KmLnpiF02BC6YAAAAAAAAAAAAAAAAAAAAAAAADG1+7OlaNINhx4HlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAABja/dnStG92dhx4AHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAABja/VnydH8yTYcfkZAAeFM25UMHqPoQ+kAAAAAAAAAAAAAAAAAAAAAAxts2fJ0fxKNhyGRnAAA8TleBnwdV3geWwAAAAAAAAAAAAAAAAAAAAAxt1nydH8SjYchkZwAABivPfjoPT5EPpQAAAAAAAAAAAAAAAAAAAAMbf5tGTo/iUbDkMjOAABgxX/1yMHp8iH0oAAAAAAAAAAAAAAAAAAAADb6u4JGmSTY8ZkZAADBiv8A65GD0+RD6UAAAAAAAAAAAAAAAAAAAAAD7uCnNxI01qZj++y4zIABgRXkaHgbc52Jv+EEDrAZAAAAAAAAAAAAAAAAAAAAAA21n0zuJOitXMWTseQyDEV5AAHO8JbvMQ+h4kQerAAAAAAAAAAAAAAAAAAAAAAA21n0zuJOitXz8vvY8jGJbHj9yB459R8PscPxV2cLC6TjRC6gAAAAAAAAAAAAAAAAAAAAAADb2bTW3k6Ky5kWTseQyAABjIqzSWZWes7jI8NoAAAAAAAAAAAAAAAAAAAAAABt7OpnbSdFa+Y/vseQyAACNTN1UxB6fAh9KAAAAAAAAAAAAAAAAAAAAAAABuLNpnbSdFbDw99jyAAHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAAABuLNpnbSdFbDw99jyAHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAAAABubMpnbSdFbDw99jyHlTFz0xC6bAhdMAAAAAAAAAAAAAAAAAAAAAAAAAABuLMprbydFaNM3BT/ANx8CH0oAAAAAAAAAAAAAAAAAAAAAAAAAAAG01eM/XiHz7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/2gAIAQEAAQUC/lxBXMubrVjMdgVczWrGYogQN1mK1czFECDTdZetWMxRAg8N1lq9czFECDy3WVrVjMUQIPhuspXrGYogQfLdZOtWMxRAg+m6yVesZiiBB9v1ka1YzFECDgsNtTIV6xmMcYQcP+lJ6XH1q5mKIEHCzetTy/q2OrVjMY4wg4r1rfj61czFECDiuXfePrVjMY4wg4rtvdj61czFECDiuXd2PrVjMUQIOK7b3Y9V3GNAg4rlzdkFbaY3DjhJ1aq/poj1kK1kwlHDj7J826v6ZGrZMJRww+Sfm1V35GtaMJSQOPLH7t1d2Rq2PxKOGGm87dbNbdbdbdetXKeRrWjCUkDhvAHBdqZGrZ/EqwcAcVyD82yFe0YSjhxw3490eRrWTCUcMOCQe1yVayYSjhx9t1k61kwlHDD6brKV7JhKOHHy3WVrWTCUcMPhustWsmEo4YeW6y9WyYSjhx4brMVrJhKOGGm6zNW0YSjhw3Waq2TCd4Zc3BYMX8rP/9oACAEDAQE/AfShE5FIUkURejtTq0WlyAll7fx8uamj4tvhH6ec4tFpcgJZb0/j5c1BFrxpo943t5za0Wly1AvtOHNQRa8dWj3je3nNLRaXIWC+04c1BFrxjr0e8b285laLS56BfacOagi14xwaPI9E0fmjMLRaASF2Xt8Oagi14xwADaK2q3BSCIxHpJfzLrRaASF2Xt8Oagi14xwqlWMYaYD+4j/b/JdaLS56tDtOHNQRa8Y4VUqmMNNB/cQ5jLrZYDV0QRR2zPxoIteMcKqVbGGmB9iPMZhbVAawiCSO2X+VBBjhjhVS0u2FmD0e6l5cv6mVqqwN6wvb4s1BBjhjhVS0ssKMF3dS8vy+39TK1Vd8F4Xt8WagoscMcKqWsCjR+1LkPKZWirvesL7TizUEGOGOFUVm+KBsUOilMrRV3oXhfacWaggxwxwaPC47285paKq96wvb4s1BBjh16PeN7ec2tFVetML2+LNQQY4dWj3je3nOLRV3rTC9vizUEGOGmj3je3nOrRVXrTC9v4ebNTR8GXwD9POeRJRRFJJFF6W16Rf/2gAIAQIBAT8B9KBRYDRnSCLTxhSt7pwki08Yaq3umySLTxhrre6aJItPGGCt7pkki08YYa2MJggi08YUAGYTU7SQy5BFp4woAMw1g7uhLkE2njCgAzCefuCXIKtvGCOKsH7gmKubZduSxHkNeEZkg+y4YYjyGvCZIPsuGGI8jvBMkH2XDDEehZSdMkH2XDDDW900QfZcMMFb3TZB9lww11vdOEH2XDDVW906QfZcMKVvdPCkIgwfSL//2gAIAQECBj8C/q4yC/G/SVYkUljXpvYkWEOM+kqxIp5OMem+JFPNxf0lX9viRQ2HFvTfEimy4rl4b2JFNpxT03xI23E8vDexIobh5Yl6b4kbnxOmI5eG9iRYG6PDn+MQ9JViRTdTh8X25Yfl4b2JFhu/o8P8SuuH+kqxIpu/o8HVw/Lw3sSLDd/R4Gy9zw/0lWJG7+nwUvcP9N8SLDd/R4aXueHhmygDdvg8NgVcQHJnAl+7mfy74j6comWm7+rw/wAu+I+lqRMpu/q8P8u+I5+G8iZabv6vD/K8z/7iPpakTKbv6/B1MRz8N5Ey0d39fg6mI+lqRMpu9PFTEc/DeR9RaO6fTbiXpviZTcvLE8/DeRMpuHFPTfEym24rn4byJlHacW9N8TKbLi/pvImU2HGPTlEynm4z6WpEynk41n4comWkON+lqRMyxyVRu/qs/9oACAEBAgE/If6uJs0VuoyzxvKPwRr2+0EiJBSOkN/XGcsD9DWDxyKEe0e0N/XGJJp8Ea9vtMAEhQ8vaPaG/ri+WBV+DWBByFPP2j2hv64tZ2Z8GZ9n2EQUqBse0e0N/XFcoCr8GsCDkKGz7R7Q39cUspMPhM3t7Jg5Chte0e0N/XE8oCr8GsADkFNv2j2hv64lZyw+Aze3tBo5UDce6YllAVfg1gAcg3Omy7QYhlw+A17QCO4G6zRc3la7yMQyz8Aa9oAHIboCpkBNeUPclBop964fkw+A17QCORQ3c5MzOYu5Hflh+WfgDXtAA5Dd2hLKH2H84fkg/Q1gEcihupyi12BS9g5Z50zw+WafBGvb7QAOQbpYtDZBv5P5w/JAq/BrBo5FA3Sxb103sNM86YfpOfcygSpAbtlaQmdKoaa4hpOfYzhCpgnup/KANM/ofwwiRJJU1xDPCrk1P9QYcSibify85C43U5eeUd/fk4hmH7hma9/tAJJqm1P5bJz2F8u/7hJWNid8QzgfIa6QQeZR2JvLbpax0Gmj3xFb1+QNe8Anmr/JSPMTpHNEsSxJlEmUVwtqXc10xHMh8hrpfBBygYp8pfPcS5lqXc/J1xFM35A17xMZNUYtuW5YpedkG8/PxiOdD5DXS+CygLE3U2X2HSvtPEs4Kj8msAkmtzKOa7QYlmw+U17+8GHmrR3HtHtDf1xPPDoy1IBLNU2/aPaG/ril/F+Qye/vAB50Ha9o9ob+uK54dGWpAJZqjs+0e0N/XFsyP5DXvAJJqjse0e0N/XF80OuTUgQ81R8/aPaG/rjGcfmjXv8AaASTVHy9o9ob+uM5ga5NT/UGHmUSPaPaG/rjWYfmDXvBMiY2HpDf1xufUL7nL+qz/9oADAMBAgICAwIAABAIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIKMIIIIIIIIIIIIIIIIIIIIIIIIIIIK4IIIIIIIIIIIIIIIIIIIIIIIIIIIIaEMIIIIIIIIIIIIIIIIIIIIIIIIIKgHwMIIIIIIIIIIIIIIIIIIIIIIIILxnzwMIIIIIIIIIIIIIIIIIIIIIIIL7/zzw8IIIIIIIIIIIIIIIIIIIIIIL7zzzxXMIIIIIIIIIIIIIIIIIIIIILbzzzzgYIIIIIIIIIIIIIIIIIIIIIL7zzzzh4IIIIIIIIIIIIIIIIIIIIII7/zzzwYIIIIIIIIIIIIIIIIIIIIIILKXzzyBUsIIIIIIIIIIIIIIIIIIIIIIJ6XyAABcIIIIIIIIIIIIIIIIIIIIIIIL7gBwxyMIIIIIIIIIIIIIIIIIIIIIIIK63zzzzYIIIIIIIIIIIIIIIIIIIIIIIL6XzzzMIIIIIIIIIIIIIIIIIIIIIIIIL4HzwMIIIIIIIIIIIIIIIIIIIIIIIIIL5HwMIIIIIIIIIIIIIIIIIIIIIIIIIII5EMIIIIIIIIIIIIIIIIIIIIIIIIIIIL6sIIIIIIIIIIIIIIIIIIIIIIIIIIIIJsIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIL/2gAIAQMCAT8Q/wAUTusvlnxoWgdbhg1Yna4waCfW4YI6i1ziniwYtSq3H9dIRzJrVv8AKnigcytVcsEdRWq+dPEgTOmqt0TuorVb9hNWX2nxExE3VuMHdRVdiYkVY/2Ivd04eYibq3GDuoquy7z8vd+s+HA1VVywd1FVz2ec0n78jh+cCZf9w7qKrnsna9ZPZ/HxHLHMv+4RyJCo7M1N3EBnS2fEA9SRO5EhUbNm93jSvEBSDUiRyJCyTZsyqbR+JwXQVImbYCxnY7K13rGT9uJPrAiR0BYmWxZHFAHqSJEhJKnnTxYA2Q1MsESEkqeVPGATQalxgiQklSKeNAGyGtwwZWBLXHJXSXzy/wARf//aAAgBAgIBPxD/ABQvGgkJY4y0JTjWKnGsVONQglYbFoeJCoDZnXiBKA2Zvu8QJQGzM4fmIIJWHGmDmirx841ePmNXj5GGfH0GrsVcXGr/AOHUZGRlB//aAAgBAQIBPxD+nyeOSHtCwnMKQNkzJxqVrXQydnKBCrmxlex/M0iMuGQftfJyrmxhLyav16wpjyyDzQq5sXXtfzYBeCyBsIVc2LJamahGSRokg2UKubFV6X82IVAsg2kKubFEnzHSjKXgsgiW0hVzYmvS/mxDoHkCDbUq5sSSvMuNM7JJB+2u4ctPsxOfW3EcwvnsQ6B5AbkHYY2SyMQs1NNGFCyCQftrruhHuZiEF+kc5iDoFkBui5LIbAg7a+Sw8V6k6rCBZDIP2113U5RM7SWOHoEtWojk6BZAbpZRzJArGSkYdexWo6RBZDIP2113TUbCHSA0kWwiiyww6X03QSKgeQG6AJrIIfUxPsyoBKzDr+M5sA7IZforupFrYF8TtirEYflQBklMAkUmA3SgToET5qAioALKYegFSoAohAkG4UCd0U5R7xRFehgkDNklTEEmM3a0EPkZorE9pQJtkU5/152QSG24QUSYiBkiSDiBMdquXCQZizRsqBO6Kc/62QBSCYQESExJGpiCTma9QhC8hmH7XTYoxse+3LtnJhiMF7i5TEBwLMF8ETWV9nnbjY1gGb7Qa0aK9YBuRKufaJ2kiriMXiVqkIDyEw/a6RS5+R23/jbYuc0aOFtpiGZlMrmJOCLMIavm3IEk3xN01sRgl8nVbSETxAMlE9yQpSxKiWW18liBmLMSDcAjaBgELalmJCpWvWI2XgshE9wpVzYmltm3mog+FmhruFKubFFk5jHmckkwv20KubFUtM2w4ehZg12kKubFl+216duEV5ZhfsoVc2LpKZt1oBUCzBrsIVc2MM/TkxoE5Zhf5oVc2MpCZp1oIPIZosfJSrmxpepHKYlSd5C+FXNjaqyk5pSvMkLNXNnjcv6cP//Z" alt="Tadu Logo" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
@@ -509,9 +597,9 @@
                                 <small class="text-secondary d-none d-sm-inline" style="font-size: 0.73rem;">(Hỗ trợ code, log, config, txt)</small>
                             </div>
 
-                            <button type="submit" id="btn-send" class="btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center">
-                                <i class="fa-solid fa-paper-plane me-1.5"></i>
-                                <span>Gửi</span>
+                            <button type="submit" id="btn-send" class="btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-paper-plane" style="font-size: 0.85rem;"></i>
+                                <span class="fw-medium">Gửi</span>
                             </button>
                         </div>
                     </div>
@@ -1058,6 +1146,215 @@
             handleChatSubmit(new Event('submit'));
         }
 
+
+        // =============================================================
+        // TÍNH NĂNG XUẤT PDF & GỬI MAIL CHO BONG BÓNG TRẢ LỜI CỦA AI
+        // =============================================================
+
+        // 1. Tải tài liệu PDF từ bong bóng AI
+        function downloadAiMessagePdf(btn) {
+            const wrapper = btn.closest('.d-flex.align-items-start');
+            const aiBubble = wrapper ? wrapper.querySelector('.chat-bubble-ai') : null;
+            if (!aiBubble) {
+                showToast("Không tìm thấy nội dung để xuất PDF!", "error");
+                return;
+            }
+
+            showToast("Đang tạo và tải tài liệu PDF...", "info");
+
+            const timeStr = wrapper.querySelector('.msg-time') ? wrapper.querySelector('.msg-time').textContent.trim() : formatTime();
+
+            // Khung in tài liệu chuẩn phong cách báo cáo kỹ thuật Tadu Cloud
+            const printArea = document.createElement('div');
+            printArea.style.padding = '20px';
+            printArea.style.backgroundColor = '#ffffff';
+            printArea.style.color = '#1e293b';
+            printArea.style.fontFamily = 'Inter, -apple-system, sans-serif';
+            printArea.style.fontSize = '11pt';
+            printArea.style.lineHeight = '1.6';
+
+            printArea.innerHTML = `
+                <div style="border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h2 style="margin: 0; color: #1e1b4b; font-size: 15pt; font-weight: bold;">TADU CLOUD AI AGENT</h2>
+                        <p style="margin: 3px 0 0 0; color: #64748b; font-size: 8.5pt;">Báo Cáo Phân Tích & Hướng Dẫn Kỹ Thuật Máy Chủ</p>
+                    </div>
+                    <div style="text-align: right; color: #64748b; font-size: 8.5pt;">
+                        <div><strong>Thời gian:</strong> ${escapeHtml(timeStr)}</div>
+                        <div><strong>Hệ thống:</strong> Linux Server</div>
+                    </div>
+                </div>
+                <div class="pdf-content" style="color: #0f172a;">
+                    ${aiBubble.innerHTML}
+                </div>
+                <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 8px; text-align: center; color: #94a3b8; font-size: 7.5pt;">
+                    Báo cáo được xuất tự động bởi Tadu Cloud AI Agent Control Center
+                </div>
+            `;
+
+            // Tối ưu định dạng cho bản in giấy trắng PDF
+            printArea.querySelectorAll('.tool-call-box').forEach(box => {
+                box.style.background = '#f8fafc';
+                box.style.border = '1px solid #cbd5e1';
+                box.style.color = '#0f172a';
+                box.style.padding = '8px 12px';
+                box.style.borderRadius = '6px';
+                box.style.marginBottom = '10px';
+            });
+            printArea.querySelectorAll('pre').forEach(p => {
+                p.style.background = '#0f172a';
+                p.style.color = '#f8fafc';
+                p.style.padding = '8px';
+                p.style.borderRadius = '4px';
+                p.style.fontSize = '8.5pt';
+                p.style.whiteSpace = 'pre-wrap';
+            });
+            printArea.querySelectorAll('code').forEach(c => {
+                if (c.parentNode.tagName !== 'PRE') {
+                    c.style.background = '#e2e8f0';
+                    c.style.color = '#0f172a';
+                    c.style.padding = '2px 4px';
+                    c.style.borderRadius = '3px';
+                }
+            });
+            printArea.querySelectorAll('table').forEach(tbl => {
+                tbl.style.width = '100%';
+                tbl.style.borderCollapse = 'collapse';
+                tbl.style.marginBottom = '10px';
+            });
+            printArea.querySelectorAll('th, td').forEach(td => {
+                td.style.border = '1px solid #cbd5e1';
+                td.style.padding = '6px 8px';
+            });
+
+            const filename = `Tadu_AI_Report_${new Date().toISOString().slice(0, 10)}_${Date.now().toString().slice(-4)}.pdf`;
+
+            if (typeof html2pdf !== 'undefined') {
+                const opt = {
+                    margin: [10, 10, 10, 10],
+                    filename: filename,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                html2pdf().set(opt).from(printArea).save().then(() => {
+                    showToast("Đã tải xuống file PDF thành công!", "success");
+                }).catch(err => {
+                    console.error("Lỗi html2pdf:", err);
+                    fallbackPrint(printArea);
+                });
+            } else {
+                fallbackPrint(printArea);
+            }
+        }
+
+        function fallbackPrint(element) {
+            const printWindow = window.open('', '_blank');
+            if (printWindow) {
+                printWindow.document.write(`
+                    <html>
+                        <head>
+                            <title>Tadu Cloud AI Agent Report</title>
+                            <style>
+                                body { font-family: sans-serif; padding: 20px; }
+                                pre { background: #f1f5f9; padding: 10px; border-radius: 4px; }
+                            </style>
+                        </head>
+                        <body>
+                            ${element.innerHTML}
+                            <script>
+                                window.onload = function() { window.print(); window.close(); }
+                            <\/script>
+                        
+    <!-- ============================================================= -->
+    <!-- MODAL GỬI BÁO CÁO QUA EMAIL -->
+    <!-- ============================================================= -->
+    <div class="modal fade" id="emailShareModal" tabindex="-1" aria-labelledby="emailShareModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-secondary shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius);">
+                <div class="modal-header border-secondary border-opacity-25 pb-3">
+                    <h6 class="modal-title text-white fw-bold d-flex align-items-center gap-2" id="emailShareModalLabel">
+                        <i class="fa-regular fa-envelope text-primary"></i> Gửi Báo Cáo / Hướng Dẫn Qua Email
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label text-light small fw-medium">Email Người Nhận (To)</label>
+                        <input type="email" id="email-modal-recipient" class="form-control bg-dark text-white border-secondary" placeholder="ví dụ: admin@congty.com, khachhang@tadu.vn" style="font-size: 0.88rem;">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-light small fw-medium">Tiêu Đề Email (Subject)</label>
+                        <input type="text" id="email-modal-subject" class="form-control bg-dark text-white border-secondary" style="font-size: 0.88rem;">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label text-light small fw-medium">Nội Dung Email (Preview)</label>
+                        <textarea id="email-modal-body" class="form-control bg-dark text-white border-secondary font-mono" rows="8" style="font-size: 0.82rem; resize: vertical; line-height: 1.5;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary border-opacity-25 pt-3">
+                    <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-2" data-bs-dismiss="modal">Đóng</button>
+                    <button type="button" class="btn btn-outline-info btn-sm px-3 py-2 d-inline-flex align-items-center gap-2" onclick="copyEmailContent()">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>Sao chép nội dung</span>
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm px-3.5 py-2 d-inline-flex align-items-center gap-2" onclick="sendEmailViaClient()">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>Mở ứng dụng Email</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+                    </html>
+                `);
+                printWindow.document.close();
+            }
+        }
+
+        // 2. Mở Modal Gửi Báo Cáo Qua Email
+        function openEmailModal(btn) {
+            const wrapper = btn.closest('.d-flex.align-items-start');
+            const aiBubble = wrapper ? wrapper.querySelector('.chat-bubble-ai') : null;
+            if (!aiBubble) return;
+
+            const plainText = aiBubble.innerText || aiBubble.textContent || "";
+            
+            document.getElementById('email-modal-subject').value = `[Tadu Cloud AI] Báo cáo & Hướng dẫn kỹ thuật (${new Date().toLocaleDateString('vi-VN')})`;
+            document.getElementById('email-modal-body').value = plainText.trim();
+            document.getElementById('email-modal-recipient').value = "";
+            
+            const modalEl = document.getElementById('emailShareModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+
+        function sendEmailViaClient() {
+            const to = document.getElementById('email-modal-recipient').value.trim();
+            const subject = document.getElementById('email-modal-subject').value.trim();
+            const body = document.getElementById('email-modal-body').value.trim();
+
+            const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.open(mailtoUrl, '_blank');
+            
+            const modalEl = document.getElementById('emailShareModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+            showToast("Đang mở ứng dụng email của bạn...", "info");
+        }
+
+        function copyEmailContent() {
+            const subject = document.getElementById('email-modal-subject').value.trim();
+            const body = document.getElementById('email-modal-body').value.trim();
+            const fullContent = `Tiêu đề: ${subject}\n\n${body}`;
+
+            navigator.clipboard.writeText(fullContent).then(() => {
+                showToast("Đã sao chép nội dung Email vào Clipboard!", "success");
+            });
+        }
+
         // Load Chat History from SQLite
         async function loadChatHistory() {
             try {
@@ -1093,18 +1390,18 @@
 
             if (isGenerating) {
                 btnSend.type = "button";
-                btnSend.className = "btn btn-danger px-3.5 py-1.5 d-inline-flex align-items-center shadow-sm";
+                btnSend.className = "btn btn-danger px-3.5 py-1.5 d-inline-flex align-items-center gap-2 shadow-sm";
                 btnSend.innerHTML = `
-                    <div class="spinner-border spinner-border-sm text-light me-1.5" style="width: 13px; height: 13px; border-width: 2px;" role="status"></div>
-                    <span>Dừng</span>
+                    <i class="fa-solid fa-stop" style="font-size: 0.85rem;"></i>
+                    <span class="fw-medium">Dừng</span>
                 `;
                 btnSend.onclick = stopAiGeneration;
             } else {
                 btnSend.type = "submit";
-                btnSend.className = "btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center shadow-sm";
+                btnSend.className = "btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center gap-2 shadow-sm";
                 btnSend.innerHTML = `
-                    <i class="fa-solid fa-paper-plane me-1.5"></i>
-                    <span>Gửi</span>
+                    <i class="fa-solid fa-paper-plane" style="font-size: 0.85rem;"></i>
+                    <span class="fw-medium">Gửi</span>
                 `;
                 btnSend.onclick = null;
                 currentChatAbortController = null;
@@ -1168,11 +1465,19 @@
                     </div>
 
                     <!-- Action Bar (Hidden initially, appears on done) -->
-                    <div id="${actionBarId}" class="chat-action-bar d-none d-flex align-items-center text-secondary ms-1">
+                    <div id="${actionBarId}" class="chat-action-bar d-none d-flex align-items-center text-secondary ms-1 flex-wrap">
                         <span class="opacity-75 font-mono d-inline-flex align-items-center msg-time" style="font-size: 0.73rem; margin-right: 4px;"><i class="fa-regular fa-clock me-1"></i>${formatTime()}</span>
                         <button type="button" class="chat-action-btn btn-copy-reply">
                             <i class="fa-regular fa-copy"></i>
                             <span>Sao chép</span>
+                        </button>
+                        <button type="button" class="chat-action-btn btn-pdf" onclick="downloadAiMessagePdf(this)">
+                            <i class="fa-regular fa-file-pdf"></i>
+                            <span>Tải PDF</span>
+                        </button>
+                        <button type="button" class="chat-action-btn btn-mail" onclick="openEmailModal(this)">
+                            <i class="fa-regular fa-envelope"></i>
+                            <span>Gửi Mail</span>
                         </button>
                     </div>
                 </div>
@@ -1400,14 +1705,14 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        function appendAiMessage(reply, toolCalls = []) {
+                function appendAiMessage(reply, toolCalls = [], timeStr = null) {
             const container = document.getElementById('chat-messages');
             const wrapper = document.createElement('div');
             wrapper.className = "d-flex align-items-start gap-3 w-100";
 
             let toolsHtml = '';
             if (toolCalls && toolCalls.length > 0) {
-                toolsHtml = '<div class="d-flex flex-column gap-3 mb-3">';
+                toolsHtml = '<div class="d-flex flex-column gap-3 mb-2">';
                 toolCalls.forEach(tc => {
                     const cmd = tc.command || (tc.arguments ? (typeof tc.arguments === 'object' ? (tc.arguments.command || JSON.stringify(tc.arguments)) : tc.arguments) : '');
                     const result = tc.output || tc.result || '';
@@ -1421,12 +1726,32 @@
                 toolsHtml += '</div>';
             }
 
+            const formattedTime = formatTime(timeStr);
+            const rawReplyAttr = encodeURIComponent(reply || '');
             const parsedMarkdown = marked.parse(reply || '');
+
             wrapper.innerHTML = `
-                <img src="data:image/jpeg;base64,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" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
-                <div class="chat-bubble-ai prose flex-grow-1" style="font-size: 0.88rem;">
-                    ${toolsHtml}
-                    <div>${parsedMarkdown}</div>
+                <img src="data:image/jpeg;base64,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" alt="Tadu AI" class="rounded-1 flex-shrink-0" style="width: 34px; height: 34px; object-fit: cover;">
+                <div class="d-flex flex-column flex-grow-1 min-w-0">
+                    <div class="chat-bubble-ai prose" style="font-size: 0.88rem;">
+                        ${toolsHtml}
+                        <div class="prose-body">${parsedMarkdown}</div>
+                    </div>
+                    <div class="chat-action-bar d-flex align-items-center text-secondary ms-1 flex-wrap">
+                        <span class="opacity-75 font-mono d-inline-flex align-items-center msg-time" style="font-size: 0.73rem; margin-right: 4px;"><i class="fa-regular fa-clock me-1"></i>${formattedTime}</span>
+                        <button type="button" onclick="copyText(this, decodeURIComponent('${rawReplyAttr}'))" class="chat-action-btn">
+                            <i class="fa-regular fa-copy"></i>
+                            <span>Sao chép</span>
+                        </button>
+                        <button type="button" class="chat-action-btn btn-pdf" onclick="downloadAiMessagePdf(this)">
+                            <i class="fa-regular fa-file-pdf"></i>
+                            <span>Tải PDF</span>
+                        </button>
+                        <button type="button" class="chat-action-btn btn-mail" onclick="openEmailModal(this)">
+                            <i class="fa-regular fa-envelope"></i>
+                            <span>Gửi Mail</span>
+                        </button>
+                    </div>
                 </div>
             `;
             container.appendChild(wrapper);
@@ -1787,6 +2112,48 @@
                 </div>
                 <div class="modal-footer border-top border-secondary border-opacity-25 px-4 py-2.5">
                     <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ============================================================= -->
+    <!-- MODAL GỬI BÁO CÁO QUA EMAIL -->
+    <!-- ============================================================= -->
+    <div class="modal fade" id="emailShareModal" tabindex="-1" aria-labelledby="emailShareModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-secondary shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius);">
+                <div class="modal-header border-secondary border-opacity-25 pb-3">
+                    <h6 class="modal-title text-white fw-bold d-flex align-items-center gap-2" id="emailShareModalLabel">
+                        <i class="fa-regular fa-envelope text-primary"></i> Gửi Báo Cáo / Hướng Dẫn Qua Email
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label text-light small fw-medium">Email Người Nhận (To)</label>
+                        <input type="email" id="email-modal-recipient" class="form-control bg-dark text-white border-secondary" placeholder="ví dụ: admin@congty.com, khachhang@tadu.vn" style="font-size: 0.88rem;">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-light small fw-medium">Tiêu Đề Email (Subject)</label>
+                        <input type="text" id="email-modal-subject" class="form-control bg-dark text-white border-secondary" style="font-size: 0.88rem;">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label text-light small fw-medium">Nội Dung Email (Preview)</label>
+                        <textarea id="email-modal-body" class="form-control bg-dark text-white border-secondary font-mono" rows="8" style="font-size: 0.82rem; resize: vertical; line-height: 1.5;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary border-opacity-25 pt-3">
+                    <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-2" data-bs-dismiss="modal">Đóng</button>
+                    <button type="button" class="btn btn-outline-info btn-sm px-3 py-2 d-inline-flex align-items-center gap-2" onclick="copyEmailContent()">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>Sao chép nội dung</span>
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm px-3.5 py-2 d-inline-flex align-items-center gap-2" onclick="sendEmailViaClient()">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>Mở ứng dụng Email</span>
+                    </button>
                 </div>
             </div>
         </div>
