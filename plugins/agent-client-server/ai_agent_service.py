@@ -11,12 +11,12 @@ from openai import OpenAI
 app = FastAPI(title="AI Agent Server", description="Dịch vụ AI Agent thực thi lệnh hệ thống đa bước (Hỗ trợ Streaming)")
 
 # Token bảo mật nội bộ giữa App Client và Server của bạn
-MY_SECRET_TOKEN = os.environ.get("SECRET_TOKEN", "super_secret_token_123")
+MY_SECRET_TOKEN = os.environ.get("SECRET_TOKEN") or os.environ.get("AGENT_SECRET_TOKEN", "super_secret_token_123")
 
 # Khởi tạo OpenAI Client kết nối qua Proxy (Lấy từ biến môi trường của Systemd)
 client = OpenAI(
-    base_url=os.environ.get("PROXY_BASE_URL", "https://openrouter.ai/api/v1"), 
-    api_key=os.environ.get("PROXY_API_KEY", "")
+    base_url=os.environ.get("PROXY_BASE_URL") or os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"), 
+    api_key=os.environ.get("PROXY_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
 )
 MODEL_NAME = os.environ.get("AI_MODEL", "glm-5.3")
 
@@ -156,3 +156,9 @@ def chat_with_agent(req: PromptRequest, x_api_token: str = Header(None)):
     if x_api_token != MY_SECRET_TOKEN:
         raise HTTPException(status_code=401, detail="Token không hợp lệ!")
     return StreamingResponse(generate_agent_stream(req), media_type="text/event-stream")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("AGENT_PORT") or os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+

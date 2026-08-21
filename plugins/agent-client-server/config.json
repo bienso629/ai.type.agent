@@ -1,12 +1,13 @@
 {
-  "server_ip": "103.90.232.157",
-  "ssh_user": "root",
-  "ssh_pass": "AsC00zx1e400",
-  "ssh_port": 7878,
-  "proxy_api_key": "uNs6JWCNxWAjQj9m65386fF9-b653-4c9a-9Af6-A4B848C1",
-  "proxy_base_url": "https://api-us-ca.umodelverse.ai/v1",
-  "ai_model": "glm-5.3",
-  "remote_work_dir": "/opt/ai_agent",
-  "api_port": 8000,
-  "secret_token": "super_secret_token_123"
+  "server_ip": "enc:gAAAAABqh905KOsYL4yQrOs7a4dn1Sh5vVTScl5dfAcUSCuvvmgw9LbcRJhQC4lrAFnV-fUutismF3N6XHPUX01wY6tYPf3TKw==",
+  "ssh_user": "enc:gAAAAABqh905WdGD6HsJhNrl7T1K9clF1iT9MI597_-9UTj47UWIoCEx5B5wE55A6EG1NK_qbOnw6MBJiO7DiAd7zS4g-L0QDQ==",
+  "ssh_pass": "enc:gAAAAABqh905oZKRqQ28BaeK4s0akw3Se5POMZt-1bawc_3rgef4usRenrttIEvwKUKFLtXSnM-EF3R94O0SLIrBQrFEwcK-yA==",
+  "ssh_port": "enc:gAAAAABqh905yv5yvXzmuax7jR8zTvKGogpNalYv6HQ-H1G3w7kolm9BYra_2kMoGXSbr8CRwg2g14mYQ3-MVCdVSGL5tOFLDg==",
+  "proxy_api_key": "enc:gAAAAABqh905oOsQ4MBNMCdwtl8wV4Ix0dSHX0l2wDQf4H7uRotBvLbdSdffvrWRYWe5BHlIyoP02Uz0d8IqAxMbGbAS6WrYUNC1Z-90x_fKYV9ERZOlQWGR4a03cBc44HwHKEUzd65tLOcTeHCtx2BJEtmyBv-pRQ==",
+  "proxy_base_url": "enc:gAAAAABqh905FOAvGSAyl36kpfffXM-NVVRv73769XphQGqsYydQfhbRMuh0BSxuR7A3eejDjEimSmKlPwvIMfjc5loXtIcKrpXGUkO25PATi8Ox_gTeoAoQG7KPY6JFCs53DItU6PLQ",
+  "ai_model": "enc:gAAAAABqh905HmTjKmkirZdj38CAfIX3aHSb6SHkjEu3rVq_y-lWLUvdBXJxOf8p00wh2OIcxQJOGgvPqMc3a6zLdez_VlRzrA==",
+  "remote_work_dir": "enc:gAAAAABqh905vtnD4K-eMZIwHrAZphauhSyRR0ceouQHjUYSxjTVdoLKqUEdXHG9VWOqVlpDxw_huT090Xc9llSsmRfLQtCrXA==",
+  "api_port": "enc:gAAAAABqh905rQP6Y2DDdIuLKFkF9jRJCAkO398lajs1t-eCSqVZikEUqG5eNPHZeRUeppbde_8WSFM1t7Q7dKrCm5qL1OyJsw==",
+  "secret_token": "enc:gAAAAABqh905zsGuvdXXPAJcdnEBQZY-c8INXoZeLjLm0ywQHxvXpmhQp6TfnIO5793AvoF6smQ_ywT-q2ZlcJa9JOOXoL-1Vr1qQ8-uDuElohilujZMbE4=",
+  "_encrypted_vault": "enc:gAAAAABqh9058yIMKex7SzonacBBoGKrROXtvA6Z2Xx8qto7seryw60HiFULKWBRvGokn6-ycVothqJGecJO5gGotKREWfuqmazQq1tfqFem1R_jXWCj-fR3BEbYkxdzgKesWH_aWRCKFtMCqLNCuIgKjQXSErhIkGEAZAUeDi4K6xx2Bka-TmWuWsp0gWKoPANJyeEVkmtCiF0rCHMqC39RYUAuATLfV-Xmt6FtJp5941Lt-7DC01x-dXLK_Dm9w5TzXsaNtU7SY-rcX1XyWpv9fMLpYvYvPwW3yMPmerOb4i616sQnwqSfQVwH3OrPfu0zE33axgonaWmfT8rE0ffgYhmQCG3BhI1mcaqJgGyo9CuQNjKWlrQL9uTR_9gqmJFgxXhgxwKScDavSz_ZvuWuYxDh4MzVdcF0aNKnutANkP7Vxh4Esp736xFcdUgqumR0mhadC7IC1dgLPr1RIozerWG73DH8EfD1zR8LyfRdzds20QBv6MoGZCS_YGaAtMFinJfM-C_meHVzKGxZUBho0sRfoRDM8Q=="
 }

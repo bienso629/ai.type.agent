@@ -187,6 +187,8 @@ def build():
         "--hidden-import=paramiko",
         "--hidden-import=openai",
         "--hidden-import=pydantic",
+        "--hidden-import=cryptography",
+        "--hidden-import=cryptography.fernet",
         "client_ui.py"
     ]
 
