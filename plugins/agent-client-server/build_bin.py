@@ -165,6 +165,67 @@ def build():
     sep = ";" if sys.platform.startswith("win") else ":"
     binary_name = "tadu-cloud-ai-agent.exe" if sys.platform.startswith("win") else "tadu-cloud-ai-agent"
 
+    # 1. Build Standalone Server Binary (for Remote VPS)
+    server_bin_name = "ai_agent_service.exe" if sys.platform.startswith("win") else "ai_agent_service"
+    server_bin_path = os.path.join(BASE_DIR, "dist", server_bin_name)
+    has_docker = shutil.which("docker") is not None and not sys.platform.startswith("win")
+    
+    if has_docker:
+        print("\n🚀 [1/3] Đang build Standalone Server Binary (Universal GLIBC 2.31 via Docker)...")
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{BASE_DIR}:/app",
+            "-w", "/app",
+            "python:3.10-slim-bullseye",
+            "bash", "-c",
+            "apt-get update && apt-get install -y binutils && "
+            "pip install --no-cache-dir pyinstaller fastapi uvicorn openai pydantic requests paramiko psutil cryptography && "
+            f"pyinstaller --clean -y --name {server_bin_name} --onefile "
+            "--hidden-import=uvicorn.logging "
+            "--hidden-import=uvicorn.loops "
+            "--hidden-import=uvicorn.loops.auto "
+            "--hidden-import=uvicorn.protocols "
+            "--hidden-import=uvicorn.protocols.http "
+            "--hidden-import=uvicorn.protocols.http.auto "
+            "--hidden-import=uvicorn.protocols.websockets "
+            "--hidden-import=uvicorn.protocols.websockets.auto "
+            "--hidden-import=uvicorn.lifespan "
+            "--hidden-import=uvicorn.lifespan.on "
+            "--hidden-import=openai "
+            "--hidden-import=fastapi "
+            "--hidden-import=pydantic "
+            "ai_agent_service.py"
+        ]
+        server_res = subprocess.run(docker_cmd, cwd=BASE_DIR)
+    else:
+        print("\n🚀 [1/3] Đang build Standalone Server Binary (ai_agent_service)...")
+        server_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--noconfirm",
+            "--clean",
+            "--onefile",
+            f"--name={server_bin_name}",
+            "--hidden-import=uvicorn.logging",
+            "--hidden-import=uvicorn.loops",
+            "--hidden-import=uvicorn.loops.auto",
+            "--hidden-import=uvicorn.protocols",
+            "--hidden-import=uvicorn.protocols.http",
+            "--hidden-import=uvicorn.protocols.http.auto",
+            "--hidden-import=uvicorn.protocols.websockets",
+            "--hidden-import=uvicorn.protocols.websockets.auto",
+            "--hidden-import=uvicorn.lifespan",
+            "--hidden-import=uvicorn.lifespan.on",
+            "--hidden-import=openai",
+            "--hidden-import=fastapi",
+            "--hidden-import=pydantic",
+            "ai_agent_service.py"
+        ]
+        server_res = subprocess.run(server_cmd, cwd=BASE_DIR)
+        
+    if server_res.returncode == 0 and os.path.exists(server_bin_path):
+        print(f"✅ Đã build Server binary: {server_bin_path}")
+
+    # 2. Build Client UI Binary
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
@@ -173,6 +234,7 @@ def build():
         f"--name={binary_name}",
         f"--add-data=templates{sep}templates",
         f"--add-data=ai_agent_service.py{sep}.",
+        f"--add-data=dist{os.sep}{server_bin_name}{sep}.",
         f"--add-data=logo.jpg{sep}.",
         "--hidden-import=uvicorn.logging",
         "--hidden-import=uvicorn.loops",
@@ -192,25 +254,25 @@ def build():
         "client_ui.py"
     ]
 
-    print("🚀 Thực thi PyInstaller...")
+    print("\n🚀 [2/3] Đang build Client Control Center Binary...")
     res = subprocess.run(cmd, cwd=BASE_DIR)
     if res.returncode == 0:
         dist_bin = os.path.join(BASE_DIR, "dist", binary_name)
-        print(f"\n✅ Đã build core binary: {dist_bin}")
+        print(f"\n✅ Đã build Client core binary: {dist_bin}")
 
         if not sys.platform.startswith("win") and sys.platform.startswith("linux"):
-            print("🚀 Đang đóng gói AppImage & DEB package...")
+            print("\n🚀 [3/3] Đang đóng gói AppImage & DEB package...")
             appimage_path = build_appimage(dist_bin)
             deb_path = build_deb(dist_bin)
             update_user_desktop(dist_bin)
 
             print("\n" + "="*60)
-            print("🎉 ĐÓNG GÓI THÀNH CÔNG: TADU CLOUD AI AGENT CONTROL CENTER!")
-            if appimage_path:
-                print(f"📦 1. AppImage (Click đúp chạy ngay): {appimage_path}")
-            if deb_path:
-                print(f"📦 2. File cài đặt .deb (Cài 1-click): {deb_path}")
-            print(f"🖥️  3. Shortcut trên Desktop: ~/Desktop/Tadu-Cloud-AI-Agent.desktop")
+            print("🎉 ĐÓNG GÓI HOÀN TẤT HỆ THỐNG TADU CLOUD AI AGENT!")
+            print(f"📦 1. Client AppImage (Chạy ngay): {appimage_path}")
+            print(f"📦 2. File cài đặt .deb (Cài 1-click): {deb_path}")
+            if os.path.exists(server_bin_path):
+                print(f"⚙️  3. Server Binary (Deploy tự động lên VPS): {server_bin_path}")
+            print(f"🖥️  4. Shortcut trên Desktop: ~/Desktop/Tadu-Cloud-AI-Agent.desktop")
             print("="*60 + "\n")
     else:
         print("\n❌ Đóng gói thất bại với mã lỗi:", res.returncode)

@@ -780,9 +780,11 @@ def kill_opera(profile: Optional[str], port: Optional[int]) -> Dict[str, Any]:
             pat_prof = f"--user-data-dir={profile}" if profile else None
             conds = []
             if pat_port:
-                conds.append(f"$_.CommandLine -like '*{pat_port.replace('\"', '`\"')}*'")
+                pat_port_escaped = pat_port.replace('"', '`"')
+                conds.append(f"$_.CommandLine -like '*{pat_port_escaped}*'")
             if pat_prof:
-                conds.append(f"$_.CommandLine -like '*{pat_prof.replace('\"', '`\"')}*'")
+                pat_prof_escaped = pat_prof.replace('"', '`"')
+                conds.append(f"$_.CommandLine -like '*{pat_prof_escaped}*'")
             if not conds:
                 conds = ["$true"]
             where = " -and (" + " -or ".join(conds) + ")" if conds else ""

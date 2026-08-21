@@ -868,10 +868,15 @@
                         <i class="fa-solid fa-server text-info"></i>
                     </div>
                     <div class="d-flex flex-column justify-content-center">
-                        <div class="tab-topbar-title">
+                        <div class="tab-topbar-title d-flex align-items-center gap-2">
                             <span>Quản Lý Máy Chủ & Dịch Vụ Systemd</span>
+                            <span class="badge bg-success-subtle text-success border border-success border-opacity-25 px-2 py-0.5 d-inline-flex align-items-center gap-1.5" style="font-size: 0.68rem; font-weight: 600;">
+                                <span class="live-dot bg-success live-pulse" style="width: 6px; height: 6px;"></span>
+                                <span>REALTIME</span>
+                                <span id="realtime-sync-time" class="text-secondary fw-normal font-mono" style="font-size: 0.65rem;"></span>
+                            </span>
                         </div>
-                        <small class="tab-topbar-subtitle">Triển khai code lên VPS/Server và quản lý tiến trình nền</small>
+                        <small class="tab-topbar-subtitle">Triển khai code lên VPS/Server và giám sát tài nguyên thời gian thực</small>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -1014,7 +1019,7 @@
 
                         <div class="d-flex align-items-center justify-content-between pt-2 border-top border-secondary border-opacity-10" style="font-size: 0.72rem;">
                             <span class="text-secondary">Khả dụng: <span id="disk-avail-text" class="text-info font-mono fw-semibold">17 GB</span></span>
-                            <span class="text-secondary">Trạng thái: <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> An toàn</span></span>
+                            <span class="text-secondary">Trạng thái: <span id="disk-status-badge" class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> An toàn</span></span>
                         </div>
                     </div>
                 </div>
@@ -1041,7 +1046,7 @@
 
                         <div class="d-flex align-items-center justify-content-between pt-2 border-top border-secondary border-opacity-10" style="font-size: 0.72rem;">
                             <span class="text-secondary">Khả dụng: <span id="ram-avail-text" class="text-primary font-mono fw-semibold">1.00 GB</span></span>
-                            <span class="text-secondary">Trạng thái: <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> Ổn định</span></span>
+                            <span class="text-secondary">Trạng thái: <span id="ram-status-badge" class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> Ổn định</span></span>
                         </div>
                     </div>
                 </div>
@@ -2655,9 +2660,12 @@
         }
 
         // -------------------------------------------------------------
-        // SERVER & SYSTEM INFO LOGIC
+        // SERVER & SYSTEM INFO LOGIC (REALTIME METRICS & STATUS)
         // -------------------------------------------------------------
+        let isFetchingSystemInfo = false;
         async function fetchSystemInfo() {
+            if (isFetchingSystemInfo) return;
+            isFetchingSystemInfo = true;
             try {
                 const res = await fetch('/api/server/system-info');
                 const data = await res.json();
@@ -2672,27 +2680,91 @@
                     if (document.getElementById('card-api-port')) document.getElementById('card-api-port').innerText = info.api_port || '8000';
                     if (document.getElementById('card-ai-model')) document.getElementById('card-ai-model').innerText = info.ai_model || 'glm-5.3';
                     
-                    // Update safe cloud resource cards
+                    // Update safe cloud resource cards (Realtime Disk & RAM)
                     const m = info.metrics || {};
                     const diskPct = m.disk_percent !== undefined ? m.disk_percent : 57;
                     const diskUsed = m.disk_used || '21 GB';
                     const diskTotal = m.disk_total || '40 GB';
                     const diskAvail = m.disk_avail || '17 GB';
 
-                    if (document.getElementById('disk-pct-badge')) document.getElementById('disk-pct-badge').innerText = `${diskPct}%`;
+                    if (document.getElementById('disk-pct-badge')) {
+                        document.getElementById('disk-pct-badge').innerText = `${diskPct}%`;
+                        if (diskPct >= 90) {
+                            document.getElementById('disk-pct-badge').className = "badge bg-danger-subtle text-danger fw-bold font-mono px-2 py-1";
+                        } else if (diskPct >= 75) {
+                            document.getElementById('disk-pct-badge').className = "badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-1";
+                        } else {
+                            document.getElementById('disk-pct-badge').className = "badge bg-info-subtle text-info fw-bold font-mono px-2 py-1";
+                        }
+                    }
                     if (document.getElementById('disk-stat-text')) document.getElementById('disk-stat-text').innerText = `${diskUsed} / ${diskTotal}`;
-                    if (document.getElementById('disk-progress-bar')) document.getElementById('disk-progress-bar').style.width = `${diskPct}%`;
+                    if (document.getElementById('disk-progress-bar')) {
+                        document.getElementById('disk-progress-bar').style.width = `${diskPct}%`;
+                        if (diskPct >= 90) {
+                            document.getElementById('disk-progress-bar').className = "progress-bar bg-danger";
+                        } else if (diskPct >= 75) {
+                            document.getElementById('disk-progress-bar').className = "progress-bar bg-warning";
+                        } else {
+                            document.getElementById('disk-progress-bar').className = "progress-bar bg-info";
+                        }
+                    }
                     if (document.getElementById('disk-avail-text')) document.getElementById('disk-avail-text').innerText = diskAvail;
+                    if (document.getElementById('disk-status-badge')) {
+                        if (diskPct >= 90) {
+                            document.getElementById('disk-status-badge').className = "text-danger fw-semibold";
+                            document.getElementById('disk-status-badge').innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Sắp đầy';
+                        } else if (diskPct >= 75) {
+                            document.getElementById('disk-status-badge').className = "text-warning fw-semibold";
+                            document.getElementById('disk-status-badge').innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Cảnh báo';
+                        } else {
+                            document.getElementById('disk-status-badge').className = "text-success fw-semibold";
+                            document.getElementById('disk-status-badge').innerHTML = '<i class="fa-solid fa-circle-check"></i> An toàn';
+                        }
+                    }
 
                     const ramPct = m.ram_percent !== undefined ? m.ram_percent : 37;
                     const ramUsed = m.ram_used || '727 MB';
                     const ramTotal = m.ram_total || '1.96 GB';
                     const ramAvail = m.ram_avail || '1.00 GB';
 
-                    if (document.getElementById('ram-pct-badge')) document.getElementById('ram-pct-badge').innerText = `${ramPct}%`;
+                    if (document.getElementById('ram-pct-badge')) {
+                        document.getElementById('ram-pct-badge').innerText = `${ramPct}%`;
+                        if (ramPct >= 90) {
+                            document.getElementById('ram-pct-badge').className = "badge bg-danger-subtle text-danger fw-bold font-mono px-2 py-1";
+                        } else if (ramPct >= 75) {
+                            document.getElementById('ram-pct-badge').className = "badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-1";
+                        } else {
+                            document.getElementById('ram-pct-badge').className = "badge bg-primary-subtle text-primary fw-bold font-mono px-2 py-1";
+                        }
+                    }
                     if (document.getElementById('ram-stat-text')) document.getElementById('ram-stat-text').innerText = `${ramUsed} / ${ramTotal}`;
-                    if (document.getElementById('ram-progress-bar')) document.getElementById('ram-progress-bar').style.width = `${ramPct}%`;
+                    if (document.getElementById('ram-progress-bar')) {
+                        document.getElementById('ram-progress-bar').style.width = `${ramPct}%`;
+                        if (ramPct >= 90) {
+                            document.getElementById('ram-progress-bar').className = "progress-bar bg-danger";
+                        } else if (ramPct >= 75) {
+                            document.getElementById('ram-progress-bar').className = "progress-bar bg-warning";
+                        } else {
+                            document.getElementById('ram-progress-bar').className = "progress-bar bg-primary";
+                        }
+                    }
                     if (document.getElementById('ram-avail-text')) document.getElementById('ram-avail-text').innerText = ramAvail;
+                    if (document.getElementById('ram-status-badge')) {
+                        if (ramPct >= 90) {
+                            document.getElementById('ram-status-badge').className = "text-danger fw-semibold";
+                            document.getElementById('ram-status-badge').innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Quá tải';
+                        } else if (ramPct >= 75) {
+                            document.getElementById('ram-status-badge').className = "text-warning fw-semibold";
+                            document.getElementById('ram-status-badge').innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Cảnh báo';
+                        } else {
+                            document.getElementById('ram-status-badge').className = "text-success fw-semibold";
+                            document.getElementById('ram-status-badge').innerHTML = '<i class="fa-solid fa-circle-check"></i> Ổn định';
+                        }
+                    }
+
+                    if (document.getElementById('realtime-sync-time')) {
+                        document.getElementById('realtime-sync-time').innerText = info.last_sync ? `• ${info.last_sync}` : '';
+                    }
 
                     // Cache data and update with privacy masking
                     cachedServerData.server_ip = info.server_ip || '127.0.0.1';
@@ -2727,7 +2799,20 @@
                 console.error("Lỗi fetch system info:", err);
                 if (document.getElementById('sidebar-status-dot')) document.getElementById('sidebar-status-dot').className = "live-dot bg-danger";
                 if (document.getElementById('sidebar-status-text')) document.getElementById('sidebar-status-text').innerText = "Chưa Kết Nối";
+            } finally {
+                isFetchingSystemInfo = false;
             }
+        }
+
+        // Realtime Periodic Polling (High-speed every 1.2 seconds)
+        let realtimeMetricsTimer = null;
+        function startRealtimeMetricsPolling() {
+            if (realtimeMetricsTimer) clearInterval(realtimeMetricsTimer);
+            realtimeMetricsTimer = setInterval(() => {
+                if (!document.hidden) {
+                    fetchSystemInfo();
+                }
+            }, 1200);
         }
 
         async function handleServiceAction(action) {
@@ -2756,10 +2841,10 @@
         async function startDeploy() {
             const confirmed = await showConfirmDialog({
                 title: "Xác nhận thiết lập AI Agent Service",
-                message: "Hệ thống sẽ tải mã nguồn ai_agent_service.py lên VPS và tự động cài đặt môi trường, khởi tạo Systemd service. Bạn có muốn bắt đầu không?",
+                message: "Hệ thống sẽ đồng bộ Standalone Binary (ai_agent_service) lên VPS và khởi tạo Systemd service. Bạn có muốn bắt đầu không?",
                 confirmText: "Tiến hành thiết lập",
                 type: "primary",
-                icon: "fa-rocket"
+                icon: "fa-server"
             });
             if (!confirmed) return;
             
@@ -2767,7 +2852,7 @@
             const consoleBox = document.getElementById('deploy-console');
             btn.disabled = true;
             consoleBox.classList.remove('d-none');
-            consoleBox.innerHTML = '<div class="text-info mb-1"><i class="fa-solid fa-spinner fa-spin me-1.5"></i>🚀 Bắt đầu quá trình thiết lập AI Agent...</div>';
+            consoleBox.innerHTML = '<div class="text-info mb-1"><span class="opacity-75 me-1.5">&gt;&gt;</span>Bắt đầu quá trình thiết lập AI Agent...</div>';
 
             try {
                 const res = await fetch('/api/server/deploy', { method: 'POST' });
@@ -2800,18 +2885,18 @@
 
                         if (msg.includes('[SUCCESS]')) {
                             logEl.className += " text-success fw-bold";
-                            logEl.innerHTML = `<i class="fa-solid fa-check-circle me-1.5 text-success"></i>` + msg.replace('[SUCCESS]', '').trim();
+                            logEl.innerHTML = `<span class="opacity-75 me-1.5">&gt;&gt;</span>` + msg.replace('[SUCCESS]', '').trim();
                             hasSuccess = true;
                         } else if (msg.includes('[ERROR]') || msg.includes('LỖI')) {
                             logEl.className += " text-danger fw-bold";
-                            logEl.innerHTML = `<i class="fa-solid fa-circle-xmark me-1.5 text-danger"></i>` + msg.replace('[ERROR]', '').trim();
+                            logEl.innerHTML = `<span class="opacity-75 me-1.5">&gt;&gt;</span>` + msg.replace('[ERROR]', '').trim();
                             hasError = true;
                         } else if (msg.includes('[WARNING]')) {
                             logEl.className += " text-warning";
-                            logEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation me-1.5 text-warning"></i>` + msg.replace('[WARNING]', '').trim();
+                            logEl.innerHTML = `<span class="opacity-75 me-1.5">&gt;&gt;</span>` + msg.replace('[WARNING]', '').trim();
                         } else {
                             logEl.className += " text-info";
-                            logEl.innerHTML = `<i class="fa-solid fa-angles-right me-1.5 opacity-75"></i>` + msg;
+                            logEl.innerHTML = `<span class="opacity-75 me-1.5">&gt;&gt;</span>` + msg;
                         }
 
                         consoleBox.appendChild(logEl);
@@ -2829,7 +2914,7 @@
                     setTimeout(fetchSystemInfo, 1500);
                 }
             } catch (err) {
-                consoleBox.innerHTML += `<div class="text-danger fw-bold mt-2"><i class="fa-solid fa-circle-xmark me-1.5"></i>Lỗi: ${err.message}</div>`;
+                consoleBox.innerHTML += `<div class="text-danger fw-bold mt-2"><span class="opacity-75 me-1.5">&gt;&gt;</span>Lỗi: ${err.message}</div>`;
                 showToast("Lỗi khi thiết lập: " + err.message, "error");
             } finally {
                 btn.disabled = false;
@@ -3032,6 +3117,7 @@
             await loadSessions();
             await loadChatHistory(currentSessionId);
             fetchSystemInfo();
+            startRealtimeMetricsPolling();
         });
     </script>
 

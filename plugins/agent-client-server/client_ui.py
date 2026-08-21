@@ -26,6 +26,12 @@ SERVICE_FILE_PATH = os.path.join(APP_DIR, "ai_agent_service.py")
 if not os.path.exists(SERVICE_FILE_PATH):
     SERVICE_FILE_PATH = os.path.join(BUNDLE_DIR, "ai_agent_service.py")
 
+SERVICE_BIN_PATH = os.path.join(APP_DIR, "dist", "ai_agent_service")
+if not os.path.exists(SERVICE_BIN_PATH):
+    SERVICE_BIN_PATH = os.path.join(APP_DIR, "ai_agent_service")
+if not os.path.exists(SERVICE_BIN_PATH):
+    SERVICE_BIN_PATH = os.path.join(BUNDLE_DIR, "ai_agent_service")
+
 TEMPLATE_INDEX = os.path.join(BUNDLE_DIR, "templates", "index.html")
 LOGO_PATH = os.path.join(APP_DIR, "logo.jpg")
 if not os.path.exists(LOGO_PATH):
@@ -522,7 +528,27 @@ def check_server_health():
     except Exception as e:
         return {"status": "stopped", "message": str(e)}
 
-def parse_safe_metrics(df_raw: str, free_raw: str) -> Dict[str, Any]:
+_metrics_cache: Dict[str, Any] = {}
+_metrics_lock = threading.Lock()
+_collector_thread_started = False
+
+def format_uptime_human(sec_str: str) -> str:
+    try:
+        s = int(float(sec_str.split()[0]))
+        days, rem = divmod(s, 86400)
+        hours, rem = divmod(rem, 3600)
+        mins, secs = divmod(rem, 60)
+        weeks, days = divmod(days, 7)
+        parts = []
+        if weeks > 0: parts.append(f"{weeks} tuần")
+        if days > 0: parts.append(f"{days} ngày")
+        if hours > 0: parts.append(f"{hours} giờ")
+        parts.append(f"{mins} phút {secs}s")
+        return ", ".join(parts)
+    except Exception:
+        return "N/A"
+
+def parse_safe_metrics(df_raw: str, free_raw: str, loadavg_raw: str = "", uptime_sec_raw: str = "", procs_raw: str = "") -> Dict[str, Any]:
     metrics = {
         "disk_total": "40 GB",
         "disk_used": "21 GB",
@@ -531,8 +557,22 @@ def parse_safe_metrics(df_raw: str, free_raw: str) -> Dict[str, Any]:
         "ram_total": "2.0 GB",
         "ram_used": "750 MB",
         "ram_avail": "1.2 GB",
-        "ram_percent": 35
+        "ram_percent": 35.0,
+        "ram_used_mb": 750,
+        "ram_total_mb": 2048,
+        "ram_avail_mb": 1200,
+        "ram_cache_mb": 0,
+        "loadavg": loadavg_raw.strip(),
+        "procs": procs_raw.strip(),
+        "uptime_seconds": 0,
+        "last_sync": time.strftime("%H:%M:%S")
     }
+    try:
+        if uptime_sec_raw:
+            metrics["uptime_seconds"] = int(float(uptime_sec_raw.split()[0]))
+    except Exception:
+        pass
+
     try:
         lines = [line.strip() for line in df_raw.strip().split("\n") if line.strip()]
         if len(lines) >= 2:
@@ -554,69 +594,177 @@ def parse_safe_metrics(df_raw: str, free_raw: str) -> Dict[str, Any]:
                 if len(parts) >= 7:
                     total_mb = int(parts[1])
                     used_mb = int(parts[2])
+                    cached_mb = int(parts[5]) if len(parts) > 5 else 0
                     avail_mb = int(parts[6])
+                    metrics["ram_total_mb"] = total_mb
+                    metrics["ram_used_mb"] = used_mb
+                    metrics["ram_avail_mb"] = avail_mb
+                    metrics["ram_cache_mb"] = cached_mb
                     metrics["ram_total"] = f"{total_mb / 1024:.2f} GB" if total_mb >= 1024 else f"{total_mb} MB"
                     metrics["ram_used"] = f"{used_mb / 1024:.2f} GB" if used_mb >= 1024 else f"{used_mb} MB"
                     metrics["ram_avail"] = f"{avail_mb / 1024:.2f} GB" if avail_mb >= 1024 else f"{avail_mb} MB"
-                    metrics["ram_percent"] = int(round((used_mb / total_mb) * 100)) if total_mb > 0 else 35
+                    metrics["ram_percent"] = round((used_mb / total_mb) * 100, 1) if total_mb > 0 else 35.0
     except Exception:
         pass
 
     return metrics
 
+def background_metrics_collector():
+    global _metrics_cache
+    ssh_client = None
+    cmd = (
+        "cat /proc/uptime 2>/dev/null; echo '---'; "
+        "cat /proc/loadavg 2>/dev/null; echo '---'; "
+        "free -m 2>/dev/null; echo '---'; "
+        "df -h / 2>/dev/null; echo '---'; "
+        "ps -e | wc -l 2>/dev/null; echo '---'; "
+        "systemctl is-active ai-agent.service 2>/dev/null || echo 'inactive'; echo '---'; "
+        "cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
+    )
+
+    while True:
+        cfg = load_config()
+        server_ip = cfg.get("server_ip")
+        if not server_ip:
+            time.sleep(2)
+            continue
+
+        try:
+            if ssh_client is None or not (ssh_client.get_transport() and ssh_client.get_transport().is_active()):
+                if ssh_client:
+                    try: ssh_client.close()
+                    except: pass
+                ssh_client = get_ssh_client(cfg)
+
+            stdin, stdout, stderr = ssh_client.exec_command(cmd, timeout=6)
+            output = stdout.read().decode()
+            parts = output.split("---")
+
+            uptime_raw = parts[0].strip() if len(parts) > 0 else ""
+            loadavg_raw = parts[1].strip() if len(parts) > 1 else ""
+            free_raw = parts[2].strip() if len(parts) > 2 else ""
+            df_raw = parts[3].strip() if len(parts) > 3 else ""
+            procs_raw = parts[4].strip() if len(parts) > 4 else ""
+            service_status = parts[5].strip() if len(parts) > 5 else "inactive"
+            os_name = parts[6].strip() if len(parts) > 6 else "Linux"
+
+            uptime_human = format_uptime_human(uptime_raw)
+            safe_metrics = parse_safe_metrics(df_raw, free_raw, loadavg_raw, uptime_raw, procs_raw)
+
+            info_dict = {
+                "uptime": uptime_human,
+                "uptime_seconds": safe_metrics.get("uptime_seconds", 0),
+                "loadavg": loadavg_raw,
+                "procs": procs_raw,
+                "disk": df_raw,
+                "memory": free_raw,
+                "ram": free_raw,
+                "metrics": safe_metrics,
+                "service_active": service_status,
+                "service_status": service_status,
+                "os": os_name,
+                "server_ip": cfg.get("server_ip", "127.0.0.1"),
+                "api_port": cfg.get("api_port", 8000),
+                "ai_model": cfg.get("ai_model", "glm-5.3"),
+                "last_sync": time.strftime("%H:%M:%S")
+            }
+
+            data = {
+                "status": "success",
+                "uptime": uptime_human,
+                "disk": df_raw,
+                "ram": free_raw,
+                "metrics": safe_metrics,
+                "service_status": service_status,
+                "os": os_name,
+                "info": info_dict,
+                "last_sync": time.strftime("%H:%M:%S")
+            }
+
+            with _metrics_lock:
+                _metrics_cache = data
+
+        except Exception as e:
+            if ssh_client:
+                try: ssh_client.close()
+                except: pass
+                ssh_client = None
+            time.sleep(1)
+
+        time.sleep(1.2)
+
+def start_metrics_thread_if_needed():
+    global _collector_thread_started
+    if not _collector_thread_started:
+        _collector_thread_started = True
+        t = threading.Thread(target=background_metrics_collector, daemon=True)
+        t.start()
+
+start_metrics_thread_if_needed()
+
 @app.get("/api/server/system-info")
 @app.get("/api/server/metrics")
 def get_server_metrics():
+    global _metrics_cache
+    start_metrics_thread_if_needed()
+    with _metrics_lock:
+        if _metrics_cache:
+            return _metrics_cache
+
     cfg = load_config()
     try:
         ssh = get_ssh_client(cfg)
         stdin, stdout, stderr = ssh.exec_command(
-            "uptime -p 2>/dev/null || uptime; "
-            "echo '---'; "
-            "df -h /; "
-            "echo '---'; "
-            "free -m; "
-            "echo '---'; "
-            "systemctl is-active ai-agent.service 2>/dev/null || echo 'inactive'; "
-            "echo '---'; "
+            "cat /proc/uptime 2>/dev/null; echo '---'; "
+            "cat /proc/loadavg 2>/dev/null; echo '---'; "
+            "free -m 2>/dev/null; echo '---'; "
+            "df -h / 2>/dev/null; echo '---'; "
+            "ps -e | wc -l 2>/dev/null; echo '---'; "
+            "systemctl is-active ai-agent.service 2>/dev/null || echo 'inactive'; echo '---'; "
             "cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
         )
         output = stdout.read().decode()
         ssh.close()
-        
         parts = output.split("---")
-        uptime = parts[0].strip() if len(parts) > 0 else "N/A"
-        df = parts[1].strip() if len(parts) > 1 else "N/A"
-        free = parts[2].strip() if len(parts) > 2 else "N/A"
-        service_status = parts[3].strip() if len(parts) > 3 else "inactive"
-        os_name = parts[4].strip() if len(parts) > 4 else "Linux"
+        uptime_raw = parts[0].strip() if len(parts) > 0 else ""
+        loadavg_raw = parts[1].strip() if len(parts) > 1 else ""
+        free_raw = parts[2].strip() if len(parts) > 2 else ""
+        df_raw = parts[3].strip() if len(parts) > 3 else ""
+        procs_raw = parts[4].strip() if len(parts) > 4 else ""
+        service_status = parts[5].strip() if len(parts) > 5 else "inactive"
+        os_name = parts[6].strip() if len(parts) > 6 else "Linux"
 
-        safe_metrics = parse_safe_metrics(df, free)
-
+        uptime_human = format_uptime_human(uptime_raw)
+        safe_metrics = parse_safe_metrics(df_raw, free_raw, loadavg_raw, uptime_raw, procs_raw)
         info_dict = {
-            "uptime": uptime,
-            "disk": df,
-            "memory": free,
-            "ram": free,
+            "uptime": uptime_human,
+            "uptime_seconds": safe_metrics.get("uptime_seconds", 0),
+            "disk": df_raw,
+            "memory": free_raw,
+            "ram": free_raw,
             "metrics": safe_metrics,
             "service_active": service_status,
             "service_status": service_status,
             "os": os_name,
             "server_ip": cfg.get("server_ip", "127.0.0.1"),
             "api_port": cfg.get("api_port", 8000),
-            "ai_model": cfg.get("ai_model", "glm-5.3")
+            "ai_model": cfg.get("ai_model", "glm-5.3"),
+            "last_sync": time.strftime("%H:%M:%S")
         }
-
-        return {
+        res_data = {
             "status": "success",
-            "uptime": uptime,
-            "disk": df,
-            "ram": free,
+            "uptime": uptime_human,
+            "disk": df_raw,
+            "ram": free_raw,
             "metrics": safe_metrics,
             "service_status": service_status,
             "os": os_name,
-            "info": info_dict
+            "info": info_dict,
+            "last_sync": time.strftime("%H:%M:%S")
         }
+        with _metrics_lock:
+            _metrics_cache = res_data
+        return res_data
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -680,27 +828,26 @@ def deploy_to_server():
             yield f"data: Tạo thư mục làm việc {remote_dir}...\n\n"
             ssh.exec_command(f"sudo mkdir -p {remote_dir} && sudo chown -R {cfg['ssh_user']}:{cfg['ssh_user']} {remote_dir}")
             
-            yield "data: Đang cài đặt thư viện Python (FastAPI, Uvicorn, OpenAI, Paramiko, Psutil)...\n\n"
-            stdin, stdout, stderr = ssh.exec_command("sudo apt-get update -y && sudo apt-get install -y python3 python3-pip python3-venv")
-            stdout.channel.recv_exit_status()
-            
-            stdin, stdout, stderr = ssh.exec_command("pip3 install --break-system-packages fastapi uvicorn openai requests paramiko psutil || pip3 install fastapi uvicorn openai requests paramiko psutil")
-            stdout.channel.recv_exit_status()
-            yield "data: Cài đặt thư viện Python hoàn tất!\n\n"
-            
-            yield "data: Đang tải mã nguồn ai_agent_service.py lên Server...\n\n"
-            if not os.path.exists(SERVICE_FILE_PATH):
-                yield "data: LỖI: Không tìm thấy file ai_agent_service.py để upload!\n\n"
+            if not os.path.exists(SERVICE_BIN_PATH):
+                yield "data: [ERROR] Không tìm thấy file nhị phân ai_agent_service đã biên dịch ở local! Hãy chạy build_bin.py trước.\n\n"
                 return
-                
+
+            yield "data: Tạm dừng service đang chạy để giải phóng file nhị phân...\n\n"
+            ssh.exec_command("sudo systemctl stop ai-agent.service")
+            time.sleep(1)
+
+            yield "data: Đang tải Standalone Binary (ai_agent_service) lên VPS qua SFTP...\n\n"
             sftp = ssh.open_sftp()
-            sftp.put(SERVICE_FILE_PATH, f"{remote_dir}/ai_agent_service.py")
+            sftp.put(SERVICE_BIN_PATH, f"{remote_dir}/ai_agent_service.tmp")
             sftp.close()
-            yield "data: Upload file service lên máy chủ thành công!\n\n"
             
-            yield "data: Đang cấu hình và kích hoạt Systemd Service (ai-agent.service)...\n\n"
+            # Thay thế file nhị phân và xóa sạch các file source code .py cũ nếu có để bảo mật 100%
+            ssh.exec_command(f"sudo mv -f {remote_dir}/ai_agent_service.tmp {remote_dir}/ai_agent_service && sudo chmod +x {remote_dir}/ai_agent_service && sudo rm -f {remote_dir}/ai_agent_service.py")
+            yield "data: Đã đưa Standalone Binary lên máy chủ và bảo vệ 100% mã nguồn!\n\n"
+            
+            yield "data: Đang cấu hình và kích hoạt Systemd Daemon (ai-agent.service)...\n\n"
             service_content = f"""[Unit]
-Description=Tadu Cloud AI Agent Service (GLM-5.3)
+Description=Tadu Cloud AI Agent Service (Standalone Binary)
 After=network.target
 
 [Service]
@@ -716,7 +863,7 @@ Environment="SECRET_TOKEN={cfg.get('secret_token', 'super_secret_token_123')}"
 Environment="AGENT_SECRET_TOKEN={cfg.get('secret_token', 'super_secret_token_123')}"
 Environment="AGENT_PORT={cfg.get('api_port', 8000)}"
 Environment="PORT={cfg.get('api_port', 8000)}"
-ExecStart=/usr/bin/python3 {remote_dir}/ai_agent_service.py
+ExecStart={remote_dir}/ai_agent_service
 Restart=always
 RestartSec=3
 
@@ -734,7 +881,7 @@ WantedBy=multi-user.target
             ssh.close()
             
             if status == "active":
-                yield "data: [SUCCESS] AI Agent đã được triển khai và khởi động THÀNH CÔNG trên VPS!\n\n"
+                yield "data: [SUCCESS] AI Agent Standalone Binary đã được triển khai và khởi động THÀNH CÔNG trên VPS!\n\n"
             else:
                 yield f"data: [WARNING] Service được deploy nhưng trạng thái hiện tại là: {status}\n\n"
         except Exception as e:
