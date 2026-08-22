@@ -5,12 +5,16 @@ import uuid
 import webbrowser
 import threading
 import sqlite3
+import asyncio
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import requests
 import sys
+import re
+import base64
 
 # Xử lý đường dẫn khi đóng gói binary (PyInstaller)
 if getattr(sys, 'frozen', False):
@@ -107,10 +111,18 @@ def init_db():
             CREATE TABLE IF NOT EXISTS chat_sessions (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
+                is_pinned INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Migration: Thêm cột is_pinned nếu chưa có
+        cursor.execute("PRAGMA table_info(chat_sessions)")
+        existing_cols = [col[1] for col in cursor.fetchall()]
+        if "is_pinned" not in existing_cols:
+            cursor.execute("ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0")
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +173,7 @@ def init_db():
             cursor.execute("SELECT title FROM chat_sessions WHERE id = ?", (sid,))
             row = cursor.fetchone()
             if not row:
-                cursor.execute("INSERT INTO chat_sessions (id, title) VALUES (?, ?)", (sid, encrypt_value('Cuộc hội thoại mới')))
+                cursor.execute("INSERT INTO chat_sessions (id, title, is_pinned) VALUES (?, ?, 0)", (sid, encrypt_value('Cuộc hội thoại mới')))
                 
             # Lấy câu hỏi cuối cùng của user để đặt tên cho session nếu chưa có tên cụ thể
             dec_title = decrypt_value(row[0]) if row and row[0] else ""
@@ -184,18 +196,36 @@ def get_all_sessions() -> List[Dict[str, Any]]:
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, title, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC")
+        cursor.execute("SELECT id, title, is_pinned, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC")
         rows = cursor.fetchall()
         if not rows:
-            cursor.execute("INSERT OR IGNORE INTO chat_sessions (id, title) VALUES ('default', ?)", (encrypt_value('Cuộc hội thoại mới'),))
+            cursor.execute("INSERT OR IGNORE INTO chat_sessions (id, title, is_pinned) VALUES ('default', ?, 0)", (encrypt_value('Cuộc hội thoại mới'),))
             conn.commit()
-            cursor.execute("SELECT id, title, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC")
+            cursor.execute("SELECT id, title, is_pinned, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC")
             rows = cursor.fetchall()
         conn.close()
-        return [{"id": r[0], "title": decrypt_value(r[1]) or "Cuộc hội thoại mới", "created_at": str(r[2]), "updated_at": str(r[3])} for r in rows]
+        return [{"id": r[0], "title": decrypt_value(r[1]) or "Cuộc hội thoại mới", "is_pinned": bool(r[2]), "created_at": str(r[3]), "updated_at": str(r[4])} for r in rows]
     except Exception as e:
         print(f"Lỗi đọc sessions: {e}")
-        return [{"id": "default", "title": "Cuộc hội thoại mới", "created_at": "", "updated_at": ""}]
+        return [{"id": "default", "title": "Cuộc hội thoại mới", "is_pinned": False, "created_at": "", "updated_at": ""}]
+
+def toggle_pin_session(session_id: str, is_pinned: Optional[bool] = None) -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        if is_pinned is None:
+            cursor.execute("SELECT is_pinned FROM chat_sessions WHERE id = ?", (session_id,))
+            row = cursor.fetchone()
+            new_pin = 0 if (row and row[0] == 1) else 1
+        else:
+            new_pin = 1 if is_pinned else 0
+        cursor.execute("UPDATE chat_sessions SET is_pinned = ? WHERE id = ?", (new_pin, session_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Lỗi pin session: {e}")
+        return False
 
 def create_session(title: str = "Cuộc hội thoại mới") -> Dict[str, Any]:
     session_id = f"s_{uuid.uuid4().hex[:8]}"
@@ -255,7 +285,7 @@ def save_message_to_db(role: str, content: str, attachments: List[Any] = None, t
         # Cập nhật thời gian updated_at cho session
         cursor.execute("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
 
-        att_str = json.dumps([a.dict() if hasattr(a, 'dict') else (a.model_dump() if hasattr(a, 'model_dump') else a) for a in attachments], ensure_ascii=False) if attachments else None
+        att_str = json.dumps([a.model_dump() if hasattr(a, 'model_dump') else (a.dict() if hasattr(a, 'dict') else a) for a in attachments], ensure_ascii=False) if attachments else None
         tc_str = json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None
         
         # Mã hoá toàn bộ nội dung tin nhắn (user & ai), attachments và tool_calls trước khi lưu vào SQLite
@@ -278,10 +308,14 @@ def get_messages_from_db(session_id: str = "default", limit: int = 300) -> List[
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
-            FROM chat_messages
-            WHERE session_id = ?
+            FROM (
+                SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+                FROM chat_messages
+                WHERE session_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            ) sub
             ORDER BY id ASC
-            LIMIT ?
         """, (session_id, limit))
         rows = cursor.fetchall()
         conn.close()
@@ -322,6 +356,10 @@ def clear_messages_in_db(session_id: str = "default"):
         return False
 
 app = FastAPI(title="Tadu Cloud AI Agent Control Center", description="Giao diện quản lý & điều khiển Tadu Cloud AI Agent")
+
+VENDOR_DIR = os.path.join(BUNDLE_DIR, "templates", "vendor")
+if os.path.exists(VENDOR_DIR):
+    app.mount("/vendor", StaticFiles(directory=VENDOR_DIR), name="vendor")
 
 @app.get("/logo.jpg")
 def get_logo():
@@ -469,6 +507,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = "default"
     history: Optional[List[Dict[str, Any]]] = []
     attachments: Optional[List[AttachmentItem]] = []
+    working_dir: Optional[str] = None
 
 class SessionCreateRequest(BaseModel):
     title: Optional[str] = "Cuộc hội thoại mới"
@@ -478,6 +517,8 @@ class SessionUpdateRequest(BaseModel):
 
 class CommandRequest(BaseModel):
     command: str
+    cwd: Optional[str] = "~"
+    timeout: Optional[int] = 120
 
 class SSHTestRequest(BaseModel):
     server_ip: Optional[str] = None
@@ -689,9 +730,9 @@ def background_metrics_collector():
                 try: ssh_client.close()
                 except: pass
                 ssh_client = None
-            time.sleep(1)
+            time.sleep(10)
 
-        time.sleep(1.2)
+        time.sleep(30.0)
 
 def start_metrics_thread_if_needed():
     global _collector_thread_started
@@ -889,25 +930,238 @@ WantedBy=multi-user.target
 
     return StreamingResponse(step_generator(), media_type="text/event-stream")
 
-@app.post("/api/terminal/run")
-def run_terminal_command(req: CommandRequest):
-    cfg = load_config()
+def execute_ssh_command_advanced(cfg: Dict[str, Any], command: str, cwd: str = "~", timeout: int = 120):
+    cmd_raw = (command or "").strip()
+    if not cmd_raw:
+        return {
+            "status": "success",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "combined": "",
+            "cwd": cwd or "~"
+        }
+        
+    if cmd_raw.lower() in ["clear", "cls"]:
+        return {
+            "status": "clear",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "combined": "",
+            "cwd": cwd or "~"
+        }
+
+    target_cwd = (cwd or "~").strip()
+    if not target_cwd:
+        target_cwd = "~"
+    
+    server_ip = cfg.get("server_ip")
+    if not server_ip:
+        return {
+            "status": "error", 
+            "message": "Chưa cấu hình thông tin IP máy chủ SSH trong tab Cài đặt!",
+            "cwd": target_cwd,
+            "exit_code": 1
+        }
+
+    # Bọc lệnh trong môi trường bash login shell đầy đủ PATH và tự động ghi nhận CWD mới
+    script = f"""
+export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/root/.local/bin
+if [ -n "{target_cwd}" ] && [ "{target_cwd}" != "~" ]; then
+    cd "{target_cwd}" 2>/dev/null || cd "$HOME" 2>/dev/null || true
+else
+    cd "$HOME" 2>/dev/null || true
+fi
+{command}
+__RET_VAL=$?
+echo ""
+echo "__TADU_CWD:$(pwd)__"
+exit $__RET_VAL
+"""
+    b64_script = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    exec_cmd = f"bash -l -c 'echo {b64_script} | base64 -d | bash'"
+
+    ssh = None
     try:
         ssh = get_ssh_client(cfg)
-        stdin, stdout, stderr = ssh.exec_command(req.command, timeout=30)
-        out = stdout.read().decode()
-        err = stderr.read().decode()
-        exit_code = stdout.channel.recv_exit_status()
-        ssh.close()
+        channel = ssh.get_transport().open_session()
+        channel.settimeout(timeout)
+        channel.exec_command(exec_cmd)
+        
+        out_buf = bytearray()
+        err_buf = bytearray()
+        start_time = time.time()
+        
+        while True:
+            if channel.recv_ready():
+                out_buf.extend(channel.recv(4096))
+            if channel.recv_stderr_ready():
+                err_buf.extend(channel.recv_stderr(4096))
+            if channel.exit_status_ready():
+                while channel.recv_ready():
+                    out_buf.extend(channel.recv(4096))
+                while channel.recv_stderr_ready():
+                    err_buf.extend(channel.recv_stderr(4096))
+                break
+            if time.time() - start_time > timeout:
+                channel.close()
+                return {
+                    "status": "error",
+                    "message": f"Lệnh thực thi vượt quá thời gian tối đa ({timeout}s).",
+                    "cwd": target_cwd,
+                    "exit_code": 124
+                }
+            time.sleep(0.02)
+
+        exit_code = channel.recv_exit_status()
+        out = out_buf.decode("utf-8", errors="replace")
+        err = err_buf.decode("utf-8", errors="replace")
+        
+        new_cwd = target_cwd
+        m = re.search(r"__TADU_CWD:(.*?)__", out)
+        if m:
+            new_cwd = m.group(1).strip()
+            out = out.replace(m.group(0), "").rstrip()
+
         return {
             "status": "success",
             "exit_code": exit_code,
             "stdout": out,
             "stderr": err,
-            "combined": out + (f"\n[STDERR]: {err}" if err else "")
+            "combined": out + (f"\n[STDERR]: {err}" if err else ""),
+            "cwd": new_cwd
         }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error", 
+            "message": f"Lỗi SSH: {str(e)}", 
+            "cwd": target_cwd,
+            "exit_code": 1
+        }
+    finally:
+        if ssh:
+            try:
+                ssh.close()
+            except Exception:
+                pass
+
+_terminal_session_cwd = "~"
+
+@app.get("/api/terminal/info")
+def get_terminal_info():
+    global _terminal_session_cwd
+    cfg = load_config()
+    return {
+        "status": "success",
+        "server_ip": cfg.get("server_ip", "server"),
+        "ssh_user": cfg.get("ssh_user", "root"),
+        "ssh_port": cfg.get("ssh_port", 22),
+        "default_cwd": _terminal_session_cwd or "~"
+    }
+
+@app.post("/api/terminal/run")
+def run_terminal_command(req: CommandRequest):
+    global _terminal_session_cwd
+    cfg = load_config()
+    
+    # Sử dụng cwd từ request nếu có, ngược lại lấy session cwd hiện tại
+    target_cwd = (req.cwd or "").strip()
+    if not target_cwd or target_cwd == "~":
+        target_cwd = _terminal_session_cwd or "~"
+        
+    timeout = max(5, int(req.timeout or 120))
+    res = execute_ssh_command_advanced(cfg, req.command, cwd=target_cwd, timeout=timeout)
+    if res.get("cwd"):
+        _terminal_session_cwd = res["cwd"]
+    return res
+
+@app.websocket("/ws/terminal")
+async def websocket_terminal(websocket: WebSocket):
+    await websocket.accept()
+    cfg = load_config()
+    server_ip = cfg.get("server_ip")
+    if not server_ip:
+        await websocket.send_text("\r\n\x1b[31m[LỖI]: Chưa cấu hình thông tin IP máy chủ SSH trong tab Thiết lập!\x1b[0m\r\n")
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        return
+
+    ssh = None
+    channel = None
+    try:
+        ssh = get_ssh_client(cfg)
+        channel = ssh.invoke_shell(term="xterm-256color", width=120, height=35)
+        channel.setblocking(0)
+    except Exception as e:
+        await websocket.send_text(f"\r\n\x1b[31m[LỖI KẾT NỐI SSH]: {str(e)}\x1b[0m\r\n")
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        if ssh:
+            try:
+                ssh.close()
+            except Exception:
+                pass
+        return
+
+    async def send_to_ws():
+        try:
+            while True:
+                if channel.recv_ready():
+                    data = channel.recv(4096).decode("utf-8", errors="replace")
+                    if data:
+                        await websocket.send_text(data)
+                elif channel.closed or channel.exit_status_ready():
+                    break
+                await asyncio.sleep(0.015)
+        except Exception:
+            pass
+
+    async def receive_from_ws():
+        try:
+            while True:
+                msg = await websocket.receive_text()
+                if msg.startswith('{"type":') or msg.startswith('{"type" :'):
+                    try:
+                        p = json.loads(msg)
+                        if p.get("type") == "resize":
+                            cols = int(p.get("cols", 120))
+                            rows = int(p.get("rows", 35))
+                            channel.resize_pty(width=cols, height=rows)
+                            continue
+                    except Exception:
+                        pass
+                channel.send(msg)
+        except Exception:
+            pass
+
+    send_task = asyncio.create_task(send_to_ws())
+    recv_task = asyncio.create_task(receive_from_ws())
+
+    done, pending = await asyncio.wait(
+        [send_task, recv_task],
+        return_when=asyncio.FIRST_COMPLETED
+    )
+
+    for task in pending:
+        task.cancel()
+
+    try:
+        channel.close()
+    except Exception:
+        pass
+    try:
+        ssh.close()
+    except Exception:
+        pass
+    try:
+        await websocket.close()
+    except Exception:
+        pass
 
 # ==========================================
 # CHAT SESSIONS & CHAT HISTORY ENDPOINTS
@@ -927,6 +1181,12 @@ def rename_session_api(session_id: str, req: SessionUpdateRequest):
     success = rename_session(session_id, req.title)
     return {"status": "success" if success else "error"}
 
+@app.post("/api/chat/sessions/{session_id}/pin")
+def pin_session_api(session_id: str, req: Dict[str, Any] = Body(default={})):
+    is_pinned = req.get("is_pinned")
+    success = toggle_pin_session(session_id, is_pinned)
+    return {"status": "success" if success else "error"}
+
 @app.delete("/api/chat/sessions/{session_id}")
 def delete_session_api(session_id: str):
     success = delete_session(session_id)
@@ -940,7 +1200,38 @@ def get_chat_history_api(session_id: str = "default"):
 @app.post("/api/chat/clear")
 def clear_chat_history_api(session_id: str = "default"):
     clear_messages_in_db(session_id)
-    return {"status": "success"}
+@app.get("/api/fs/list_dirs")
+def list_server_directories(prefix: str = "/"):
+    """Liệt kê danh sách thư mục trên server từ xa phục vụ tính năng autocomplete với dấu /"""
+    prefix = (prefix or "/").strip()
+    if not prefix.startswith("/"):
+        prefix = "/" + prefix
+    try:
+        cfg = load_config()
+        ssh = get_ssh_client(cfg)
+        cmd = f"compgen -d {repr(prefix)} 2>/dev/null | head -30"
+        stdin, stdout, stderr = ssh.exec_command(cmd, timeout=3)
+        dirs = [d.strip() for d in stdout.read().decode().splitlines() if d.strip()]
+        ssh.close()
+
+        if not dirs and prefix != "/":
+            ssh2 = get_ssh_client(cfg)
+            cmd2 = f"find {repr(prefix)} -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -30"
+            stdin, stdout, stderr = ssh2.exec_command(cmd2, timeout=3)
+            dirs = [d.strip() for d in stdout.read().decode().splitlines() if d.strip()]
+            ssh2.close()
+
+        if prefix == "/":
+            common = ["/var/www", "/var/www/chatbot.ai-acv.io.vn", "/var/www/chatbot.ai-acv.io.vn/Admin", "/var/www/blog.ai-acv.io.vn", "/etc/nginx", "/opt/ai_agent", "/home", "/var/log", "/etc", "/opt"]
+            for c in common:
+                if c not in dirs:
+                    dirs.append(c)
+
+        return {"status": "success", "prefix": prefix, "directories": sorted(list(set(dirs)))}
+    except Exception as e:
+        common = ["/var/www", "/var/www/chatbot.ai-acv.io.vn", "/var/www/chatbot.ai-acv.io.vn/Admin", "/var/www/blog.ai-acv.io.vn", "/etc/nginx", "/opt/ai_agent", "/home", "/var/log", "/opt"]
+        filtered = [c for c in common if c.startswith(prefix)]
+        return {"status": "success", "prefix": prefix, "directories": filtered or common}
 
 @app.post("/api/chat")
 def chat_with_agent(req: ChatRequest):
@@ -951,11 +1242,26 @@ def chat_with_agent(req: ChatRequest):
     current_model = cfg.get("ai_model", "glm-5.3")
     session_id = req.session_id or "default"
     
-    # 1. Thu thập ngữ cảnh hội thoại trước đó cho đúng session_id từ SQLite
+    # Xác định thư mục làm việc giới hạn (Working Directory Scope)
+    working_dir = req.working_dir
+    if not working_dir:
+        import re
+        match = re.search(r'(/(?:var|etc|opt|home|root|usr|tmp|www|srv)[a-zA-Z0-9_\-\.\/]*)', req.message)
+        if match:
+            potential_path = match.group(1).rstrip('/')
+            if potential_path and len(potential_path) > 3:
+                working_dir = potential_path
+
+    # 1. Thu thập ngữ cảnh hội thoại gần nhất trong phiên hiện tại (tối đa 4 tin nhắn)
     history_context = []
-    db_history = get_messages_from_db(session_id, limit=10)
+    db_history = get_messages_from_db(session_id, limit=4)
     for m in db_history:
-        history_context.append({"role": m["role"], "content": m["content"]})
+        r = m.get("role")
+        c = m.get("content", "").strip()
+        if r in ["user", "assistant"] and c:
+            if len(c) > 1500:
+                c = c[:1500] + "..."
+            history_context.append({"role": r, "content": c})
         
     # 2. Lưu câu hỏi mới của User vào SQLite
     save_message_to_db(
@@ -974,13 +1280,17 @@ def chat_with_agent(req: ChatRequest):
     
     full_message = req.message
     if req.attachments:
-        full_message += "\n\n=== FILE ĐÍNH KÈM TỪ NGƯỜI DÙNG ==="
+        full_message += "\n\n=== FILE & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ==="
         for att in req.attachments:
-            full_message += f"\n\n--- [Tệp: {att.name}] ---\n{att.content}"
+            if att.content.startswith("data:image"):
+                full_message += f"\n\n--- [Ảnh chụp màn hình: {att.name}] --- (Người dùng đính kèm ảnh chụp màn hình giao diện)"
+            else:
+                full_message += f"\n\n--- [Tệp: {att.name}] ---\n{att.content}"
             
     payload = {
         "message": full_message,
-        "history": history_context
+        "history": history_context,
+        "working_dir": working_dir
     }
 
     def stream_forwarder():

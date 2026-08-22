@@ -26,6 +26,11 @@
     <!-- html2pdf.js for exporting AI reports to PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
+    <!-- XTerm.js (Live Interactive Terminal) -->
+    <link rel="stylesheet" href="/vendor/xterm.css">
+    <script src="/vendor/xterm.js"></script>
+    <script src="/vendor/xterm-addon-fit.js"></script>
+
     <style>
         :root {
             --bs-body-bg: #0b0f19;
@@ -378,12 +383,40 @@
             background-color: rgba(79, 70, 229, 0.18);
             border-color: rgba(99, 102, 241, 0.4);
         }
+        .session-item.pinned-session {
+            background-color: rgba(245, 158, 11, 0.05);
+            border-left: 3px solid #f59e0b !important;
+        }
+        .session-item.pinned-session:hover {
+            background-color: rgba(245, 158, 11, 0.12);
+        }
+        .session-item.pinned-session.active {
+            background-color: rgba(79, 70, 229, 0.22);
+            border-left: 3px solid #f59e0b !important;
+            border-color: rgba(99, 102, 241, 0.4);
+        }
         .session-item.active .session-title {
             color: #a5b4fc !important;
             font-weight: 600 !important;
         }
         .session-item.active i.session-icon {
             color: #818cf8 !important;
+        }
+        .btn-pin-left {
+            opacity: 0.35;
+            transition: all 0.15s ease;
+        }
+        .btn-pin-left.is-pinned {
+            opacity: 1 !important;
+            color: #f59e0b !important;
+        }
+        .session-item:hover .btn-pin-left {
+            opacity: 0.85;
+        }
+        .btn-pin-left:hover {
+            opacity: 1 !important;
+            color: #fbbf24 !important;
+            transform: scale(1.18);
         }
         .session-actions {
             opacity: 0;
@@ -792,34 +825,77 @@
             </div>
 
             <!-- Chat Input Bar (Textarea + Inner Attach & Send Buttons) -->
-            <div class="p-3 border-top d-flex justify-content-center" style="border-color: var(--tadu-border) !important;">
+            <div class="p-3 border-top d-flex justify-content-center position-relative" style="border-color: var(--tadu-border) !important;">
+                <!-- DIRECTORY AUTOCOMPLETE DROPDOWN (Triggered by '/') -->
+                <div id="dir-autocomplete-dropdown" class="d-none position-absolute shadow-lg" 
+                     style="z-index: 1050; bottom: calc(100% + 8px); left: 16px; right: 16px; max-width: 620px; max-height: 320px; background: #0c1322; border: 1px solid rgba(56, 189, 248, 0.3) !important; border-radius: 12px; font-size: 0.82rem; box-shadow: 0 20px 45px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06) !important; padding: 12px 14px;">
+                    <!-- Header with generous inner padding, padding-bottom and item gaps -->
+                    <div class="d-flex align-items-center justify-content-between pb-3 mb-2.5 border-bottom border-secondary border-opacity-25 px-2 text-secondary" style="font-size: 0.74rem;">
+                        <span class="d-inline-flex align-items-center gap-2 fw-semibold text-info">
+                            <i class="fa-solid fa-folder-tree text-warning" style="font-size: 0.92rem;"></i> 
+                            <span style="letter-spacing: 0.4px;">THƯ MỤC LÀM VIỆC</span>
+                        </span>
+                        <div class="d-inline-flex align-items-center gap-4">
+                            <span class="d-inline-flex align-items-center">
+                                <kbd style="font-size: 0.7rem; background: #1e293b; color: #38bdf8; padding: 2px 7px; border-radius: 4px; border: 1px solid #334155; margin-right: 8px;">↑↓</kbd>
+                                <span class="text-secondary" style="font-size: 0.74rem;">Duyệt</span>
+                            </span>
+                            <span class="d-inline-flex align-items-center">
+                                <kbd style="font-size: 0.7rem; background: #1e293b; color: #38bdf8; padding: 2px 7px; border-radius: 4px; border: 1px solid #334155; margin-right: 8px;">Tab / Enter</kbd>
+                                <span class="text-secondary" style="font-size: 0.74rem;">Chọn</span>
+                            </span>
+                            <span class="d-inline-flex align-items-center">
+                                <kbd style="font-size: 0.7rem; background: #1e293b; color: #f87171; padding: 2px 7px; border-radius: 4px; border: 1px solid #334155; margin-right: 8px;">Esc</kbd>
+                                <span class="text-secondary" style="font-size: 0.74rem;">Đóng</span>
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Directory list with internal scroll & padding -->
+                    <div id="dir-autocomplete-list" class="overflow-y-auto d-flex flex-column gap-2 pe-1 pb-1" style="max-height: 230px;"></div>
+                </div>
+
                 <form id="chat-form" onsubmit="handleChatSubmit(event)" class="w-100">
                     <!-- Hidden file input for Attachments -->
-                    <input type="file" id="file-picker" multiple style="display: none;" onchange="handleFileSelect(event)">
+                    <input type="file" id="file-picker" multiple accept="image/*,.txt,.log,.json,.yaml,.yml,.php,.py,.js,.ts,.html,.css,.sql,.sh,.conf,.env" style="display: none;" onchange="handleFileSelect(event)">
                     
                     <div class="chat-input-box p-3 d-flex flex-column" style="gap: 8px;">
+                        <!-- Working Directory Scope Badge -->
+                        <div id="scope-dir-badge" class="d-none align-items-center gap-2 px-3 py-1.5 rounded-1 text-light border border-info border-opacity-50" style="background: rgba(6, 182, 212, 0.12); width: fit-content; font-size: 0.78rem;">
+                            <i class="fa-solid fa-folder-open text-info me-1"></i>
+                            <span class="text-secondary me-1">Phạm vi Agent:</span>
+                            <span id="scope-dir-path" class="font-mono text-info fw-semibold">/var/www/chatbot.ai-acv.io.vn</span>
+                            <button type="button" onclick="clearWorkingDirScope()" class="btn btn-link text-danger p-0 ms-2 text-decoration-none" style="font-size: 0.8rem;" title="Huỷ giới hạn thư mục">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
                         <!-- Attachment Chips Container -->
                         <div id="attachment-list" class="d-none d-flex flex-wrap gap-2 pb-2 mb-1 border-bottom" style="border-color: var(--tadu-border) !important;"></div>
 
-                        <!-- Multi-line Textarea -->
+                        <!-- Multi-line Textarea with Clipboard Paste & '/' Directory Scope Support -->
                         <textarea 
                             id="chat-input" 
                             rows="2" 
-                            placeholder="Nhập yêu cầu hoặc câu hỏi cho AI Agent (Shift+Enter xuống dòng)..."
+                            placeholder="Nhập yêu cầu, gõ '/' để chọn thư mục giới hạn, hoặc dán ảnh (Ctrl+V)..."
                             class="form-control p-0 border-0 bg-transparent text-white"
                             style="resize: none; font-size: 0.88rem; min-height: 48px; max-height: 180px; box-shadow: none !important; line-height: 1.5;"
-                            oninput="autoResizeTextarea(this)"
-                            onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if(!isChatGenerating) handleChatSubmit(event); }"
+                            oninput="onChatInputChanged(this)"
+                            onpaste="handleClipboardPaste(event)"
+                            onkeydown="handleChatInputKeydown(event)"
                         ></textarea>
 
                         <!-- Bottom Controls Inside Textarea Box -->
                         <div class="d-flex align-items-center justify-content-between pt-1">
                             <div class="d-flex align-items-center gap-2">
-                                <button type="button" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center" onclick="document.getElementById('file-picker').click()" title="Đính kèm file (Code, Log, Txt, Config...)">
-                                    <i class="fa-solid fa-paperclip text-info me-2"></i>
-                                    <span>Attach files</span>
+                                <button type="button" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center gap-2" onclick="triggerDirAutocomplete('/')" title="Gõ '/' hoặc bấm vào đây để chọn thư mục giới hạn thao tác của Agent">
+                                    <i class="fa-solid fa-folder-tree text-warning me-1"></i>
+                                    <span>Scope /</span>
                                 </button>
-                                <small class="text-secondary d-none d-sm-inline" style="font-size: 0.73rem;">(Hỗ trợ code, log, config, txt)</small>
+                                <button type="button" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center gap-2" onclick="document.getElementById('file-picker').click()" title="Đính kèm file (Ảnh, Code, Log, Txt, Config...)">
+                                    <i class="fa-solid fa-paperclip text-info me-1"></i>
+                                    <span>Attach</span>
+                                </button>
+                                <small class="text-secondary d-none d-sm-inline ms-1" style="font-size: 0.73rem;">(Gõ <kbd style="background: rgba(255,255,255,0.1); color: #fff; padding: 1px 4px; border-radius: 3px;">/</kbd> chọn thư mục, <kbd style="background: rgba(255,255,255,0.1); color: #fff; padding: 1px 4px; border-radius: 3px;">Ctrl+V</kbd> dán ảnh)</small>
                             </div>
 
                             <button type="submit" id="btn-send" class="btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center gap-2 shadow-sm">
@@ -1064,38 +1140,53 @@
                         <i class="fa-solid fa-terminal text-success"></i>
                     </div>
                     <div class="d-flex flex-column justify-content-center">
-                        <div class="tab-topbar-title">
+                        <div class="tab-topbar-title d-flex align-items-center gap-2">
                             <span>Remote SSH Terminal Console</span>
+                            <span id="terminal-target-badge" class="badge bg-secondary-subtle text-secondary border border-secondary font-mono px-2 py-0.5" style="font-size: 0.72rem; font-weight: 500;">
+                                <i class="fa-solid fa-circle me-1" style="font-size: 0.55rem;"></i> SSH
+                            </span>
                         </div>
-                        <small class="tab-topbar-subtitle">Thực thi lệnh shell trực tiếp trên máy chủ qua kết nối SSH an toàn</small>
+                        <small class="tab-topbar-subtitle">Thực thi toàn bộ lệnh shell Linux trực tiếp, duy trì thư mục phiên làm việc và đầy đủ môi trường Bash</small>
                     </div>
                 </div>
-                <div>
+                <div class="d-flex align-items-center gap-2">
                     <button onclick="clearTerminalLog()" class="btn btn-sm btn-outline-secondary px-3 py-1.5" style="font-size: 0.75rem;">
-                        <i class="fa-solid fa-eraser"></i>
-                        <span>Xoá màn hình</span>
+                        <i class="fa-solid fa-eraser me-1"></i>
+                        <span>Xoá màn hình (Ctrl+L)</span>
                     </button>
                 </div>
             </div>
 
             <!-- Content Area -->
-            <div class="flex-grow-1 d-flex flex-column p-4 overflow-hidden">
-                <!-- Terminal Output Window -->
-                <div id="terminal-screen" class="flex-grow-1 bg-black rounded-1 p-4 font-mono overflow-y-auto mb-3" style="font-size: 0.82rem; color: #38bdf8; line-height: 1.6;">
-                    <div class="text-secondary">=== Tadu Cloud Remote SSH Terminal Console Sẵn Sàng ===</div>
+            <div class="flex-grow-1 d-flex flex-column p-3 overflow-hidden">
+                <!-- Quick Action Chips -->
+                <div class="d-flex align-items-center gap-2 mb-2 overflow-x-auto pb-1 flex-shrink-0" style="scrollbar-width: thin;">
+                    <span class="text-secondary small fw-semibold flex-shrink-0" style="font-size: 0.75rem;"><i class="fa-solid fa-bolt me-1 text-warning"></i>Lệnh nhanh:</span>
+                    <button type="button" onclick="runQuickCommand('top')" class="btn btn-sm btn-outline-dark text-light border-secondary px-2.5 py-1" style="font-size: 0.72rem; white-space: nowrap;">
+                        <i class="fa-solid fa-chart-line text-info me-1"></i>top
+                    </button>
+                    <button type="button" onclick="runQuickCommand('df -h')" class="btn btn-sm btn-outline-dark text-light border-secondary px-2.5 py-1" style="font-size: 0.72rem; white-space: nowrap;">
+                        <i class="fa-solid fa-hard-drive text-warning me-1"></i>df -h
+                    </button>
+                    <button type="button" onclick="runQuickCommand('free -h')" class="btn btn-sm btn-outline-dark text-light border-secondary px-2.5 py-1" style="font-size: 0.72rem; white-space: nowrap;">
+                        <i class="fa-solid fa-memory text-success me-1"></i>free -h
+                    </button>
+                    <button type="button" onclick="runQuickCommand('systemctl status ai-agent.service')" class="btn btn-sm btn-outline-dark text-light border-secondary px-2.5 py-1" style="font-size: 0.72rem; white-space: nowrap;">
+                        <i class="fa-solid fa-robot text-primary me-1"></i>AI Status
+                    </button>
+                    <button type="button" onclick="runQuickCommand('journalctl -u ai-agent.service -n 50 --no-pager')" class="btn btn-sm btn-outline-dark text-light border-secondary px-2.5 py-1" style="font-size: 0.72rem; white-space: nowrap;">
+                        <i class="fa-solid fa-file-lines text-warning me-1"></i>Log AI
+                    </button>
+                    <button type="button" onclick="runQuickCommand('ss -tulnp')" class="btn btn-sm btn-outline-dark text-light border-secondary px-2.5 py-1" style="font-size: 0.72rem; white-space: nowrap;">
+                        <i class="fa-solid fa-network-wired text-info me-1"></i>ss -tulnp
+                    </button>
+                    <button type="button" onclick="runQuickCommand('systemctl restart ai-agent.service')" class="btn btn-sm btn-outline-dark text-light border-secondary px-2.5 py-1" style="font-size: 0.72rem; white-space: nowrap;">
+                        <i class="fa-solid fa-arrows-rotate text-danger me-1"></i>Restart AI
+                    </button>
                 </div>
 
-                <!-- Command Input Bar -->
-                <form id="terminal-form" onsubmit="executeTerminalCommand(event)">
-                    <div class="terminal-input-box d-flex align-items-center p-2 rounded-1">
-                        <span class="text-success font-mono px-3 fw-bold flex-shrink-0" style="font-size: 0.84rem;">root@server:~#</span>
-                        <input type="text" id="terminal-input" placeholder="Nhập lệnh shell (vd: ls -la, df -h, systemctl status nginx)..." class="form-control p-0 border-0 bg-transparent font-mono text-white flex-grow-1" style="font-size: 0.84rem; outline: none; box-shadow: none !important;">
-                        <button type="submit" class="btn btn-primary px-3 py-1.5 ms-2 flex-shrink-0 d-inline-flex align-items-center">
-                            <i class="fa-solid fa-play me-1.5" style="font-size: 0.75rem;"></i>
-                            <span>Chạy</span>
-                        </button>
-                    </div>
-                </form>
+                <!-- XTerm Live Interactive Terminal Container -->
+                <div id="terminal-container" class="flex-grow-1 bg-black rounded-1 overflow-hidden p-2 position-relative" style="min-height: 250px;"></div>
             </div>
         </section>
 
@@ -1258,9 +1349,244 @@
         let logInterval = null;
         let selectedFiles = [];
 
+        // Directory Scope & Autocomplete State
+        let currentWorkingDirScope = null;
+        let isDirAutocompleteOpen = false;
+        let dirSuggestions = [];
+        let dirActiveIndex = 0;
+        let dirDebounceTimer = null;
+
+        function setWorkingDirScope(dirPath) {
+            if (!dirPath) return;
+            currentWorkingDirScope = dirPath.trim();
+            const badge = document.getElementById('scope-dir-badge');
+            const pathText = document.getElementById('scope-dir-path');
+            if (badge && pathText) {
+                pathText.innerText = currentWorkingDirScope;
+                badge.classList.remove('d-none');
+                badge.classList.add('d-flex');
+            }
+            showToast(`🎯 Đã giới hạn phạm vi làm việc của Agent vào: ${currentWorkingDirScope}`, 'info');
+        }
+
+        function clearWorkingDirScope() {
+            currentWorkingDirScope = null;
+            const badge = document.getElementById('scope-dir-badge');
+            if (badge) {
+                badge.classList.add('d-none');
+                badge.classList.remove('d-flex');
+            }
+            showToast('Đã xoá giới hạn thư mục. Agent sẽ hoạt động trên toàn hệ thống.', 'info');
+        }
+
+        function onChatInputChanged(el) {
+            autoResizeTextarea(el);
+            checkDirAutocompleteTrigger(el);
+        }
+
+        function checkDirAutocompleteTrigger(el) {
+            const val = el.value;
+            const cursorPos = el.selectionStart || val.length;
+
+            // Tìm từ đang gõ tại vị trí con trỏ
+            const textBefore = val.slice(0, cursorPos);
+            const words = textBefore.split(/\s+/);
+            const currentWord = words[words.length - 1];
+
+            if (currentWord && currentWord.startsWith('/')) {
+                // Đang gõ đường dẫn bắt đầu bằng dấu /
+                if (dirDebounceTimer) clearTimeout(dirDebounceTimer);
+                dirDebounceTimer = setTimeout(() => {
+                    fetchAndRenderDirSuggestions(currentWord);
+                }, 80);
+            } else {
+                closeDirAutocomplete();
+            }
+        }
+
+        async function fetchAndRenderDirSuggestions(query) {
+            try {
+                const res = await fetch(`/api/fs/list_dirs?prefix=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if (data.status === 'success' && data.directories && data.directories.length > 0) {
+                    dirSuggestions = data.directories;
+                    dirActiveIndex = 0;
+                    renderDirAutocompleteDropdown(query);
+                } else {
+                    closeDirAutocomplete();
+                }
+            } catch (err) {
+                console.error("Lỗi lấy danh sách thư mục:", err);
+                closeDirAutocomplete();
+            }
+        }
+
+        function renderDirAutocompleteDropdown(query) {
+            const dd = document.getElementById('dir-autocomplete-dropdown');
+            const list = document.getElementById('dir-autocomplete-list');
+            if (!dd || !list) return;
+
+            list.innerHTML = dirSuggestions.map((d, idx) => `
+                <div class="dir-item px-3.5 py-2.5 rounded-2 d-flex align-items-center justify-content-between ${idx === dirActiveIndex ? 'bg-primary text-white shadow-sm' : 'text-light bg-dark bg-opacity-25'}" 
+                     style="cursor: pointer; transition: all 0.15s ease; border: 1px solid ${idx === dirActiveIndex ? 'rgba(255,255,255,0.2)' : 'transparent'};"
+                     onmouseenter="setDirActiveIndex(${idx})"
+                     onclick="selectDirSuggestion('${d}')">
+                    <div class="d-flex align-items-center min-w-0 ps-1 me-3">
+                        <i class="fa-solid fa-folder text-warning flex-shrink-0" style="font-size: 0.95rem; margin-right: 10px;"></i>
+                        <span class="font-mono text-truncate" style="font-size: 0.84rem; letter-spacing: 0.2px;">${escapeHtml(d)}</span>
+                    </div>
+                    <span class="badge ${idx === dirActiveIndex ? 'bg-light text-dark shadow-sm' : 'bg-secondary bg-opacity-25 text-secondary'} font-mono px-2.5 py-1.5 flex-shrink-0" style="font-size: 0.7rem; margin-left: 12px;">Chọn</span>
+                </div>
+            `).join('');
+
+            dd.classList.remove('d-none');
+            isDirAutocompleteOpen = true;
+        }
+
+        function setDirActiveIndex(idx) {
+            dirActiveIndex = idx;
+            const items = document.querySelectorAll('#dir-autocomplete-list .dir-item');
+            items.forEach((item, i) => {
+                if (i === idx) {
+                    item.className = "dir-item px-3.5 py-2.5 rounded-2 d-flex align-items-center justify-content-between bg-primary text-white shadow-sm";
+                    item.style.border = "1px solid rgba(255,255,255,0.2)";
+                    const badge = item.querySelector('.badge');
+                    if (badge) badge.className = "badge bg-light text-dark shadow-sm font-mono px-2.5 py-1.5 flex-shrink-0";
+                } else {
+                    item.className = "dir-item px-3.5 py-2.5 rounded-2 d-flex align-items-center justify-content-between text-light bg-dark bg-opacity-25";
+                    item.style.border = "1px solid transparent";
+                    const badge = item.querySelector('.badge');
+                    if (badge) badge.className = "badge bg-secondary bg-opacity-25 text-secondary font-mono px-2.5 py-1.5 flex-shrink-0";
+                }
+            });
+        }
+
+        function selectDirSuggestion(dirPath) {
+            if (!dirPath) return;
+            setWorkingDirScope(dirPath);
+
+            // Thay thế từ /query trong ô chat bằng đường dẫn đầy đủ
+            const input = document.getElementById('chat-input');
+            if (input) {
+                const val = input.value;
+                const cursorPos = input.selectionStart || val.length;
+                const textBefore = val.slice(0, cursorPos);
+                const textAfter = val.slice(cursorPos);
+
+                const lastSlashIdx = textBefore.lastIndexOf('/');
+                if (lastSlashIdx !== -1) {
+                    const newBefore = textBefore.slice(0, lastSlashIdx) + dirPath + ' ';
+                    input.value = newBefore + textAfter;
+                    input.selectionStart = input.selectionEnd = newBefore.length;
+                }
+                input.focus();
+                autoResizeTextarea(input);
+            }
+            closeDirAutocomplete();
+        }
+
+        function closeDirAutocomplete() {
+            const dd = document.getElementById('dir-autocomplete-dropdown');
+            if (dd) dd.classList.add('d-none');
+            isDirAutocompleteOpen = false;
+        }
+
+        function triggerDirAutocomplete(prefix = "/") {
+            const input = document.getElementById('chat-input');
+            if (input) {
+                input.focus();
+                if (!input.value.includes('/')) {
+                    input.value = (input.value ? input.value + ' ' : '') + prefix;
+                }
+                input.selectionStart = input.selectionEnd = input.value.length;
+                fetchAndRenderDirSuggestions(prefix);
+            }
+        }
+
+        function handleChatInputKeydown(e) {
+            if (isDirAutocompleteOpen) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    dirActiveIndex = (dirActiveIndex + 1) % dirSuggestions.length;
+                    setDirActiveIndex(dirActiveIndex);
+                    const activeEl = document.querySelectorAll('#dir-autocomplete-list .dir-item')[dirActiveIndex];
+                    if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+                    return;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    dirActiveIndex = (dirActiveIndex - 1 + dirSuggestions.length) % dirSuggestions.length;
+                    setDirActiveIndex(dirActiveIndex);
+                    const activeEl = document.querySelectorAll('#dir-autocomplete-list .dir-item')[dirActiveIndex];
+                    if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+                    return;
+                } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    if (dirSuggestions && dirSuggestions[dirActiveIndex]) {
+                        e.preventDefault();
+                        selectDirSuggestion(dirSuggestions[dirActiveIndex]);
+                        return;
+                    }
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeDirAutocomplete();
+                    return;
+                }
+            }
+
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!isChatGenerating) handleChatSubmit(e);
+            }
+        }
+
         function autoResizeTextarea(el) {
-            el.style.height = 'auto';
-            el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+            if (!el) return;
+            // Tránh layout thrashing liên tục khi gõ phím
+            const targetHeight = Math.min(el.scrollHeight, 180);
+            if (el.style.height !== targetHeight + 'px' && targetHeight > 48) {
+                el.style.height = 'auto';
+                el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+            }
+        }
+
+        // Xử lý dán ảnh chụp màn hình từ Clipboard (Ctrl + V)
+        async function handleClipboardPaste(e) {
+            const clipboardData = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData) || window.clipboardData;
+            if (!clipboardData) return;
+
+            const items = clipboardData.items;
+            if (!items) return;
+
+            let hasImage = false;
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.type && item.type.indexOf('image') !== -1) {
+                    hasImage = true;
+                    const file = item.getAsFile();
+                    if (file) {
+                        try {
+                            const base64 = await readFileAsDataUrl(file);
+                            const now = new Date();
+                            const timeTag = now.toTimeString().slice(0, 8).replace(/:/g, '');
+                            const filename = `screenshot_${timeTag}.png`;
+                            selectedFiles.push({
+                                name: filename,
+                                content: base64,
+                                type: 'image',
+                                size: file.size,
+                                previewUrl: base64
+                            });
+                        } catch (err) {
+                            showToast("Lỗi đọc ảnh từ clipboard: " + err.message, "error");
+                        }
+                    }
+                }
+            }
+
+            if (hasImage) {
+                e.preventDefault();
+                renderAttachments();
+                showToast("📸 Đã đán ảnh chụp màn hình từ Clipboard!", "success");
+            }
         }
 
         async function handleFileSelect(e) {
@@ -1268,12 +1594,24 @@
             if (!files.length) return;
             for (const file of files) {
                 try {
-                    const text = await readFileAsText(file);
-                    selectedFiles.push({
-                        name: file.name,
-                        content: text,
-                        size: file.size
-                    });
+                    if (file.type.startsWith('image/')) {
+                        const base64 = await readFileAsDataUrl(file);
+                        selectedFiles.push({
+                            name: file.name,
+                            content: base64,
+                            type: 'image',
+                            size: file.size,
+                            previewUrl: base64
+                        });
+                    } else {
+                        const text = await readFileAsText(file);
+                        selectedFiles.push({
+                            name: file.name,
+                            content: text,
+                            type: 'file',
+                            size: file.size
+                        });
+                    }
                 } catch (err) {
                     showToast(`Không thể đọc file ${file.name}: ${err.message}`, 'error');
                 }
@@ -1291,6 +1629,15 @@
             });
         }
 
+        function readFileAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (ev) => resolve(ev.target.result);
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(file);
+            });
+        }
+
         function renderAttachments() {
             const list = document.getElementById('attachment-list');
             if (selectedFiles.length === 0) {
@@ -1299,20 +1646,38 @@
                 return;
             }
             list.classList.remove('d-none');
-            list.innerHTML = selectedFiles.map((f, idx) => `
-                <div class="badge text-bg-dark border border-secondary px-3 py-2 rounded-1 d-flex align-items-center gap-2" style="font-size: 0.75rem;">
-                    <i class="fa-solid fa-file-code text-info"></i>
-                    <span class="font-mono">${escapeHtml(f.name)}</span>
-                    <button type="button" onclick="removeAttachment(${idx})" class="btn btn-link text-danger p-0 text-decoration-none ms-1" style="font-size: 0.75rem;" title="Gỡ file">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-            `).join('');
+            list.innerHTML = selectedFiles.map((f, idx) => {
+                const isImg = f.type === 'image' || (f.content && f.content.startsWith('data:image'));
+                return `
+                    <div class="badge text-bg-dark border border-secondary px-2.5 py-1.5 rounded-1 d-flex align-items-center gap-2" style="font-size: 0.75rem;">
+                        ${isImg 
+                            ? `<img src="${f.previewUrl || f.content}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; cursor: pointer;" onclick="openImageLightbox('${f.previewUrl || f.content}', '${escapeHtml(f.name)}')" title="Xem ảnh to" />` 
+                            : `<i class="fa-solid fa-file-code text-info"></i>`
+                        }
+                        <span class="font-mono text-truncate" style="max-width: 160px;">${escapeHtml(f.name)}</span>
+                        <button type="button" onclick="removeAttachment(${idx})" class="btn btn-link text-danger p-0 text-decoration-none ms-1" style="font-size: 0.75rem;" title="Gỡ file">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                `;
+            }).join('');
         }
 
         function removeAttachment(idx) {
             selectedFiles.splice(idx, 1);
             renderAttachments();
+        }
+
+        function openImageLightbox(src, title) {
+            const imgEl = document.getElementById('lightbox-image-src');
+            const titleEl = document.getElementById('lightbox-image-title');
+            if (imgEl) imgEl.src = src;
+            if (titleEl) titleEl.innerText = title || '';
+            const modalEl = document.getElementById('imageLightboxModal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+            }
         }
 
         // Custom Toast Notification Function
@@ -1438,8 +1803,14 @@
                 }
             });
 
+            if (tabId === 'terminal') initInteractiveTerminal();
             if (tabId === 'logs') fetchServiceLogs();
-            if (tabId === 'server') fetchSystemInfo();
+            if (tabId === 'server') {
+                fetchSystemInfo();
+                startRealtimeMetricsPolling();
+            } else {
+                stopRealtimeMetricsPolling();
+            }
             if (tabId === 'settings') loadSettings();
         }
 
@@ -1492,8 +1863,9 @@
             listEl.innerHTML = '';
             chatSessions.forEach(s => {
                 const isActive = (s.id === currentSessionId);
+                const isPinned = !!s.is_pinned;
                 const item = document.createElement('div');
-                item.className = `session-item d-flex align-items-center justify-content-between p-2 rounded-1 ${isActive ? 'active' : ''}`;
+                item.className = `session-item d-flex align-items-center justify-content-between p-2 rounded-1 ${isActive ? 'active' : ''} ${isPinned ? 'pinned-session' : ''}`;
                 item.onclick = () => selectSession(s.id);
                 
                 const safeTitle = escapeHtml(s.title || 'Cuộc hội thoại');
@@ -1501,10 +1873,17 @@
 
                 item.innerHTML = `
                     <div class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1 me-1">
-                        <i class="fa-regular fa-message session-icon text-secondary flex-shrink-0" style="font-size: 0.8rem;"></i>
+                        <button type="button" class="btn-pin-left border-0 bg-transparent p-0 d-inline-flex align-items-center justify-content-center flex-shrink-0 ${isPinned ? 'is-pinned' : 'text-secondary'}" 
+                                style="width: 22px; height: 22px; cursor: pointer;" 
+                                title="${isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu'}">
+                            <i class="fa-solid fa-thumbtack" style="font-size: 0.78rem; ${isPinned ? 'transform: rotate(-30deg);' : ''}"></i>
+                        </button>
                         <div class="overflow-hidden w-100">
-                            <div class="session-title text-truncate" style="font-size: 0.8rem; color: #f1f5f9;" title="${safeTitle}">${safeTitle}</div>
-                            <small class="session-time text-secondary d-block text-truncate" style="font-size: 0.68rem;">${timeStr}</small>
+                            <div class="session-title text-truncate" style="font-size: 0.82rem; color: #f1f5f9;" title="${safeTitle}">${safeTitle}</div>
+                            <div class="d-flex align-items-center gap-1.5 mt-0.5">
+                                ${isPinned ? `<span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 py-0 px-1 font-mono" style="font-size: 0.58rem; font-weight: 500;">Ghim</span>` : ''}
+                                <small class="session-time text-secondary text-truncate" style="font-size: 0.68rem;">${timeStr}</small>
+                            </div>
                         </div>
                     </div>
                     <div class="session-actions d-flex align-items-center gap-1 flex-shrink-0">
@@ -1517,6 +1896,13 @@
                     </div>
                 `;
 
+                const pinBtn = item.querySelector('.btn-pin-left');
+                if (pinBtn) {
+                    pinBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        togglePinSession(s.id, !isPinned);
+                    };
+                }
                 const renameBtn = item.querySelector('.btn-rename');
                 if (renameBtn) {
                     renameBtn.onclick = (e) => {
@@ -1534,6 +1920,23 @@
 
                 listEl.appendChild(item);
             });
+        }
+
+        async function togglePinSession(sessionId, isPinned) {
+            try {
+                const res = await fetch(`/api/chat/sessions/${sessionId}/pin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_pinned: isPinned })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    await loadSessions();
+                    showToast(isPinned ? "Đã ghim hội thoại lên đầu!" : "Đã bỏ ghim hội thoại!", "info");
+                }
+            } catch (err) {
+                showToast("Lỗi khi ghim hội thoại: " + err.message, "error");
+            }
         }
 
         async function selectSession(sessionId) {
@@ -1896,6 +2299,7 @@
             const printWindow = window.open('', '_blank');
             if (printWindow) {
                 printWindow.document.write(`
+                    <!DOCTYPE html>
                     <html>
                         <head>
                             <title>Tadu Cloud AI Agent Report</title>
@@ -1906,82 +2310,15 @@
                         </head>
                         <body>
                             ${element.innerHTML}
-                            <script>
-                                window.onload = function() { window.print(); window.close(); }
-                            <\/script>
-                        
-    <!-- ============================================================= -->
-    <!-- MODAL GỬI BÁO CÁO QUA EMAIL -->
-    <!-- ============================================================= -->
-    <div class="modal fade" id="emailShareModal" tabindex="-1" aria-labelledby="emailShareModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content border-secondary shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius);">
-                <div class="modal-header border-secondary border-opacity-25 pb-3">
-                    <h6 class="modal-title text-white fw-bold d-flex align-items-center gap-2" id="emailShareModalLabel">
-                        <i class="fa-regular fa-envelope text-primary"></i> Gửi Báo Cáo / Hướng Dẫn Qua Email
-                    </h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label text-light small fw-medium">Email Người Nhận (To)</label>
-                        <input type="email" id="email-modal-recipient" class="form-control bg-dark text-white border-secondary" placeholder="ví dụ: admin@congty.com, khachhang@tadu.vn" style="font-size: 0.88rem;">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label text-light small fw-medium">Tiêu Đề Email (Subject)</label>
-                        <input type="text" id="email-modal-subject" class="form-control bg-dark text-white border-secondary" style="font-size: 0.88rem;">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label text-light small fw-medium">Nội Dung Email (Preview)</label>
-                        <textarea id="email-modal-body" class="form-control bg-dark text-white border-secondary font-mono" rows="8" style="font-size: 0.82rem; resize: vertical; line-height: 1.5;"></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer border-secondary border-opacity-25 pt-3">
-                    <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-2" data-bs-dismiss="modal">Đóng</button>
-                    <button type="button" class="btn btn-outline-info btn-sm px-3 py-2 d-inline-flex align-items-center gap-2" onclick="copyEmailContent()">
-                        <i class="fa-regular fa-copy"></i>
-                        <span>Sao chép nội dung</span>
-                    </button>
-                    <button type="button" class="btn btn-primary btn-sm px-3.5 py-2 d-inline-flex align-items-center gap-2" onclick="sendEmailViaClient()">
-                        <i class="fa-solid fa-paper-plane"></i>
-                        <span>Mở ứng dụng Email</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- TADU PROMPT / RENAME MODAL (BOOTSTRAP 5) -->
-    <div class="modal fade" id="taduPromptModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-        <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
-            <div class="modal-content border border-secondary border-opacity-25 shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius-md);">
-                <div class="modal-header border-bottom border-secondary border-opacity-25 px-4 py-3">
-                    <h6 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="prompt-modal-title">
-                        <i class="fa-solid fa-pen-to-square text-primary"></i>
-                        <span>Đổi tên hộp hội thoại</span>
-                    </h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-4">
-                    <label class="form-label text-secondary mb-2" style="font-size: 0.8rem;" id="prompt-modal-label">Nhập tên mới cho hộp hội thoại:</label>
-                    <input type="text" id="prompt-modal-input" class="form-control bg-black text-light border-secondary" placeholder="Tên hộp hội thoại..." style="font-size: 0.88rem; padding: 10px 14px;">
-                </div>
-                <div class="modal-footer border-top border-secondary border-opacity-25 px-4 py-2.5 d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-secondary px-3 py-1.5" data-bs-dismiss="modal" id="prompt-modal-btn-cancel" style="font-size: 0.8rem;">
-                        <i class="fa-solid fa-xmark me-1"></i> Huỷ bỏ
-                    </button>
-                    <button type="button" class="btn btn-primary px-3 py-1.5" id="prompt-modal-btn-confirm" style="font-size: 0.8rem;">
-                        <i class="fa-solid fa-check me-1"></i> Lưu thay đổi
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-</body>
+                        </body>
                     </html>
                 `);
                 printWindow.document.close();
+                printWindow.focus();
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                }, 300);
             }
         }
 
@@ -2073,7 +2410,7 @@
                 btnSend.type = "submit";
                 btnSend.className = "btn btn-primary px-3.5 py-1.5 d-inline-flex align-items-center gap-2 shadow-sm";
                 btnSend.innerHTML = `
-                    <i class="fa-solid fa-paper-plane" style="font-size: 0.85rem;"></i>
+                    <i class="fa-solid fa-paperplane" style="font-size: 0.85rem;"></i>
                     <span class="fw-medium">Gửi</span>
                 `;
                 btnSend.onclick = null;
@@ -2100,12 +2437,13 @@
             if (!text && selectedFiles.length === 0) return;
 
             const filesToSend = [...selectedFiles];
+            const currentScopeToSend = currentWorkingDirScope;
             input.value = '';
             input.style.height = 'auto';
             selectedFiles = [];
             renderAttachments();
 
-            appendUserMessage(text, filesToSend);
+            appendUserMessage(text, filesToSend, null, currentScopeToSend);
 
             // Bật trạng thái Loading & Nút Dừng
             setChatGeneratingState(true);
@@ -2172,7 +2510,13 @@
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text, session_id: currentSessionId, history: chatHistory, attachments: filesToSend }),
+                    body: JSON.stringify({ 
+                        message: text, 
+                        session_id: currentSessionId, 
+                        history: chatHistory, 
+                        attachments: filesToSend,
+                        working_dir: currentScopeToSend 
+                    }),
                     signal: currentChatAbortController.signal
                 });
 
@@ -2187,120 +2531,74 @@
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let buffer = "";
-                let rawBody = "";
-
-                function processEvent(eventData) {
-                    if (eventData.type === "status") {
-                        if (statusEl) {
-                            statusEl.classList.remove("d-none");
-                            const statusSpan = statusEl.querySelector(".status-text");
-                            if (statusSpan) statusSpan.textContent = eventData.message || "Đang thực thi...";
-                        }
-                    } else if (eventData.type === "tool") {
-                        if (statusEl) statusEl.classList.add("d-none");
-                        if (bubbleEl) bubbleEl.classList.remove("d-none");
-                        
-                        const tc = eventData.tool;
-                        executedTools.push(tc);
-
-                        const toolBox = document.createElement("div");
-                        toolBox.className = "tool-call-box";
-                        toolBox.innerHTML = `
-                            <div class="text-info fw-semibold mb-2 font-mono" style="font-size: 0.8rem;"><i class="fa-solid fa-terminal"></i> Đã thực thi shell: <code>${escapeHtml(tc.command)}</code></div>
-                            ${tc.output ? `<pre class="text-light mb-0 font-mono" style="font-size: 0.75rem; white-space: pre-wrap; line-height: 1.55;">${escapeHtml(tc.output)}</pre>` : ''}
-                        `;
-                        toolsEl.appendChild(toolBox);
-                    } else if (eventData.type === "token") {
-                        if (statusEl) statusEl.remove();
-                        if (bubbleEl) bubbleEl.classList.remove("d-none");
-                        accumulatedText += eventData.delta;
-                        textEl.innerHTML = marked.parse(accumulatedText);
-                    } else if (eventData.type === "done") {
-                        if (statusEl) statusEl.remove();
-                        if (bubbleEl) bubbleEl.classList.remove("d-none");
-                        if (eventData.reply) accumulatedText = eventData.reply;
-                        textEl.innerHTML = marked.parse(accumulatedText);
-                        hljs.highlightAll();
-                        loadSessions();
-                    } else if (eventData.type === "error") {
-                        if (statusEl) statusEl.remove();
-                        if (bubbleEl) bubbleEl.classList.remove("d-none");
-                        textEl.innerHTML += `<div class="text-danger mt-2"><i class="fa-solid fa-triangle-exclamation me-1"></i> ${escapeHtml(eventData.message)}</div>`;
-                    }
-                }
 
                 while (true) {
-                    const { value, done } = await reader.read();
+                    const { done, value } = await reader.read();
                     if (done) break;
 
-                    const chunk = decoder.decode(value, { stream: true });
-                    buffer += chunk;
-                    rawBody += chunk;
-                    
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop(); // giữ lại phần chưa đủ dòng
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n\n");
+                    buffer = lines.pop(); // Giữ lại phần chưa hoàn chỉnh
 
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (!trimmed) continue;
+                    for (const block of lines) {
+                        const trimmed = block.trim();
+                        if (!trimmed.startsWith("data: ")) continue;
+                        const jsonStr = trimmed.slice(6);
+                        try {
+                            const data = JSON.parse(jsonStr);
 
-                        if (trimmed.startsWith("data: ")) {
-                            try {
-                                const eventData = JSON.parse(trimmed.substring(6));
-                                processEvent(eventData);
-                            } catch (e) {
-                                console.error("Lỗi parse SSE:", e);
+                            if (data.type === 'status') {
+                                if (statusEl) {
+                                    const txt = statusEl.querySelector('.status-text');
+                                    if (txt) txt.innerText = data.message;
+                                }
+                            } else if (data.type === 'tool') {
+                                if (statusEl && statusEl.parentNode) statusEl.remove();
+                                if (bubbleEl) bubbleEl.classList.remove("d-none");
+
+                                const tc = data.tool;
+                                executedTools.push(tc);
+
+                                const toolBox = document.createElement('div');
+                                toolBox.className = "tool-call-box";
+                                toolBox.innerHTML = `
+                                    <div class="text-info fw-semibold mb-2 font-mono" style="font-size: 0.8rem;"><i class="fa-solid fa-terminal"></i> Đã thực thi shell: <code>${escapeHtml(tc.command)}</code></div>
+                                    ${tc.output ? `<pre class="text-light mb-0 font-mono" style="font-size: 0.75rem; white-space: pre-wrap; line-height: 1.55;">${escapeHtml(tc.output)}</pre>` : ''}
+                                `;
+                                toolsEl.appendChild(toolBox);
+                                container.scrollTop = container.scrollHeight;
+
+                            } else if (data.type === 'token') {
+                                if (statusEl && statusEl.parentNode) statusEl.remove();
+                                if (bubbleEl) bubbleEl.classList.remove("d-none");
+
+                                accumulatedText += data.delta;
+                                textEl.innerHTML = marked.parse(accumulatedText);
+                                hljs.highlightAll();
+                                container.scrollTop = container.scrollHeight;
+
+                            } else if (data.type === 'done') {
+                                if (statusEl && statusEl.parentNode) statusEl.remove();
+                                if (bubbleEl) bubbleEl.classList.remove("d-none");
+
+                                if (data.reply) {
+                                    accumulatedText = data.reply;
+                                    textEl.innerHTML = marked.parse(accumulatedText);
+                                    hljs.highlightAll();
+                                }
+                            } else if (data.type === 'error') {
+                                if (statusEl && statusEl.parentNode) statusEl.remove();
+                                if (bubbleEl) bubbleEl.classList.remove("d-none");
+                                textEl.innerHTML += `<div class="text-danger mt-2 font-mono" style="font-size: 0.8rem;"><i class="fa-solid fa-circle-exclamation me-1"></i> ${escapeHtml(data.message)}</div>`;
                             }
+                        } catch (err) {
+                            console.error("Lỗi parse SSE:", err, jsonStr);
                         }
                     }
-                    container.scrollTop = container.scrollHeight;
-                }
-
-                // Xử lý dòng cuối cùng còn sót trong buffer nếu có
-                if (buffer.trim().startsWith("data: ")) {
-                    try {
-                        const eventData = JSON.parse(buffer.trim().substring(6));
-                        processEvent(eventData);
-                    } catch (e) {}
-                }
-
-                // Fallback nếu server trả về JSON nguyên khối (hoặc không theo chuẩn data:)
-                if (!accumulatedText && rawBody) {
-                    try {
-                        const directJson = JSON.parse(rawBody.trim());
-                        if (directJson.reply || directJson.tool_calls) {
-                            if (statusEl) statusEl.remove();
-                            if (bubbleEl) bubbleEl.classList.remove("d-none");
-                            
-                            if (directJson.tool_calls && directJson.tool_calls.length > 0) {
-                                directJson.tool_calls.forEach(tc => {
-                                    executedTools.push(tc);
-                                    const toolBox = document.createElement("div");
-                                    toolBox.className = "tool-call-box";
-                                    toolBox.innerHTML = `
-                                        <div class="text-info fw-semibold mb-2 font-mono" style="font-size: 0.8rem;"><i class="fa-solid fa-terminal"></i> Đã thực thi shell: <code>${escapeHtml(tc.command)}</code></div>
-                                        ${tc.output ? `<pre class="text-light mb-0 font-mono" style="font-size: 0.75rem; white-space: pre-wrap; line-height: 1.55;">${escapeHtml(tc.output)}</pre>` : ''}
-                                    `;
-                                    toolsEl.appendChild(toolBox);
-                                });
-                            }
-                            
-                            accumulatedText = directJson.reply || '';
-                            textEl.innerHTML = marked.parse(accumulatedText);
-                            hljs.highlightAll();
-                        }
-                    } catch (e) {}
                 }
 
                 // Dọn dẹp status spinner nếu vẫn còn
                 if (statusEl && statusEl.parentNode) statusEl.remove();
-
-                // Đảm bảo bubble hiển thị nếu có nội dung
-                if (accumulatedText || executedTools.length > 0) {
-                    if (bubbleEl) bubbleEl.classList.remove("d-none");
-                    textEl.innerHTML = marked.parse(accumulatedText);
-                    hljs.highlightAll();
-                }
 
                 // Bật Action Bar (Timestamp & Nút Copy)
                 actionBarEl.classList.remove("d-none");
@@ -2341,18 +2639,42 @@
             }
         }
 
-        function appendUserMessage(msg, attachments = [], timeStr = null) {
+        function appendUserMessage(msg, attachments = [], timeStr = null, scopedDir = null) {
             const container = document.getElementById('chat-messages');
             const wrapper = document.createElement('div');
             wrapper.className = "d-flex flex-column align-items-end w-100";
 
+            let scopeHtml = '';
+            if (scopedDir) {
+                scopeHtml = `
+                    <div class="mb-2">
+                        <span class="badge border border-info border-opacity-50 px-2.5 py-1 rounded-1 font-mono d-inline-flex align-items-center gap-1.5" style="background: rgba(6, 182, 212, 0.15); color: #38bdf8; font-size: 0.74rem;">
+                            <i class="fa-solid fa-folder-tree text-warning"></i>
+                            <span>Phạm vi: ${escapeHtml(scopedDir)}</span>
+                        </span>
+                    </div>
+                `;
+            }
+
             let filesHtml = '';
             if (attachments && attachments.length > 0) {
-                filesHtml = `<div class="d-flex flex-wrap gap-2 mb-2">` + attachments.map(f => `
-                    <div class="badge text-bg-dark border border-secondary px-2 py-1 rounded-1 font-mono" style="font-size: 0.72rem;">
-                        <i class="fa-solid fa-paperclip text-info"></i> ${escapeHtml(f.name)}
-                    </div>
-                `).join('') + `</div>`;
+                filesHtml = `<div class="d-flex flex-wrap gap-2 mb-2 justify-content-end">` + attachments.map(f => {
+                    const isImg = (f.content && f.content.startsWith('data:image')) || (f.previewUrl && f.previewUrl.startsWith('data:image')) || (f.name && f.name.match(/\.(png|jpe?g|webp|gif)$/i));
+                    const imgSrc = f.previewUrl || f.content;
+                    if (isImg && imgSrc && imgSrc.startsWith('data:image')) {
+                        return `
+                            <div class="border border-secondary border-opacity-50 rounded-1 overflow-hidden shadow-sm" style="cursor: pointer; max-width: 220px;" onclick="openImageLightbox('${imgSrc}', '${escapeHtml(f.name || 'screenshot.png')}')" title="Bấm để xem ảnh to">
+                                <img src="${imgSrc}" alt="${escapeHtml(f.name || 'image')}" style="width: 100%; max-height: 140px; object-fit: cover; display: block;" />
+                            </div>
+                        `;
+                    }
+                    return `
+                        <div class="badge text-bg-dark border border-secondary px-2.5 py-1.5 rounded-1 font-mono d-inline-flex align-items-center gap-1.5" style="font-size: 0.72rem;">
+                            <i class="fa-solid fa-paperclip text-info"></i>
+                            <span>${escapeHtml(f.name || 'file')}</span>
+                        </div>
+                    `;
+                }).join('') + `</div>`;
             }
 
             const formattedTime = formatTime(timeStr);
@@ -2360,6 +2682,7 @@
 
             wrapper.innerHTML = `
                 <div class="chat-bubble-user" style="max-width: 85%;">
+                    ${scopeHtml}
                     ${filesHtml}
                     ${msg ? `<p class="mb-0" style="font-size: 0.88rem; white-space: pre-wrap;">${escapeHtml(msg)}</p>` : ''}
                 </div>
@@ -2804,15 +3127,22 @@
             }
         }
 
-        // Realtime Periodic Polling (High-speed every 1.2 seconds)
+        // Realtime Periodic Polling (Chu kỳ 30 giây/lần - siêu nhẹ CPU)
         let realtimeMetricsTimer = null;
         function startRealtimeMetricsPolling() {
             if (realtimeMetricsTimer) clearInterval(realtimeMetricsTimer);
             realtimeMetricsTimer = setInterval(() => {
-                if (!document.hidden) {
+                if (!document.hidden && currentTab === 'server') {
                     fetchSystemInfo();
                 }
-            }, 1200);
+            }, 30000);
+        }
+
+        function stopRealtimeMetricsPolling() {
+            if (realtimeMetricsTimer) {
+                clearInterval(realtimeMetricsTimer);
+                realtimeMetricsTimer = null;
+            }
         }
 
         async function handleServiceAction(action) {
@@ -2922,46 +3252,186 @@
         }
 
         // -------------------------------------------------------------
-        // TERMINAL LOGIC
         // -------------------------------------------------------------
-        async function executeTerminalCommand(e) {
-            e.preventDefault();
-            const input = document.getElementById('terminal-input');
-            const cmd = input.value.trim();
-            if (!cmd) return;
+        // LIVE INTERACTIVE SSH TERMINAL (XTerm.js + WebSocket PTY Shell)
+        // -------------------------------------------------------------
+        let term = null;
+        let fitAddon = null;
+        let termWs = null;
 
-            input.value = '';
-            const screen = document.getElementById('terminal-screen');
-            
-            const cmdEl = document.createElement('div');
-            cmdEl.className = "text-success fw-bold mt-2 font-mono";
-            cmdEl.innerText = `root@server:~# ${cmd}`;
-            screen.appendChild(cmdEl);
+        function initInteractiveTerminal() {
+            const container = document.getElementById('terminal-container');
+            if (!container) return;
 
-            try {
-                const res = await fetch('/api/terminal/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: cmd })
+            if (!term) {
+                term = new Terminal({
+                    cursorBlink: true,
+                    cursorStyle: 'block',
+                    fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
+                    fontSize: 13,
+                    lineHeight: 1.35,
+                    convertEol: true,
+                    theme: {
+                        background: '#070b14',
+                        foreground: '#f8fafc',
+                        cursor: '#38bdf8',
+                        cursorAccent: '#070b14',
+                        selectionBackground: 'rgba(56, 189, 248, 0.3)',
+                        black: '#0f172a',
+                        red: '#ef4444',
+                        green: '#22c55e',
+                        yellow: '#eab308',
+                        blue: '#3b82f6',
+                        magenta: '#a855f7',
+                        cyan: '#06b6d4',
+                        white: '#f8fafc',
+                        brightBlack: '#64748b',
+                        brightRed: '#f87171',
+                        brightGreen: '#4ade80',
+                        brightYellow: '#fde047',
+                        brightBlue: '#60a5fa',
+                        brightMagenta: '#c084fc',
+                        brightCyan: '#22d3ee',
+                        brightWhite: '#ffffff'
+                    }
                 });
-                const data = await res.json();
-                const outEl = document.createElement('pre');
-                outEl.className = data.exit_code === 0 ? "text-light mb-0 font-mono" : "text-danger mb-0 font-mono";
-                outEl.style.whiteSpace = "pre-wrap";
-                outEl.innerText = data.combined || "(Không có kết quả trả về)";
-                screen.appendChild(outEl);
-            } catch (err) {
-                const errEl = document.createElement('div');
-                errEl.className = "text-danger font-mono";
-                errEl.innerText = `Lỗi thực thi: ${err.message}`;
-                screen.appendChild(errEl);
+
+                if (window.FitAddon && window.FitAddon.FitAddon) {
+                    fitAddon = new window.FitAddon.FitAddon();
+                    term.loadAddon(fitAddon);
+                }
+
+                term.open(container);
+                if (fitAddon) {
+                    setTimeout(() => fitAddon.fit(), 80);
+                }
+
+                term.onData(data => {
+                    if (termWs && termWs.readyState === WebSocket.OPEN) {
+                        termWs.send(data);
+                    } else if (!termWs || termWs.readyState === WebSocket.CLOSED) {
+                        reconnectTerminal();
+                        setTimeout(() => {
+                            if (termWs && termWs.readyState === WebSocket.OPEN) {
+                                termWs.send(data);
+                            }
+                        }, 800);
+                    }
+                });
+
+                window.addEventListener('resize', () => {
+                    if (fitAddon && term && termWs && termWs.readyState === WebSocket.OPEN) {
+                        fitAddon.fit();
+                        termWs.send(JSON.stringify({
+                            type: 'resize',
+                            cols: term.cols,
+                            rows: term.rows
+                        }));
+                    }
+                });
+            } else if (fitAddon) {
+                setTimeout(() => {
+                    fitAddon.fit();
+                    if (term) term.focus();
+                }, 80);
             }
 
-            screen.scrollTop = screen.scrollHeight;
+            connectTerminalWebSocket();
+        }
+
+        function connectTerminalWebSocket() {
+            if (termWs && (termWs.readyState === WebSocket.OPEN || termWs.readyState === WebSocket.CONNECTING)) {
+                return;
+            }
+
+            const badge = document.getElementById('terminal-target-badge');
+            if (badge) {
+                badge.className = "badge bg-warning-subtle text-warning border border-warning-subtle font-mono px-2 py-0.5";
+                badge.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Đang kết nối Live SSH...`;
+            }
+
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${location.host}/ws/terminal`;
+
+            try {
+                termWs = new WebSocket(wsUrl);
+
+                termWs.onopen = () => {
+                    if (badge) {
+                        badge.className = "badge bg-success-subtle text-success border border-success-subtle font-mono px-2 py-0.5";
+                        badge.innerHTML = `<i class="fa-solid fa-circle text-success me-1" style="font-size: 0.6rem;"></i> Live SSH Connected`;
+                    }
+                    if (fitAddon && term) {
+                        fitAddon.fit();
+                        termWs.send(JSON.stringify({
+                            type: 'resize',
+                            cols: term.cols,
+                            rows: term.rows
+                        }));
+                    }
+                    if (term) term.focus();
+                };
+
+                termWs.onmessage = (event) => {
+                    if (term) {
+                        term.write(event.data);
+                    }
+                };
+
+                termWs.onerror = (err) => {
+                    console.error("Terminal WebSocket Error:", err);
+                    if (badge) {
+                        badge.className = "badge bg-danger-subtle text-danger border border-danger-subtle font-mono px-2 py-0.5";
+                        badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-danger me-1"></i> Lỗi kết nối`;
+                    }
+                };
+
+                termWs.onclose = () => {
+                    if (badge) {
+                        badge.className = "badge bg-secondary-subtle text-secondary border border-secondary font-mono px-2 py-0.5";
+                        badge.innerHTML = `<i class="fa-solid fa-circle text-secondary me-1" style="font-size: 0.6rem;"></i> Đã ngắt kết nối`;
+                    }
+                    if (term) {
+                        term.write('\r\n\x1b[33m[Phiên SSH đã đóng. Nhấn Enter hoặc phím bất kỳ để tự động kết nối lại]\x1b[0m\r\n');
+                    }
+                };
+            } catch (e) {
+                console.error("Connect WS error:", e);
+            }
+        }
+
+        function reconnectTerminal() {
+            if (termWs) {
+                try { termWs.close(); } catch (_) {}
+                termWs = null;
+            }
+            if (term) {
+                term.clear();
+                term.write('\x1b[2J\x1b[H\x1b[36m=== Đang mở lại phiên Live SSH Terminal... ===\x1b[0m\r\n');
+            }
+            connectTerminalWebSocket();
         }
 
         function clearTerminalLog() {
-            document.getElementById('terminal-screen').innerHTML = '<div class="text-secondary font-mono">=== Màn hình đã được dọn dẹp ===</div>';
+            if (term) {
+                term.clear();
+                term.focus();
+            }
+        }
+
+        function runQuickCommand(cmd) {
+            if (termWs && termWs.readyState === WebSocket.OPEN) {
+                termWs.send(cmd + '\n');
+                if (term) term.focus();
+            } else {
+                reconnectTerminal();
+                setTimeout(() => {
+                    if (termWs && termWs.readyState === WebSocket.OPEN) {
+                        termWs.send(cmd + '\n');
+                        if (term) term.focus();
+                    }
+                }, 800);
+            }
         }
 
         // -------------------------------------------------------------
@@ -3117,7 +3587,6 @@
             await loadSessions();
             await loadChatHistory(currentSessionId);
             fetchSystemInfo();
-            startRealtimeMetricsPolling();
         });
     </script>
 
@@ -3229,6 +3698,18 @@
                     <button type="button" class="btn btn-primary px-3 py-1.5" id="prompt-modal-btn-confirm" style="font-size: 0.8rem;">
                         <i class="fa-solid fa-check me-1"></i> Lưu thay đổi
                     </button>
+                </div>
+            </div>
+    <!-- IMAGE LIGHTBOX MODAL -->
+    <div class="modal fade" id="imageLightboxModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content bg-transparent border-0 shadow-none text-center">
+                <div class="modal-header border-0 pb-0 justify-content-end">
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));"></button>
+                </div>
+                <div class="modal-body p-2 d-flex flex-column align-items-center justify-content-center">
+                    <img id="lightbox-image-src" src="" class="img-fluid rounded shadow-lg border border-secondary border-opacity-50" style="max-height: 85vh; max-width: 95vw; object-fit: contain; background: #000;" />
+                    <small id="lightbox-image-title" class="text-white opacity-75 mt-2 font-mono" style="text-shadow: 0 1px 3px rgba(0,0,0,0.9);"></small>
                 </div>
             </div>
         </div>
