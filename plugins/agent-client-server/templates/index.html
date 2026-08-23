@@ -719,13 +719,13 @@
                      id="sidebar-server-dropdown-btn" 
                      data-bs-toggle="dropdown" 
                      aria-expanded="false"
-                     style="background-color: rgba(3, 7, 18, 0.75); border-color: var(--tadu-border) !important; cursor: pointer;">
+                     style="background-color: #0f172a; border-color: rgba(255, 255, 255, 0.1) !important; cursor: pointer;">
                     <div class="d-flex align-items-center overflow-hidden gap-2" style="min-width: 0;">
                         <span id="sidebar-status-dot" class="live-dot bg-warning live-pulse flex-shrink-0"></span>
                         <div class="overflow-hidden" style="min-width: 0;">
-                            <div class="d-flex align-items-center gap-2">
+                            <div class="d-flex align-items-center gap-1">
                                 <span id="sidebar-server-name" class="fw-bold text-white text-truncate" style="font-size: 0.76rem;">Máy chủ chính</span>
-                                <i class="fa-solid fa-chevron-down text-secondary flex-shrink-0 ms-1" style="font-size: 0.62rem;"></i>
+                                <i class="fa-solid fa-chevron-down text-secondary flex-shrink-0" style="font-size: 0.6rem;"></i>
                             </div>
                             <small id="sidebar-server-ip" class="text-secondary font-mono text-truncate d-block" style="font-size: 0.68rem;">127.0.0.1</small>
                         </div>
@@ -736,7 +736,7 @@
                 </div>
 
                 <!-- Dropdown Menu -->
-                <ul class="dropdown-menu dropdown-menu-dark shadow-lg w-100 p-2" id="sidebar-servers-menu" style="background-color: #0c1322; border: 1px solid var(--tadu-border); border-radius: 8px; font-size: 0.78rem; max-height: 280px; overflow-y: auto;">
+                <ul class="dropdown-menu dropdown-menu-dark shadow-lg w-100 p-2" id="sidebar-servers-menu" style="background-color: #0b1120; border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; font-size: 0.78rem; max-height: 280px; overflow-y: auto;">
                     <li class="dropdown-header text-uppercase px-2 py-1 text-secondary fw-semibold d-flex justify-content-between align-items-center" style="font-size: 0.68rem;">
                         <span>Danh Sách Máy Chủ</span>
                         <span id="sidebar-server-count" class="badge bg-secondary-subtle text-light rounded-pill px-1.5">1</span>
@@ -3587,16 +3587,16 @@
                     return `
                     <div class="col-12 col-lg-6">
                         <div class="tadu-card p-4 rounded-3 h-100 d-flex flex-column justify-content-between position-relative transition-all" 
-                             style="border: 1px solid ${isActive ? 'rgba(99, 102, 241, 0.75)' : 'var(--tadu-border)'} !important; 
-                                    background: ${isActive ? 'linear-gradient(145deg, rgba(99, 102, 241, 0.1) 0%, rgba(15, 23, 42, 0.8) 100%)' : 'var(--tadu-card-bg)'}; 
-                                    box-shadow: ${isActive ? '0 8px 24px rgba(99, 102, 241, 0.15)' : 'none'};">
+                             style="border: 1px solid ${isActive ? 'rgba(99, 102, 241, 0.75)' : 'rgba(255, 255, 255, 0.08)'} !important; 
+                                    background: ${isActive ? 'linear-gradient(145deg, rgba(99, 102, 241, 0.14) 0%, #0f172a 100%)' : '#0f172a'}; 
+                                    box-shadow: ${isActive ? '0 8px 24px rgba(99, 102, 241, 0.18)' : '0 4px 12px rgba(0, 0, 0, 0.3)'};">
                             
                             <div>
                                 <!-- Card Header -->
                                 <div class="d-flex align-items-center justify-content-between mb-3 pb-3 border-bottom border-secondary border-opacity-20">
                                     <div class="d-flex align-items-center gap-3 overflow-hidden">
                                         <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" 
-                                             style="width: 38px; height: 38px; background: ${isActive ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.05)'}; color: ${isActive ? '#a5b4fc' : '#94a3b8'};">
+                                             style="width: 38px; height: 38px; background: ${isActive ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.06)'}; color: ${isActive ? '#a5b4fc' : '#94a3b8'};">
                                             <i class="fa-solid fa-server" style="font-size: 1.05rem;"></i>
                                         </div>
                                         <div class="overflow-hidden">
@@ -3619,7 +3619,7 @@
                                 </div>
 
                                 <!-- Card Details Grid Box with Generous Padding -->
-                                <div class="p-3 rounded-2 my-3" style="background: rgba(3, 7, 18, 0.45); border: 1px solid rgba(255, 255, 255, 0.06);">
+                                <div class="p-3 rounded-2 my-3" style="background: rgba(3, 7, 18, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);">
                                     <div class="row g-2 text-secondary" style="font-size: 0.78rem;">
                                         <div class="col-6">
                                             <span class="text-secondary opacity-75">SSH User:</span> 
@@ -3669,8 +3669,8 @@
                     return `
                     <li>
                         <div onclick="switchActiveServer('${s.id}')" 
-                             class="dropdown-item d-flex align-items-center justify-content-between p-2 rounded cursor-pointer ${isActive ? 'bg-primary bg-opacity-25 text-white fw-semibold' : 'text-light'}" 
-                             style="cursor: pointer;">
+                             class="dropdown-item d-flex align-items-center justify-content-between p-2 rounded cursor-pointer ${isActive ? 'text-white fw-semibold' : 'text-light'}" 
+                             style="cursor: pointer; ${isActive ? 'background: rgba(99, 102, 241, 0.22); border: 1px solid rgba(99, 102, 241, 0.45);' : 'background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05);'} margin-bottom: 3px;">
                             <div class="d-flex align-items-center gap-2 overflow-hidden">
                                 <span class="live-dot ${isActive ? 'bg-success' : 'bg-secondary'}" style="width: 7px; height: 7px;"></span>
                                 <div class="overflow-hidden">
