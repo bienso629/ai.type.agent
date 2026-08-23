@@ -2,10 +2,15 @@
   "name": "tadu-cloud-ai-agent",
   "version": "1.3.0",
   "description": "Tadu Cloud AI Agent Control Center Desktop Application",
+  "homepage": "https://tadu.vn",
   "main": "main.js",
   "scripts": {
     "start": "electron . --no-sandbox",
-    "dist": "electron-builder"
+    "build:go:linux": "cd tadu-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent . && cd ../server-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service .",
+    "build:go:win": "cd tadu-go && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent.exe .",
+    "build:installer:linux": "npm run build:go:linux && electron-builder --linux deb AppImage",
+    "build:installer:win": "npm run build:go:win && electron-builder --win nsis",
+    "build:all": "npm run build:go:linux && npm run build:go:win && electron-builder --linux deb AppImage --win nsis"
   },
   "keywords": [
     "tadu",
@@ -27,24 +32,52 @@
     "directories": {
       "output": "dist-electron"
     },
+    "files": [
+      "**/*",
+      "!dist-electron/*",
+      "!build/*"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/tadu-cloud-ai-agent",
+        "to": "tadu-cloud-ai-agent"
+      },
+      {
+        "from": "dist/tadu-cloud-ai-agent.exe",
+        "to": "tadu-cloud-ai-agent.exe"
+      },
+      {
+        "from": "dist/ai_agent_service",
+        "to": "ai_agent_service"
+      },
+      {
+        "from": "templates",
+        "to": "templates"
+      },
+      {
+        "from": "logo.jpg",
+        "to": "logo.jpg"
+      }
+    ],
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        "deb",
+        "AppImage"
       ],
       "category": "Development",
-      "icon": "templates/icon.png"
+      "icon": "templates/icon.png",
+      "maintainer": "Tadu Cloud Team <support@tadu.vn>"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tadu Cloud AI Agent"
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "templates/icon.png"
-    },
-    "mac": {
-      "target": [
-        "dmg"
+        "nsis"
       ],
       "icon": "templates/icon.png"
     }

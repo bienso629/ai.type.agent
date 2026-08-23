@@ -16,10 +16,33 @@ import sys
 import re
 import base64
 
-# Xử lý đường dẫn khi đóng gói binary (PyInstaller)
+# Xử lý đường dẫn khi đóng gói binary (PyInstaller / AppImage / Portable)
 if getattr(sys, 'frozen', False):
     BUNDLE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    APP_DIR = os.path.dirname(sys.executable)
+    
+    user_home_dir = os.path.expanduser("~/.tadu_ai_agent")
+    os.makedirs(user_home_dir, exist_ok=True)
+    
+    owd = os.environ.get("OWD", "")
+    cwd_dir = os.getcwd()
+    exec_dir = os.path.dirname(sys.executable)
+    parent_dir = os.path.abspath(os.path.join(exec_dir, ".."))
+    
+    if owd and os.path.exists(os.path.join(owd, "chat_history.db")):
+        APP_DIR = owd
+    elif os.path.exists(os.path.join(cwd_dir, "chat_history.db")) and not cwd_dir.startswith("/tmp"):
+        APP_DIR = cwd_dir
+    elif os.path.exists(os.path.join(parent_dir, "chat_history.db")) and not parent_dir.startswith("/tmp"):
+        APP_DIR = parent_dir
+    else:
+        APP_DIR = user_home_dir
+        # Di chuyển hoặc đồng bộ DB và Config ban đầu nếu có trong thư mục hiện tại
+        if owd and os.path.exists(os.path.join(owd, "config.json")) and not os.path.exists(os.path.join(user_home_dir, "config.json")):
+            try:
+                import shutil
+                shutil.copy2(os.path.join(owd, "config.json"), os.path.join(user_home_dir, "config.json"))
+            except Exception:
+                pass
 else:
     BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
     APP_DIR = BUNDLE_DIR
@@ -37,10 +60,15 @@ if not os.path.exists(SERVICE_BIN_PATH):
     SERVICE_BIN_PATH = os.path.join(BUNDLE_DIR, "ai_agent_service")
 
 TEMPLATE_INDEX = os.path.join(BUNDLE_DIR, "templates", "index.html")
+if not os.path.exists(TEMPLATE_INDEX):
+    TEMPLATE_INDEX = os.path.join(APP_DIR, "templates", "index.html")
+
 LOGO_PATH = os.path.join(APP_DIR, "logo.jpg")
 if not os.path.exists(LOGO_PATH):
     LOGO_PATH = os.path.join(BUNDLE_DIR, "logo.jpg")
 ICON_PATH = os.path.join(BUNDLE_DIR, "templates", "icon.png")
+if not os.path.exists(ICON_PATH):
+    ICON_PATH = os.path.join(APP_DIR, "templates", "icon.png")
 
 # ==========================================
 # HỆ THỐNG MÃ HÓA TOÀN BỘ DỮ LIỆU (AES-256 FERNET)
@@ -1398,6 +1426,7 @@ def open_browser_delayed(url: str, delay: float = 0.8):
 
 if __name__ == "__main__":
     import uvicorn
+    no_browser = "--no-browser" in sys.argv
     host = "127.0.0.1"
     default_port = 8888
     default_url = f"http://{host}:{default_port}"
@@ -1405,9 +1434,9 @@ if __name__ == "__main__":
     if is_server_already_running(default_url):
         print("\n" + "="*55)
         print("⚡ TADU CLOUD AI AGENT ĐÃ ĐANG CHẠY TRÊN HỆ THỐNG!")
-        print(f"🌐 Đang mở lại trình duyệt tại: {default_url}")
         print("="*55 + "\n")
-        webbrowser.open(default_url)
+        if not no_browser:
+            webbrowser.open(default_url)
         sys.exit(0)
         
     port = find_available_port(default_port)
@@ -1415,10 +1444,9 @@ if __name__ == "__main__":
     
     print("\n" + "="*55)
     print("🚀 ĐANG KHỞI CHẠY TADU CLOUD AI AGENT CONTROL CENTER (GLM-5.3)")
-    print(f"🌐 Truy cập giao diện tại: {url}")
+    print(f"🌐 Server nội bộ tại: {url}")
     print("="*55 + "\n")
     
-    no_browser = "--no-browser" in sys.argv
     if not no_browser:
         open_browser_delayed(url, 0.8)
     uvicorn.run(app, host=host, port=port, log_level="warning")

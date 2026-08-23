@@ -42,6 +42,8 @@ yarn-error.log*
 # ==========================================
 # Ignore general dist but keep dist for wp-plugins and cdn
 dist/
+dist-electron/
+win-python/
 !wp-plugins/**/dist/
 !cdn/**/dist/
 

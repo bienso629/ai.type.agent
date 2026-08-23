@@ -1,7 +1,10 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog } = require('electron');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const http = require('http');
+
+// Vô hiệu hoá hoàn toàn Application Menu để phím ALT không kích hoạt menu
+Menu.setApplicationMenu(null);
 
 // Tương thích với môi trường bảo mật của Ubuntu Linux
 app.commandLine.appendSwitch('no-sandbox');
@@ -38,48 +41,61 @@ function checkServerReady(url, maxAttempts = 50, interval = 200) {
   });
 }
 
-// Khởi chạy tiến trình Python Backend
-function startPythonBackend() {
-  const binaryPath = path.join(__dirname, 'dist', 'tadu-cloud-ai-agent');
-  const pythonScript = path.join(__dirname, 'client_ui.py');
-
-  // Ưu tiên chạy binary nếu có, hoặc dùng python3
-  let cmd = 'python3';
-  let args = [pythonScript, '--no-browser'];
-
-  // Nếu binary độc lập tồn tại thì dùng binary
+// Khởi chạy tiến trình Go Backend
+function startBackend() {
   const fs = require('fs');
-  if (fs.existsSync(binaryPath) && !app.isPackaged) {
-    // Có thể dùng python3 trong môi trường dev
-    cmd = 'python3';
-    args = [pythonScript, '--no-browser'];
-  } else if (app.isPackaged) {
-    // Khi đã đóng gói Electron
-    const packagedBinary = path.join(process.resourcesPath, 'tadu-cloud-ai-agent');
-    if (fs.existsSync(packagedBinary)) {
-      cmd = packagedBinary;
+  const isWin = process.platform === 'win32';
+  let cmd = '';
+  let args = [];
+  let cwd = __dirname;
+
+  const resourcesPath = app.isPackaged ? process.resourcesPath : __dirname;
+  const binName = isWin ? 'tadu-cloud-ai-agent.exe' : 'tadu-cloud-ai-agent';
+
+  const possibleBins = [
+    path.join(resourcesPath, binName),
+    path.join(__dirname, 'dist', binName),
+    path.join(__dirname, 'tadu-go', isWin ? 'tadu-ai-agent-go.exe' : 'tadu-ai-agent-go'),
+    path.join(__dirname, binName)
+  ];
+
+  for (const p of possibleBins) {
+    if (fs.existsSync(p)) {
+      cmd = p;
       args = ['--no-browser'];
+      cwd = path.dirname(p);
+      break;
     }
   }
 
-  console.log(`[Electron] Khởi động Python backend: ${cmd} ${args.join(' ')}`);
-  pyProcess = spawn(cmd, args, {
-    cwd: __dirname,
-    detached: false,
-    stdio: 'pipe'
-  });
+  if (!cmd) {
+    cmd = isWin ? 'python' : 'python3';
+    args = [path.join(__dirname, 'client_ui.py'), '--no-browser'];
+    cwd = __dirname;
+  }
 
-  pyProcess.stdout.on('data', (data) => {
-    console.log(`[Python] ${data.toString().trim()}`);
-  });
+  console.log(`[Electron] Khởi động Backend: ${cmd} ${args.join(' ')}`);
+  try {
+    pyProcess = spawn(cmd, args, {
+      cwd: cwd,
+      detached: false,
+      stdio: 'pipe'
+    });
 
-  pyProcess.stderr.on('data', (data) => {
-    console.error(`[Python Err] ${data.toString().trim()}`);
-  });
+    pyProcess.stdout.on('data', (data) => {
+      console.log(`[Backend] ${data.toString().trim()}`);
+    });
 
-  pyProcess.on('close', (code) => {
-    console.log(`[Python] Tiến trình kết thúc với mã: ${code}`);
-  });
+    pyProcess.stderr.on('data', (data) => {
+      console.error(`[Backend Err] ${data.toString().trim()}`);
+    });
+
+    pyProcess.on('close', (code) => {
+      console.log(`[Backend] Tiến trình kết thúc với mã: ${code}`);
+    });
+  } catch (err) {
+    console.error(`[Electron] Lỗi khởi động Backend:`, err);
+  }
 }
 
 function createMainWindow() {
@@ -91,18 +107,22 @@ function createMainWindow() {
     backgroundColor: '#0b0f19',
     icon: path.join(__dirname, 'templates', 'icon.png'),
     title: 'Tadu Cloud AI Agent Control Center',
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,
     show: false, // Ẩn cho đến khi nội dung tải xong để không bị nháy trắng
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      devTools: false
     }
   });
 
+  mainWindow.setMenu(null);
+  mainWindow.setMenuBarVisibility(false);
+
   mainWindow.loadURL(APP_URL);
 
-  // Hỗ trợ phím tắt Reload (Ctrl+R, F5) và DevTools (Ctrl+Shift+I, F12)
+  // Hỗ trợ phím tắt Reload (Ctrl+R, F5) và khoá phím tắt DevTools
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if ((input.control || input.meta) && input.key.toLowerCase() === 'r') {
       mainWindow.reload();
@@ -112,8 +132,9 @@ function createMainWindow() {
       mainWindow.reload();
       event.preventDefault();
     }
-    if (((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12') {
-      mainWindow.webContents.toggleDevTools();
+    if (input.key === 'F12' || 
+       ((input.control || input.meta) && input.shift && (input.key.toLowerCase() === 'i' || input.key.toLowerCase() === 'j' || input.key.toLowerCase() === 'c')) ||
+       ((input.control || input.meta) && input.key.toLowerCase() === 'u')) {
       event.preventDefault();
     }
   });
@@ -132,8 +153,8 @@ app.whenReady().then(async () => {
   let isRunning = await checkServerReady(APP_URL, 2, 100);
 
   if (!isRunning) {
-    // Khởi chạy tiến trình Python
-    startPythonBackend();
+    // Khởi chạy tiến trình Backend
+    startBackend();
     // Đợi server sẵn sàng (tối đa 15 giây)
     isRunning = await checkServerReady(APP_URL, 60, 250);
   }

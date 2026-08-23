@@ -1,7 +1,11 @@
 <!DOCTYPE html>
-<html lang="vi" data-bs-theme="dark">
+<html lang="en" class="notranslate" translate="no" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
+    <meta name="theme-color" content="#0b0f19">
+    <meta name="color-scheme" content="dark">
+    <meta name="google" content="notranslate">
+    <meta name="googlebot" content="notranslate">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tadu Cloud AI Agent Control Center - GLM-5.3</title>
     <link rel="icon" type="image/jpeg" href="/logo.jpg">
@@ -512,7 +516,6 @@
             background-color: var(--tadu-card-bg);
             border: 1px solid var(--tadu-border);
             border-radius: var(--tadu-radius-sm);
-            transition: all 0.2s ease;
         }
 
         .chat-input-box:focus-within {
@@ -944,13 +947,8 @@
                         <i class="fa-solid fa-server text-info"></i>
                     </div>
                     <div class="d-flex flex-column justify-content-center">
-                        <div class="tab-topbar-title d-flex align-items-center gap-2">
+                        <div class="tab-topbar-title">
                             <span>Quản Lý Máy Chủ & Dịch Vụ Systemd</span>
-                            <span class="badge bg-success-subtle text-success border border-success border-opacity-25 px-2 py-0.5 d-inline-flex align-items-center gap-1.5" style="font-size: 0.68rem; font-weight: 600;">
-                                <span class="live-dot bg-success live-pulse" style="width: 6px; height: 6px;"></span>
-                                <span>REALTIME</span>
-                                <span id="realtime-sync-time" class="text-secondary fw-normal font-mono" style="font-size: 0.65rem;"></span>
-                            </span>
                         </div>
                         <small class="tab-topbar-subtitle">Triển khai code lên VPS/Server và giám sát tài nguyên thời gian thực</small>
                     </div>
@@ -990,12 +988,7 @@
                     <div class="tadu-card p-4 h-100 d-flex flex-column justify-content-between">
                         <div class="d-flex align-items-center justify-content-between text-secondary mb-2" style="font-size: 0.78rem;">
                             <span>Địa chỉ Máy Chủ</span>
-                            <div class="d-flex align-items-center gap-2">
-                                <button onclick="togglePrivacyField('ip')" class="btn btn-sm btn-link text-secondary p-0 text-decoration-none" title="Ẩn/Hiện IP" style="line-height: 1;">
-                                    <i id="eye-ip" class="fa-solid fa-eye-slash" style="font-size: 0.75rem;"></i>
-                                </button>
-                                <i class="fa-solid fa-globe text-info" style="margin-right: 0 !important;"></i>
-                            </div>
+                            <i class="fa-solid fa-globe text-info" style="margin-right: 0 !important;"></i>
                         </div>
                         <div id="card-server-ip" class="fs-5 fw-bold text-white mb-1 font-mono text-truncate" title="Địa chỉ IP">127.0.0.1</div>
                         <small class="text-secondary font-mono text-truncate d-block" style="font-size: 0.7rem;">Cổng API: <span id="card-api-port">8000</span></small>
@@ -1071,58 +1064,117 @@
                 <div id="deploy-console" class="d-none bg-black rounded-1 p-4 font-mono text-secondary" style="font-size: 0.78rem; max-height: 200px; overflow-y: auto; line-height: 1.6;"></div>
             </div>
 
-            <!-- Server Resource Metrics -->
+            <!-- Server Resource Metrics (On-Demand Mode) -->
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h6 class="fw-semibold text-white mb-0" style="font-size: 0.85rem;">Tài Nguyên Máy Chủ Đám Mây</h6>
+                    <span class="badge rounded-1" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.65rem; border: 1px solid rgba(99, 102, 241, 0.25);">
+                        <i class="fa-solid fa-bolt me-1 text-warning"></i> Thời gian thực
+                    </span>
+                </div>
+            </div>
+
             <div class="row g-3">
+                <!-- CPU Card -->
                 <div class="col-12 col-md-6 d-flex">
                     <div class="tadu-card p-4 w-100 d-flex flex-column justify-content-between" style="min-height: 140px;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="fw-semibold text-white mb-0 d-flex align-items-center gap-2" style="font-size: 0.82rem;">
-                                <i class="fa-solid fa-hard-drive text-info" style="margin-right: 0 !important;"></i>
-                                <span>Dung lượng Ổ đĩa (Disk Usage)</span>
+                                <i class="fa-solid fa-microchip text-warning" style="margin-right: 0 !important;"></i>
+                                <span>Vi xử lý (CPU Usage)</span>
                             </h6>
-                            <span id="disk-pct-badge" class="badge bg-info-subtle text-info fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">57%</span>
+                            <span id="cpu-pct-badge" class="badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">0%</span>
                         </div>
-                        
                         <div class="my-2">
                             <div class="d-flex align-items-center justify-content-between mb-1.5" style="font-size: 0.75rem;">
-                                <span class="text-secondary">Ổ đĩa hệ thống (SSD Root)</span>
-                                <span id="disk-stat-text" class="text-white font-mono fw-semibold">21 GB / 40 GB</span>
+                                <span class="text-secondary">Tải hệ thống (1m, 5m, 15m)</span>
+                                <span id="cpu-stat-text" class="text-white font-mono fw-semibold">Load: 0.00, 0.00, 0.00</span>
                             </div>
                             <div class="progress" style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px;">
-                                <div id="disk-progress-bar" class="progress-bar bg-info" role="progressbar" style="width: 57%; border-radius: 4px; transition: width 0.4s ease;"></div>
+                                <div id="cpu-progress-bar" class="progress-bar bg-warning" role="progressbar" style="width: 5%; border-radius: 4px; transition: width 0.3s ease;"></div>
                             </div>
                         </div>
-
                         <div class="d-flex align-items-center justify-content-between pt-2 border-top border-secondary border-opacity-10" style="font-size: 0.72rem;">
-                            <span class="text-secondary">Khả dụng: <span id="disk-avail-text" class="text-info font-mono fw-semibold">17 GB</span></span>
-                            <span class="text-secondary">Trạng thái: <span id="disk-status-badge" class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> An toàn</span></span>
+                            <span class="text-secondary">Chế độ: <span class="text-warning font-mono fw-semibold">On-Demand</span></span>
+                            <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> Siêu nhẹ</span>
                         </div>
                     </div>
                 </div>
 
+                <!-- RAM Card -->
                 <div class="col-12 col-md-6 d-flex">
                     <div class="tadu-card p-4 w-100 d-flex flex-column justify-content-between" style="min-height: 140px;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="fw-semibold text-white mb-0 d-flex align-items-center gap-2" style="font-size: 0.82rem;">
                                 <i class="fa-solid fa-memory text-primary" style="margin-right: 0 !important;"></i>
-                                <span>Bộ nhớ RAM (Memory Usage)</span>
+                                <span>Bộ nhớ (Memory RAM)</span>
                             </h6>
-                            <span id="ram-pct-badge" class="badge bg-primary-subtle text-primary fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">37%</span>
+                            <span id="ram-pct-badge" class="badge bg-primary-subtle text-primary fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">35%</span>
                         </div>
-                        
                         <div class="my-2">
                             <div class="d-flex align-items-center justify-content-between mb-1.5" style="font-size: 0.75rem;">
-                                <span class="text-secondary">Bộ nhớ khả dụng (RAM)</span>
-                                <span id="ram-stat-text" class="text-white font-mono fw-semibold">727 MB / 1.96 GB</span>
+                                <span class="text-secondary">Đã sử dụng / Tổng RAM</span>
+                                <span id="ram-stat-text" class="text-white font-mono fw-semibold">693 MB / 1.92 GB</span>
                             </div>
                             <div class="progress" style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px;">
-                                <div id="ram-progress-bar" class="progress-bar bg-primary" role="progressbar" style="width: 37%; border-radius: 4px; transition: width 0.4s ease;"></div>
+                                <div id="ram-progress-bar" class="progress-bar bg-primary" role="progressbar" style="width: 35%; border-radius: 4px; transition: width 0.3s ease;"></div>
                             </div>
                         </div>
-
                         <div class="d-flex align-items-center justify-content-between pt-2 border-top border-secondary border-opacity-10" style="font-size: 0.72rem;">
-                            <span class="text-secondary">Khả dụng: <span id="ram-avail-text" class="text-primary font-mono fw-semibold">1.00 GB</span></span>
-                            <span class="text-secondary">Trạng thái: <span id="ram-status-badge" class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> Ổn định</span></span>
+                            <span class="text-secondary">Khả dụng: <span id="ram-avail-text" class="text-primary font-mono fw-semibold">1.01 GB</span></span>
+                            <span id="ram-status-badge" class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> Ổn định</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Disk Card -->
+                <div class="col-12 col-md-6 d-flex">
+                    <div class="tadu-card p-4 w-100 d-flex flex-column justify-content-between" style="min-height: 140px;">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h6 class="fw-semibold text-white mb-0 d-flex align-items-center gap-2" style="font-size: 0.82rem;">
+                                <i class="fa-solid fa-hard-drive text-info" style="margin-right: 0 !important;"></i>
+                                <span>Ổ đĩa hệ thống (SSD Root)</span>
+                            </h6>
+                            <span id="disk-pct-badge" class="badge bg-info-subtle text-info fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">59%</span>
+                        </div>
+                        <div class="my-2">
+                            <div class="d-flex align-items-center justify-content-between mb-1.5" style="font-size: 0.75rem;">
+                                <span class="text-secondary">Đã sử dụng / Tổng ổ đĩa</span>
+                                <span id="disk-stat-text" class="text-white font-mono fw-semibold">22 GB / 40 GB</span>
+                            </div>
+                            <div class="progress" style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px;">
+                                <div id="disk-progress-bar" class="progress-bar bg-info" role="progressbar" style="width: 59%; border-radius: 4px; transition: width 0.3s ease;"></div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between pt-2 border-top border-secondary border-opacity-10" style="font-size: 0.72rem;">
+                            <span class="text-secondary">Khả dụng: <span id="disk-avail-text" class="text-info font-mono fw-semibold">16 GB</span></span>
+                            <span id="disk-status-badge" class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> An toàn</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Network Card -->
+                <div class="col-12 col-md-6 d-flex">
+                    <div class="tadu-card p-4 w-100 d-flex flex-column justify-content-between" style="min-height: 140px;">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h6 class="fw-semibold text-white mb-0 d-flex align-items-center gap-2" style="font-size: 0.82rem;">
+                                <i class="fa-solid fa-network-wired text-success" style="margin-right: 0 !important;"></i>
+                                <span>Băng thông Mạng (Network I/O)</span>
+                            </h6>
+                            <span id="net-rx-badge" class="badge bg-success-subtle text-success fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">↓ 0 KB/s</span>
+                        </div>
+                        <div class="my-2">
+                            <div class="d-flex align-items-center justify-content-between mb-1.5" style="font-size: 0.75rem;">
+                                <span class="text-secondary">Tốc độ tải xuống / Tải lên</span>
+                                <span id="net-stat-text" class="text-white font-mono fw-semibold">↓ 0 KB/s  ↑ 0 KB/s</span>
+                            </div>
+                            <div class="progress" style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px;">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: 100%; border-radius: 4px;"></div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between pt-2 border-top border-secondary border-opacity-10" style="font-size: 0.72rem;">
+                            <span class="text-secondary">Giao thức: <span class="text-success font-mono fw-semibold">SSH Native</span></span>
+                            <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> Ổn định</span>
                         </div>
                     </div>
                 </div>
@@ -1379,26 +1431,36 @@
             showToast('Đã xoá giới hạn thư mục. Agent sẽ hoạt động trên toàn hệ thống.', 'info');
         }
 
+        let inputDebounceTimer = null;
+        let lastInputVal = '';
+
         function onChatInputChanged(el) {
+            if (!el) return;
             autoResizeTextarea(el);
-            checkDirAutocompleteTrigger(el);
+
+            // Chỉ kích hoạt kiểm tra gợi ý thư mục sau khi ngừng gõ 200ms
+            if (inputDebounceTimer) clearTimeout(inputDebounceTimer);
+            inputDebounceTimer = setTimeout(() => {
+                checkDirAutocompleteTrigger(el);
+            }, 200);
         }
 
         function checkDirAutocompleteTrigger(el) {
+            if (!el) return;
             const val = el.value;
-            const cursorPos = el.selectionStart || val.length;
+            if (val === lastInputVal) return;
+            lastInputVal = val;
 
-            // Tìm từ đang gõ tại vị trí con trỏ
+            const cursorPos = el.selectionStart || val.length;
             const textBefore = val.slice(0, cursorPos);
             const words = textBefore.split(/\s+/);
             const currentWord = words[words.length - 1];
 
             if (currentWord && currentWord.startsWith('/')) {
-                // Đang gõ đường dẫn bắt đầu bằng dấu /
                 if (dirDebounceTimer) clearTimeout(dirDebounceTimer);
                 dirDebounceTimer = setTimeout(() => {
                     fetchAndRenderDirSuggestions(currentWord);
-                }, 80);
+                }, 100);
             } else {
                 closeDirAutocomplete();
             }
@@ -1538,14 +1600,17 @@
             }
         }
 
+        let resizeRafPending = false;
         function autoResizeTextarea(el) {
-            if (!el) return;
-            // Tránh layout thrashing liên tục khi gõ phím
-            const targetHeight = Math.min(el.scrollHeight, 180);
-            if (el.style.height !== targetHeight + 'px' && targetHeight > 48) {
+            if (!el || resizeRafPending) return;
+            resizeRafPending = true;
+            requestAnimationFrame(() => {
+                resizeRafPending = false;
+                if (!el) return;
                 el.style.height = 'auto';
-                el.style.height = Math.min(el.scrollHeight, 180) + 'px';
-            }
+                const newHeight = Math.min(el.scrollHeight, 180);
+                el.style.height = (newHeight > 48 ? newHeight : 48) + 'px';
+            });
         }
 
         // Xử lý dán ảnh chụp màn hình từ Clipboard (Ctrl + V)
@@ -1805,12 +1870,7 @@
 
             if (tabId === 'terminal') initInteractiveTerminal();
             if (tabId === 'logs') fetchServiceLogs();
-            if (tabId === 'server') {
-                fetchSystemInfo();
-                startRealtimeMetricsPolling();
-            } else {
-                stopRealtimeMetricsPolling();
-            }
+            if (tabId === 'server') fetchSystemInfo();
             if (tabId === 'settings') loadSettings();
         }
 
@@ -2993,127 +3053,7 @@
                 const res = await fetch('/api/server/system-info');
                 const data = await res.json();
                 if (data.status === 'success') {
-                    const info = data.info || data;
-                    if (document.getElementById('card-os')) document.getElementById('card-os').innerText = info.os || 'Linux';
-                    if (document.getElementById('card-uptime')) {
-                        const upRaw = info.uptime || '--';
-                        document.getElementById('card-uptime').innerText = upRaw.replace(/^up\s+/, '');
-                        document.getElementById('card-uptime').title = upRaw;
-                    }
-                    if (document.getElementById('card-api-port')) document.getElementById('card-api-port').innerText = info.api_port || '8000';
-                    if (document.getElementById('card-ai-model')) document.getElementById('card-ai-model').innerText = info.ai_model || 'glm-5.3';
-                    
-                    // Update safe cloud resource cards (Realtime Disk & RAM)
-                    const m = info.metrics || {};
-                    const diskPct = m.disk_percent !== undefined ? m.disk_percent : 57;
-                    const diskUsed = m.disk_used || '21 GB';
-                    const diskTotal = m.disk_total || '40 GB';
-                    const diskAvail = m.disk_avail || '17 GB';
-
-                    if (document.getElementById('disk-pct-badge')) {
-                        document.getElementById('disk-pct-badge').innerText = `${diskPct}%`;
-                        if (diskPct >= 90) {
-                            document.getElementById('disk-pct-badge').className = "badge bg-danger-subtle text-danger fw-bold font-mono px-2 py-1";
-                        } else if (diskPct >= 75) {
-                            document.getElementById('disk-pct-badge').className = "badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-1";
-                        } else {
-                            document.getElementById('disk-pct-badge').className = "badge bg-info-subtle text-info fw-bold font-mono px-2 py-1";
-                        }
-                    }
-                    if (document.getElementById('disk-stat-text')) document.getElementById('disk-stat-text').innerText = `${diskUsed} / ${diskTotal}`;
-                    if (document.getElementById('disk-progress-bar')) {
-                        document.getElementById('disk-progress-bar').style.width = `${diskPct}%`;
-                        if (diskPct >= 90) {
-                            document.getElementById('disk-progress-bar').className = "progress-bar bg-danger";
-                        } else if (diskPct >= 75) {
-                            document.getElementById('disk-progress-bar').className = "progress-bar bg-warning";
-                        } else {
-                            document.getElementById('disk-progress-bar').className = "progress-bar bg-info";
-                        }
-                    }
-                    if (document.getElementById('disk-avail-text')) document.getElementById('disk-avail-text').innerText = diskAvail;
-                    if (document.getElementById('disk-status-badge')) {
-                        if (diskPct >= 90) {
-                            document.getElementById('disk-status-badge').className = "text-danger fw-semibold";
-                            document.getElementById('disk-status-badge').innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Sắp đầy';
-                        } else if (diskPct >= 75) {
-                            document.getElementById('disk-status-badge').className = "text-warning fw-semibold";
-                            document.getElementById('disk-status-badge').innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Cảnh báo';
-                        } else {
-                            document.getElementById('disk-status-badge').className = "text-success fw-semibold";
-                            document.getElementById('disk-status-badge').innerHTML = '<i class="fa-solid fa-circle-check"></i> An toàn';
-                        }
-                    }
-
-                    const ramPct = m.ram_percent !== undefined ? m.ram_percent : 37;
-                    const ramUsed = m.ram_used || '727 MB';
-                    const ramTotal = m.ram_total || '1.96 GB';
-                    const ramAvail = m.ram_avail || '1.00 GB';
-
-                    if (document.getElementById('ram-pct-badge')) {
-                        document.getElementById('ram-pct-badge').innerText = `${ramPct}%`;
-                        if (ramPct >= 90) {
-                            document.getElementById('ram-pct-badge').className = "badge bg-danger-subtle text-danger fw-bold font-mono px-2 py-1";
-                        } else if (ramPct >= 75) {
-                            document.getElementById('ram-pct-badge').className = "badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-1";
-                        } else {
-                            document.getElementById('ram-pct-badge').className = "badge bg-primary-subtle text-primary fw-bold font-mono px-2 py-1";
-                        }
-                    }
-                    if (document.getElementById('ram-stat-text')) document.getElementById('ram-stat-text').innerText = `${ramUsed} / ${ramTotal}`;
-                    if (document.getElementById('ram-progress-bar')) {
-                        document.getElementById('ram-progress-bar').style.width = `${ramPct}%`;
-                        if (ramPct >= 90) {
-                            document.getElementById('ram-progress-bar').className = "progress-bar bg-danger";
-                        } else if (ramPct >= 75) {
-                            document.getElementById('ram-progress-bar').className = "progress-bar bg-warning";
-                        } else {
-                            document.getElementById('ram-progress-bar').className = "progress-bar bg-primary";
-                        }
-                    }
-                    if (document.getElementById('ram-avail-text')) document.getElementById('ram-avail-text').innerText = ramAvail;
-                    if (document.getElementById('ram-status-badge')) {
-                        if (ramPct >= 90) {
-                            document.getElementById('ram-status-badge').className = "text-danger fw-semibold";
-                            document.getElementById('ram-status-badge').innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Quá tải';
-                        } else if (ramPct >= 75) {
-                            document.getElementById('ram-status-badge').className = "text-warning fw-semibold";
-                            document.getElementById('ram-status-badge').innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Cảnh báo';
-                        } else {
-                            document.getElementById('ram-status-badge').className = "text-success fw-semibold";
-                            document.getElementById('ram-status-badge').innerHTML = '<i class="fa-solid fa-circle-check"></i> Ổn định';
-                        }
-                    }
-
-                    if (document.getElementById('realtime-sync-time')) {
-                        document.getElementById('realtime-sync-time').innerText = info.last_sync ? `• ${info.last_sync}` : '';
-                    }
-
-                    // Cache data and update with privacy masking
-                    cachedServerData.server_ip = info.server_ip || '127.0.0.1';
-                    cachedServerData.api_port = info.api_port || 8000;
-                    cachedServerData.disk = info.disk || 'Không có dữ liệu';
-                    cachedServerData.memory = info.memory || info.ram || 'Không có dữ liệu';
-                    updatePrivacyViews();
-                    
-                    const isAct = (info.service_active === 'active' || info.service_status === 'active');
-                    if (document.getElementById('card-service-status')) {
-                        document.getElementById('card-service-status').innerText = isAct ? 'Đang Chạy' : 'Đã Tắt';
-                        document.getElementById('card-service-status').className = isAct ? "fs-5 fw-bold text-success mb-1 text-truncate" : "fs-5 fw-bold text-danger mb-1 text-truncate";
-                    }
-                    if (document.getElementById('card-service-dot')) {
-                        document.getElementById('card-service-dot').className = isAct ? "live-dot bg-success live-pulse" : "live-dot bg-danger";
-                    }
-                    if (document.getElementById('card-service-icon')) {
-                        document.getElementById('card-service-icon').className = isAct ? "fa-solid fa-shield-halved text-success" : "fa-solid fa-shield-halved text-danger";
-                    }
-                    
-                    if (document.getElementById('sidebar-status-dot')) {
-                        document.getElementById('sidebar-status-dot').className = isAct ? "live-dot bg-success live-pulse" : "live-dot bg-warning";
-                    }
-                    if (document.getElementById('sidebar-status-text')) {
-                        document.getElementById('sidebar-status-text').innerText = isAct ? "Dịch Vụ Online" : "Dịch Vụ Chưa Bật";
-                    }
+                    renderRealtimeMetrics(data);
                 } else {
                     if (document.getElementById('sidebar-status-dot')) document.getElementById('sidebar-status-dot').className = "live-dot bg-danger";
                     if (document.getElementById('sidebar-status-text')) document.getElementById('sidebar-status-text').innerText = "Chưa Kết Nối";
@@ -3127,23 +3067,96 @@
             }
         }
 
-        // Realtime Periodic Polling (Chu kỳ 30 giây/lần - siêu nhẹ CPU)
-        let realtimeMetricsTimer = null;
-        function startRealtimeMetricsPolling() {
-            if (realtimeMetricsTimer) clearInterval(realtimeMetricsTimer);
-            realtimeMetricsTimer = setInterval(() => {
-                if (!document.hidden && currentTab === 'server') {
-                    fetchSystemInfo();
-                }
-            }, 30000);
-        }
+        function renderRealtimeMetrics(data) {
+            const info = data.info || data;
+            const m = data.metrics || info.metrics || {};
 
-        function stopRealtimeMetricsPolling() {
-            if (realtimeMetricsTimer) {
-                clearInterval(realtimeMetricsTimer);
-                realtimeMetricsTimer = null;
+            // Static info
+            if (document.getElementById('card-os')) document.getElementById('card-os').innerText = info.os || data.os || 'Linux';
+            if (document.getElementById('card-uptime')) {
+                const upRaw = data.uptime || info.uptime || '--';
+                document.getElementById('card-uptime').innerText = upRaw.replace(/^up\s+/, '');
+                document.getElementById('card-uptime').title = upRaw;
+            }
+            if (document.getElementById('card-api-port')) document.getElementById('card-api-port').innerText = info.api_port || '8000';
+            if (document.getElementById('card-ai-model')) document.getElementById('card-ai-model').innerText = info.ai_model || 'glm-5.3';
+
+            // 1. CPU
+            const cpuPct = m.cpu_percent !== undefined ? m.cpu_percent : 0;
+            if (document.getElementById('cpu-pct-badge')) {
+                document.getElementById('cpu-pct-badge').innerText = `${cpuPct}%`;
+                document.getElementById('cpu-pct-badge').className = cpuPct >= 80 ? "badge bg-danger-subtle text-danger fw-bold font-mono px-2 py-0.5" : (cpuPct >= 50 ? "badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-0.5" : "badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-0.5");
+            }
+            if (document.getElementById('cpu-stat-text')) {
+                const loadParts = (m.loadavg || '0.00').trim().split(/\s+/);
+                const cleanLoad = loadParts.slice(0, 3).join(', ');
+                document.getElementById('cpu-stat-text').innerText = `Load: ${cleanLoad}`;
+            }
+            if (document.getElementById('cpu-progress-bar')) {
+                document.getElementById('cpu-progress-bar').style.width = `${Math.min(100, Math.max(3, cpuPct))}%`;
+                document.getElementById('cpu-progress-bar').className = cpuPct >= 80 ? "progress-bar bg-danger" : "progress-bar bg-warning";
+            }
+
+            // 2. RAM
+            const ramPct = m.ram_percent !== undefined ? m.ram_percent : 35;
+            const ramUsed = m.ram_used || '693 MB';
+            const ramTotal = m.ram_total || '1.92 GB';
+            const ramAvail = m.ram_avail || '1.01 GB';
+            if (document.getElementById('ram-pct-badge')) {
+                document.getElementById('ram-pct-badge').innerText = `${ramPct}%`;
+                document.getElementById('ram-pct-badge').className = ramPct >= 85 ? "badge bg-danger-subtle text-danger fw-bold font-mono px-2 py-0.5" : (ramPct >= 70 ? "badge bg-warning-subtle text-warning fw-bold font-mono px-2 py-0.5" : "badge bg-primary-subtle text-primary fw-bold font-mono px-2 py-0.5");
+            }
+            if (document.getElementById('ram-stat-text')) document.getElementById('ram-stat-text').innerText = `${ramUsed} / ${ramTotal}`;
+            if (document.getElementById('ram-progress-bar')) {
+                document.getElementById('ram-progress-bar').style.width = `${ramPct}%`;
+                document.getElementById('ram-progress-bar').className = ramPct >= 85 ? "progress-bar bg-danger" : (ramPct >= 70 ? "progress-bar bg-warning" : "progress-bar bg-primary");
+            }
+            if (document.getElementById('ram-avail-text')) document.getElementById('ram-avail-text').innerText = ramAvail;
+
+            // 3. Disk
+            const diskPct = m.disk_percent !== undefined ? m.disk_percent : 59;
+            const diskUsed = m.disk_used || '22 GB';
+            const diskTotal = m.disk_total || '40 GB';
+            const diskAvail = m.disk_avail || '16 GB';
+            if (document.getElementById('disk-pct-badge')) document.getElementById('disk-pct-badge').innerText = `${diskPct}%`;
+            if (document.getElementById('disk-stat-text')) document.getElementById('disk-stat-text').innerText = `${diskUsed} / ${diskTotal}`;
+            if (document.getElementById('disk-progress-bar')) document.getElementById('disk-progress-bar').style.width = `${diskPct}%`;
+            if (document.getElementById('disk-avail-text')) document.getElementById('disk-avail-text').innerText = diskAvail;
+
+            // 4. Network
+            const netRx = m.net_rx_kbs || '0.0 KB/s';
+            const netTx = m.net_tx_kbs || '0.0 KB/s';
+            if (document.getElementById('net-stat-text')) document.getElementById('net-stat-text').innerText = `↓ ${netRx}  ↑ ${netTx}`;
+            if (document.getElementById('net-rx-badge')) document.getElementById('net-rx-badge').innerText = `↓ ${netRx}`;
+
+            // Cache data and update with privacy masking
+            if (info && info.server_ip) cachedServerData.server_ip = info.server_ip;
+            if (info && info.api_port) cachedServerData.api_port = info.api_port;
+            if (data.disk) cachedServerData.disk = data.disk;
+            if (data.ram) cachedServerData.memory = data.ram;
+            updatePrivacyViews();
+
+            const isAct = (data.service_status === 'active' || (info && (info.service_active === 'active' || info.service_status === 'active')));
+            if (document.getElementById('card-service-status')) {
+                document.getElementById('card-service-status').innerText = isAct ? 'Đang Chạy' : 'Đã Tắt';
+                document.getElementById('card-service-status').className = isAct ? "fs-5 fw-bold text-success mb-1 text-truncate" : "fs-5 fw-bold text-danger mb-1 text-truncate";
+            }
+            if (document.getElementById('card-service-dot')) {
+                document.getElementById('card-service-dot').className = isAct ? "live-dot bg-success live-pulse" : "live-dot bg-danger";
+            }
+            if (document.getElementById('card-service-icon')) {
+                document.getElementById('card-service-icon').className = isAct ? "fa-solid fa-shield-halved text-success" : "fa-solid fa-shield-halved text-danger";
+            }
+            
+            if (document.getElementById('sidebar-status-dot')) {
+                document.getElementById('sidebar-status-dot').className = isAct ? "live-dot bg-success live-pulse" : "live-dot bg-warning";
+            }
+            if (document.getElementById('sidebar-status-text')) {
+                document.getElementById('sidebar-status-text').innerText = isAct ? "Dịch Vụ Online" : "Dịch Vụ Chưa Bật";
             }
         }
+
+
 
         async function handleServiceAction(action) {
             showToast(`Đang thực thi ${action} service...`, 'info');
@@ -3696,10 +3709,11 @@
                         <i class="fa-solid fa-xmark me-1"></i> Huỷ bỏ
                     </button>
                     <button type="button" class="btn btn-primary px-3 py-1.5" id="prompt-modal-btn-confirm" style="font-size: 0.8rem;">
-                        <i class="fa-solid fa-check me-1"></i> Lưu thay đổi
-                    </button>
                 </div>
             </div>
+        </div>
+    </div>
+
     <!-- IMAGE LIGHTBOX MODAL -->
     <div class="modal fade" id="imageLightboxModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-xl">
