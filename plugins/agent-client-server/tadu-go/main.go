@@ -636,6 +636,10 @@ func main() {
 			return
 		}
 
+		if setActive, ok := updateData["set_active"].(bool); ok && setActive {
+			cfg["active_server_id"] = serverID
+		}
+
 		cfg["servers"] = rawServers
 		if err := saveConfig(cfg); err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
