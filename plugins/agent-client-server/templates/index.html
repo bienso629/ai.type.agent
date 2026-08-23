@@ -987,6 +987,10 @@
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
+                    <button onclick="openAddServerModal()" class="btn btn-outline-info btn-sm px-3 py-1.5" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-plus me-1"></i>
+                        <span>Thêm Server</span>
+                    </button>
                     <button id="btn-global-privacy" onclick="toggleGlobalPrivacy()" class="btn btn-outline-secondary btn-sm px-3 py-1.5" style="font-size: 0.75rem;" title="Bật/Tắt che thông tin nhạy cảm (IP, Cấu trúc ổ đĩa, Bộ nhớ)">
                         <i id="global-privacy-icon" class="fa-solid fa-shield-halved text-success"></i>
                         <span id="global-privacy-text">Bảo Mật: BẬT</span>
@@ -3646,7 +3650,7 @@
                                         <i class="fa-solid fa-pen-to-square"></i>
                                         <span>Sửa</span>
                                     </button>
-                                    <button onclick="confirmDeleteServer('${s.id}', '${escapeHtml(s.name)}')" 
+                                    <button onclick="confirmDeleteServer('${s.id}')" 
                                             class="btn btn-sm btn-outline-danger px-2.5 py-1 ${currentServers.length <= 1 ? 'disabled opacity-50' : ''}" 
                                             style="font-size: 0.72rem;" 
                                             title="${currentServers.length <= 1 ? 'Không thể xoá máy chủ duy nhất' : 'Xoá máy chủ này'}">
@@ -3811,7 +3815,10 @@
             }
         }
 
-        function confirmDeleteServer(serverId, serverName) {
+        function confirmDeleteServer(serverId) {
+            const server = currentServers.find(s => s.id === serverId);
+            const serverName = server ? (server.name || server.server_ip) : 'máy chủ';
+
             if (currentServers.length <= 1) {
                 showToast("Không thể xoá máy chủ duy nhất trong hệ thống!", "warning");
                 return;
@@ -3819,7 +3826,7 @@
 
             showConfirmModal({
                 title: "Xác nhận xoá máy chủ",
-                message: `Bạn có chắc chắn muốn xoá máy chủ <strong>"${serverName}"</strong> khỏi danh sách quản lý không?`,
+                message: `Bạn có chắc chắn muốn xoá máy chủ <strong>"${escapeHtml(serverName)}"</strong> khỏi danh sách quản lý không?`,
                 icon: "fa-solid fa-trash-can text-danger",
                 confirmText: "Xoá máy chủ",
                 confirmClass: "btn-danger",
