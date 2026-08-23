@@ -68,6 +68,10 @@
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
         /* Icon & Text Spacing Fixes */
+        .me-1\.5 {
+            margin-right: 0.375rem !important;
+        }
+
         .btn i, .btn svg {
             margin-right: 0 !important;
             line-height: 1;
@@ -714,12 +718,12 @@
             </div>
 
             <!-- Server Quick Switcher & Status Widget -->
-            <div class="dropdown mx-3 my-3">
-                <div class="p-2.5 px-3 rounded-1 d-flex align-items-center justify-content-between cursor-pointer border transition-all" 
+            <div class="dropdown mx-3 my-2">
+                <div class="px-3 rounded-1 d-flex align-items-center justify-content-between cursor-pointer border transition-all" 
                      id="sidebar-server-dropdown-btn" 
                      data-bs-toggle="dropdown" 
                      aria-expanded="false"
-                     style="background-color: #0f172a; border-color: rgba(255, 255, 255, 0.1) !important; cursor: pointer;">
+                     style="background-color: #0f172a; border-color: rgba(255, 255, 255, 0.1) !important; cursor: pointer; padding-top: 10px; padding-bottom: 10px;">
                     <div class="d-flex align-items-center overflow-hidden gap-2" style="min-width: 0;">
                         <span id="sidebar-status-dot" class="live-dot bg-warning live-pulse flex-shrink-0"></span>
                         <div class="overflow-hidden" style="min-width: 0;">
@@ -1008,7 +1012,7 @@
                         <i id="global-privacy-icon" class="fa-solid fa-shield-halved text-success"></i>
                         <span id="global-privacy-text">Bảo Mật: BẬT</span>
                     </button>
-                    <button onclick="fetchSystemInfo()" class="btn btn-outline-light btn-sm px-3 py-1.5" style="font-size: 0.75rem;">
+                    <button onclick="handleManualRefresh(this)" class="btn btn-outline-light btn-sm px-3 py-1.5 d-inline-flex align-items-center gap-1.5" style="font-size: 0.75rem;" title="Làm mới cấu hình và toàn bộ thông tin máy chủ từ xa">
                         <i class="fa-solid fa-arrows-rotate"></i>
                         <span>Cập nhật</span>
                     </button>
@@ -1411,19 +1415,28 @@
                         <div class="row g-3 text-secondary" style="font-size: 0.82rem;">
                             <div class="col-12 col-md-4">
                                 <div class="p-3 rounded-1" style="background: rgba(3, 7, 18, 0.5); border: 1px solid var(--tadu-border);">
-                                    <div class="text-white fw-semibold mb-1"><i class="fa-solid fa-lock text-warning me-1.5"></i> Chuẩn Mã Hoá</div>
+                                    <div class="text-white fw-semibold mb-1 d-flex align-items-center gap-2">
+                                        <i class="fa-solid fa-lock text-warning"></i>
+                                        <span>Chuẩn Mã Hoá</span>
+                                    </div>
                                     <small>AES-256 GCM + HMAC-SHA256 lưu trữ an toàn trong <code>config.json</code></small>
                                 </div>
                             </div>
                             <div class="col-12 col-md-4">
                                 <div class="p-3 rounded-1" style="background: rgba(3, 7, 18, 0.5); border: 1px solid var(--tadu-border);">
-                                    <div class="text-white fw-semibold mb-1"><i class="fa-solid fa-bolt text-info me-1.5"></i> Go Native Backend</div>
+                                    <div class="text-white fw-semibold mb-1 d-flex align-items-center gap-2">
+                                        <i class="fa-solid fa-bolt text-info"></i>
+                                        <span>Go Native Backend</span>
+                                    </div>
                                     <small>Độ trễ &lt;1ms, quản lý đồng thời đa kết nối SSH đa luồng</small>
                                 </div>
                             </div>
                             <div class="col-12 col-md-4">
                                 <div class="p-3 rounded-1" style="background: rgba(3, 7, 18, 0.5); border: 1px solid var(--tadu-border);">
-                                    <div class="text-white fw-semibold mb-1"><i class="fa-solid fa-server text-success me-1.5"></i> Multi-Server Mode</div>
+                                    <div class="text-white fw-semibold mb-1 d-flex align-items-center gap-2">
+                                        <i class="fa-solid fa-server text-success"></i>
+                                        <span>Multi-Server Mode</span>
+                                    </div>
                                     <small>Hỗ trợ không giới hạn máy chủ, chuyển đổi 1-click tức thì</small>
                                 </div>
                             </div>
@@ -1829,23 +1842,43 @@
         // Custom Toast Notification Function
         
         // Helper for Confirm Modals
-        async function showConfirmModal(title, message, confirmText = "Đồng ý", btnClass = "btn-danger") {
+        async function showConfirmModal(firstArg, message, confirmText = "Đồng ý", btnClass = "btn-danger") {
             try {
-                const modalEl = document.getElementById('taduConfirmModal');
-                if (modalEl && typeof bootstrap !== 'undefined') {
-                    return await showConfirmDialog({
-                        title: title,
-                        message: message,
+                let options = {};
+                if (typeof firstArg === 'object' && firstArg !== null) {
+                    options = {
+                        title: firstArg.title || "Xác nhận thao tác",
+                        message: firstArg.message || "Bạn có chắc chắn muốn tiếp tục?",
+                        confirmText: firstArg.confirmText || "Đồng ý",
+                        cancelText: firstArg.cancelText || "Huỷ bỏ",
+                        type: (firstArg.confirmClass || firstArg.type || 'danger').replace('btn-', ''),
+                        icon: firstArg.icon || 'fa-triangle-exclamation'
+                    };
+                    if (firstArg.onConfirm && typeof firstArg.onConfirm === 'function') {
+                        const ok = await showConfirmDialog(options);
+                        if (ok) await firstArg.onConfirm();
+                        return ok;
+                    }
+                } else {
+                    options = {
+                        title: firstArg || "Xác nhận thao tác",
+                        message: message || "Bạn có chắc chắn muốn tiếp tục?",
                         confirmText: confirmText,
                         cancelText: "Huỷ bỏ",
                         type: btnClass.replace('btn-', '') || 'danger',
                         icon: btnClass.includes('danger') ? 'fa-triangle-exclamation' : 'fa-circle-question'
-                    });
+                    };
+                }
+                const modalEl = document.getElementById('taduConfirmModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    return await showConfirmDialog(options);
                 }
             } catch (e) {
                 console.warn("Bootstrap modal error:", e);
             }
-            return window.confirm(`${title}\n\n${message}`);
+            const fallbackTitle = typeof firstArg === 'object' ? (firstArg.title || '') : (firstArg || '');
+            const fallbackMsg = typeof firstArg === 'object' ? (firstArg.message || '') : (message || '');
+            return window.confirm(`${fallbackTitle}\n\n${fallbackMsg.replace(/<[^>]*>?/gm, '')}`);
         }
 
         // Reusable Bootstrap Confirm Dialog
@@ -1854,23 +1887,31 @@
                 const modalEl = document.getElementById('taduConfirmModal');
                 const modal = new bootstrap.Modal(modalEl);
                 
-                document.getElementById('confirm-modal-title').innerText = title;
-                document.getElementById('confirm-modal-message').innerText = message;
+                const titleEl = document.getElementById('confirm-modal-title');
+                const msgEl = document.getElementById('confirm-modal-message');
+                if (titleEl) titleEl.innerText = typeof title === 'string' ? title : 'Xác nhận thao tác';
+                if (msgEl) msgEl.innerHTML = message;
                 
                 const confirmBtn = document.getElementById('confirm-modal-btn-confirm');
                 const cancelBtn = document.getElementById('confirm-modal-btn-cancel');
                 const iconWrapper = document.getElementById('confirm-modal-icon-wrapper');
                 const iconEl = document.getElementById('confirm-modal-icon');
                 
-                confirmBtn.className = `btn btn-${type} px-4 py-2 d-inline-flex align-items-center`;
+                const cleanType = type.replace('btn-', '') || 'primary';
+                confirmBtn.className = `btn btn-${cleanType} px-4 py-2 d-inline-flex align-items-center`;
                 confirmBtn.innerHTML = `<i class="fa-solid fa-check me-1.5"></i> <span>${escapeHtml(confirmText)}</span>`;
                 cancelBtn.innerHTML = `<i class="fa-solid fa-xmark me-1.5"></i> <span>${escapeHtml(cancelText)}</span>`;
-                iconEl.className = `fa-solid ${icon} fa-2xl`;
                 
-                if (type === 'danger') {
+                let iconClass = icon;
+                if (!iconClass.includes('fa-solid') && !iconClass.includes('fa-regular')) {
+                    iconClass = `fa-solid ${iconClass}`;
+                }
+                iconEl.className = `${iconClass} fa-2xl`;
+                
+                if (cleanType === 'danger') {
                     iconWrapper.style.background = 'rgba(239, 68, 68, 0.15)';
                     iconWrapper.style.color = '#ef4444';
-                } else if (type === 'warning') {
+                } else if (cleanType === 'warning') {
                     iconWrapper.style.background = 'rgba(245, 158, 11, 0.15)';
                     iconWrapper.style.color = '#f59e0b';
                 } else {
@@ -2119,6 +2160,7 @@
                 titleEl.innerHTML = `<i class="fa-solid fa-pen-to-square text-primary"></i> <span>${escapeHtml(title)}</span>`;
                 labelEl.innerText = label;
                 inputEl.value = defaultValue;
+                confirmBtn.innerHTML = `<i class="fa-solid fa-check me-1.5"></i> <span>${escapeHtml(confirmText)}</span>`;
                 
                 const modal = new bootstrap.Modal(modalEl);
                 let result = null;
@@ -3209,22 +3251,58 @@
         // SERVER & SYSTEM INFO LOGIC (REALTIME METRICS & STATUS)
         // -------------------------------------------------------------
         let isFetchingSystemInfo = false;
-        async function fetchSystemInfo() {
-            if (isFetchingSystemInfo) return;
+
+        async function handleManualRefresh(btn) {
+            const icon = btn ? btn.querySelector('i') : null;
+            if (icon) icon.classList.add('fa-spin');
+            showToast("Đang làm mới thông tin máy chủ từ xa...", "info");
+            try {
+                isFetchingSystemInfo = false;
+                await loadSettings();
+                const ok = await fetchSystemInfo(true);
+                if (ok) {
+                    showToast("Đã cập nhật thông tin máy chủ mới nhất thành công!", "success");
+                }
+            } catch (err) {
+                showToast("Lỗi khi làm mới: " + err.message, "error");
+            } finally {
+                if (icon) {
+                    setTimeout(() => icon.classList.remove('fa-spin'), 400);
+                }
+            }
+        }
+
+        async function fetchSystemInfo(force = false) {
+            if (isFetchingSystemInfo && !force) return false;
             isFetchingSystemInfo = true;
             try {
                 const res = await fetch('/api/server/system-info');
                 const data = await res.json();
                 if (data.status === 'success') {
                     renderRealtimeMetrics(data);
+                    return true;
                 } else {
                     if (document.getElementById('sidebar-status-dot')) document.getElementById('sidebar-status-dot').className = "live-dot bg-danger";
                     if (document.getElementById('sidebar-status-text')) document.getElementById('sidebar-status-text').innerText = "Chưa Kết Nối";
+                    if (document.getElementById('card-service-status')) {
+                        document.getElementById('card-service-status').innerText = "Không Kết Nối";
+                        document.getElementById('card-service-status').className = "fs-5 fw-bold text-danger mb-1 text-truncate";
+                    }
+                    if (document.getElementById('card-service-dot')) document.getElementById('card-service-dot').className = "live-dot bg-danger";
+                    if (document.getElementById('card-service-icon')) document.getElementById('card-service-icon').className = "fa-solid fa-shield-halved text-danger";
+                    showToast(data.message || "Không thể lấy thông tin hệ thống từ VPS", "error");
+                    return false;
                 }
             } catch (err) {
                 console.error("Lỗi fetch system info:", err);
                 if (document.getElementById('sidebar-status-dot')) document.getElementById('sidebar-status-dot').className = "live-dot bg-danger";
                 if (document.getElementById('sidebar-status-text')) document.getElementById('sidebar-status-text').innerText = "Chưa Kết Nối";
+                if (document.getElementById('card-service-status')) {
+                    document.getElementById('card-service-status').innerText = "Lỗi Mạng";
+                    document.getElementById('card-service-status').className = "fs-5 fw-bold text-danger mb-1 text-truncate";
+                }
+                showToast("Lỗi kết nối tới máy chủ nội bộ: " + err.message, "error");
+                return false;
             } finally {
                 isFetchingSystemInfo = false;
             }
@@ -3381,7 +3459,14 @@
 
 
         async function handleServiceAction(action) {
-            showToast(`Đang thực thi ${action} service...`, 'info');
+            const actionNames = {
+                'start': 'Khởi động',
+                'stop': 'Tắt',
+                'restart': 'Khởi động lại',
+                'status': 'Kiểm tra trạng thái'
+            };
+            const label = actionNames[action] || action;
+            showToast(`Đang thực hiện ${label.toLowerCase()} dịch vụ AI Agent...`, 'info');
             try {
                 const res = await fetch('/api/server/service-action', {
                     method: 'POST',
@@ -3390,11 +3475,12 @@
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    showToast(`Thực thi ${action} thành công!`, 'success');
+                    showToast(`Đã thực hiện ${label.toLowerCase()} dịch vụ thành công!`, 'success');
                     if (action === 'status') {
                         showInfoModal("Kết quả trạng thái Service (Systemd Status)", data.output || "Không có dữ liệu status.");
                     }
-                    setTimeout(fetchSystemInfo, 1000);
+                    setTimeout(fetchSystemInfo, 800);
+                    setTimeout(fetchSystemInfo, 2500);
                 } else {
                     showToast(`Lỗi: ${data.message}`, 'error');
                 }
@@ -3990,7 +4076,7 @@
             }
         }
 
-        function confirmDeleteServer(serverId) {
+        async function confirmDeleteServer(serverId) {
             const server = currentServers.find(s => s.id === serverId);
             const serverName = server ? (server.name || server.server_ip) : 'máy chủ';
 
@@ -3999,32 +4085,33 @@
                 return;
             }
 
-            showConfirmModal({
+            const confirmed = await showConfirmDialog({
                 title: "Xác nhận xoá máy chủ",
                 message: `Bạn có chắc chắn muốn xoá máy chủ <strong>"${escapeHtml(serverName)}"</strong> khỏi danh sách quản lý không?`,
-                icon: "fa-solid fa-trash-can text-danger",
+                icon: "fa-trash-can",
                 confirmText: "Xoá máy chủ",
-                confirmClass: "btn-danger",
-                onConfirm: async () => {
-                    try {
-                        const res = await fetch('/api/servers/delete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: serverId })
-                        });
-                        const data = await res.json();
-                        if (data.status === 'success') {
-                            showToast(data.message || "Đã xoá máy chủ thành công!", "success");
-                            await loadSettings();
-                            fetchSystemInfo();
-                        } else {
-                            showToast("Lỗi xoá máy chủ: " + data.message, "error");
-                        }
-                    } catch (err) {
-                        showToast("Lỗi mạng: " + err.message, "error");
-                    }
-                }
+                type: "danger"
             });
+
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/api/servers/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: serverId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(data.message || "Đã xoá máy chủ thành công!", "success");
+                    await loadSettings();
+                    fetchSystemInfo();
+                } else {
+                    showToast("Lỗi xoá máy chủ: " + data.message, "error");
+                }
+            } catch (err) {
+                showToast("Lỗi mạng: " + err.message, "error");
+            }
         }
 
         async function testServerSSH(serverId) {
@@ -4118,7 +4205,7 @@
             showToast("Đang làm mới thông tin hệ thống...", "info");
             isFetchingSystemInfo = false;
             await loadSettings();
-            await fetchSystemInfo();
+            await fetchSystemInfo(true);
         }
 
         // INITIAL LOAD
@@ -4323,7 +4410,9 @@
                     <button type="button" class="btn btn-secondary px-3 py-1.5" data-bs-dismiss="modal" id="prompt-modal-btn-cancel" style="font-size: 0.8rem;">
                         <i class="fa-solid fa-xmark me-1"></i> Huỷ bỏ
                     </button>
-                    <button type="button" class="btn btn-primary px-3 py-1.5" id="prompt-modal-btn-confirm" style="font-size: 0.8rem;">
+                    <button type="button" class="btn btn-primary px-3 py-1.5 d-inline-flex align-items-center" id="prompt-modal-btn-confirm" style="font-size: 0.8rem;">
+                        <i class="fa-solid fa-check me-1.5"></i> <span>Lưu thay đổi</span>
+                    </button>
                 </div>
             </div>
         </div>
