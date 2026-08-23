@@ -1901,6 +1901,17 @@ WantedBy=default.target
 			if err != nil {
 				break
 			}
+			var resizeMsg struct {
+				Type string `json:"type"`
+				Cols int    `json:"cols"`
+				Rows int    `json:"rows"`
+			}
+			if err := json.Unmarshal(msg, &resizeMsg); err == nil && resizeMsg.Type == "resize" {
+				if resizeMsg.Cols > 0 && resizeMsg.Rows > 0 {
+					_ = session.WindowChange(resizeMsg.Rows, resizeMsg.Cols)
+				}
+				continue
+			}
 			if stdin != nil {
 				_, _ = stdin.Write(msg)
 			}
