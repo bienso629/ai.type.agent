@@ -1293,8 +1293,35 @@ func main() {
 
 		sendStep(fmt.Sprintf("Kết nối SSH thành công tới %s (SSH Port: %d | API Service Port: %d)!", serverIP, sshPort, apiPort))
 
+		// Check if user has root or sudo privileges
+		hasSudo := false
+		if sshUser == "root" {
+			hasSudo = true
+		} else {
+			sudoTest := strings.TrimSpace(runSSHCmdWithSudo(client, sshPass, "id -u"))
+			if sudoTest == "0" {
+				hasSudo = true
+			}
+		}
+
+		userHome := strings.TrimSpace(runSSHCmd(client, "echo $HOME"))
+		if userHome == "" || userHome == "/" {
+			userHome = fmt.Sprintf("/home/%s", sshUser)
+		}
+
+		if !hasSudo {
+			sendStep(fmt.Sprintf("[INFO] Tài khoản '%s' không có quyền sudo. Tự động chuyển sang chế độ User-Space Deployment.", sshUser))
+			if strings.HasPrefix(remoteDir, "/opt") || strings.HasPrefix(remoteDir, "/var") || strings.HasPrefix(remoteDir, "/etc") {
+				remoteDir = fmt.Sprintf("%s/ai_agent", userHome)
+			}
+		}
+
 		sendStep(fmt.Sprintf("Tạo thư mục làm việc %s...", remoteDir))
-		runSSHCmdWithSudo(client, sshPass, fmt.Sprintf("mkdir -p %s && chown -R %s %s 2>/dev/null || true", remoteDir, sshUser, remoteDir))
+		if hasSudo {
+			runSSHCmdWithSudo(client, sshPass, fmt.Sprintf("mkdir -p %s && chown -R %s %s 2>/dev/null || true", remoteDir, sshUser, remoteDir))
+		} else {
+			runSSHCmd(client, fmt.Sprintf("mkdir -p %s", remoteDir))
+		}
 
 		// Detect remote VPS CPU architecture (x86_64 vs arm64)
 		remoteArch := strings.TrimSpace(runSSHCmd(client, "uname -m"))
@@ -1345,11 +1372,15 @@ func main() {
 		sendStep(fmt.Sprintf("Tìm thấy Standalone Go Binary (%.1f MB) tại: %s", float64(len(binData))/1024/1024, foundPath))
 
 		sendStep(fmt.Sprintf("Tạm dừng service cũ và giải phóng port %d...", apiPort))
-		runSSHCmdWithSudo(client, sshPass, fmt.Sprintf("systemctl stop ai-agent.service 2>/dev/null || true; fuser -k %d/tcp 2>/dev/null || true; pkill -f ai_agent_service 2>/dev/null || true", apiPort))
+		if hasSudo {
+			runSSHCmdWithSudo(client, sshPass, fmt.Sprintf("systemctl stop ai-agent.service 2>/dev/null || true; fuser -k %d/tcp 2>/dev/null || true; pkill -f ai_agent_service 2>/dev/null || true", apiPort))
+		} else {
+			runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -f ai_agent_service 2>/dev/null || true", apiPort))
+		}
 		time.Sleep(1 * time.Second)
 
 		sendStep("Đang tải Standalone Go Binary lên VPS qua kênh truyền bảo mật SSH...")
-		// Upload binary via stdin stream into /tmp first (100% accessible to any user without permission issues)
+		// Upload binary via stdin stream into user-accessible directory
 		session, err := client.NewSession()
 		if err != nil {
 			sendStep(fmt.Sprintf("[ERROR] Không thể mở SSH session: %v", err))
@@ -1387,17 +1418,19 @@ func main() {
 		session.Close()
 
 		sendStep("Đã đưa Standalone Binary lên máy chủ và kích hoạt quyền thực thi (chmod +x)...")
-		moveCmd := fmt.Sprintf("mkdir -p %s && mv -f %s %s && chmod 755 %s && chown -R %s %s 2>/dev/null && restorecon -v %s 2>/dev/null && rm -f %s/ai_agent_service.py 2>/dev/null || true",
-			remoteDir,
-			tmpRemotePath, targetRemotePath,
-			targetRemotePath,
-			sshUser, remoteDir,
-			targetRemotePath,
-			remoteDir)
-		runSSHCmdWithSudo(client, sshPass, moveCmd)
+		if hasSudo {
+			moveCmd := fmt.Sprintf("mkdir -p %s && mv -f %s %s && chmod 755 %s && chown -R %s %s 2>/dev/null && restorecon -v %s 2>/dev/null && rm -f %s/ai_agent_service.py 2>/dev/null || true",
+				remoteDir, tmpRemotePath, targetRemotePath, targetRemotePath, sshUser, remoteDir, targetRemotePath, remoteDir)
+			runSSHCmdWithSudo(client, sshPass, moveCmd)
+		} else {
+			moveCmd := fmt.Sprintf("mkdir -p %s && mv -f %s %s && chmod 755 %s && rm -f %s/ai_agent_service.py 2>/dev/null || true",
+				remoteDir, tmpRemotePath, targetRemotePath, targetRemotePath, remoteDir)
+			runSSHCmd(client, moveCmd)
+		}
 
-		sendStep("Đang cấu hình Systemd Daemon (ai-agent.service)...")
-		serviceContent := fmt.Sprintf(`[Unit]
+		if hasSudo {
+			sendStep("Đang cấu hình Systemd Daemon (ai-agent.service)...")
+			serviceContent := fmt.Sprintf(`[Unit]
 Description=Tadu Cloud AI Agent Service (Standalone Go Binary)
 After=network.target
 
@@ -1421,42 +1454,70 @@ RestartSec=3
 WantedBy=multi-user.target
 `, remoteDir, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, apiPort, apiPort, targetRemotePath)
 
-		serviceCmd := fmt.Sprintf("cat << 'EOF' > /etc/systemd/system/ai-agent.service\n%s\nEOF", serviceContent)
-		runSSHCmdWithSudo(client, sshPass, serviceCmd)
+			serviceCmd := fmt.Sprintf("cat << 'EOF' > /etc/systemd/system/ai-agent.service\n%s\nEOF", serviceContent)
+			runSSHCmdWithSudo(client, sshPass, serviceCmd)
 
-		sendStep("Khởi động lại Systemd Daemon...")
-		runSSHCmdWithSudo(client, sshPass, "systemctl daemon-reload && systemctl enable ai-agent.service && systemctl restart ai-agent.service")
-		time.Sleep(2 * time.Second)
-
-		statusOut := strings.TrimSpace(runSSHCmdWithSudo(client, sshPass, "systemctl is-active ai-agent.service 2>/dev/null || true"))
-		healthCheck := strings.TrimSpace(runSSHCmd(client, fmt.Sprintf("curl -s -m 3 http://127.0.0.1:%d/health 2>/dev/null || wget -qO- --timeout=3 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort, apiPort)))
-
-		if statusOut == "active" || strings.Contains(healthCheck, "healthy") {
-			sendStep(fmt.Sprintf("[SUCCESS] AI Agent Standalone Binary (Go Edition) đã được triển khai và khởi động THÀNH CÔNG trên VPS (Cổng API: %d)!", apiPort))
-		} else {
-			// Resilient fallback: Start as background process with nohup if systemd fails
-			sendStep(fmt.Sprintf("[WARNING] Systemd trạng thái: %s. Đang kích hoạt chế độ chạy nền dự phòng (Background Daemon)...", statusOut))
-			runSSHCmdWithSudo(client, sshPass, fmt.Sprintf("nohup env AGENT_PORT=%d PORT=%d PROXY_API_KEY=%q OPENROUTER_API_KEY=%q PROXY_BASE_URL=%q OPENROUTER_BASE_URL=%q AI_MODEL=%q SECRET_TOKEN=%q AGENT_SECRET_TOKEN=%q %s > %s/agent.log 2>&1 &",
-				apiPort, apiPort, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, targetRemotePath, remoteDir))
+			sendStep("Khởi động lại Systemd Daemon...")
+			runSSHCmdWithSudo(client, sshPass, "systemctl daemon-reload && systemctl enable ai-agent.service && systemctl restart ai-agent.service")
 			time.Sleep(2 * time.Second)
 
-			healthCheckAfter := strings.TrimSpace(runSSHCmd(client, fmt.Sprintf("curl -s -m 3 http://127.0.0.1:%d/health 2>/dev/null || wget -qO- --timeout=3 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort, apiPort)))
-			if strings.Contains(healthCheckAfter, "healthy") {
-				sendStep(fmt.Sprintf("[SUCCESS] AI Agent Service đã khởi chạy thành công qua chế độ Daemon dự phòng (Cổng API: %d)!", apiPort))
-			} else {
-				sendStep(fmt.Sprintf("[ERROR] Không thể khởi động Service (Trạng thái: %s)", statusOut))
-				statusDetail := runSSHCmdWithSudo(client, sshPass, "systemctl status ai-agent.service -l --no-pager 2>&1 || true")
-				if statusDetail != "" {
-					sendStep(fmt.Sprintf("Chi tiết Systemd Status:\n%s", statusDetail))
-				}
-				journalLog := runSSHCmdWithSudo(client, sshPass, "journalctl -u ai-agent.service -n 15 --no-pager 2>&1 || true")
-				if journalLog != "" {
-					sendStep(fmt.Sprintf("Chi tiết Log Systemd:\n%s", journalLog))
-				}
-				agentLog := runSSHCmdWithSudo(client, sshPass, fmt.Sprintf("tail -n 15 %s/agent.log 2>&1 || true", remoteDir))
-				if agentLog != "" {
-					sendStep(fmt.Sprintf("Chi tiết Log Tiến Trình (agent.log):\n%s", agentLog))
-				}
+			statusOut := strings.TrimSpace(runSSHCmdWithSudo(client, sshPass, "systemctl is-active ai-agent.service 2>/dev/null || true"))
+			healthCheck := strings.TrimSpace(runSSHCmd(client, fmt.Sprintf("curl -s -m 3 http://127.0.0.1:%d/health 2>/dev/null || wget -qO- --timeout=3 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort, apiPort)))
+
+			if statusOut == "active" || strings.Contains(healthCheck, "healthy") {
+				sendStep(fmt.Sprintf("[SUCCESS] AI Agent Standalone Binary (Go Edition) đã được triển khai và khởi động THÀNH CÔNG trên VPS (Cổng API: %d)!", apiPort))
+				return
+			}
+		}
+
+		// User-space Daemon mode (for non-sudo or fallback)
+		sendStep("Khởi động Service dưới quyền người dùng (User-Space Background Daemon)...")
+		runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -f %s 2>/dev/null || true", apiPort, targetRemotePath))
+		time.Sleep(1 * time.Second)
+
+		// Try user-level systemd
+		userSystemdDir := fmt.Sprintf("%s/.config/systemd/user", userHome)
+		runSSHCmd(client, fmt.Sprintf("mkdir -p %s", userSystemdDir))
+		userServiceContent := fmt.Sprintf(`[Unit]
+Description=Tadu Cloud AI Agent Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%s
+Environment="PROXY_API_KEY=%s"
+Environment="OPENROUTER_API_KEY=%s"
+Environment="PROXY_BASE_URL=%s"
+Environment="OPENROUTER_BASE_URL=%s"
+Environment="AI_MODEL=%s"
+Environment="SECRET_TOKEN=%s"
+Environment="AGENT_SECRET_TOKEN=%s"
+Environment="AGENT_PORT=%d"
+Environment="PORT=%d"
+ExecStart=%s
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+`, remoteDir, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, apiPort, apiPort, targetRemotePath)
+		runSSHCmd(client, fmt.Sprintf("cat << 'EOF' > %s/ai-agent.service\n%s\nEOF", userSystemdDir, userServiceContent))
+		runSSHCmd(client, "systemctl --user daemon-reload 2>/dev/null && systemctl --user enable ai-agent.service 2>/dev/null && systemctl --user restart ai-agent.service 2>/dev/null || true")
+
+		// Start with nohup daemon as guarantee
+		nohupCmd := fmt.Sprintf("nohup env AGENT_PORT=%d PORT=%d PROXY_API_KEY=%q OPENROUTER_API_KEY=%q PROXY_BASE_URL=%q OPENROUTER_BASE_URL=%q AI_MODEL=%q SECRET_TOKEN=%q AGENT_SECRET_TOKEN=%q %s > %s/agent.log 2>&1 &",
+			apiPort, apiPort, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, targetRemotePath, remoteDir)
+		runSSHCmd(client, nohupCmd)
+		time.Sleep(2 * time.Second)
+
+		healthCheck := strings.TrimSpace(runSSHCmd(client, fmt.Sprintf("curl -s -m 3 http://127.0.0.1:%d/health 2>/dev/null || wget -qO- --timeout=3 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort, apiPort)))
+		if strings.Contains(healthCheck, "healthy") {
+			sendStep(fmt.Sprintf("[SUCCESS] AI Agent Standalone Binary đã khởi động và hoạt động THÀNH CÔNG trên VPS (Cổng API: %d, Thư mục: %s)!", apiPort, remoteDir))
+		} else {
+			sendStep("[ERROR] Không thể khởi động Service.")
+			agentLog := runSSHCmd(client, fmt.Sprintf("tail -n 20 %s/agent.log 2>&1 || true", remoteDir))
+			if agentLog != "" {
+				sendStep(fmt.Sprintf("Chi tiết Log Tiến Trình (agent.log):\n%s", agentLog))
 			}
 		}
 	})
