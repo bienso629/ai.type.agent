@@ -1295,7 +1295,7 @@ func main() {
 			"free -m 2>/dev/null; echo '---'; " +
 			"df -h / 2>/dev/null; echo '---'; " +
 			"ps -e | wc -l 2>/dev/null; echo '---'; " +
-			fmt.Sprintf("(if systemctl is-active --quiet ai-agent.service 2>/dev/null || systemctl --user is-active --quiet ai-agent.service 2>/dev/null || pidof ai_agent_service >/dev/null || pgrep -x ai_agent_service >/dev/null || (curl -s -m 1 http://127.0.0.1:%d/health 2>/dev/null | grep -q 'healthy'); then echo 'active'; else echo 'inactive'; fi)", apiPort) + "; echo '---'; " +
+			fmt.Sprintf("(if systemctl is-active --quiet ai-agent.service 2>/dev/null || systemctl --user is-active --quiet ai-agent.service 2>/dev/null || pidof ai_agent_service 2>/dev/null || pidof ai_agent_servic 2>/dev/null || pgrep -x ai_agent_service 2>/dev/null || pgrep -x ai_agent_servic 2>/dev/null || (ss -tlnp 2>/dev/null | grep -E ':(%d)\\b') || (curl -s -m 1 http://127.0.0.1:%d/health 2>/dev/null | grep -q 'healthy'); then echo 'active'; else echo 'inactive'; fi)", apiPort, apiPort) + "; echo '---'; " +
 			"cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
 
 		outBytes, _ := session.CombinedOutput(cmd)
@@ -1405,7 +1405,7 @@ func main() {
 		case "start":
 			runSSHCmdWithSudo(client, sshPass, "systemctl start ai-agent.service 2>/dev/null || systemctl --user start ai-agent.service 2>/dev/null || true")
 			time.Sleep(1 * time.Second)
-			chk := runSSHCmd(client, fmt.Sprintf("pgrep -f %s 2>/dev/null || true", targetRemotePath))
+			chk := runSSHCmd(client, "pidof ai_agent_service 2>/dev/null || pidof ai_agent_servic 2>/dev/null || pgrep -x ai_agent_service 2>/dev/null || pgrep -x ai_agent_servic 2>/dev/null || true")
 			if chk == "" {
 				nohupCmd := fmt.Sprintf("nohup env AGENT_PORT=%d PORT=%d PROXY_API_KEY=%q OPENROUTER_API_KEY=%q PROXY_BASE_URL=%q OPENROUTER_BASE_URL=%q AI_MODEL=%q SECRET_TOKEN=%q AGENT_SECRET_TOKEN=%q %s > %s/agent.log 2>&1 &",
 					apiPort, apiPort, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, targetRemotePath, remoteDir)
@@ -1415,15 +1415,15 @@ func main() {
 
 		case "stop":
 			runSSHCmdWithSudo(client, sshPass, "systemctl stop ai-agent.service 2>/dev/null || systemctl --user stop ai-agent.service 2>/dev/null || true")
-			runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -f %s 2>/dev/null || true", apiPort, targetRemotePath))
+			runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -x ai_agent_service 2>/dev/null || pkill -x ai_agent_servic 2>/dev/null || true", apiPort))
 			out = "Service đã được dừng thành công!"
 
 		case "restart":
 			runSSHCmdWithSudo(client, sshPass, "systemctl restart ai-agent.service 2>/dev/null || systemctl --user restart ai-agent.service 2>/dev/null || true")
 			time.Sleep(1 * time.Second)
-			chk := runSSHCmd(client, fmt.Sprintf("pgrep -f %s 2>/dev/null || true", targetRemotePath))
+			chk := runSSHCmd(client, "pidof ai_agent_service 2>/dev/null || pidof ai_agent_servic 2>/dev/null || pgrep -x ai_agent_service 2>/dev/null || pgrep -x ai_agent_servic 2>/dev/null || true")
 			if chk == "" {
-				runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -f %s 2>/dev/null || true", apiPort, targetRemotePath))
+				runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -x ai_agent_service 2>/dev/null || pkill -x ai_agent_servic 2>/dev/null || true", apiPort))
 				nohupCmd := fmt.Sprintf("nohup env AGENT_PORT=%d PORT=%d PROXY_API_KEY=%q OPENROUTER_API_KEY=%q PROXY_BASE_URL=%q OPENROUTER_BASE_URL=%q AI_MODEL=%q SECRET_TOKEN=%q AGENT_SECRET_TOKEN=%q %s > %s/agent.log 2>&1 &",
 					apiPort, apiPort, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, targetRemotePath, remoteDir)
 				runSSHCmd(client, nohupCmd)
@@ -1431,7 +1431,7 @@ func main() {
 			out = "Service đã được khởi động lại thành công!"
 
 		case "status":
-			statusDetail := runSSHCmd(client, "systemctl status ai-agent.service 2>/dev/null || systemctl --user status ai-agent.service 2>/dev/null || ps aux | grep [a]i_agent_service 2>/dev/null || true")
+			statusDetail := runSSHCmd(client, "systemctl status ai-agent.service 2>/dev/null || systemctl --user status ai-agent.service 2>/dev/null || ps aux | grep -E '[a]i_agent_service|[a]i_agent_servic' 2>/dev/null || true")
 			healthCheck := runSSHCmd(client, fmt.Sprintf("curl -s -m 2 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort))
 			agentLog := runSSHCmd(client, fmt.Sprintf("tail -n 15 %s/agent.log 2>/dev/null || true", remoteDir))
 			out = fmt.Sprintf("--- HEALTH CHECK (Port %d) ---\n%s\n\n--- PROCESS STATUS ---\n%s\n\n--- AGENT LOG ---\n%s", apiPort, healthCheck, statusDetail, agentLog)

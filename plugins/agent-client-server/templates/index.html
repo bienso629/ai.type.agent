@@ -3802,8 +3802,9 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     showToast(data.message || "Đã chuyển đổi máy chủ thành công!", "success");
+                    isFetchingSystemInfo = false;
                     await loadSettings();
-                    fetchSystemInfo();
+                    await fetchSystemInfo();
                 } else {
                     showToast("Lỗi chuyển máy chủ: " + data.message, "error");
                 }
@@ -4032,10 +4033,11 @@
             }
         }
 
-        function refreshAllStatus() {
+        async function refreshAllStatus() {
             showToast("Đang làm mới thông tin hệ thống...", "info");
-            loadSettings();
-            fetchSystemInfo();
+            isFetchingSystemInfo = false;
+            await loadSettings();
+            await fetchSystemInfo();
         }
 
         // INITIAL LOAD
