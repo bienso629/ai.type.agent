@@ -1295,7 +1295,7 @@ func main() {
 			"free -m 2>/dev/null; echo '---'; " +
 			"df -h / 2>/dev/null; echo '---'; " +
 			"ps -e | wc -l 2>/dev/null; echo '---'; " +
-			fmt.Sprintf("(if systemctl is-active --quiet ai-agent.service 2>/dev/null || systemctl --user is-active --quiet ai-agent.service 2>/dev/null || pgrep -f ai_agent_service >/dev/null || (curl -s -m 1 http://127.0.0.1:%d/health 2>/dev/null | grep -q 'healthy'); then echo 'active'; else echo 'inactive'; fi)", apiPort) + "; echo '---'; " +
+			fmt.Sprintf("(if systemctl is-active --quiet ai-agent.service 2>/dev/null || systemctl --user is-active --quiet ai-agent.service 2>/dev/null || pidof ai_agent_service >/dev/null || pgrep -x ai_agent_service >/dev/null || (curl -s -m 1 http://127.0.0.1:%d/health 2>/dev/null | grep -q 'healthy'); then echo 'active'; else echo 'inactive'; fi)", apiPort) + "; echo '---'; " +
 			"cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
 
 		outBytes, _ := session.CombinedOutput(cmd)
