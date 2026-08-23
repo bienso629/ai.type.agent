@@ -695,13 +695,24 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	exePath, _ := os.Executable()
+	exeDir := filepath.Dir(exePath)
+
 	templateDir := "templates"
 	if _, err := os.Stat(templateDir); os.IsNotExist(err) {
-		templateDir = filepath.Join("..", "templates")
+		if _, err := os.Stat(filepath.Join(exeDir, "templates")); err == nil {
+			templateDir = filepath.Join(exeDir, "templates")
+		} else if _, err := os.Stat(filepath.Join("..", "templates")); err == nil {
+			templateDir = filepath.Join("..", "templates")
+		}
 	}
 	logoFile := "logo.jpg"
 	if _, err := os.Stat(logoFile); os.IsNotExist(err) {
-		logoFile = filepath.Join("..", "logo.jpg")
+		if _, err := os.Stat(filepath.Join(exeDir, "logo.jpg")); err == nil {
+			logoFile = filepath.Join(exeDir, "logo.jpg")
+		} else if _, err := os.Stat(filepath.Join("..", "logo.jpg")); err == nil {
+			logoFile = filepath.Join("..", "logo.jpg")
+		}
 	}
 
 	// 1. Static Web UI & Assets

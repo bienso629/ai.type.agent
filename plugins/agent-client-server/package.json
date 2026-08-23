@@ -51,6 +51,14 @@
         "to": "ai_agent_service"
       },
       {
+        "from": "dist/ai_agent_service_linux_amd64",
+        "to": "ai_agent_service_linux_amd64"
+      },
+      {
+        "from": "dist/ai_agent_service_linux_arm64",
+        "to": "ai_agent_service_linux_arm64"
+      },
+      {
         "from": "templates",
         "to": "templates"
       },
