@@ -1106,12 +1106,13 @@ func main() {
 		}
 		defer session.Close()
 
+		apiPort := getIntVal(cfg["api_port"], 8000)
 		cmd := "cat /proc/uptime 2>/dev/null; echo '---'; " +
 			"cat /proc/loadavg 2>/dev/null; echo '---'; " +
 			"free -m 2>/dev/null; echo '---'; " +
 			"df -h / 2>/dev/null; echo '---'; " +
 			"ps -e | wc -l 2>/dev/null; echo '---'; " +
-			"systemctl is-active ai-agent.service 2>/dev/null || echo 'inactive'; echo '---'; " +
+			fmt.Sprintf("(systemctl is-active ai-agent.service 2>/dev/null || systemctl --user is-active ai-agent.service 2>/dev/null || (pgrep -f ai_agent_service >/dev/null && echo 'active') || (curl -s -m 1 http://127.0.0.1:%d/health | grep -q 'healthy' && echo 'active') || echo 'inactive')", apiPort) + "; echo '---'; " +
 			"cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
 
 		outBytes, _ := session.CombinedOutput(cmd)
@@ -1142,6 +1143,9 @@ func main() {
 		}
 		if len(parts) > 5 {
 			serviceStatus = strings.TrimSpace(parts[5])
+			if strings.Contains(serviceStatus, "active") {
+				serviceStatus = "active"
+			}
 		}
 		if len(parts) > 6 {
 			osName = strings.TrimSpace(parts[6])
@@ -1161,7 +1165,7 @@ func main() {
 			"service_status": serviceStatus,
 			"os":             osName,
 			"server_ip":      cfg["server_ip"],
-			"api_port":       cfg["api_port"],
+			"api_port":       apiPort,
 			"ai_model":       cfg["ai_model"],
 			"last_sync":      time.Now().Format("15:04:05"),
 		}
@@ -1198,17 +1202,60 @@ func main() {
 			return
 		}
 		defer client.Close()
-		session, _ := client.NewSession()
-		defer session.Close()
-		cmd := fmt.Sprintf("sudo systemctl %s ai-agent.service", body.Action)
-		if body.Action == "status" {
-			cmd = "systemctl status ai-agent.service"
+
+		sshPass, _ := cfg["ssh_pass"].(string)
+		remoteDir, _ := cfg["remote_work_dir"].(string)
+		if remoteDir == "" {
+			remoteDir = "/opt/ai_agent"
 		}
-		out, _ := session.CombinedOutput(cmd)
+		apiPort := getIntVal(cfg["api_port"], 8000)
+		targetRemotePath := fmt.Sprintf("%s/ai_agent_service", remoteDir)
+		proxyAPIKey, _ := cfg["proxy_api_key"].(string)
+		proxyBaseURL, _ := cfg["proxy_base_url"].(string)
+		aiModel, _ := cfg["ai_model"].(string)
+		secretToken, _ := cfg["secret_token"].(string)
+
+		var out string
+		switch body.Action {
+		case "start":
+			runSSHCmdWithSudo(client, sshPass, "systemctl start ai-agent.service 2>/dev/null || systemctl --user start ai-agent.service 2>/dev/null || true")
+			time.Sleep(1 * time.Second)
+			chk := runSSHCmd(client, fmt.Sprintf("pgrep -f %s 2>/dev/null || true", targetRemotePath))
+			if chk == "" {
+				nohupCmd := fmt.Sprintf("nohup env AGENT_PORT=%d PORT=%d PROXY_API_KEY=%q OPENROUTER_API_KEY=%q PROXY_BASE_URL=%q OPENROUTER_BASE_URL=%q AI_MODEL=%q SECRET_TOKEN=%q AGENT_SECRET_TOKEN=%q %s > %s/agent.log 2>&1 &",
+					apiPort, apiPort, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, targetRemotePath, remoteDir)
+				runSSHCmd(client, nohupCmd)
+			}
+			out = "Service đã được khởi động!"
+
+		case "stop":
+			runSSHCmdWithSudo(client, sshPass, "systemctl stop ai-agent.service 2>/dev/null || systemctl --user stop ai-agent.service 2>/dev/null || true")
+			runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -f %s 2>/dev/null || true", apiPort, targetRemotePath))
+			out = "Service đã được dừng thành công!"
+
+		case "restart":
+			runSSHCmdWithSudo(client, sshPass, "systemctl restart ai-agent.service 2>/dev/null || systemctl --user restart ai-agent.service 2>/dev/null || true")
+			time.Sleep(1 * time.Second)
+			chk := runSSHCmd(client, fmt.Sprintf("pgrep -f %s 2>/dev/null || true", targetRemotePath))
+			if chk == "" {
+				runSSHCmd(client, fmt.Sprintf("fuser -k %d/tcp 2>/dev/null || pkill -f %s 2>/dev/null || true", apiPort, targetRemotePath))
+				nohupCmd := fmt.Sprintf("nohup env AGENT_PORT=%d PORT=%d PROXY_API_KEY=%q OPENROUTER_API_KEY=%q PROXY_BASE_URL=%q OPENROUTER_BASE_URL=%q AI_MODEL=%q SECRET_TOKEN=%q AGENT_SECRET_TOKEN=%q %s > %s/agent.log 2>&1 &",
+					apiPort, apiPort, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, targetRemotePath, remoteDir)
+				runSSHCmd(client, nohupCmd)
+			}
+			out = "Service đã được khởi động lại thành công!"
+
+		case "status":
+			statusDetail := runSSHCmd(client, "systemctl status ai-agent.service 2>/dev/null || systemctl --user status ai-agent.service 2>/dev/null || ps aux | grep [a]i_agent_service 2>/dev/null || true")
+			healthCheck := runSSHCmd(client, fmt.Sprintf("curl -s -m 2 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort))
+			agentLog := runSSHCmd(client, fmt.Sprintf("tail -n 15 %s/agent.log 2>/dev/null || true", remoteDir))
+			out = fmt.Sprintf("--- HEALTH CHECK (Port %d) ---\n%s\n\n--- PROCESS STATUS ---\n%s\n\n--- AGENT LOG ---\n%s", apiPort, healthCheck, statusDetail, agentLog)
+		}
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "success",
 			"action": body.Action,
-			"output": string(out),
+			"output": out,
 		})
 	})
 
@@ -1225,13 +1272,15 @@ func main() {
 			return
 		}
 		defer client.Close()
-		session, _ := client.NewSession()
-		defer session.Close()
-		cmd := fmt.Sprintf("journalctl -u ai-agent.service -n %s --no-pager", lines)
-		out, _ := session.CombinedOutput(cmd)
+		remoteDir, _ := cfg["remote_work_dir"].(string)
+		if remoteDir == "" {
+			remoteDir = "/opt/ai_agent"
+		}
+		cmd := fmt.Sprintf("journalctl -u ai-agent.service -n %s --no-pager 2>/dev/null || tail -n %s %s/agent.log 2>/dev/null || true", lines, lines, remoteDir)
+		out := runSSHCmd(client, cmd)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "success",
-			"logs":   string(out),
+			"logs":   out,
 		})
 	})
 
