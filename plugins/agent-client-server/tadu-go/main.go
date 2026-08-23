@@ -2220,10 +2220,15 @@ WantedBy=default.target
 			}
 		}
 
-		if fullReply != "" {
+		if fullReply != "" || len(executedTools) > 0 {
 			encReply := encryptValue(fullReply)
+			var encTools string
+			if len(executedTools) > 0 {
+				b, _ := json.Marshal(executedTools)
+				encTools = encryptValue(string(b))
+			}
 			dbMutex.Lock()
-			_, _ = db.Exec("INSERT INTO chat_messages (session_id, role, content, model) VALUES (?, 'assistant', ?, ?)", req.SessionID, encReply, model)
+			_, _ = db.Exec("INSERT INTO chat_messages (session_id, role, content, tool_calls_json, model) VALUES (?, 'assistant', ?, ?, ?)", req.SessionID, encReply, encTools, model)
 			dbMutex.Unlock()
 		}
 
