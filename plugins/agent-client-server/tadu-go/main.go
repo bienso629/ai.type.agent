@@ -1829,6 +1829,90 @@ WantedBy=default.target
 		_ = session.Wait()
 	})
 
+	// Remote File Upload API: POST /api/fs/upload (multipart/form-data)
+	mux.HandleFunc("/api/fs/upload", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Max 500MB upload
+		if err := r.ParseMultipartForm(500 << 20); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Lỗi đọc file upload: " + err.Error()})
+			return
+		}
+
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Không tìm thấy file: " + err.Error()})
+			return
+		}
+		defer file.Close()
+
+		targetDir := r.FormValue("target_dir")
+		cfg := loadConfig()
+		sshUser, _ := cfg["ssh_user"].(string)
+		if sshUser == "" {
+			sshUser = "admin"
+		}
+		if targetDir == "" {
+			if sshUser == "root" {
+				targetDir = "/opt/ai_agent/uploads"
+			} else {
+				targetDir = fmt.Sprintf("/home/%s/ai_agent/uploads", sshUser)
+			}
+		}
+
+		client, err := getSSHClient(cfg)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Lỗi kết nối SSH: " + err.Error()})
+			return
+		}
+		defer client.Close()
+
+		// Ensure target directory exists on VPS
+		_ = runSSHCmd(client, fmt.Sprintf("mkdir -p %q", targetDir))
+
+		remoteFilePath := filepath.Join(targetDir, header.Filename)
+
+		// Stream file directly to VPS via SSH session stdin -> cat > remoteFilePath
+		session, err := client.NewSession()
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Lỗi tạo SSH session: " + err.Error()})
+			return
+		}
+		defer session.Close()
+
+		stdin, err := session.StdinPipe()
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Lỗi SSH StdinPipe: " + err.Error()})
+			return
+		}
+
+		if err := session.Start(fmt.Sprintf("cat > %q", remoteFilePath)); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Lỗi ghi file trên máy chủ: " + err.Error()})
+			return
+		}
+
+		written, err := io.Copy(stdin, file)
+		_ = stdin.Close()
+		_ = session.Wait()
+
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Lỗi truyền dữ liệu: " + err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":      "success",
+			"filename":    header.Filename,
+			"remote_path": remoteFilePath,
+			"size":        written,
+			"size_str":    formatFileSize(written),
+		})
+	})
+
 	// 10. Live SSH Terminal WebSocket: /ws/terminal
 	mux.HandleFunc("/ws/terminal", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)

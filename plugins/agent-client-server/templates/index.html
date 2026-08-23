@@ -892,7 +892,7 @@
 
                 <form id="chat-form" onsubmit="handleChatSubmit(event)" class="w-100">
                     <!-- Hidden file input for Attachments -->
-                    <input type="file" id="file-picker" multiple accept="image/*,.txt,.log,.json,.yaml,.yml,.php,.py,.js,.ts,.html,.css,.sql,.sh,.conf,.env" style="display: none;" onchange="handleFileSelect(event)">
+                    <input type="file" id="file-picker" multiple accept="*" style="display: none;" onchange="handleFileSelect(event)">
                     
                     <div class="chat-input-box p-3 d-flex flex-column" style="gap: 8px;">
                         <!-- Working Directory Scope Badge -->
@@ -1682,23 +1682,51 @@
             }
         }
 
+        function formatBytes(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
         async function handleFileSelect(e) {
             const files = Array.from(e.target.files);
             if (!files.length) return;
             for (const file of files) {
                 try {
-                    if (file.type.startsWith('image/')) {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    const isArchive = ['zip', 'tar', 'gz', 'zst', 'bz2', 'xz', 'rar', '7z', 'iso'].includes(ext);
+                    const isImg = file.type.startsWith('image/');
+                    
+                    if (isImg) {
                         const base64 = await readFileAsDataUrl(file);
                         selectedFiles.push({
+                            fileObj: file,
                             name: file.name,
                             content: base64,
                             type: 'image',
                             size: file.size,
                             previewUrl: base64
                         });
-                    } else {
-                        const text = await readFileAsText(file);
+                    } else if (isArchive) {
                         selectedFiles.push({
+                            fileObj: file,
+                            name: file.name,
+                            content: null,
+                            type: 'archive',
+                            size: file.size
+                        });
+                    } else {
+                        // Text or code file (read preview if < 300KB)
+                        let text = "";
+                        if (file.size < 300000) {
+                            try {
+                                text = await readFileAsText(file);
+                            } catch (_) {}
+                        }
+                        selectedFiles.push({
+                            fileObj: file,
                             name: file.name,
                             content: text,
                             type: 'file',
@@ -1706,7 +1734,7 @@
                         });
                     }
                 } catch (err) {
-                    showToast(`Không thể đọc file ${file.name}: ${err.message}`, 'error');
+                    showToast(`Không thể chọn file ${file.name}: ${err.message}`, 'error');
                 }
             }
             e.target.value = '';
@@ -1741,13 +1769,21 @@
             list.classList.remove('d-none');
             list.innerHTML = selectedFiles.map((f, idx) => {
                 const isImg = f.type === 'image' || (f.content && f.content.startsWith('data:image'));
+                const isArchive = f.type === 'archive' || ['zip', 'tar', 'gz', 'zst', 'bz2', 'xz', 'rar', '7z', 'iso'].includes(f.name.split('.').pop().toLowerCase());
+                const sizeStr = formatBytes(f.size);
+
                 return `
                     <div class="badge text-bg-dark border border-secondary px-2.5 py-1.5 rounded-1 d-flex align-items-center gap-2" style="font-size: 0.75rem;">
                         ${isImg 
                             ? `<img src="${f.previewUrl || f.content}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; cursor: pointer;" onclick="openImageLightbox('${f.previewUrl || f.content}', '${escapeHtml(f.name)}')" title="Xem ảnh to" />` 
-                            : `<i class="fa-solid fa-file-code text-info"></i>`
+                            : (isArchive 
+                                ? `<i class="fa-solid fa-file-zipper text-warning" style="font-size: 0.95rem;"></i>` 
+                                : `<i class="fa-solid fa-file-code text-info" style="font-size: 0.95rem;"></i>`)
                         }
-                        <span class="font-mono text-truncate" style="max-width: 160px;">${escapeHtml(f.name)}</span>
+                        <div class="d-flex flex-column text-start overflow-hidden">
+                            <span class="font-mono text-truncate text-light fw-medium" style="max-width: 160px;">${escapeHtml(f.name)}</span>
+                            <small class="text-secondary opacity-75 font-mono" style="font-size: 0.65rem;">${sizeStr}</small>
+                        </div>
                         <button type="button" onclick="removeAttachment(${idx})" class="btn btn-link text-danger p-0 text-decoration-none ms-1" style="font-size: 0.75rem;" title="Gỡ file">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
@@ -2595,14 +2631,77 @@
             let executedTools = [];
 
             try {
+                // Upload attached files to VPS if needed
+                let uploadedAttachments = [];
+                let remoteFilesInfo = [];
+
+                if (filesToSend.length > 0) {
+                    if (statusEl) {
+                        const txt = statusEl.querySelector('.status-text');
+                        if (txt) txt.innerText = "Đang tải file lên VPS...";
+                    }
+                    for (const f of filesToSend) {
+                        if (f.fileObj) {
+                            try {
+                                const formData = new FormData();
+                                formData.append('file', f.fileObj);
+                                if (currentScopeToSend) {
+                                    formData.append('target_dir', currentScopeToSend);
+                                }
+                                const upRes = await fetch('/api/fs/upload', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+                                const upData = await upRes.json();
+                                if (upData.status === 'success') {
+                                    uploadedAttachments.push({
+                                        name: f.name,
+                                        type: f.type,
+                                        size: f.size,
+                                        remote_path: upData.remote_path
+                                    });
+                                    remoteFilesInfo.push(`- File: ${f.name} (Đã lưu tại: ${upData.remote_path} - Dung lượng: ${upData.size_str})`);
+                                } else {
+                                    uploadedAttachments.push({
+                                        name: f.name,
+                                        type: f.type,
+                                        size: f.size,
+                                        content: f.content
+                                    });
+                                }
+                            } catch (upErr) {
+                                console.error("Lỗi tải file lên VPS:", upErr);
+                                uploadedAttachments.push({
+                                    name: f.name,
+                                    type: f.type,
+                                    size: f.size,
+                                    content: f.content
+                                });
+                            }
+                        } else {
+                            uploadedAttachments.push(f);
+                        }
+                    }
+                }
+
+                let promptToSend = text;
+                if (remoteFilesInfo.length > 0) {
+                    promptToSend += `\n\n[File đính kèm từ người dùng đã tải lên máy chủ]:\n${remoteFilesInfo.join('\n')}`;
+                }
+
+                if (statusEl) {
+                    const txt = statusEl.querySelector('.status-text');
+                    if (txt) txt.innerText = "Đang suy nghĩ...";
+                }
+
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                        message: text, 
+                        message: promptToSend, 
                         session_id: currentSessionId, 
                         history: chatHistory, 
-                        attachments: filesToSend,
+                        attachments: uploadedAttachments,
                         working_dir: currentScopeToSend 
                     }),
                     signal: currentChatAbortController.signal
@@ -2700,8 +2799,12 @@
                 chatHistory.push({ role: "user", content: text });
                 chatHistory.push({ role: "assistant", content: accumulatedText });
 
+                // Tự động cuộn xuống cuối sau khi render xong
+                container.scrollTop = container.scrollHeight;
+
             } catch (err) {
                 if (err.name === 'AbortError') {
+                    console.log("Chat bị huỷ bởi người dùng.");
                     if (statusEl && statusEl.parentNode) statusEl.remove();
                     if (bubbleEl) bubbleEl.classList.remove("d-none");
                     textEl.innerHTML += `<div class="text-warning opacity-75 font-mono mt-2" style="font-size: 0.78rem;"><i class="fa-solid fa-stop-circle me-1"></i> [Đã dừng bởi người dùng]</div>`;
@@ -2717,13 +2820,13 @@
                         chatHistory.push({ role: "assistant", content: accumulatedText });
                     }
                 } else {
+                    console.error("Chat error:", err);
                     if (statusEl && statusEl.parentNode) statusEl.remove();
                     if (bubbleEl) bubbleEl.classList.remove("d-none");
-                    textEl.innerHTML = `<span class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i> Lỗi kết nối: ${err.message}</span>`;
+                    textEl.innerHTML = `<span class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i> Lỗi gửi tin nhắn: ${err.message}</span>`;
                 }
             } finally {
                 setChatGeneratingState(false);
-                container.scrollTop = container.scrollHeight;
             }
         }
 
@@ -2756,10 +2859,12 @@
                             </div>
                         `;
                     }
+                    const isArchive = f.type === 'archive' || (f.name && f.name.match(/\.(zip|tar|gz|zst|bz2|xz|rar|7z|iso)$/i));
+                    const sizeText = f.size ? ` (${formatBytes(f.size)})` : '';
                     return `
                         <div class="badge text-bg-dark border border-secondary px-2.5 py-1.5 rounded-1 font-mono d-inline-flex align-items-center gap-1.5" style="font-size: 0.72rem;">
-                            <i class="fa-solid fa-paperclip text-info"></i>
-                            <span>${escapeHtml(f.name || 'file')}</span>
+                            ${isArchive ? '<i class="fa-solid fa-file-zipper text-warning"></i>' : '<i class="fa-solid fa-file-code text-info"></i>'}
+                            <span>${escapeHtml(f.name || 'file')}${sizeText}</span>
                         </div>
                     `;
                 }).join('') + `</div>`;
