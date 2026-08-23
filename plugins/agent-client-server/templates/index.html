@@ -1122,9 +1122,6 @@
             <div class="d-flex align-items-center justify-content-between mb-2">
                 <div class="d-flex align-items-center gap-2">
                     <h6 class="fw-semibold text-white mb-0" style="font-size: 0.85rem;">Tài Nguyên Máy Chủ Đám Mây</h6>
-                    <span class="badge rounded-1" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.65rem; border: 1px solid rgba(99, 102, 241, 0.25);">
-                        <i class="fa-solid fa-bolt me-1 text-warning"></i> Thời gian thực
-                    </span>
                 </div>
             </div>
 
@@ -1991,9 +1988,27 @@
             });
 
             if (tabId === 'terminal') initInteractiveTerminal();
-            if (tabId === 'logs') fetchServiceLogs();
+            if (tabId === 'logs') {
+                fetchServiceLogs();
+                syncLogInterval(true);
+            } else {
+                syncLogInterval(false);
+            }
             if (tabId === 'server') fetchSystemInfo();
             if (tabId === 'settings') loadSettings();
+        }
+
+        function syncLogInterval(isLogsTabActive) {
+            clearInterval(logInterval);
+            const chk = document.getElementById('auto-refresh-logs');
+            if (isLogsTabActive && chk && chk.checked) {
+                logInterval = setInterval(() => {
+                    const logsTab = document.getElementById('tab-logs');
+                    if (logsTab && !logsTab.classList.contains('d-none')) {
+                        fetchServiceLogs();
+                    }
+                }, 3000);
+            }
         }
 
         // Quick Prompts
@@ -2546,6 +2561,17 @@
             });
         }
 
+        function highlightElementCode(element) {
+            if (!element || !window.hljs) return;
+            const codeBlocks = element.querySelectorAll('pre code');
+            codeBlocks.forEach(block => {
+                if (!block.dataset.highlighted) {
+                    hljs.highlightElement(block);
+                    block.dataset.highlighted = "true";
+                }
+            });
+        }
+
         // Load Chat History from SQLite
         async function loadChatHistory(sessionId = currentSessionId) {
             try {
@@ -2560,9 +2586,10 @@
                         if (msg.role === 'user') {
                             appendUserMessage(msg.content, msg.attachments, msg.created_at);
                         } else if (msg.role === 'assistant') {
-                            appendAiMessage(msg.content, msg.tool_calls, msg.created_at);
+                            appendAiMessage(msg.content, msg.tool_calls, msg.created_at, false);
                         }
                     });
+                    highlightElementCode(container);
                     container.scrollTop = container.scrollHeight;
                 } else {
                     renderEmptyGreeting();
@@ -2783,6 +2810,16 @@
                 const decoder = new TextDecoder("utf-8");
                 let buffer = "";
 
+                let renderRaf = null;
+                const scheduleStreamRender = () => {
+                    if (renderRaf) return;
+                    renderRaf = requestAnimationFrame(() => {
+                        renderRaf = null;
+                        textEl.innerHTML = marked.parse(accumulatedText);
+                        container.scrollTop = container.scrollHeight;
+                    });
+                };
+
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
@@ -2824,19 +2861,20 @@
                                 if (bubbleEl) bubbleEl.classList.remove("d-none");
 
                                 accumulatedText += data.delta;
-                                textEl.innerHTML = marked.parse(accumulatedText);
-                                hljs.highlightAll();
-                                container.scrollTop = container.scrollHeight;
+                                scheduleStreamRender();
 
                             } else if (data.type === 'done') {
+                                if (renderRaf) { cancelAnimationFrame(renderRaf); renderRaf = null; }
                                 if (statusEl && statusEl.parentNode) statusEl.remove();
                                 if (bubbleEl) bubbleEl.classList.remove("d-none");
 
                                 if (data.reply) {
                                     accumulatedText = data.reply;
-                                    textEl.innerHTML = marked.parse(accumulatedText);
-                                    hljs.highlightAll();
                                 }
+                                textEl.innerHTML = marked.parse(accumulatedText);
+                                highlightElementCode(textEl);
+                                container.scrollTop = container.scrollHeight;
+
                             } else if (data.type === 'error') {
                                 if (statusEl && statusEl.parentNode) statusEl.remove();
                                 if (bubbleEl) bubbleEl.classList.remove("d-none");
@@ -2847,6 +2885,10 @@
                         }
                     }
                 }
+
+                if (renderRaf) { cancelAnimationFrame(renderRaf); renderRaf = null; }
+                textEl.innerHTML = marked.parse(accumulatedText);
+                highlightElementCode(textEl);
 
                 // Dọn dẹp status spinner nếu vẫn còn
                 if (statusEl && statusEl.parentNode) statusEl.remove();
@@ -2959,7 +3001,7 @@
             container.scrollTop = container.scrollHeight;
         }
 
-                function appendAiMessage(reply, toolCalls = [], timeStr = null) {
+        function appendAiMessage(reply, toolCalls = [], timeStr = null, autoHighlight = true) {
             const container = document.getElementById('chat-messages');
             const wrapper = document.createElement('div');
             wrapper.className = "d-flex align-items-start gap-3 w-100";
@@ -3010,7 +3052,9 @@
             `;
             container.appendChild(wrapper);
             container.scrollTop = container.scrollHeight;
-            hljs.highlightAll();
+            if (autoHighlight) {
+                highlightElementCode(wrapper);
+            }
         }
 
         function appendLoadingMessage() {
@@ -3783,17 +3827,9 @@
         }
 
         document.getElementById('auto-refresh-logs').addEventListener('change', function(e) {
+            syncLogInterval(e.target.checked);
             if (e.target.checked) {
                 fetchServiceLogs();
-                clearInterval(logInterval);
-                logInterval = setInterval(() => {
-                    const logsTab = document.getElementById('tab-logs');
-                    if (logsTab && !logsTab.classList.contains('d-none')) {
-                        fetchServiceLogs();
-                    }
-                }, 3000);
-            } else {
-                clearInterval(logInterval);
             }
         });
 
