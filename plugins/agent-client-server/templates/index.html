@@ -789,13 +789,30 @@
             </nav>
         </div>
 
-        <!-- Footer -->
-        <div class="p-3 px-4 border-top d-flex align-items-center justify-content-between text-secondary" style="border-color: var(--tadu-border) !important; font-size: 0.72rem;">
-            <div class="d-flex align-items-center gap-2">
-                <i class="fa-solid fa-shield-halved text-success" style="margin-right: 0 !important;"></i>
-                <span>Tadu Cloud Desktop</span>
+        <!-- Bottom Container: Inactive Agent Alert + Footer -->
+        <div class="mt-auto d-flex flex-column">
+            <!-- Inactive Warning Card at bottom of left sidebar -->
+            <div id="chat-disabled-banner" class="d-none mx-3 mb-3 p-3 rounded-1 border border-warning border-opacity-30 shadow-sm" style="background: rgba(234, 179, 8, 0.08); color: #facc15; font-size: 0.74rem;">
+                <div class="d-flex align-items-start gap-2 mb-2.5">
+                    <i class="fa-solid fa-triangle-exclamation text-warning mt-0.5 flex-shrink-0" style="font-size: 0.82rem;"></i>
+                    <div style="line-height: 1.45;">
+                        Dịch vụ Agent trên máy chủ này <strong>chưa được bật</strong>. Vui lòng bật để sử dụng tính năng trò chuyện và điều khiển AI.
+                    </div>
+                </div>
+                <button type="button" onclick="switchTab('server')" class="btn btn-sm btn-warning w-100 text-dark fw-bold py-1.5 d-flex align-items-center justify-content-center gap-1.5 shadow-sm" style="font-size: 0.74rem;">
+                    <i class="fa-solid fa-rocket"></i>
+                    <span>Bật Agent ngay</span>
+                </button>
             </div>
-            <span class="font-mono text-secondary" style="font-size: 0.7rem;">v1.3.0</span>
+
+            <!-- Footer -->
+            <div class="p-3 px-4 border-top d-flex align-items-center justify-content-between text-secondary" style="border-color: var(--tadu-border) !important; font-size: 0.72rem;">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-success" style="margin-right: 0 !important;"></i>
+                    <span>Tadu Cloud Desktop</span>
+                </div>
+                <span class="font-mono text-secondary" style="font-size: 0.7rem;">v1.3.0</span>
+            </div>
         </div>
     </aside>
 
@@ -888,18 +905,6 @@
                     </div>
                     <!-- Directory list with internal scroll & padding -->
                     <div id="dir-autocomplete-list" class="overflow-y-auto d-flex flex-column gap-2 pe-1 pb-1" style="max-height: 230px;"></div>
-                </div>
-
-                <!-- Agent Inactive Warning Banner -->
-                <div id="chat-disabled-banner" class="d-none alert alert-warning border border-warning border-opacity-50 py-2 px-3 mb-2 rounded-1 d-flex align-items-center justify-content-between font-mono shadow-sm" style="background: rgba(234, 179, 8, 0.12); color: #facc15; font-size: 0.8rem;">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="fa-solid fa-triangle-exclamation text-warning flex-shrink-0"></i>
-                        <span>Dịch vụ Agent trên máy chủ này <strong>chưa được bật</strong>. Vui lòng bật để sử dụng tính năng trò chuyện và điều khiển AI.</span>
-                    </div>
-                    <button type="button" onclick="switchNav('tab-setup')" class="btn btn-sm btn-warning text-dark fw-bold px-2.5 py-1 flex-shrink-0 ms-3 d-inline-flex align-items-center gap-1.5" style="font-size: 0.75rem;">
-                        <i class="fa-solid fa-rocket"></i>
-                        <span>Bật Agent</span>
-                    </button>
                 </div>
 
                 <form id="chat-form" onsubmit="handleChatSubmit(event)" class="w-100">
