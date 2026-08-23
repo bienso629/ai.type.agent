@@ -1719,6 +1719,48 @@ WantedBy=default.target
 		})
 	})
 
+	// Remote File Download API: GET /api/fs/download?path=/path/to/file
+	mux.HandleFunc("/api/fs/download", func(w http.ResponseWriter, r *http.Request) {
+		remotePath := r.URL.Query().Get("path")
+		if remotePath == "" {
+			http.Error(w, "Thiếu tham số path", http.StatusBadRequest)
+			return
+		}
+
+		cfg := loadConfig()
+		client, err := getSSHClient(cfg)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Lỗi kết nối SSH: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer client.Close()
+
+		session, err := client.NewSession()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Lỗi tạo SSH session: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer session.Close()
+
+		filename := filepath.Base(remotePath)
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+		w.Header().Set("Content-Type", "application/octet-stream")
+
+		stdout, err := session.StdoutPipe()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Lỗi StdoutPipe: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		if err := session.Start(fmt.Sprintf("cat %q", remotePath)); err != nil {
+			http.Error(w, fmt.Sprintf("Lỗi đọc file: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		io.Copy(w, stdout)
+		_ = session.Wait()
+	})
+
 	// 10. Live SSH Terminal WebSocket: /ws/terminal
 	mux.HandleFunc("/ws/terminal", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
