@@ -890,6 +890,18 @@
                     <div id="dir-autocomplete-list" class="overflow-y-auto d-flex flex-column gap-2 pe-1 pb-1" style="max-height: 230px;"></div>
                 </div>
 
+                <!-- Agent Inactive Warning Banner -->
+                <div id="chat-disabled-banner" class="d-none alert alert-warning border border-warning border-opacity-50 py-2 px-3 mb-2 rounded-1 d-flex align-items-center justify-content-between font-mono shadow-sm" style="background: rgba(234, 179, 8, 0.12); color: #facc15; font-size: 0.8rem;">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-warning flex-shrink-0"></i>
+                        <span>Dịch vụ Agent trên máy chủ này <strong>chưa được bật</strong>. Vui lòng bật để sử dụng tính năng trò chuyện và điều khiển AI.</span>
+                    </div>
+                    <button type="button" onclick="switchNav('tab-setup')" class="btn btn-sm btn-warning text-dark fw-bold px-2.5 py-1 flex-shrink-0 ms-3 d-inline-flex align-items-center gap-1.5" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-rocket"></i>
+                        <span>Bật Agent</span>
+                    </button>
+                </div>
+
                 <form id="chat-form" onsubmit="handleChatSubmit(event)" class="w-100">
                     <!-- Hidden file input for Attachments -->
                     <input type="file" id="file-picker" multiple accept="*" style="display: none;" onchange="handleFileSelect(event)">
@@ -923,11 +935,11 @@
                         <!-- Bottom Controls Inside Textarea Box -->
                         <div class="d-flex align-items-center justify-content-between pt-1">
                             <div class="d-flex align-items-center gap-2">
-                                <button type="button" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center gap-2" onclick="triggerDirAutocomplete('/')" title="Gõ '/' hoặc bấm vào đây để chọn thư mục giới hạn thao tác của Agent">
+                                <button type="button" id="btn-scope-dir" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center gap-2" onclick="triggerDirAutocomplete('/')" title="Gõ '/' hoặc bấm vào đây để chọn thư mục giới hạn thao tác của Agent">
                                     <i class="fa-solid fa-folder-tree text-warning me-1"></i>
                                     <span>Scope /</span>
                                 </button>
-                                <button type="button" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center gap-2" onclick="document.getElementById('file-picker').click()" title="Đính kèm file (Ảnh, Code, Log, Txt, Config...)">
+                                <button type="button" id="btn-attach-picker" class="btn btn-sm btn-dark border border-secondary text-light px-3 py-1.5 d-inline-flex align-items-center gap-2" onclick="document.getElementById('file-picker').click()" title="Đính kèm file (Ảnh, Code, Log, Txt, Config...)">
                                     <i class="fa-solid fa-paperclip text-info me-1"></i>
                                     <span>Attach</span>
                                 </button>
@@ -2556,6 +2568,11 @@
             if (e) e.preventDefault();
             if (isChatGenerating) return;
 
+            if (!currentAgentServiceActive) {
+                showToast("⚠️ Dịch vụ Agent trên máy chủ này chưa được bật. Vui lòng vào tab Thiết Lập để bật Agent!", "warning");
+                return;
+            }
+
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
             if (!text && selectedFiles.length === 0) return;
@@ -3294,6 +3311,65 @@
             }
             if (document.getElementById('sidebar-status-text')) {
                 document.getElementById('sidebar-status-text').innerText = isAct ? "Dịch Vụ Online" : "Dịch Vụ Chưa Bật";
+            }
+
+            // Đồng bộ trạng thái khoá/mở ô nhập liệu Chat Prompt
+            updateChatPromptState(isAct);
+        }
+
+        let currentAgentServiceActive = true;
+
+        function updateChatPromptState(isAgentActive) {
+            currentAgentServiceActive = !!isAgentActive;
+            const chatInput = document.getElementById('chat-input');
+            const btnSend = document.getElementById('btn-send');
+            const filePickerBtn = document.getElementById('btn-attach-picker');
+            const scopeBtn = document.getElementById('btn-scope-dir');
+            const disabledBanner = document.getElementById('chat-disabled-banner');
+            const inputBox = document.querySelector('.chat-input-box');
+
+            if (!chatInput) return;
+
+            if (currentAgentServiceActive) {
+                chatInput.disabled = false;
+                chatInput.placeholder = "Nhập yêu cầu, gõ '/' để chọn thư mục giới hạn, hoặc dán ảnh (Ctrl+V)...";
+                if (btnSend && !isChatGenerating) {
+                    btnSend.disabled = false;
+                    btnSend.classList.remove('opacity-50');
+                    btnSend.style.cursor = 'pointer';
+                }
+                if (filePickerBtn) {
+                    filePickerBtn.disabled = false;
+                    filePickerBtn.classList.remove('opacity-50', 'pe-none');
+                }
+                if (scopeBtn) {
+                    scopeBtn.disabled = false;
+                    scopeBtn.classList.remove('opacity-50', 'pe-none');
+                }
+                if (disabledBanner) disabledBanner.classList.add('d-none');
+                if (inputBox) {
+                    inputBox.style.opacity = '1';
+                    inputBox.style.pointerEvents = 'auto';
+                }
+            } else {
+                if (!isChatGenerating) {
+                    chatInput.disabled = true;
+                    chatInput.placeholder = "⚠️ Dịch vụ Agent trên máy chủ này chưa được bật. Vui lòng vào tab Thiết Lập để bật Agent.";
+                    if (btnSend) {
+                        btnSend.disabled = true;
+                        btnSend.classList.add('opacity-50');
+                        btnSend.style.cursor = 'not-allowed';
+                    }
+                    if (filePickerBtn) {
+                        filePickerBtn.disabled = true;
+                        filePickerBtn.classList.add('opacity-50', 'pe-none');
+                    }
+                    if (scopeBtn) {
+                        scopeBtn.disabled = true;
+                        scopeBtn.classList.add('opacity-50', 'pe-none');
+                    }
+                    if (disabledBanner) disabledBanner.classList.remove('d-none');
+                }
             }
         }
 
