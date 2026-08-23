@@ -560,7 +560,12 @@ CÁC QUY TẮC BẮT BUỘC:
      + Bước 1: Dùng execute_terminal_command để tạo file backup (hoặc nén thư mục, dump database) vào thư mục làm việc của user (ví dụ: ~/ai_agent/backups/...).
      + Bước 2: Dùng NGAY công cụ download_remote_file_to_local để kéo file đó từ VPS về máy tính người dùng.
      + Bước 3: Báo cho người dùng biết file đã được tải về máy tính thành công kèm đường dẫn Downloads.
-3. KẾT LUẬN NGẮN GỌN, RÕ RÀNG & TRỰC QUAN:
+3. XỬ LÝ PHÂN QUYỀN TRÊN DIRECTADMIN / CPANEL / LINUX:
+   - Trên DirectAdmin / cPanel: Mỗi website thường thuộc sở hữu của một user Linux riêng (vd: duanthefib, chmod 0710).
+   - Nếu user hiện tại không đọc được trực tiếp /home/<user>:
+     + Thử kiểm tra các công cụ DirectAdmin CLI / Task Queue, hoặc kiểm tra quyền sudo.
+     + Nếu hoàn toàn bị hạn chế quyền do Linux User Isolation, hãy giải thích rõ ràng ngắn gọn và đưa ra hướng dẫn cụ thể (ví dụ: chuyển SSH sang user root hoặc chính user sở hữu website đó trong Cài đặt).
+4. KẾT LUẬN NGẮN GỌN, RÕ RÀNG & TRỰC QUAN:
    - Trình bày kết quả dễ đọc (bảng markdown, danh sách, mã lệnh).`
 
 func formatFileSize(bytes int64) string {
@@ -2105,11 +2110,16 @@ WantedBy=default.target
 								"message": fmt.Sprintf("Đang thực thi: %s", cmdStr),
 							})
 
+							sshPass, _ := cfg["ssh_pass"].(string)
 							if sshClient != nil {
+								targetCmd := cmdStr
 								if req.WorkingDir != "" {
-									toolRes = runSSHCmd(sshClient, fmt.Sprintf("cd %s 2>/dev/null; %s", req.WorkingDir, cmdStr))
+									targetCmd = fmt.Sprintf("cd %s 2>/dev/null; %s", req.WorkingDir, cmdStr)
+								}
+								if strings.Contains(cmdStr, "sudo ") && sshPass != "" {
+									toolRes = runSSHCmdWithSudo(sshClient, sshPass, targetCmd)
 								} else {
-									toolRes = runSSHCmd(sshClient, cmdStr)
+									toolRes = runSSHCmd(sshClient, targetCmd)
 								}
 							} else {
 								toolRes = "Không thể kết nối SSH tới máy chủ."
