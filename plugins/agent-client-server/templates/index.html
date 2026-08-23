@@ -2911,6 +2911,14 @@
             api_port: 8000
         };
 
+        function isPrivacyActive() {
+            return Boolean(privacyState && privacyState.global && privacyState.ip);
+        }
+
+        function maskIP(ip) {
+            return formatMaskedIp(ip);
+        }
+
         function formatMaskedIp(ip) {
             if (!ip) return '***.***.***.***';
             const parts = ip.split('.');
@@ -3563,7 +3571,7 @@
                     document.getElementById('sidebar-server-name').innerText = activeServer.name || 'Máy chủ chính';
                 }
                 if (document.getElementById('sidebar-server-ip')) {
-                    document.getElementById('sidebar-server-ip').innerText = isPrivacyActive ? maskIP(cachedServerData.server_ip) : cachedServerData.server_ip;
+                    document.getElementById('sidebar-server-ip').innerText = isPrivacyActive() ? formatMaskedIp(cachedServerData.server_ip) : cachedServerData.server_ip;
                 }
 
                 if (document.getElementById('card-ai-model')) document.getElementById('card-ai-model').innerText = cfg.ai_model || 'glm-5.3';
@@ -3590,7 +3598,7 @@
             if (grid) {
                 grid.innerHTML = currentServers.map(s => {
                     const isActive = s.id === activeServerId;
-                    const displayIP = isPrivacyActive ? maskIP(s.server_ip) : s.server_ip;
+                    const displayIP = isPrivacyActive() ? formatMaskedIp(s.server_ip) : s.server_ip;
                     return `
                     <div class="col-12 col-lg-6">
                         <div class="tadu-card p-3.5 h-100 d-flex flex-column justify-content-between position-relative transition-all" 
@@ -3677,7 +3685,7 @@
             if (sidebarList) {
                 sidebarList.innerHTML = currentServers.map(s => {
                     const isActive = s.id === activeServerId;
-                    const displayIP = isPrivacyActive ? maskIP(s.server_ip) : s.server_ip;
+                    const displayIP = isPrivacyActive() ? formatMaskedIp(s.server_ip) : s.server_ip;
                     return `
                     <li>
                         <div onclick="switchActiveServer('${s.id}')" 
