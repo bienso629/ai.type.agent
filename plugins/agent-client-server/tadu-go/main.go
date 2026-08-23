@@ -1260,15 +1260,37 @@ func main() {
 		sendStep(fmt.Sprintf("Tạo thư mục làm việc %s...", remoteDir))
 		runSSHCmd(client, fmt.Sprintf("(sudo mkdir -p %s && sudo chown -R %s %s || mkdir -p %s) 2>/dev/null", remoteDir, sshUser, remoteDir, remoteDir))
 
-		// Find local compiled Go binary
-		possiblePaths := []string{
-			"dist/ai_agent_service",
-			"../dist/ai_agent_service",
-			"server-go/ai_agent_service",
-			"../server-go/ai_agent_service",
-			"ai_agent_service",
-			"../ai_agent_service",
+		// Detect remote VPS CPU architecture (x86_64 vs arm64)
+		remoteArch := strings.TrimSpace(runSSHCmd(client, "uname -m"))
+		isArm := strings.Contains(remoteArch, "arm") || strings.Contains(remoteArch, "aarch64")
+		archLabel := "x86_64 / AMD64"
+		if isArm {
+			archLabel = "ARM64 / AArch64"
 		}
+		sendStep(fmt.Sprintf("Kiến trúc CPU máy chủ: %s -> Chọn gói Binary: %s", remoteArch, archLabel))
+
+		// Find local compiled Go binary matching remote architecture
+		var possiblePaths []string
+		if isArm {
+			possiblePaths = []string{
+				"dist/ai_agent_service_linux_arm64",
+				"../dist/ai_agent_service_linux_arm64",
+				"server-go/ai_agent_service_linux_arm64",
+				"../server-go/ai_agent_service_linux_arm64",
+				"dist/ai_agent_service",
+				"../dist/ai_agent_service",
+			}
+		} else {
+			possiblePaths = []string{
+				"dist/ai_agent_service_linux_amd64",
+				"../dist/ai_agent_service_linux_amd64",
+				"dist/ai_agent_service",
+				"../dist/ai_agent_service",
+				"server-go/ai_agent_service",
+				"../server-go/ai_agent_service",
+			}
+		}
+
 		var binData []byte
 		var foundPath string
 		for _, p := range possiblePaths {
@@ -1286,8 +1308,8 @@ func main() {
 
 		sendStep(fmt.Sprintf("Tìm thấy Standalone Go Binary (%.1f MB) tại: %s", float64(len(binData))/1024/1024, foundPath))
 
-		sendStep("Tạm dừng service cũ và giải phóng port...")
-		runSSHCmd(client, fmt.Sprintf("sudo systemctl stop ai-agent.service 2>/dev/null || systemctl stop ai-agent.service 2>/dev/null || true; sudo fuser -k %d/tcp 2>/dev/null || true; sudo pkill -f ai_agent_service 2>/dev/null || true", apiPort))
+		sendStep(fmt.Sprintf("Tạm dừng service cũ và giải phóng port %d...", apiPort))
+		runSSHCmd(client, fmt.Sprintf("sudo systemctl stop ai-agent.service 2>/dev/null || true; sudo fuser -k %d/tcp 2>/dev/null || true; sudo pkill -f ai_agent_service 2>/dev/null || true", apiPort))
 		time.Sleep(1 * time.Second)
 
 		sendStep("Đang tải Standalone Go Binary lên VPS qua kênh truyền bảo mật SSH...")
@@ -1345,7 +1367,6 @@ After=network.target
 
 [Service]
 Type=simple
-User=%s
 WorkingDirectory=%s
 Environment="PROXY_API_KEY=%s"
 Environment="OPENROUTER_API_KEY=%s"
@@ -1362,22 +1383,27 @@ RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-`, sshUser, remoteDir, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, apiPort, apiPort, targetRemotePath)
+`, remoteDir, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, apiPort, apiPort, targetRemotePath)
 
 		serviceCmd := fmt.Sprintf("cat << 'EOF' | sudo tee /etc/systemd/system/ai-agent.service > /dev/null\n%s\nEOF\n", serviceContent)
 		runSSHCmd(client, serviceCmd)
 
 		sendStep("Khởi động lại Systemd Daemon...")
-		runSSHCmd(client, "sudo systemctl daemon-reload 2>/dev/null || systemctl daemon-reload 2>/dev/null; sudo systemctl enable ai-agent.service 2>/dev/null || systemctl enable ai-agent.service 2>/dev/null; sudo systemctl restart ai-agent.service 2>/dev/null || systemctl restart ai-agent.service 2>/dev/null")
+		runSSHCmd(client, "sudo systemctl daemon-reload || systemctl daemon-reload; sudo systemctl enable ai-agent.service || systemctl enable ai-agent.service; sudo systemctl restart ai-agent.service || systemctl restart ai-agent.service")
 		time.Sleep(2 * time.Second)
 
-		statusOut := runSSHCmd(client, "sudo systemctl is-active ai-agent.service 2>/dev/null || systemctl is-active ai-agent.service 2>/dev/null")
-		statusOut = strings.TrimSpace(statusOut)
-		if statusOut == "active" {
-			sendStep("[SUCCESS] AI Agent Standalone Binary (Go Edition) đã được triển khai và khởi động THÀNH CÔNG trên VPS!")
+		statusOut := strings.TrimSpace(runSSHCmd(client, "sudo systemctl is-active ai-agent.service 2>/dev/null || systemctl is-active ai-agent.service 2>/dev/null"))
+		healthCheck := strings.TrimSpace(runSSHCmd(client, fmt.Sprintf("curl -s -m 3 http://127.0.0.1:%d/health 2>/dev/null || wget -qO- --timeout=3 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort, apiPort)))
+
+		if statusOut == "active" || strings.Contains(healthCheck, "healthy") {
+			sendStep(fmt.Sprintf("[SUCCESS] AI Agent Standalone Binary (Go Edition) đã được triển khai và khởi động THÀNH CÔNG trên VPS (Cổng API: %d)!", apiPort))
 		} else {
 			sendStep(fmt.Sprintf("[WARNING] Service được deploy nhưng trạng thái hiện tại là: %s", statusOut))
-			journalLog := runSSHCmd(client, "sudo journalctl -u ai-agent.service -n 10 --no-pager 2>/dev/null || journalctl -u ai-agent.service -n 10 --no-pager 2>/dev/null")
+			statusDetail := runSSHCmd(client, "sudo systemctl status ai-agent.service -l --no-pager 2>/dev/null || systemctl status ai-agent.service -l --no-pager 2>/dev/null")
+			if statusDetail != "" {
+				sendStep(fmt.Sprintf("Chi tiết Systemd Status:\n%s", statusDetail))
+			}
+			journalLog := runSSHCmd(client, "sudo journalctl -u ai-agent.service -n 15 --no-pager 2>/dev/null || journalctl -u ai-agent.service -n 15 --no-pager 2>/dev/null")
 			if journalLog != "" {
 				sendStep(fmt.Sprintf("Chi tiết Log Systemd:\n%s", journalLog))
 			}

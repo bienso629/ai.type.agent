@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --no-sandbox",
-    "build:go:linux": "cd tadu-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent . && cd ../server-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service .",
+    "build:go:linux": "cd tadu-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent . && cd ../server-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service . && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service_linux_amd64 . && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service_linux_arm64 .",
     "build:go:win": "cd tadu-go && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent.exe .",
     "build:installer:linux": "npm run build:go:linux && electron-builder --linux deb AppImage",
     "build:installer:win": "npm run build:go:win && electron-builder --win nsis",
