@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -1274,7 +1275,7 @@ func main() {
 		sendStep(fmt.Sprintf("Kết nối SSH thành công tới %s!", serverIP))
 
 		sendStep(fmt.Sprintf("Tạo thư mục làm việc %s...", remoteDir))
-		runSSHCmd(client, fmt.Sprintf("sudo mkdir -p %s && sudo chown -R %s:%s %s", remoteDir, sshUser, sshUser, remoteDir))
+		runSSHCmd(client, fmt.Sprintf("(sudo mkdir -p %s && sudo chown -R %s %s || mkdir -p %s) 2>/dev/null", remoteDir, sshUser, remoteDir, remoteDir))
 
 		// Find local compiled Go binary
 		possiblePaths := []string{
@@ -1303,16 +1304,20 @@ func main() {
 		sendStep(fmt.Sprintf("Tìm thấy Standalone Go Binary (%.1f MB) tại: %s", float64(len(binData))/1024/1024, foundPath))
 
 		sendStep("Tạm dừng service cũ để giải phóng file nhị phân...")
-		runSSHCmd(client, "sudo systemctl stop ai-agent.service")
+		runSSHCmd(client, "sudo systemctl stop ai-agent.service 2>/dev/null || systemctl stop ai-agent.service 2>/dev/null || pkill -f ai_agent_service 2>/dev/null || true")
 		time.Sleep(1 * time.Second)
 
 		sendStep("Đang tải Standalone Go Binary lên VPS qua kênh truyền bảo mật SSH...")
-		// Upload binary via stdin stream
+		// Upload binary via stdin stream into /tmp first (100% accessible to any user without permission issues)
 		session, err := client.NewSession()
 		if err != nil {
 			sendStep(fmt.Sprintf("[ERROR] Không thể mở SSH session: %v", err))
 			return
 		}
+
+		var stderrBuf bytes.Buffer
+		session.Stderr = &stderrBuf
+
 		stdin, err := session.StdinPipe()
 		if err != nil {
 			session.Close()
@@ -1320,23 +1325,33 @@ func main() {
 			return
 		}
 
-		tmpRemotePath := fmt.Sprintf("%s/ai_agent_service.tmp", remoteDir)
+		tmpRemotePath := fmt.Sprintf("/tmp/ai_agent_service_%d.tmp", time.Now().Unix())
 		targetRemotePath := fmt.Sprintf("%s/ai_agent_service", remoteDir)
 
 		go func() {
 			defer stdin.Close()
-			stdin.Write(binData)
+			io.Copy(stdin, bytes.NewReader(binData))
 		}()
 
 		if err := session.Run(fmt.Sprintf("cat > %s", tmpRemotePath)); err != nil {
 			session.Close()
-			sendStep(fmt.Sprintf("[ERROR] Lỗi upload binary: %v", err))
+			errDetail := strings.TrimSpace(stderrBuf.String())
+			if errDetail != "" {
+				sendStep(fmt.Sprintf("[ERROR] Lỗi upload binary: %v (%s)", err, errDetail))
+			} else {
+				sendStep(fmt.Sprintf("[ERROR] Lỗi upload binary: %v", err))
+			}
 			return
 		}
 		session.Close()
 
 		sendStep("Đã đưa Standalone Binary lên máy chủ và kích hoạt quyền thực thi (chmod +x)...")
-		runSSHCmd(client, fmt.Sprintf("sudo mv -f %s %s && sudo chmod +x %s && sudo rm -f %s/ai_agent_service.py", tmpRemotePath, targetRemotePath, targetRemotePath, remoteDir))
+		moveCmd := fmt.Sprintf("(sudo mkdir -p %s || mkdir -p %s) && (sudo mv -f %s %s || mv -f %s %s) && (sudo chmod +x %s || chmod +x %s) && (sudo rm -f %s/ai_agent_service.py || rm -f %s/ai_agent_service.py)",
+			remoteDir, remoteDir,
+			tmpRemotePath, targetRemotePath, tmpRemotePath, targetRemotePath,
+			targetRemotePath, targetRemotePath,
+			remoteDir, remoteDir)
+		runSSHCmd(client, moveCmd)
 
 		sendStep("Đang cấu hình Systemd Daemon (ai-agent.service)...")
 		serviceContent := fmt.Sprintf(`[Unit]
