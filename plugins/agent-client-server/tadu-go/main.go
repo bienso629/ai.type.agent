@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -493,6 +491,123 @@ func runSSHCmdWithSudo(client *ssh.Client, sshPass string, cmd string) string {
 	fullCmd := fmt.Sprintf("sudo -n bash -c %q 2>&1 || bash -c %q 2>&1", cmd, cmd)
 	out, _ := session.CombinedOutput(fullCmd)
 	return strings.TrimSpace(string(out))
+}
+
+type ToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type ToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
+	Function ToolCallFunction `json:"function"`
+}
+
+type ChatMessage struct {
+	Role       string     `json:"role"`
+	Content    string     `json:"content,omitempty"`
+	Name       string     `json:"name,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+}
+
+type OpenAIChatRequest struct {
+	Model       string        `json:"model"`
+	Messages    []ChatMessage `json:"messages"`
+	Tools       []interface{} `json:"tools,omitempty"`
+	ToolChoice  interface{}   `json:"tool_choice,omitempty"`
+	Temperature float64       `json:"temperature"`
+}
+
+type OpenAIChoiceMessage struct {
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+}
+
+type OpenAIChoice struct {
+	Message      OpenAIChoiceMessage `json:"message"`
+	FinishReason string              `json:"finish_reason"`
+}
+
+type OpenAIChatResponse struct {
+	ID      string         `json:"id"`
+	Choices []OpenAIChoice `json:"choices"`
+	Error   *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    string `json:"code"`
+	} `json:"error,omitempty"`
+}
+
+type ToolExecutionRecord struct {
+	Tool    string `json:"tool"`
+	Command string `json:"command"`
+	Output  string `json:"output"`
+}
+
+const SystemPrompt = `Bạn là Tadu Cloud AI Agent - Kỹ sư DevOps Linux thực chiến cấp cao.
+Bạn có quyền thực thi lệnh bash/shell thực tế trên máy chủ qua công cụ execute_terminal_command.
+
+CÁC QUY TẮC BẮT BUỘC:
+1. TẬP TRUNG ĐÚNG 100% TRỌNG TÂM YÊU CẦU MỚI:
+   - CHỈ kiểm tra và trả lời ĐÚNG DUY NHẤT đối tượng/domain/dịch vụ mà người dùng đang hỏi trong tin nhắn mới nhất.
+   - Khi được hỏi về website/domain/dịch vụ/cấu hình/tiến trình/file: Hãy DÙNG NGAY công cụ execute_terminal_command để chạy các lệnh tìm kiếm, kiểm tra thực tế trên máy chủ Linux để lấy thông tin chính xác nhất.
+2. HÀNH ĐỘNG TIẾP NỐI:
+   - Tự động chạy các lệnh kiểm tra cấu hình (vd: Nginx, Apache, VirtualHost, Docker, Web roots) để trả lời người dùng đầy đủ.
+3. KẾT LUẬN NGẮN GỌN, RÕ RÀNG & TRỰC QUAN:
+   - Trình bày kết quả dễ đọc (bảng markdown, danh sách, mã lệnh).`
+
+func callOpenAI(proxyBaseURL string, proxyAPIKey string, reqBody OpenAIChatRequest) (*OpenAIChatResponse, error) {
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	apiURL := fmt.Sprintf("%s/chat/completions", strings.TrimRight(proxyBaseURL, "/"))
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if proxyAPIKey != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", proxyAPIKey))
+	}
+	req.Header.Set("HTTP-Referer", "https://tadu.vn")
+	req.Header.Set("X-Title", "Tadu Cloud AI Agent")
+
+	client := &http.Client{Timeout: 90 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var chatResp OpenAIChatResponse
+	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
+		return nil, fmt.Errorf("Lỗi parse JSON API: %v", err)
+	}
+
+	if chatResp.Error != nil {
+		return nil, fmt.Errorf("OpenAI API Error: %s", chatResp.Error.Message)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("API không trả về kết quả choices")
+	}
+
+	return &chatResp, nil
 }
 
 func makeSmartTitle(content string, maxChars int) string {
@@ -1690,9 +1805,11 @@ WantedBy=default.target
 		}
 
 		var req struct {
-			SessionID string `json:"session_id"`
-			Message   string `json:"message"`
-			Model     string `json:"model"`
+			SessionID  string                   `json:"session_id"`
+			Message    string                   `json:"message"`
+			Model      string                   `json:"model"`
+			History    []map[string]interface{} `json:"history"`
+			WorkingDir string                   `json:"working_dir"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), 400)
@@ -1717,7 +1834,7 @@ WantedBy=default.target
 		_, _ = db.Exec("INSERT INTO chat_messages (session_id, role, content, model) VALUES (?, 'user', ?, ?)", req.SessionID, encMsg, model)
 		dbMutex.Unlock()
 
-		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
@@ -1727,80 +1844,228 @@ WantedBy=default.target
 			return
 		}
 
-		proxyBaseURL, _ := cfg["proxy_base_url"].(string)
-		proxyAPIKey, _ := cfg["proxy_api_key"].(string)
-		apiURL := fmt.Sprintf("%s/chat/completions", strings.TrimRight(proxyBaseURL, "/"))
+		sendSSE := func(data interface{}) {
+			b, _ := json.Marshal(data)
+			fmt.Fprintf(w, "data: %s\n\n", string(b))
+			flusher.Flush()
+		}
 
-		payload := map[string]interface{}{
-			"model":  model,
-			"stream": true,
-			"messages": []map[string]string{
-				{"role": "system", "content": "Bạn là Tadu Cloud AI Agent trợ lý thông minh điều khiển và quản trị đám mây."},
-				{"role": "user", "content": req.Message},
+		sendSSE(map[string]interface{}{"type": "status", "message": "Đang kết nối AI Agent..."})
+
+		// Tool definition for executing commands on VPS
+		toolDef := map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "execute_terminal_command",
+				"description": "Thực thi lệnh terminal bash/shell trên máy chủ Linux để kiểm tra cấu hình, dịch vụ, website, log, file hệ thống.",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"command": map[string]interface{}{
+							"type":        "string",
+							"description": "Lệnh bash cần chạy trên máy chủ",
+						},
+					},
+					"required": []string{"command"},
+				},
 			},
 		}
-		bodyBytes, _ := json.Marshal(payload)
+		toolsList := []interface{}{toolDef}
 
-		httpReq, err := http.NewRequestWithContext(context.Background(), "POST", apiURL, bytes.NewBuffer(bodyBytes))
-		if err != nil {
-			errMsg, _ := json.Marshal(map[string]string{"type": "error", "message": err.Error()})
-			fmt.Fprintf(w, "data: %s\n\n", errMsg)
-			flusher.Flush()
-			return
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		if proxyAPIKey != "" {
-			httpReq.Header.Set("Authorization", "Bearer "+proxyAPIKey)
+		currSysPrompt := SystemPrompt
+		if req.WorkingDir != "" {
+			currSysPrompt += fmt.Sprintf("\n\n🎯 THƯ MỤC LÀM VIỆC MỤC TIÊU: %s", req.WorkingDir)
 		}
 
-		client := &http.Client{Timeout: 60 * time.Second}
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			errMsg, _ := json.Marshal(map[string]string{"type": "error", "message": "Không thể kết nối đến máy chủ AI: " + err.Error()})
-			fmt.Fprintf(w, "data: %s\n\n", errMsg)
-			flusher.Flush()
-			return
+		messages := []ChatMessage{
+			{Role: "system", Content: currSysPrompt},
 		}
-		defer resp.Body.Close()
 
-		var accumulated strings.Builder
-		scanner := bufio.NewScanner(resp.Body)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.HasPrefix(line, "data: ") {
-				raw := strings.TrimPrefix(line, "data: ")
-				if raw == "[DONE]" {
-					break
-				}
-				var chunk struct {
-					Choices []struct {
-						Delta struct {
-							Content string `json:"content"`
-						} `json:"delta"`
-					} `json:"choices"`
-				}
-				if err := json.Unmarshal([]byte(raw), &chunk); err == nil {
-					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-						text := chunk.Choices[0].Delta.Content
-						accumulated.WriteString(text)
-						chunkEvent, _ := json.Marshal(map[string]string{"type": "text", "content": text})
-						fmt.Fprintf(w, "data: %s\n\n", chunkEvent)
-						flusher.Flush()
+		// Append recent history
+		if len(req.History) > 0 {
+			startIdx := 0
+			if len(req.History) > 4 {
+				startIdx = len(req.History) - 4
+			}
+			for _, h := range req.History[startIdx:] {
+				role, _ := h["role"].(string)
+				content, _ := h["content"].(string)
+				if (role == "user" || role == "assistant") && content != "" {
+					if role == "assistant" && len(content) > 500 {
+						content = content[:500] + "..."
 					}
+					messages = append(messages, ChatMessage{Role: role, Content: content})
 				}
 			}
 		}
 
-		if accumulated.Len() > 0 {
-			encReply := encryptValue(accumulated.String())
+		messages = append(messages, ChatMessage{Role: "user", Content: req.Message})
+
+		proxyBaseURL, _ := cfg["proxy_base_url"].(string)
+		if proxyBaseURL == "" {
+			proxyBaseURL = "https://openrouter.ai/api/v1"
+		}
+		proxyAPIKey, _ := cfg["proxy_api_key"].(string)
+
+		// Open SSH connection for tool execution
+		sshClient, _ := getSSHClient(cfg)
+		defer func() {
+			if sshClient != nil {
+				sshClient.Close()
+			}
+		}()
+
+		var executedTools []ToolExecutionRecord
+		var executedCommands []string
+		maxTurns := 15
+		turn := 0
+		fullReply := ""
+
+		for turn < maxTurns {
+			turn++
+
+			var currentTools []interface{} = toolsList
+			var currentToolChoice interface{} = "auto"
+			if turn == maxTurns {
+				currentTools = nil
+				currentToolChoice = nil
+			}
+
+			chatReq := OpenAIChatRequest{
+				Model:       model,
+				Messages:    messages,
+				Tools:       currentTools,
+				ToolChoice:  currentToolChoice,
+				Temperature: 0.1,
+			}
+
+			chatResp, err := callOpenAI(proxyBaseURL, proxyAPIKey, chatReq)
+			if err != nil {
+				sendSSE(map[string]interface{}{"type": "error", "message": fmt.Sprintf("Lỗi kết nối AI: %v", err)})
+				return
+			}
+
+			choice := chatResp.Choices[0]
+			respMsg := choice.Message
+
+			if len(respMsg.ToolCalls) > 0 && currentTools != nil {
+				messages = append(messages, ChatMessage{
+					Role:      "assistant",
+					Content:   respMsg.Content,
+					ToolCalls: respMsg.ToolCalls,
+				})
+
+				for _, toolCall := range respMsg.ToolCalls {
+					if toolCall.Function.Name == "execute_terminal_command" {
+						var args struct {
+							Command string `json:"command"`
+						}
+						cmdStr := toolCall.Function.Arguments
+						if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err == nil && args.Command != "" {
+							cmdStr = args.Command
+						}
+						cmdStr = strings.TrimSpace(cmdStr)
+
+						executedCommands = append(executedCommands, cmdStr)
+						toolRes := ""
+						n := len(executedCommands)
+						if n >= 3 && executedCommands[n-1] == executedCommands[n-2] && executedCommands[n-2] == executedCommands[n-3] {
+							toolRes = fmt.Sprintf("[HỆ THỐNG]: Lệnh lặp lại 3 lần liên tiếp: '%s'. Vui lòng đưa ra giải pháp thay vì tiếp tục chạy lại.", cmdStr)
+						} else {
+							sendSSE(map[string]interface{}{
+								"type":    "status",
+								"message": fmt.Sprintf("Đang thực thi: %s", cmdStr),
+							})
+
+							if sshClient != nil {
+								if req.WorkingDir != "" {
+									toolRes = runSSHCmd(sshClient, fmt.Sprintf("cd %s 2>/dev/null; %s", req.WorkingDir, cmdStr))
+								} else {
+									toolRes = runSSHCmd(sshClient, cmdStr)
+								}
+							} else {
+								toolRes = "Không thể kết nối SSH tới máy chủ."
+							}
+
+							if toolRes == "" {
+								toolRes = "Lệnh đã chạy xong, không có output."
+							}
+						}
+
+						rec := ToolExecutionRecord{
+							Tool:    "execute_terminal_command",
+							Command: cmdStr,
+							Output:  toolRes,
+						}
+						executedTools = append(executedTools, rec)
+
+						sendSSE(map[string]interface{}{
+							"type": "tool",
+							"tool": rec,
+						})
+
+						messages = append(messages, ChatMessage{
+							Role:       "tool",
+							ToolCallID: toolCall.ID,
+							Name:       toolCall.Function.Name,
+							Content:    toolRes,
+						})
+					}
+				}
+				continue
+			} else {
+				fullReply = respMsg.Content
+				words := strings.Split(fullReply, " ")
+				for idx, w := range words {
+					token := w
+					if idx < len(words)-1 {
+						token += " "
+					}
+					sendSSE(map[string]interface{}{
+						"type":  "token",
+						"delta": token,
+					})
+					time.Sleep(10 * time.Millisecond)
+				}
+				break
+			}
+		}
+
+		if fullReply == "" && len(messages) > 0 {
+			finalReq := OpenAIChatRequest{
+				Model:       model,
+				Messages:    messages,
+				Temperature: 0.1,
+			}
+			if finalResp, err := callOpenAI(proxyBaseURL, proxyAPIKey, finalReq); err == nil && len(finalResp.Choices) > 0 {
+				fullReply = finalResp.Choices[0].Message.Content
+				words := strings.Split(fullReply, " ")
+				for idx, w := range words {
+					token := w
+					if idx < len(words)-1 {
+						token += " "
+					}
+					sendSSE(map[string]interface{}{
+						"type":  "token",
+						"delta": token,
+					})
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
+		}
+
+		if fullReply != "" {
+			encReply := encryptValue(fullReply)
 			dbMutex.Lock()
 			_, _ = db.Exec("INSERT INTO chat_messages (session_id, role, content, model) VALUES (?, 'assistant', ?, ?)", req.SessionID, encReply, model)
 			dbMutex.Unlock()
 		}
 
-		doneEvent, _ := json.Marshal(map[string]string{"type": "done"})
-		fmt.Fprintf(w, "data: %s\n\n", doneEvent)
-		flusher.Flush()
+		sendSSE(map[string]interface{}{
+			"type":       "done",
+			"reply":      fullReply,
+			"tool_calls": executedTools,
+		})
 	})
 
 	port := 8888
