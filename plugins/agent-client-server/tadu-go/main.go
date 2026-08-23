@@ -1219,7 +1219,13 @@ func main() {
 		w.Header().Set("Connection", "keep-alive")
 
 		sendStep := func(msg string) {
-			fmt.Fprintf(w, "data: %s\n\n", msg)
+			lines := strings.Split(msg, "\n")
+			for _, l := range lines {
+				l = strings.TrimRight(l, "\r\n")
+				if l != "" {
+					fmt.Fprintf(w, "data: %s\n\n", l)
+				}
+			}
 			flusher.Flush()
 		}
 
@@ -1389,7 +1395,17 @@ WantedBy=multi-user.target
 		runSSHCmd(client, serviceCmd)
 
 		sendStep("Khởi động lại Systemd Daemon...")
-		runSSHCmd(client, "sudo systemctl daemon-reload || systemctl daemon-reload; sudo systemctl enable ai-agent.service || systemctl enable ai-agent.service; sudo systemctl restart ai-agent.service || systemctl restart ai-agent.service")
+		reloadOut := runSSHCmd(client, "sudo systemctl daemon-reload 2>&1 || systemctl daemon-reload 2>&1")
+		if reloadOut != "" && !strings.Contains(reloadOut, "systemd") && !strings.Contains(reloadOut, "reload") {
+			sendStep(fmt.Sprintf("Daemon-reload output: %s", reloadOut))
+		}
+
+		runSSHCmd(client, "sudo systemctl enable ai-agent.service 2>&1 || systemctl enable ai-agent.service 2>&1")
+		
+		restartOut := runSSHCmd(client, "sudo systemctl restart ai-agent.service 2>&1 || systemctl restart ai-agent.service 2>&1 || sudo systemctl start ai-agent.service 2>&1 || systemctl start ai-agent.service 2>&1")
+		if restartOut != "" {
+			sendStep(fmt.Sprintf("Restart output: %s", restartOut))
+		}
 		time.Sleep(2 * time.Second)
 
 		statusOut := strings.TrimSpace(runSSHCmd(client, "sudo systemctl is-active ai-agent.service 2>/dev/null || systemctl is-active ai-agent.service 2>/dev/null"))
@@ -1398,14 +1414,29 @@ WantedBy=multi-user.target
 		if statusOut == "active" || strings.Contains(healthCheck, "healthy") {
 			sendStep(fmt.Sprintf("[SUCCESS] AI Agent Standalone Binary (Go Edition) đã được triển khai và khởi động THÀNH CÔNG trên VPS (Cổng API: %d)!", apiPort))
 		} else {
-			sendStep(fmt.Sprintf("[WARNING] Service được deploy nhưng trạng thái hiện tại là: %s", statusOut))
-			statusDetail := runSSHCmd(client, "sudo systemctl status ai-agent.service -l --no-pager 2>/dev/null || systemctl status ai-agent.service -l --no-pager 2>/dev/null")
-			if statusDetail != "" {
-				sendStep(fmt.Sprintf("Chi tiết Systemd Status:\n%s", statusDetail))
-			}
-			journalLog := runSSHCmd(client, "sudo journalctl -u ai-agent.service -n 15 --no-pager 2>/dev/null || journalctl -u ai-agent.service -n 15 --no-pager 2>/dev/null")
-			if journalLog != "" {
-				sendStep(fmt.Sprintf("Chi tiết Log Systemd:\n%s", journalLog))
+			// Resilient fallback: Start as background process with nohup if systemd fails
+			sendStep(fmt.Sprintf("[WARNING] Systemd trạng thái: %s. Đang kích hoạt chế độ chạy nền dự phòng (Background Daemon)...", statusOut))
+			runSSHCmd(client, fmt.Sprintf("nohup env AGENT_PORT=%d PORT=%d PROXY_API_KEY=%q OPENROUTER_API_KEY=%q PROXY_BASE_URL=%q OPENROUTER_BASE_URL=%q AI_MODEL=%q SECRET_TOKEN=%q AGENT_SECRET_TOKEN=%q %s > %s/agent.log 2>&1 &",
+				apiPort, apiPort, proxyAPIKey, proxyAPIKey, proxyBaseURL, proxyBaseURL, aiModel, secretToken, secretToken, targetRemotePath, remoteDir))
+			time.Sleep(2 * time.Second)
+
+			healthCheckAfter := strings.TrimSpace(runSSHCmd(client, fmt.Sprintf("curl -s -m 3 http://127.0.0.1:%d/health 2>/dev/null || wget -qO- --timeout=3 http://127.0.0.1:%d/health 2>/dev/null || true", apiPort, apiPort)))
+			if strings.Contains(healthCheckAfter, "healthy") {
+				sendStep(fmt.Sprintf("[SUCCESS] AI Agent Service đã khởi chạy thành công qua chế độ Daemon dự phòng (Cổng API: %d)!", apiPort))
+			} else {
+				sendStep(fmt.Sprintf("[ERROR] Không thể khởi động Service (Trạng thái: %s)", statusOut))
+				statusDetail := runSSHCmd(client, "sudo systemctl status ai-agent.service -l --no-pager 2>&1 || systemctl status ai-agent.service -l --no-pager 2>&1")
+				if statusDetail != "" {
+					sendStep(fmt.Sprintf("Chi tiết Systemd Status:\n%s", statusDetail))
+				}
+				journalLog := runSSHCmd(client, "sudo journalctl -u ai-agent.service -n 15 --no-pager 2>&1 || journalctl -u ai-agent.service -n 15 --no-pager 2>&1")
+				if journalLog != "" {
+					sendStep(fmt.Sprintf("Chi tiết Log Systemd:\n%s", journalLog))
+				}
+				agentLog := runSSHCmd(client, fmt.Sprintf("tail -n 15 %s/agent.log 2>&1 || true", remoteDir))
+				if agentLog != "" {
+					sendStep(fmt.Sprintf("Chi tiết Log Tiến Trình (agent.log):\n%s", agentLog))
+				}
 			}
 		}
 	})

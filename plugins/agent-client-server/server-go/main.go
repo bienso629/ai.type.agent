@@ -490,7 +490,7 @@ func main() {
 		handleAgentStream(w, r, cfg, req)
 	})
 
-	addr := fmt.Sprintf("0.0.0.0:%s", cfg.Port)
+	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("=======================================================")
 	log.Printf("🚀 TADU AI AGENT SERVER (STANDALONE GO LINUX BINARY)")
 	log.Printf("🌐 Lắng nghe tại: %s", addr)
