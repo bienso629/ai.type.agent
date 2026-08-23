@@ -548,16 +548,79 @@ type ToolExecutionRecord struct {
 }
 
 const SystemPrompt = `Bạn là Tadu Cloud AI Agent - Kỹ sư DevOps Linux thực chiến cấp cao.
-Bạn có quyền thực thi lệnh bash/shell thực tế trên máy chủ qua công cụ execute_terminal_command.
+Bạn có quyền:
+1. Thực thi lệnh bash/shell thực tế trên máy chủ qua công cụ execute_terminal_command.
+2. Tự động tải file/backup từ máy chủ VPS về máy tính của người dùng (lưu vào thư mục Downloads) qua công cụ download_remote_file_to_local.
 
 CÁC QUY TẮC BẮT BUỘC:
 1. TẬP TRUNG ĐÚNG 100% TRỌNG TÂM YÊU CẦU MỚI:
-   - CHỈ kiểm tra và trả lời ĐÚNG DUY NHẤT đối tượng/domain/dịch vụ mà người dùng đang hỏi trong tin nhắn mới nhất.
-   - Khi được hỏi về website/domain/dịch vụ/cấu hình/tiến trình/file: Hãy DÙNG NGAY công cụ execute_terminal_command để chạy các lệnh tìm kiếm, kiểm tra thực tế trên máy chủ Linux để lấy thông tin chính xác nhất.
-2. HÀNH ĐỘNG TIẾP NỐI:
-   - Tự động chạy các lệnh kiểm tra cấu hình (vd: Nginx, Apache, VirtualHost, Docker, Web roots) để trả lời người dùng đầy đủ.
+   - CHỈ kiểm tra và thực hiện đúng đối tượng/yêu cầu mà người dùng đang hỏi.
+2. TỰ ĐỘNG TẢI FILE VỀ MÁY LOCAL KHI ĐƯỢC YÊU CẦU:
+   - Khi người dùng yêu cầu: "Backup và tải về máy", "Download file X về máy tính", "Kéo backup về local":
+     + Bước 1: Dùng execute_terminal_command để tạo file backup (hoặc nén thư mục, dump database) vào thư mục làm việc của user (ví dụ: ~/ai_agent/backups/...).
+     + Bước 2: Dùng NGAY công cụ download_remote_file_to_local để kéo file đó từ VPS về máy tính người dùng.
+     + Bước 3: Báo cho người dùng biết file đã được tải về máy tính thành công kèm đường dẫn Downloads.
 3. KẾT LUẬN NGẮN GỌN, RÕ RÀNG & TRỰC QUAN:
    - Trình bày kết quả dễ đọc (bảng markdown, danh sách, mã lệnh).`
+
+func formatFileSize(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	} else if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	} else if bytes < 1024*1024*1024 {
+		return fmt.Sprintf("%.2f MB", float64(bytes)/(1024*1024))
+	}
+	return fmt.Sprintf("%.2f GB", float64(bytes)/(1024*1024*1024))
+}
+
+func downloadRemoteFileToLocal(sshClient *ssh.Client, remotePath string, localFilename string) (string, error) {
+	if sshClient == nil {
+		return "", fmt.Errorf("Không có kết nối SSH tới máy chủ")
+	}
+
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		userHome = "."
+	}
+	downloadsDir := filepath.Join(userHome, "Downloads")
+	_ = os.MkdirAll(downloadsDir, 0755)
+
+	if localFilename == "" {
+		localFilename = filepath.Base(remotePath)
+	}
+	destPath := filepath.Join(downloadsDir, localFilename)
+
+	session, err := sshClient.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("Lỗi tạo SSH session: %v", err)
+	}
+	defer session.Close()
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("Lỗi StdoutPipe: %v", err)
+	}
+
+	if err := session.Start(fmt.Sprintf("cat %q", remotePath)); err != nil {
+		return "", fmt.Errorf("Lỗi đọc file từ server: %v", err)
+	}
+
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return "", fmt.Errorf("Lỗi tạo file ở local (%s): %v", destPath, err)
+	}
+	defer outFile.Close()
+
+	written, err := io.Copy(outFile, stdout)
+	if err != nil {
+		return "", fmt.Errorf("Lỗi ghi file local: %v", err)
+	}
+	_ = session.Wait()
+
+	sizeStr := formatFileSize(written)
+	return fmt.Sprintf("✅ Đã tải file thành công về máy tính tại: %s (Kích thước: %s)", destPath, sizeStr), nil
+}
 
 func callOpenAI(proxyBaseURL string, proxyAPIKey string, reqBody OpenAIChatRequest) (*OpenAIChatResponse, error) {
 	jsonBytes, err := json.Marshal(reqBody)
@@ -1895,11 +1958,11 @@ WantedBy=default.target
 		sendSSE(map[string]interface{}{"type": "status", "message": "Đang kết nối AI Agent..."})
 
 		// Tool definition for executing commands on VPS
-		toolDef := map[string]interface{}{
+		toolDefExec := map[string]interface{}{
 			"type": "function",
 			"function": map[string]interface{}{
 				"name":        "execute_terminal_command",
-				"description": "Thực thi lệnh terminal bash/shell trên máy chủ Linux để kiểm tra cấu hình, dịch vụ, website, log, file hệ thống.",
+				"description": "Thực thi lệnh terminal bash/shell trên máy chủ Linux để kiểm tra cấu hình, dịch vụ, website, log, tạo file backup, nén dữ liệu.",
 				"parameters": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1912,7 +1975,30 @@ WantedBy=default.target
 				},
 			},
 		}
-		toolsList := []interface{}{toolDef}
+
+		// Tool definition for downloading files from VPS to local computer
+		toolDefDownload := map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        "download_remote_file_to_local",
+				"description": "Tự động tải một file hoặc bản backup từ máy chủ VPS về máy tính của người dùng (lưu vào thư mục Downloads).",
+				"parameters": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"remote_path": map[string]interface{}{
+							"type":        "string",
+							"description": "Đường dẫn tuyệt đối của file trên VPS cần tải về (ví dụ: /home/admin/backup_db.sql.gz)",
+						},
+						"local_filename": map[string]interface{}{
+							"type":        "string",
+							"description": "Tên file muốn lưu trên máy local (tùy chọn, mặc định lấy theo tên gốc)",
+						},
+					},
+					"required": []string{"remote_path"},
+				},
+			},
+		}
+		toolsList := []interface{}{toolDefExec, toolDefDownload}
 
 		currSysPrompt := SystemPrompt
 		if req.WorkingDir != "" {
@@ -2037,6 +2123,44 @@ WantedBy=default.target
 						rec := ToolExecutionRecord{
 							Tool:    "execute_terminal_command",
 							Command: cmdStr,
+							Output:  toolRes,
+						}
+						executedTools = append(executedTools, rec)
+
+						sendSSE(map[string]interface{}{
+							"type": "tool",
+							"tool": rec,
+						})
+
+						messages = append(messages, ChatMessage{
+							Role:       "tool",
+							ToolCallID: toolCall.ID,
+							Name:       toolCall.Function.Name,
+							Content:    toolRes,
+						})
+					} else if toolCall.Function.Name == "download_remote_file_to_local" {
+						var args struct {
+							RemotePath    string `json:"remote_path"`
+							LocalFilename string `json:"local_filename"`
+						}
+						_ = json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
+						if args.RemotePath == "" {
+							args.RemotePath = strings.TrimSpace(toolCall.Function.Arguments)
+						}
+
+						sendSSE(map[string]interface{}{
+							"type":    "status",
+							"message": fmt.Sprintf("Đang tự động tải file %s về máy tính...", filepath.Base(args.RemotePath)),
+						})
+
+						toolRes, err := downloadRemoteFileToLocal(sshClient, args.RemotePath, args.LocalFilename)
+						if err != nil {
+							toolRes = fmt.Sprintf("Lỗi tải file về máy: %v", err)
+						}
+
+						rec := ToolExecutionRecord{
+							Tool:    "download_remote_file_to_local",
+							Command: fmt.Sprintf("download_to_local: %s", args.RemotePath),
 							Output:  toolRes,
 						}
 						executedTools = append(executedTools, rec)
