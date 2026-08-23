@@ -179,11 +179,90 @@ func initDB() error {
 	return err
 }
 
+func normalizeServerMap(s map[string]interface{}) map[string]interface{} {
+	server := make(map[string]interface{})
+	for k, v := range s {
+		server[k] = v
+	}
+	if id, ok := server["id"].(string); !ok || strings.TrimSpace(id) == "" {
+		server["id"] = fmt.Sprintf("srv_%d", time.Now().UnixNano())
+	}
+	if name, ok := server["name"].(string); !ok || strings.TrimSpace(name) == "" {
+		server["name"] = "Máy chủ 1"
+	}
+	if ip, ok := server["server_ip"].(string); !ok || strings.TrimSpace(ip) == "" {
+		server["server_ip"] = "127.0.0.1"
+	}
+	if _, ok := server["ssh_user"].(string); !ok {
+		server["ssh_user"] = "root"
+	}
+	if _, ok := server["ssh_pass"].(string); !ok {
+		server["ssh_pass"] = ""
+	}
+	if port, ok := server["ssh_port"]; ok {
+		switch p := port.(type) {
+		case float64:
+			server["ssh_port"] = int(p)
+		case int:
+			server["ssh_port"] = p
+		case string:
+			if pInt, err := strconv.Atoi(p); err == nil && pInt > 0 {
+				server["ssh_port"] = pInt
+			} else {
+				server["ssh_port"] = 22
+			}
+		default:
+			server["ssh_port"] = 22
+		}
+	} else {
+		server["ssh_port"] = 22
+	}
+	if port, ok := server["api_port"]; ok {
+		switch p := port.(type) {
+		case float64:
+			server["api_port"] = int(p)
+		case int:
+			server["api_port"] = p
+		case string:
+			if pInt, err := strconv.Atoi(p); err == nil && pInt > 0 {
+				server["api_port"] = pInt
+			} else {
+				server["api_port"] = 8000
+			}
+		default:
+			server["api_port"] = 8000
+		}
+	} else {
+		server["api_port"] = 8000
+	}
+	if _, ok := server["remote_work_dir"].(string); !ok {
+		server["remote_work_dir"] = "/opt/ai_agent"
+	}
+	if _, ok := server["secret_token"].(string); !ok {
+		server["secret_token"] = "super_secret_token_123"
+	}
+	return server
+}
+
 func loadConfig() map[string]interface{} {
 	cfgMutex.RLock()
 	defer cfgMutex.RUnlock()
 
 	defaultCfg := map[string]interface{}{
+		"active_server_id": "srv_default",
+		"servers": []interface{}{
+			map[string]interface{}{
+				"id":              "srv_default",
+				"name":            "Máy chủ chính",
+				"server_ip":       "127.0.0.1",
+				"ssh_user":        "root",
+				"ssh_pass":        "",
+				"ssh_port":        22,
+				"remote_work_dir": "/opt/ai_agent",
+				"api_port":        8000,
+				"secret_token":    "super_secret_token_123",
+			},
+		},
 		"server_ip":       "127.0.0.1",
 		"ssh_user":        "root",
 		"ssh_pass":        "",
@@ -253,6 +332,63 @@ func loadConfig() map[string]interface{} {
 		}
 	}
 
+	// Xử lý danh sách servers
+	var serverList []map[string]interface{}
+	if rawServers, ok := result["servers"].([]interface{}); ok && len(rawServers) > 0 {
+		for _, s := range rawServers {
+			if sMap, ok := s.(map[string]interface{}); ok {
+				serverList = append(serverList, normalizeServerMap(sMap))
+			}
+		}
+	} else if rawServersMap, ok := result["servers"].([]map[string]interface{}); ok && len(rawServersMap) > 0 {
+		for _, sMap := range rawServersMap {
+			serverList = append(serverList, normalizeServerMap(sMap))
+		}
+	}
+
+	if len(serverList) == 0 {
+		topServer := map[string]interface{}{
+			"id":              "srv_default",
+			"name":            "Máy chủ chính",
+			"server_ip":       result["server_ip"],
+			"ssh_user":        result["ssh_user"],
+			"ssh_pass":        result["ssh_pass"],
+			"ssh_port":        result["ssh_port"],
+			"remote_work_dir": result["remote_work_dir"],
+			"api_port":        result["api_port"],
+			"secret_token":    result["secret_token"],
+		}
+		serverList = append(serverList, normalizeServerMap(topServer))
+	}
+
+	activeID, _ := result["active_server_id"].(string)
+	var activeServer map[string]interface{}
+	for _, s := range serverList {
+		if s["id"] == activeID {
+			activeServer = s
+			break
+		}
+	}
+	if activeServer == nil {
+		activeServer = serverList[0]
+		activeID, _ = activeServer["id"].(string)
+		result["active_server_id"] = activeID
+	}
+
+	// Đồng bộ các trường của activeServer ra ngoài top-level
+	for k, v := range activeServer {
+		if k != "id" && k != "name" {
+			result[k] = v
+		}
+	}
+	result["active_server_name"] = activeServer["name"]
+
+	resultServers := make([]interface{}, len(serverList))
+	for i, s := range serverList {
+		resultServers[i] = s
+	}
+	result["servers"] = resultServers
+
 	return result
 }
 
@@ -260,9 +396,46 @@ func saveConfig(cfg map[string]interface{}) error {
 	cfgMutex.Lock()
 	defer cfgMutex.Unlock()
 
+	// Normalize servers and active_server_id
+	var serverList []map[string]interface{}
+	if rawServers, ok := cfg["servers"].([]interface{}); ok && len(rawServers) > 0 {
+		for _, s := range rawServers {
+			if sMap, ok := s.(map[string]interface{}); ok {
+				serverList = append(serverList, normalizeServerMap(sMap))
+			}
+		}
+	}
+
+	activeID, _ := cfg["active_server_id"].(string)
+	if len(serverList) > 0 {
+		var activeServer map[string]interface{}
+		for _, s := range serverList {
+			if s["id"] == activeID {
+				activeServer = s
+				break
+			}
+		}
+		if activeServer == nil {
+			activeServer = serverList[0]
+			activeID, _ = activeServer["id"].(string)
+			cfg["active_server_id"] = activeID
+		}
+		// Sync top level
+		for k, v := range activeServer {
+			if k != "id" && k != "name" {
+				cfg[k] = v
+			}
+		}
+		resultServers := make([]interface{}, len(serverList))
+		for i, s := range serverList {
+			resultServers[i] = s
+		}
+		cfg["servers"] = resultServers
+	}
+
 	diskData := make(map[string]interface{})
 	for k, v := range cfg {
-		if k == "_encrypted_vault" {
+		if k == "_encrypted_vault" || k == "servers" {
 			continue
 		}
 		diskData[k] = encryptValue(fmt.Sprintf("%v", v))
@@ -360,14 +533,220 @@ func main() {
 				http.Error(w, err.Error(), 400)
 				return
 			}
-			if err := saveConfig(newCfg); err != nil {
+			cfg := loadConfig()
+			for k, v := range newCfg {
+				cfg[k] = v
+			}
+			if err := saveConfig(cfg); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "message": "Lưu cấu hình thành công"})
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "message": "Lưu cấu hình thành công", "config": cfg})
 			return
 		}
 		http.Error(w, "Method not allowed", 405)
+	})
+
+	// Server Management APIs
+	mux.HandleFunc("/api/servers", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		cfg := loadConfig()
+
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":           "success",
+				"active_server_id": cfg["active_server_id"],
+				"servers":          cfg["servers"],
+			})
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			var newServer map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&newServer); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			normServer := normalizeServerMap(newServer)
+			normServer["id"] = fmt.Sprintf("srv_%d", time.Now().UnixNano())
+
+			rawServers, _ := cfg["servers"].([]interface{})
+			rawServers = append(rawServers, normServer)
+			cfg["servers"] = rawServers
+
+			setActive, _ := newServer["set_active"].(bool)
+			if setActive || len(rawServers) == 1 {
+				cfg["active_server_id"] = normServer["id"]
+			}
+
+			if err := saveConfig(cfg); err != nil {
+				json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
+				return
+			}
+
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":           "success",
+				"message":          "Đã thêm máy chủ mới thành công",
+				"server":           normServer,
+				"active_server_id": cfg["active_server_id"],
+				"servers":          cfg["servers"],
+			})
+			return
+		}
+		http.Error(w, "Method not allowed", 405)
+	})
+
+	mux.HandleFunc("/api/servers/update", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var updateData map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+
+		serverID, _ := updateData["id"].(string)
+		if serverID == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Thiếu Server ID"})
+			return
+		}
+
+		cfg := loadConfig()
+		rawServers, _ := cfg["servers"].([]interface{})
+		found := false
+		for i, s := range rawServers {
+			if sMap, ok := s.(map[string]interface{}); ok {
+				if sMap["id"] == serverID {
+					for k, v := range updateData {
+						sMap[k] = v
+					}
+					rawServers[i] = normalizeServerMap(sMap)
+					found = true
+					break
+				}
+			}
+		}
+
+		if !found {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Không tìm thấy máy chủ"})
+			return
+		}
+
+		cfg["servers"] = rawServers
+		if err := saveConfig(cfg); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":           "success",
+			"message":          "Đã cập nhật thông tin máy chủ thành công",
+			"active_server_id": cfg["active_server_id"],
+			"servers":          cfg["servers"],
+		})
+	})
+
+	mux.HandleFunc("/api/servers/delete", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Thiếu Server ID"})
+			return
+		}
+
+		cfg := loadConfig()
+		rawServers, _ := cfg["servers"].([]interface{})
+		if len(rawServers) <= 1 {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Không thể xoá máy chủ cuối cùng trong danh sách"})
+			return
+		}
+
+		var newServers []interface{}
+		for _, s := range rawServers {
+			if sMap, ok := s.(map[string]interface{}); ok {
+				if sMap["id"] != req.ID {
+					newServers = append(newServers, sMap)
+				}
+			}
+		}
+
+		cfg["servers"] = newServers
+		if cfg["active_server_id"] == req.ID {
+			if len(newServers) > 0 {
+				if firstMap, ok := newServers[0].(map[string]interface{}); ok {
+					cfg["active_server_id"] = firstMap["id"]
+				}
+			}
+		}
+
+		if err := saveConfig(cfg); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":           "success",
+			"message":          "Đã xoá máy chủ thành công",
+			"active_server_id": cfg["active_server_id"],
+			"servers":          cfg["servers"],
+		})
+	})
+
+	mux.HandleFunc("/api/servers/select", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			ServerID string `json:"server_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServerID == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Thiếu Server ID"})
+			return
+		}
+
+		cfg := loadConfig()
+		rawServers, _ := cfg["servers"].([]interface{})
+		var matchedServer map[string]interface{}
+		for _, s := range rawServers {
+			if sMap, ok := s.(map[string]interface{}); ok {
+				if sMap["id"] == req.ServerID {
+					matchedServer = sMap
+					break
+				}
+			}
+		}
+
+		if matchedServer == nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Máy chủ không tồn tại"})
+			return
+		}
+
+		cfg["active_server_id"] = req.ServerID
+		if err := saveConfig(cfg); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":        "success",
+			"message":       fmt.Sprintf("Đã chuyển sang máy chủ %v (%v)", matchedServer["name"], matchedServer["server_ip"]),
+			"active_server": matchedServer,
+			"config":        cfg,
+		})
 	})
 
 	// 3. Chat Sessions API: GET /api/chat/sessions, POST /api/chat/sessions
@@ -584,42 +963,60 @@ func main() {
 	mux.HandleFunc("/api/ssh/test", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		cfg := loadConfig()
+		targetCfg := make(map[string]interface{})
+		for k, v := range cfg {
+			targetCfg[k] = v
+		}
+
 		if r.Body != nil {
 			var req map[string]interface{}
 			if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req != nil {
+				if sid, ok := req["server_id"].(string); ok && sid != "" {
+					rawServers, _ := cfg["servers"].([]interface{})
+					for _, s := range rawServers {
+						if sMap, ok := s.(map[string]interface{}); ok {
+							if sMap["id"] == sid {
+								for k, v := range sMap {
+									targetCfg[k] = v
+								}
+								break
+							}
+						}
+					}
+				}
 				if ip, ok := req["server_ip"].(string); ok && strings.TrimSpace(ip) != "" {
-					cfg["server_ip"] = strings.TrimSpace(ip)
+					targetCfg["server_ip"] = strings.TrimSpace(ip)
 				}
 				if u, ok := req["ssh_user"].(string); ok && strings.TrimSpace(u) != "" {
-					cfg["ssh_user"] = strings.TrimSpace(u)
+					targetCfg["ssh_user"] = strings.TrimSpace(u)
 				}
 				if p, ok := req["ssh_pass"].(string); ok {
-					cfg["ssh_pass"] = p
+					targetCfg["ssh_pass"] = p
 				}
 				if portVal, ok := req["ssh_port"]; ok {
 					switch v := portVal.(type) {
 					case float64:
 						if v > 0 {
-							cfg["ssh_port"] = int(v)
+							targetCfg["ssh_port"] = int(v)
 						}
 					case int:
 						if v > 0 {
-							cfg["ssh_port"] = v
+							targetCfg["ssh_port"] = v
 						}
 					case string:
 						if pInt, err := strconv.Atoi(v); err == nil && pInt > 0 {
-							cfg["ssh_port"] = pInt
+							targetCfg["ssh_port"] = pInt
 						}
 					}
 				}
 			}
 		}
 
-		client, err := getSSHClient(cfg)
+		client, err := getSSHClient(targetCfg)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"status":  "error",
-				"message": fmt.Sprintf("Kết nối thất bại tới %v:%v: %v", cfg["server_ip"], cfg["ssh_port"], err),
+				"message": fmt.Sprintf("Kết nối thất bại tới %v:%v: %v", targetCfg["server_ip"], targetCfg["ssh_port"], err),
 			})
 			return
 		}
@@ -633,7 +1030,7 @@ func main() {
 			session.Close()
 		}
 
-		msg := fmt.Sprintf("Kết nối SSH thành công tới %v:%v!", cfg["server_ip"], cfg["ssh_port"])
+		msg := fmt.Sprintf("Kết nối SSH thành công tới %v:%v!", targetCfg["server_ip"], targetCfg["ssh_port"])
 		if outStr != "" {
 			msg += "\n" + outStr
 		}

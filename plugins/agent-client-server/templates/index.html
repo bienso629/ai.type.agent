@@ -713,18 +713,51 @@
                 </div>
             </div>
 
-            <!-- Server Status Widget -->
-            <div class="p-3 mx-3 my-3 rounded-1 d-flex align-items-center justify-content-between" style="background-color: rgba(3, 7, 18, 0.6); border: 1px solid var(--tadu-border);">
-                <div class="d-flex align-items-center overflow-hidden" style="gap: 10px;">
-                    <span id="sidebar-status-dot" class="live-dot bg-warning live-pulse"></span>
-                    <div class="overflow-hidden">
-                        <div id="sidebar-status-text" class="fw-semibold text-white text-truncate" style="font-size: 0.75rem;">Đang kiểm tra...</div>
-                        <small id="sidebar-server-ip" class="text-secondary font-mono text-truncate d-block" style="font-size: 0.7rem;">127.0.0.1</small>
+            <!-- Server Quick Switcher & Status Widget -->
+            <div class="dropdown mx-3 my-3">
+                <div class="p-2.5 px-3 rounded-1 d-flex align-items-center justify-content-between cursor-pointer border transition-all" 
+                     id="sidebar-server-dropdown-btn" 
+                     data-bs-toggle="dropdown" 
+                     aria-expanded="false"
+                     style="background-color: rgba(3, 7, 18, 0.75); border-color: var(--tadu-border) !important; cursor: pointer;">
+                    <div class="d-flex align-items-center overflow-hidden gap-2" style="min-width: 0;">
+                        <span id="sidebar-status-dot" class="live-dot bg-warning live-pulse flex-shrink-0"></span>
+                        <div class="overflow-hidden" style="min-width: 0;">
+                            <div class="d-flex align-items-center gap-1.5">
+                                <span id="sidebar-server-name" class="fw-bold text-white text-truncate" style="font-size: 0.76rem;">Máy chủ chính</span>
+                                <i class="fa-solid fa-chevron-down text-secondary" style="font-size: 0.62rem;"></i>
+                            </div>
+                            <small id="sidebar-server-ip" class="text-secondary font-mono text-truncate d-block" style="font-size: 0.68rem;">127.0.0.1</small>
+                        </div>
                     </div>
+                    <button type="button" onclick="event.stopPropagation(); refreshAllStatus()" class="btn btn-sm btn-link text-secondary p-1 text-decoration-none flex-shrink-0" title="Làm mới trạng thái">
+                        <i class="fa-solid fa-rotate-right" style="font-size: 0.75rem; margin-right: 0 !important;"></i>
+                    </button>
                 </div>
-                <button onclick="refreshAllStatus()" class="btn btn-sm btn-link text-secondary p-1 text-decoration-none" title="Làm mới trạng thái">
-                    <i class="fa-solid fa-rotate-right" style="font-size: 0.8rem; margin-right: 0 !important;"></i>
-                </button>
+
+                <!-- Dropdown Menu -->
+                <ul class="dropdown-menu dropdown-menu-dark shadow-lg w-100 p-2" id="sidebar-servers-menu" style="background-color: #0c1322; border: 1px solid var(--tadu-border); border-radius: 8px; font-size: 0.78rem; max-height: 280px; overflow-y: auto;">
+                    <li class="dropdown-header text-uppercase px-2 py-1 text-secondary fw-semibold d-flex justify-content-between align-items-center" style="font-size: 0.68rem;">
+                        <span>Danh Sách Máy Chủ</span>
+                        <span id="sidebar-server-count" class="badge bg-secondary-subtle text-light rounded-pill px-1.5">1</span>
+                    </li>
+                    <div id="sidebar-servers-list" class="d-flex flex-column gap-1 my-1">
+                        <!-- Rendered by JS -->
+                    </div>
+                    <li><hr class="dropdown-divider my-1 border-secondary border-opacity-25"></li>
+                    <li>
+                        <button class="dropdown-item d-flex align-items-center gap-2 py-1.5 text-info rounded" onclick="openAddServerModal()">
+                            <i class="fa-solid fa-plus-circle"></i>
+                            <span>Thêm Máy Chủ Mới...</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item d-flex align-items-center gap-2 py-1.5 text-secondary rounded" onclick="switchTab('settings')">
+                            <i class="fa-solid fa-gear"></i>
+                            <span>Quản lý trong Hệ thống</span>
+                        </button>
+                    </li>
+                </ul>
             </div>
 
             <!-- Nav Tabs -->
@@ -1284,104 +1317,110 @@
         <!-- TAB 5: HỆ THỐNG (SETTINGS) -->
         <!-- ============================================================= -->
         <section id="tab-settings" class="d-none flex-grow-1 d-flex flex-column h-100 w-100">
+        <!-- ============================================================= -->
+        <!-- TAB 5: HỆ THỐNG (CẤU HÌNH & QUẢN LÝ ĐA MÁY CHỦ) -->
+        <!-- ============================================================= -->
+        <section id="tab-settings" class="d-none flex-grow-1 d-flex flex-column h-100 w-100">
             <!-- Topbar Header -->
             <div class="tab-topbar">
                 <div class="d-flex align-items-center gap-3">
                     <div class="tab-topbar-icon">
-                        <i class="fa-solid fa-gear text-primary"></i>
+                        <i class="fa-solid fa-server text-primary"></i>
                     </div>
                     <div class="d-flex flex-column justify-content-center">
                         <div class="tab-topbar-title">
-                            <span>Cấu Hình Kết Nối & Thông Số Hệ Thống</span>
+                            <span>Quản Lý Đa Máy Chủ & Cấu Hình AI</span>
                         </div>
-                        <small class="tab-topbar-subtitle">Thông tin được lưu an toàn tại file <code>config.json</code></small>
+                        <small class="tab-topbar-subtitle">Thêm, sửa, chuyển đổi máy chủ SSH Remote và cấu hình AI Model (GLM-5.3)</small>
                     </div>
                 </div>
-                <div>
-                    <button onclick="saveSettings()" class="btn btn-primary btn-sm px-3.5 py-1.5 fw-semibold" style="font-size: 0.78rem;">
-                        <i class="fa-solid fa-floppy-disk"></i>
-                        <span>Lưu Cấu Hình</span>
+                <div class="d-flex align-items-center gap-2">
+                    <button onclick="openAddServerModal()" class="btn btn-outline-info btn-sm px-3 py-1.5 fw-semibold" style="font-size: 0.78rem;">
+                        <i class="fa-solid fa-plus me-1.5"></i>
+                        <span>Thêm Máy Chủ</span>
+                    </button>
+                    <button onclick="saveAISettings()" class="btn btn-primary btn-sm px-3.5 py-1.5 fw-semibold" style="font-size: 0.78rem;">
+                        <i class="fa-solid fa-floppy-disk me-1.5"></i>
+                        <span>Lưu Cấu Hình AI</span>
                     </button>
                 </div>
             </div>
 
             <!-- Content Area -->
             <div class="flex-grow-1 overflow-y-auto p-4 w-100">
+                <div class="d-flex flex-column gap-4">
+                    <!-- Group 1: Multi-Server Management -->
+                    <div>
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <h6 class="fw-bold text-white mb-0 d-flex align-items-center gap-2" style="font-size: 0.9rem;">
+                                <i class="fa-solid fa-network-wired text-info"></i>
+                                <span>1. Danh Sách Máy Chủ Remote (Multi-Server)</span>
+                                <span id="settings-server-count" class="badge bg-primary-subtle text-primary rounded-pill px-2 py-0.5" style="font-size: 0.7rem;">0 máy chủ</span>
+                            </h6>
+                            <button onclick="openAddServerModal()" class="btn btn-sm btn-info text-dark fw-bold px-3 py-1.5" style="font-size: 0.75rem;">
+                                <i class="fa-solid fa-plus me-1"></i> Thêm Server Mới
+                            </button>
+                        </div>
 
-            <div class="d-flex flex-column gap-3">
-                <!-- Group 1: Remote Server SSH -->
-                <div class="tadu-card p-4">
-                    <h6 class="fw-bold text-light pb-3 mb-3 border-bottom icon-text-gap" style="border-color: var(--tadu-border) !important; font-size: 0.88rem;">
-                        <i class="fa-solid fa-server text-info"></i>
-                        <span>1. Thông Tin Máy Chủ Remote SSH</span>
-                    </h6>
-                    <div class="row g-3">
-                        <div class="col-12 col-md-4">
-                            <label class="form-label">Địa chỉ Server IP</label>
-                            <input type="password" id="cfg-server-ip" placeholder="192.168.1.100" class="form-control font-mono">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label">Cổng SSH (Port)</label>
-                            <input type="password" id="cfg-ssh-port" placeholder="22" class="form-control font-mono">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label">SSH Username</label>
-                            <input type="password" id="cfg-ssh-user" placeholder="root" class="form-control font-mono">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">SSH Mật Khẩu (Password)</label>
-                            <input type="password" id="cfg-ssh-pass" placeholder="••••••••••••" class="form-control font-mono">
+                        <!-- Server Cards Grid -->
+                        <div id="settings-servers-grid" class="row g-3">
+                            <!-- Dynamically rendered by JS -->
                         </div>
                     </div>
-                    <div class="mt-3 text-end">
-                        <button onclick="testSSH()" class="btn btn-outline-info btn-sm px-4 py-2">
-                            <i class="fa-solid fa-plug"></i>
-                            <span>Kiểm Tra Kết Nối SSH</span>
-                        </button>
-                    </div>
-                </div>
 
-                <!-- Group 2: AI Model & Proxy API -->
-                <div class="tadu-card p-4">
-                    <h6 class="fw-bold text-light pb-3 mb-3 border-bottom icon-text-gap" style="border-color: var(--tadu-border) !important; font-size: 0.88rem;">
-                        <i class="fa-solid fa-microchip text-primary"></i>
-                        <span>2. Cấu Hình AI Model & Proxy API</span>
-                    </h6>
-                    <div class="row g-3">
-                        <div class="col-12 col-md-6">
-                            <label class="form-label">AI Model Name</label>
-                            <input type="text" id="cfg-ai-model" value="glm-5.3" class="form-control">
-                            <small class="text-secondary mt-1 d-block" style="font-size: 0.72rem;">Mặc định thiết lập là <strong>glm-5.3</strong></small>
+                    <!-- Group 2: AI Model & Proxy API -->
+                    <div class="tadu-card p-4">
+                        <div class="d-flex align-items-center justify-content-between pb-3 mb-3 border-bottom" style="border-color: var(--tadu-border) !important;">
+                            <h6 class="fw-bold text-light mb-0 d-flex align-items-center gap-2" style="font-size: 0.88rem;">
+                                <i class="fa-solid fa-microchip text-primary"></i>
+                                <span>2. Cấu Hình AI Model & Proxy API (Toàn Cục)</span>
+                            </h6>
+                            <button onclick="saveAISettings()" class="btn btn-outline-primary btn-sm px-3 py-1">
+                                <i class="fa-solid fa-check me-1"></i> Lưu Cấu Hình AI
+                            </button>
                         </div>
-                        <div class="col-12 col-md-6">
-                            <label class="form-label">Proxy Base URL</label>
-                            <input type="password" id="cfg-proxy-base-url" placeholder="https://openrouter.ai/api/v1" class="form-control font-mono">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Proxy API Key</label>
-                            <input type="password" id="cfg-proxy-api-key" placeholder="sk-or-v1-..." class="form-control font-mono">
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">AI Model Name</label>
+                                <input type="text" id="cfg-ai-model" value="glm-5.3" class="form-control">
+                                <small class="text-secondary mt-1 d-block" style="font-size: 0.72rem;">Mặc định thiết lập là <strong>glm-5.3</strong></small>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Proxy Base URL</label>
+                                <input type="password" id="cfg-proxy-base-url" placeholder="https://openrouter.ai/api/v1" class="form-control font-mono">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Proxy API Key</label>
+                                <input type="password" id="cfg-proxy-api-key" placeholder="sk-or-v1-..." class="form-control font-mono">
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Group 3: Security & Service -->
-                <div class="tadu-card p-4">
-                    <h6 class="fw-bold text-light pb-3 mb-3 border-bottom icon-text-gap" style="border-color: var(--tadu-border) !important; font-size: 0.88rem;">
-                        <i class="fa-solid fa-shield-halved text-success"></i>
-                        <span>3. Bảo Mật & Thông Số Service</span>
-                    </h6>
-                    <div class="row g-3">
-                        <div class="col-12 col-md-4">
-                            <label class="form-label">Cổng API Service (Port)</label>
-                            <input type="password" id="cfg-api-port" value="8000" class="form-control font-mono">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label">Thư mục Remote Deploy</label>
-                            <input type="password" id="cfg-remote-dir" value="/opt/ai_agent" class="form-control font-mono">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label">Mã Token Bảo Mật</label>
-                            <input type="password" id="cfg-secret-token" value="super_secret_token_123" class="form-control font-mono">
+                    <!-- Group 3: Security & Storage Info -->
+                    <div class="tadu-card p-4">
+                        <h6 class="fw-bold text-light pb-3 mb-3 border-bottom d-flex align-items-center gap-2" style="border-color: var(--tadu-border) !important; font-size: 0.88rem;">
+                            <i class="fa-solid fa-shield-halved text-success"></i>
+                            <span>3. Bảo Mật & Thông Tin Hệ Thống</span>
+                        </h6>
+                        <div class="row g-3 text-secondary" style="font-size: 0.82rem;">
+                            <div class="col-12 col-md-4">
+                                <div class="p-3 rounded-1" style="background: rgba(3, 7, 18, 0.5); border: 1px solid var(--tadu-border);">
+                                    <div class="text-white fw-semibold mb-1"><i class="fa-solid fa-lock text-warning me-1.5"></i> Chuẩn Mã Hoá</div>
+                                    <small>AES-256 GCM + HMAC-SHA256 lưu trữ an toàn trong <code>config.json</code></small>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <div class="p-3 rounded-1" style="background: rgba(3, 7, 18, 0.5); border: 1px solid var(--tadu-border);">
+                                    <div class="text-white fw-semibold mb-1"><i class="fa-solid fa-bolt text-info me-1.5"></i> Go Native Backend</div>
+                                    <small>Độ trễ &lt;1ms, quản lý đồng thời đa kết nối SSH đa luồng</small>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <div class="p-3 rounded-1" style="background: rgba(3, 7, 18, 0.5); border: 1px solid var(--tadu-border);">
+                                    <div class="text-white fw-semibold mb-1"><i class="fa-solid fa-server text-success me-1.5"></i> Multi-Server Mode</div>
+                                    <small>Hỗ trợ không giới hạn máy chủ, chuyển đổi 1-click tức thì</small>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3490,75 +3529,356 @@
         });
 
         // -------------------------------------------------------------
-        // SETTINGS LOGIC
+        // MULTI-SERVER & SETTINGS MANAGEMENT LOGIC
         // -------------------------------------------------------------
+        let currentServers = [];
+        let activeServerId = 'srv_default';
+
         async function loadSettings() {
             try {
                 const res = await fetch('/api/config');
                 const cfg = await res.json();
-                document.getElementById('cfg-server-ip').value = cfg.server_ip || '';
-                document.getElementById('cfg-ssh-port').value = cfg.ssh_port || 22;
-                document.getElementById('cfg-ssh-user').value = cfg.ssh_user || 'root';
-                document.getElementById('cfg-ssh-pass').value = cfg.ssh_pass || '';
-                document.getElementById('cfg-proxy-api-key').value = cfg.proxy_api_key || '';
-                document.getElementById('cfg-proxy-base-url').value = cfg.proxy_base_url || 'https://openrouter.ai/api/v1';
-                document.getElementById('cfg-ai-model').value = cfg.ai_model || 'glm-5.3';
-                document.getElementById('cfg-remote-dir').value = cfg.remote_work_dir || '/opt/ai_agent';
-                document.getElementById('cfg-api-port').value = cfg.api_port || 8000;
-                document.getElementById('cfg-secret-token').value = cfg.secret_token || 'super_secret_token_123';
+
+                currentServers = cfg.servers || [];
+                activeServerId = cfg.active_server_id || (currentServers.length > 0 ? currentServers[0].id : 'srv_default');
+
+                // Sync Global AI config fields
+                if (document.getElementById('cfg-ai-model')) document.getElementById('cfg-ai-model').value = cfg.ai_model || 'glm-5.3';
+                if (document.getElementById('cfg-proxy-base-url')) document.getElementById('cfg-proxy-base-url').value = cfg.proxy_base_url || 'https://openrouter.ai/api/v1';
+                if (document.getElementById('cfg-proxy-api-key')) document.getElementById('cfg-proxy-api-key').value = cfg.proxy_api_key || '';
+
+                // Active server
+                const activeServer = currentServers.find(s => s.id === activeServerId) || currentServers[0] || {};
 
                 // Sync UI widgets
-                cachedServerData.server_ip = cfg.server_ip || '127.0.0.1';
-                cachedServerData.api_port = cfg.api_port || 8000;
-                updatePrivacyViews();
+                cachedServerData.server_ip = activeServer.server_ip || cfg.server_ip || '127.0.0.1';
+                cachedServerData.api_port = activeServer.api_port || cfg.api_port || 8000;
                 
-                document.getElementById('card-ai-model').innerText = cfg.ai_model || 'glm-5.3';
-                document.getElementById('chat-model-badge').innerText = cfg.ai_model || 'glm-5.3';
+                // Update sidebar active server display
+                if (document.getElementById('sidebar-server-name')) {
+                    document.getElementById('sidebar-server-name').innerText = activeServer.name || 'Máy chủ chính';
+                }
+                if (document.getElementById('sidebar-server-ip')) {
+                    document.getElementById('sidebar-server-ip').innerText = isPrivacyActive ? maskIP(cachedServerData.server_ip) : cachedServerData.server_ip;
+                }
+
+                if (document.getElementById('card-ai-model')) document.getElementById('card-ai-model').innerText = cfg.ai_model || 'glm-5.3';
+                if (document.getElementById('chat-model-badge')) document.getElementById('chat-model-badge').innerText = cfg.ai_model || 'glm-5.3';
+
+                updatePrivacyViews();
+                renderServersUI();
             } catch (err) {
-                showToast("Lỗi tải cài đặt: " + err.message, "error");
+                console.error("Lỗi tải cấu hình:", err);
+                showToast("Lỗi tải cấu hình: " + err.message, "error");
             }
         }
 
-        async function saveSettings() {
+        function renderServersUI() {
+            // 1. Render in Tab 5: Settings Cards Grid
+            const grid = document.getElementById('settings-servers-grid');
+            const countBadge = document.getElementById('settings-server-count');
+            const sidebarCount = document.getElementById('sidebar-server-count');
+            const sidebarList = document.getElementById('sidebar-servers-list');
+
+            if (countBadge) countBadge.innerText = `${currentServers.length} máy chủ`;
+            if (sidebarCount) sidebarCount.innerText = `${currentServers.length}`;
+
+            if (grid) {
+                grid.innerHTML = currentServers.map(s => {
+                    const isActive = s.id === activeServerId;
+                    const displayIP = isPrivacyActive ? maskIP(s.server_ip) : s.server_ip;
+                    return `
+                    <div class="col-12 col-lg-6">
+                        <div class="tadu-card p-3.5 h-100 d-flex flex-column justify-content-between position-relative transition-all" 
+                             style="border: 1px solid ${isActive ? 'rgba(99, 102, 241, 0.7)' : 'var(--tadu-border)'} !important; 
+                                    background: ${isActive ? 'linear-gradient(145deg, rgba(99, 102, 241, 0.08) 0%, rgba(15, 23, 42, 0.7) 100%)' : 'var(--tadu-card-bg)'};">
+                            
+                            <div>
+                                <!-- Card Header -->
+                                <div class="d-flex align-items-start justify-content-between mb-2.5 pb-2 border-bottom border-secondary border-opacity-15">
+                                    <div class="d-flex align-items-center gap-2.5 overflow-hidden">
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" 
+                                             style="width: 34px; height: 34px; background: ${isActive ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)'}; color: ${isActive ? '#818cf8' : '#94a3b8'};">
+                                            <i class="fa-solid fa-server" style="font-size: 0.95rem;"></i>
+                                        </div>
+                                        <div class="overflow-hidden">
+                                            <div class="fw-bold text-white text-truncate" style="font-size: 0.88rem;">${escapeHtml(s.name || 'Máy chủ')}</div>
+                                            <small class="font-mono text-info text-truncate d-block" style="font-size: 0.74rem;">${displayIP}:${s.ssh_port || 22}</small>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        ${isActive 
+                                            ? `<span class="badge rounded-pill bg-success-subtle text-success border border-success border-opacity-25 px-2.5 py-1 d-inline-flex align-items-center gap-1.5" style="font-size: 0.7rem;">
+                                                 <span class="live-dot bg-success" style="width: 6px; height: 6px;"></span> Đang Hoạt Động
+                                               </span>`
+                                            : `<button onclick="switchActiveServer('${s.id}')" class="btn btn-outline-primary btn-sm px-2.5 py-1 text-nowrap" style="font-size: 0.72rem;">
+                                                 <i class="fa-solid fa-bolt me-1 text-warning"></i> Kích Hoạt
+                                               </button>`
+                                        }
+                                    </div>
+                                </div>
+
+                                <!-- Card Details Grid -->
+                                <div class="row g-2 text-secondary my-1" style="font-size: 0.76rem;">
+                                    <div class="col-6">
+                                        <span class="text-secondary opacity-75">SSH User:</span> 
+                                        <span class="text-light font-mono fw-semibold">${escapeHtml(s.ssh_user || 'root')}</span>
+                                    </div>
+                                    <div class="col-6">
+                                        <span class="text-secondary opacity-75">Cổng API:</span> 
+                                        <span class="text-light font-mono fw-semibold">${s.api_port || 8000}</span>
+                                    </div>
+                                    <div class="col-12">
+                                        <span class="text-secondary opacity-75">Thư mục Remote:</span> 
+                                        <span class="text-light font-mono text-truncate d-inline-block align-bottom" style="max-width: 220px;">${escapeHtml(s.remote_work_dir || '/opt/ai_agent')}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Card Action Buttons -->
+                            <div class="d-flex align-items-center justify-content-between pt-3 mt-3 border-top border-secondary border-opacity-15">
+                                <button onclick="testServerSSH('${s.id}')" class="btn btn-sm btn-outline-info px-2.5 py-1 d-inline-flex align-items-center gap-1.5" style="font-size: 0.72rem;" title="Kiểm tra kết nối SSH tới server này">
+                                    <i class="fa-solid fa-plug"></i>
+                                    <span>Test SSH</span>
+                                </button>
+                                <div class="d-flex align-items-center gap-1.5">
+                                    <button onclick="openEditServerModal('${s.id}')" class="btn btn-sm btn-dark border border-secondary px-2.5 py-1 text-light d-inline-flex align-items-center gap-1" style="font-size: 0.72rem;" title="Chỉnh sửa thông tin máy chủ">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                        <span>Sửa</span>
+                                    </button>
+                                    <button onclick="confirmDeleteServer('${s.id}', '${escapeHtml(s.name)}')" 
+                                            class="btn btn-sm btn-outline-danger px-2.5 py-1 ${currentServers.length <= 1 ? 'disabled opacity-50' : ''}" 
+                                            style="font-size: 0.72rem;" 
+                                            title="${currentServers.length <= 1 ? 'Không thể xoá máy chủ duy nhất' : 'Xoá máy chủ này'}">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('') + `
+                    <div class="col-12 col-lg-6">
+                        <div onclick="openAddServerModal()" class="tadu-card p-4 h-100 d-flex flex-column align-items-center justify-content-center border-dashed cursor-pointer text-secondary transition-all hover-border-primary" 
+                             style="min-height: 175px; border: 2px dashed rgba(99, 102, 241, 0.35) !important; background: rgba(3, 7, 18, 0.4); cursor: pointer;">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center mb-2" style="width: 42px; height: 42px; background: rgba(99, 102, 241, 0.12); color: #818cf8;">
+                                <i class="fa-solid fa-plus fa-lg"></i>
+                            </div>
+                            <span class="text-white fw-bold" style="font-size: 0.84rem;">Thêm Máy Chủ Remote Mới</span>
+                            <small class="text-secondary mt-1" style="font-size: 0.72rem;">Kết nối và quản lý thêm VPS / Dedicated Server</small>
+                        </div>
+                    </div>`;
+            }
+
+            // 2. Render in Sidebar Dropdown Menu
+            if (sidebarList) {
+                sidebarList.innerHTML = currentServers.map(s => {
+                    const isActive = s.id === activeServerId;
+                    const displayIP = isPrivacyActive ? maskIP(s.server_ip) : s.server_ip;
+                    return `
+                    <li>
+                        <div onclick="switchActiveServer('${s.id}')" 
+                             class="dropdown-item d-flex align-items-center justify-content-between p-2 rounded cursor-pointer ${isActive ? 'bg-primary bg-opacity-25 text-white fw-semibold' : 'text-light'}" 
+                             style="cursor: pointer;">
+                            <div class="d-flex align-items-center gap-2 overflow-hidden">
+                                <span class="live-dot ${isActive ? 'bg-success' : 'bg-secondary'}" style="width: 7px; height: 7px;"></span>
+                                <div class="overflow-hidden">
+                                    <div class="text-truncate" style="font-size: 0.78rem;">${escapeHtml(s.name || 'Máy chủ')}</div>
+                                    <small class="text-secondary font-mono d-block" style="font-size: 0.68rem;">${displayIP}</small>
+                                </div>
+                            </div>
+                            ${isActive ? '<i class="fa-solid fa-check text-primary ms-2" style="font-size: 0.8rem;"></i>' : ''}
+                        </div>
+                    </li>`;
+                }).join('');
+            }
+        }
+
+        async function switchActiveServer(serverId) {
+            if (!serverId || serverId === activeServerId) return;
+            showToast("Đang chuyển đổi máy chủ...", "info");
+            try {
+                const res = await fetch('/api/servers/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ server_id: serverId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(data.message || "Đã chuyển đổi máy chủ thành công!", "success");
+                    await loadSettings();
+                    fetchSystemInfo();
+                } else {
+                    showToast("Lỗi chuyển máy chủ: " + data.message, "error");
+                }
+            } catch (err) {
+                showToast("Lỗi mạng khi chuyển máy chủ: " + err.message, "error");
+            }
+        }
+
+        function openAddServerModal() {
+            document.getElementById('serverModalTitle').innerHTML = '<i class="fa-solid fa-plus-circle text-info"></i> <span>Thêm Máy Chủ Mới</span>';
+            document.getElementById('modal-server-id').value = '';
+            document.getElementById('modal-server-name').value = `VPS Server ${currentServers.length + 1}`;
+            document.getElementById('modal-server-ip').value = '';
+            document.getElementById('modal-ssh-port').value = '22';
+            document.getElementById('modal-ssh-user').value = 'root';
+            document.getElementById('modal-ssh-pass').value = '';
+            document.getElementById('modal-api-port').value = '8000';
+            document.getElementById('modal-remote-dir').value = '/opt/ai_agent';
+            document.getElementById('modal-secret-token').value = 'super_secret_token_123';
+            document.getElementById('modal-set-active').checked = true;
+
+            const modal = new bootstrap.Modal(document.getElementById('serverModal'));
+            modal.show();
+        }
+
+        function openEditServerModal(serverId) {
+            const server = currentServers.find(s => s.id === serverId);
+            if (!server) return;
+
+            document.getElementById('serverModalTitle').innerHTML = `<i class="fa-solid fa-pen-to-square text-warning"></i> <span>Chỉnh Sửa: ${escapeHtml(server.name)}</span>`;
+            document.getElementById('modal-server-id').value = server.id;
+            document.getElementById('modal-server-name').value = server.name || '';
+            document.getElementById('modal-server-ip').value = server.server_ip || '';
+            document.getElementById('modal-ssh-port').value = server.ssh_port || 22;
+            document.getElementById('modal-ssh-user').value = server.ssh_user || 'root';
+            document.getElementById('modal-ssh-pass').value = server.ssh_pass || '';
+            document.getElementById('modal-api-port').value = server.api_port || 8000;
+            document.getElementById('modal-remote-dir').value = server.remote_work_dir || '/opt/ai_agent';
+            document.getElementById('modal-secret-token').value = server.secret_token || 'super_secret_token_123';
+            document.getElementById('modal-set-active').checked = (server.id === activeServerId);
+
+            const modal = new bootstrap.Modal(document.getElementById('serverModal'));
+            modal.show();
+        }
+
+        async function saveServerModal() {
+            const id = document.getElementById('modal-server-id').value.trim();
+            const name = document.getElementById('modal-server-name').value.trim();
+            const serverIp = document.getElementById('modal-server-ip').value.trim();
+            const sshPort = parseInt(document.getElementById('modal-ssh-port').value) || 22;
+            const sshUser = document.getElementById('modal-ssh-user').value.trim() || 'root';
+            const sshPass = document.getElementById('modal-ssh-pass').value;
+            const apiPort = parseInt(document.getElementById('modal-api-port').value) || 8000;
+            const remoteDir = document.getElementById('modal-remote-dir').value.trim() || '/opt/ai_agent';
+            const secretToken = document.getElementById('modal-secret-token').value.trim() || 'super_secret_token_123';
+            const setActive = document.getElementById('modal-set-active').checked;
+
+            if (!name) {
+                showToast("Vui lòng nhập tên máy chủ!", "error");
+                return;
+            }
+            if (!serverIp) {
+                showToast("Vui lòng nhập địa chỉ Server IP!", "error");
+                return;
+            }
+
             const payload = {
-                server_ip: document.getElementById('cfg-server-ip').value.trim(),
-                ssh_port: parseInt(document.getElementById('cfg-ssh-port').value) || 22,
-                ssh_user: document.getElementById('cfg-ssh-user').value.trim(),
-                ssh_pass: document.getElementById('cfg-ssh-pass').value,
-                proxy_api_key: document.getElementById('cfg-proxy-api-key').value.trim(),
-                proxy_base_url: document.getElementById('cfg-proxy-base-url').value.trim(),
-                ai_model: document.getElementById('cfg-ai-model').value.trim() || 'glm-5.3',
-                remote_work_dir: document.getElementById('cfg-remote-dir').value.trim() || '/opt/ai_agent',
-                api_port: parseInt(document.getElementById('cfg-api-port').value) || 8000,
-                secret_token: document.getElementById('cfg-secret-token').value.trim()
+                name,
+                server_ip: serverIp,
+                ssh_port: sshPort,
+                ssh_user: sshUser,
+                ssh_pass: sshPass,
+                api_port: apiPort,
+                remote_work_dir: remoteDir,
+                secret_token: secretToken,
+                set_active: setActive
             };
 
+            const endpoint = id ? '/api/servers/update' : '/api/servers';
+            if (id) payload.id = id;
+
             try {
-                const res = await fetch('/api/config', {
+                const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    showToast("Đã lưu cấu hình thành công!", "success");
-                    loadSettings();
+                    showToast(data.message || "Đã lưu máy chủ thành công!", "success");
+                    const modalEl = document.getElementById('serverModal');
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                    
+                    await loadSettings();
+                    fetchSystemInfo();
                 } else {
-                    showToast("Lỗi lưu cấu hình: " + data.message, "error");
+                    showToast("Lỗi lưu máy chủ: " + data.message, "error");
                 }
             } catch (err) {
-                showToast("Lỗi mạng khi lưu: " + err.message, "error");
+                showToast("Lỗi mạng khi lưu máy chủ: " + err.message, "error");
             }
         }
 
-        async function testSSH() {
-            const serverIp = document.getElementById('cfg-server-ip').value.trim();
-            const sshPort = parseInt(document.getElementById('cfg-ssh-port').value) || 22;
-            const sshUser = document.getElementById('cfg-ssh-user').value.trim();
-            const sshPass = document.getElementById('cfg-ssh-pass').value;
+        function confirmDeleteServer(serverId, serverName) {
+            if (currentServers.length <= 1) {
+                showToast("Không thể xoá máy chủ duy nhất trong hệ thống!", "warning");
+                return;
+            }
+
+            showConfirmModal({
+                title: "Xác nhận xoá máy chủ",
+                message: `Bạn có chắc chắn muốn xoá máy chủ <strong>"${serverName}"</strong> khỏi danh sách quản lý không?`,
+                icon: "fa-solid fa-trash-can text-danger",
+                confirmText: "Xoá máy chủ",
+                confirmClass: "btn-danger",
+                onConfirm: async () => {
+                    try {
+                        const res = await fetch('/api/servers/delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: serverId })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            showToast(data.message || "Đã xoá máy chủ thành công!", "success");
+                            await loadSettings();
+                            fetchSystemInfo();
+                        } else {
+                            showToast("Lỗi xoá máy chủ: " + data.message, "error");
+                        }
+                    } catch (err) {
+                        showToast("Lỗi mạng: " + err.message, "error");
+                    }
+                }
+            });
+        }
+
+        async function testServerSSH(serverId) {
+            const server = currentServers.find(s => s.id === serverId);
+            const serverName = server ? server.name : 'máy chủ';
+            const serverIp = server ? server.server_ip : '';
+            const sshPort = server ? (server.ssh_port || 22) : 22;
+
+            showToast(`Đang kiểm tra kết nối SSH tới ${serverName} (${serverIp}:${sshPort})...`, "info");
+            try {
+                const res = await fetch('/api/ssh/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ server_id: serverId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(data.message, "success");
+                    showInfoModal(`Kiểm Tra SSH Thành Công: ${serverName}`, data.message);
+                } else {
+                    showToast(data.message, "error");
+                    showInfoModal(`Kiểm Tra SSH Thất Bại: ${serverName}`, data.message, "error");
+                }
+            } catch (err) {
+                showToast("Lỗi kiểm tra SSH: " + err.message, "error");
+            }
+        }
+
+        async function testModalSSH() {
+            const serverIp = document.getElementById('modal-server-ip').value.trim();
+            const sshPort = parseInt(document.getElementById('modal-ssh-port').value) || 22;
+            const sshUser = document.getElementById('modal-ssh-user').value.trim() || 'root';
+            const sshPass = document.getElementById('modal-ssh-pass').value;
 
             if (!serverIp) {
-                showToast("Vui lòng nhập Server IP!", "error");
+                showToast("Vui lòng nhập Server IP trước khi test!", "error");
                 return;
             }
 
@@ -3577,14 +3897,38 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     showToast(data.message, "success");
-                    await saveSettings();
-                    fetchSystemInfo();
+                    showInfoModal("Kiểm Tra SSH Thành Công", data.message);
                 } else {
                     showToast(data.message, "error");
-                    alert(data.message);
+                    showInfoModal("Kiểm Tra SSH Thất Bại", data.message, "error");
                 }
             } catch (err) {
                 showToast("Lỗi kiểm tra SSH: " + err.message, "error");
+            }
+        }
+
+        async function saveAISettings() {
+            const payload = {
+                ai_model: document.getElementById('cfg-ai-model').value.trim() || 'glm-5.3',
+                proxy_base_url: document.getElementById('cfg-proxy-base-url').value.trim(),
+                proxy_api_key: document.getElementById('cfg-proxy-api-key').value.trim()
+            };
+
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast("Đã lưu cấu hình AI Model & Proxy thành công!", "success");
+                    loadSettings();
+                } else {
+                    showToast("Lỗi lưu cấu hình AI: " + data.message, "error");
+                }
+            } catch (err) {
+                showToast("Lỗi mạng khi lưu: " + err.message, "error");
             }
         }
 
@@ -3596,12 +3940,93 @@
 
         // INITIAL LOAD
         window.addEventListener('DOMContentLoaded', async () => {
-            loadSettings();
+            await loadSettings();
             await loadSessions();
             await loadChatHistory(currentSessionId);
             fetchSystemInfo();
         });
     </script>
+
+    <!-- TADU SERVER ADD/EDIT MODAL (BOOTSTRAP 5) -->
+    <div class="modal fade" id="serverModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border border-secondary border-opacity-25 shadow-lg" style="background-color: var(--tadu-card-bg); border-radius: var(--tadu-radius-md);">
+                <div class="modal-header border-bottom border-secondary border-opacity-25 px-4 py-3">
+                    <h6 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="serverModalTitle">
+                        <i class="fa-solid fa-server text-info"></i>
+                        <span>Thêm Máy Chủ Mới</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="server-form" onsubmit="event.preventDefault(); saveServerModal();">
+                        <input type="hidden" id="modal-server-id" value="">
+                        
+                        <div class="row g-3">
+                            <div class="col-12 col-md-7">
+                                <label class="form-label">Tên Gợi Nhớ Máy Chủ <span class="text-danger">*</span></label>
+                                <input type="text" id="modal-server-name" placeholder="vd: VPS Production, Server AI 01, VPS Dev..." class="form-control" required>
+                            </div>
+                            <div class="col-12 col-md-5">
+                                <label class="form-label">Địa Chỉ Server IP <span class="text-danger">*</span></label>
+                                <input type="text" id="modal-server-ip" placeholder="103.xxx.xxx.xxx" class="form-control font-mono" required>
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Cổng SSH (Port) <span class="text-danger">*</span></label>
+                                <input type="number" id="modal-ssh-port" value="22" placeholder="22" class="form-control font-mono" required>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">SSH Username <span class="text-danger">*</span></label>
+                                <input type="text" id="modal-ssh-user" value="root" placeholder="root" class="form-control font-mono" required>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">SSH Mật Khẩu (Password)</label>
+                                <input type="password" id="modal-ssh-pass" placeholder="••••••••••••" class="form-control font-mono">
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Cổng API Service (Port)</label>
+                                <input type="number" id="modal-api-port" value="8000" class="form-control font-mono">
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Thư Mục Remote Deploy</label>
+                                <input type="text" id="modal-remote-dir" value="/opt/ai_agent" class="form-control font-mono">
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Mã Token Bảo Mật</label>
+                                <input type="password" id="modal-secret-token" value="super_secret_token_123" class="form-control font-mono">
+                            </div>
+
+                            <div class="col-12 pt-2">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="modal-set-active" checked>
+                                    <label class="form-check-label text-light fw-medium" for="modal-set-active" style="font-size: 0.82rem;">
+                                        Đặt làm máy chủ hoạt động (Active Server) ngay sau khi lưu
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-top border-secondary border-opacity-25 px-4 py-3 d-flex justify-content-between">
+                    <button type="button" onclick="testModalSSH()" class="btn btn-outline-info btn-sm px-3.5 py-2">
+                        <i class="fa-solid fa-plug me-1.5"></i>
+                        <span>Kiểm Tra Kết Nối SSH</span>
+                    </button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm px-3.5 py-2" data-bs-dismiss="modal">
+                            Huỷ bỏ
+                        </button>
+                        <button type="button" onclick="saveServerModal()" class="btn btn-primary btn-sm px-4 py-2 fw-semibold">
+                            <i class="fa-solid fa-floppy-disk me-1.5"></i>
+                            <span>Lưu Máy Chủ</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- TADU CONFIRM MODAL (BOOTSTRAP 5) -->
     <div class="modal fade" id="taduConfirmModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
