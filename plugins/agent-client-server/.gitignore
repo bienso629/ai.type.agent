@@ -12,9 +12,12 @@ node_modules/
 *.blockmap
 *.db
 .env
+tadu-go/tadu-cloud-ai-agent
+tadu-go/tadu-cloud-ai-agent.exe
 tadu-go/tadu-ai-agent-go
 tadu-go/tadu-ai-agent-go.exe
 tadu-go/ai_agent_service
 tadu-go/ai_agent_service.exe
 server-go/ai_agent_service
 server-go/ai_agent_service.exe
+

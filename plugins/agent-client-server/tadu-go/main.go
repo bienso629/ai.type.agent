@@ -584,18 +584,63 @@ func main() {
 	mux.HandleFunc("/api/ssh/test", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		cfg := loadConfig()
+		if r.Body != nil {
+			var req map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req != nil {
+				if ip, ok := req["server_ip"].(string); ok && strings.TrimSpace(ip) != "" {
+					cfg["server_ip"] = strings.TrimSpace(ip)
+				}
+				if u, ok := req["ssh_user"].(string); ok && strings.TrimSpace(u) != "" {
+					cfg["ssh_user"] = strings.TrimSpace(u)
+				}
+				if p, ok := req["ssh_pass"].(string); ok {
+					cfg["ssh_pass"] = p
+				}
+				if portVal, ok := req["ssh_port"]; ok {
+					switch v := portVal.(type) {
+					case float64:
+						if v > 0 {
+							cfg["ssh_port"] = int(v)
+						}
+					case int:
+						if v > 0 {
+							cfg["ssh_port"] = v
+						}
+					case string:
+						if pInt, err := strconv.Atoi(v); err == nil && pInt > 0 {
+							cfg["ssh_port"] = pInt
+						}
+					}
+				}
+			}
+		}
+
 		client, err := getSSHClient(cfg)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"status":  "error",
-				"message": fmt.Sprintf("Kết nối thất bại: %v", err),
+				"message": fmt.Sprintf("Kết nối thất bại tới %v:%v: %v", cfg["server_ip"], cfg["ssh_port"], err),
 			})
 			return
 		}
-		client.Close()
+		defer client.Close()
+
+		session, err := client.NewSession()
+		outStr := ""
+		if err == nil {
+			outBytes, _ := session.CombinedOutput("uname -a && whoami")
+			outStr = strings.TrimSpace(string(outBytes))
+			session.Close()
+		}
+
+		msg := fmt.Sprintf("Kết nối SSH thành công tới %v:%v!", cfg["server_ip"], cfg["ssh_port"])
+		if outStr != "" {
+			msg += "\n" + outStr
+		}
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "success",
-			"message": fmt.Sprintf("Kết nối SSH thành công tới %v:%v!", cfg["server_ip"], cfg["ssh_port"]),
+			"message": msg,
 		})
 	})
 
