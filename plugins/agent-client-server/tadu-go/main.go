@@ -180,6 +180,25 @@ func initDB() error {
 	return err
 }
 
+func getIntVal(v interface{}, def int) int {
+	if v == nil {
+		return def
+	}
+	switch val := v.(type) {
+	case int:
+		return val
+	case int64:
+		return int(val)
+	case float64:
+		return int(val)
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
 func normalizeServerMap(s map[string]interface{}) map[string]interface{} {
 	server := make(map[string]interface{})
 	for k, v := range s {
@@ -200,42 +219,8 @@ func normalizeServerMap(s map[string]interface{}) map[string]interface{} {
 	if _, ok := server["ssh_pass"].(string); !ok {
 		server["ssh_pass"] = ""
 	}
-	if port, ok := server["ssh_port"]; ok {
-		switch p := port.(type) {
-		case float64:
-			server["ssh_port"] = int(p)
-		case int:
-			server["ssh_port"] = p
-		case string:
-			if pInt, err := strconv.Atoi(p); err == nil && pInt > 0 {
-				server["ssh_port"] = pInt
-			} else {
-				server["ssh_port"] = 22
-			}
-		default:
-			server["ssh_port"] = 22
-		}
-	} else {
-		server["ssh_port"] = 22
-	}
-	if port, ok := server["api_port"]; ok {
-		switch p := port.(type) {
-		case float64:
-			server["api_port"] = int(p)
-		case int:
-			server["api_port"] = p
-		case string:
-			if pInt, err := strconv.Atoi(p); err == nil && pInt > 0 {
-				server["api_port"] = pInt
-			} else {
-				server["api_port"] = 8000
-			}
-		default:
-			server["api_port"] = 8000
-		}
-	} else {
-		server["api_port"] = 8000
-	}
+	server["ssh_port"] = getIntVal(server["ssh_port"], 22)
+	server["api_port"] = getIntVal(server["api_port"], 8000)
 	if _, ok := server["remote_work_dir"].(string); !ok {
 		server["remote_work_dir"] = "/opt/ai_agent"
 	}
@@ -1260,10 +1245,8 @@ func main() {
 		if secretToken == "" {
 			secretToken = "super_secret_token_123"
 		}
-		apiPort := 8000
-		if p, ok := cfg["api_port"].(int); ok && p > 0 {
-			apiPort = p
-		}
+		apiPort := getIntVal(cfg["api_port"], 8000)
+		sshPort := getIntVal(cfg["ssh_port"], 22)
 
 		client, err := getSSHClient(cfg)
 		if err != nil {
@@ -1272,7 +1255,7 @@ func main() {
 		}
 		defer client.Close()
 
-		sendStep(fmt.Sprintf("Kết nối SSH thành công tới %s!", serverIP))
+		sendStep(fmt.Sprintf("Kết nối SSH thành công tới %s (SSH Port: %d | API Service Port: %d)!", serverIP, sshPort, apiPort))
 
 		sendStep(fmt.Sprintf("Tạo thư mục làm việc %s...", remoteDir))
 		runSSHCmd(client, fmt.Sprintf("(sudo mkdir -p %s && sudo chown -R %s %s || mkdir -p %s) 2>/dev/null", remoteDir, sshUser, remoteDir, remoteDir))
