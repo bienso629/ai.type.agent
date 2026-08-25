@@ -228,9 +228,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
             ),
           ),
 
-          // 2. Exact Quick Action Chips from templates/index.html
+          // 2. Exact Quick Action Chips from templates/index.html - Full Width Bar with Moderate Button Sizes
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: const BoxDecoration(
               color: AppColors.sidebarBg,
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
@@ -240,6 +241,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               child: Row(
                 children: [
                   const Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.bolt_rounded, size: 15, color: AppColors.warning),
                       SizedBox(width: 4),
@@ -248,11 +250,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   ),
                   const SizedBox(width: 8),
                   _buildQuickBtn('top', 'top', Icons.show_chart_rounded, AppColors.accentCyan),
+                  const SizedBox(width: 6),
                   _buildQuickBtn('df -h', 'df -h', Icons.disc_full_rounded, AppColors.warning),
+                  const SizedBox(width: 6),
                   _buildQuickBtn('free -h', 'free -h', Icons.memory_rounded, AppColors.accent),
+                  const SizedBox(width: 6),
                   _buildQuickBtn('AI Status', 'systemctl status ai-agent.service', Icons.smart_toy_rounded, AppColors.primaryLight),
+                  const SizedBox(width: 6),
                   _buildQuickBtn('Log AI', 'journalctl -u ai-agent.service -n 50 --no-pager', Icons.description_rounded, AppColors.warning),
+                  const SizedBox(width: 6),
                   _buildQuickBtn('ss -tulnp', 'ss -tulnp', Icons.lan_rounded, AppColors.accentCyan),
+                  const SizedBox(width: 6),
                   _buildQuickBtn('Restart AI', 'systemctl restart ai-agent.service', Icons.restart_alt_rounded, AppColors.danger),
                 ],
               ),
@@ -303,19 +311,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   Widget _buildQuickBtn(String label, String command, IconData icon, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: OutlinedButton.icon(
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: AppColors.borderDark),
-          backgroundColor: AppColors.cardBg,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        ),
-        icon: Icon(icon, size: 12, color: color),
-        label: Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textBody)),
-        onPressed: () => _sendCmd(command),
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: AppColors.borderDark),
+        backgroundColor: AppColors.cardBg,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
       ),
+      icon: Icon(icon, size: 13, color: color),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 11.5, color: AppColors.textBody, fontWeight: FontWeight.w500),
+      ),
+      onPressed: () => _sendCmd(command),
     );
   }
 

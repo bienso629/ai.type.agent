@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/chat_message.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/server_provider.dart';
 
@@ -760,14 +761,31 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           if (isUser) ...[
             const SizedBox(width: 10),
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppColors.sidebarBg,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: AppColors.borderDark),
-              ),
-              child: const Icon(Icons.person_rounded, size: 16, color: AppColors.textWhite),
+            Builder(
+              builder: (ctx) {
+                final auth = ctx.watch<AuthProvider>();
+                final letter = (auth.userEmail?.isNotEmpty == true)
+                    ? auth.userEmail![0].toUpperCase()
+                    : 'U';
+                return Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    letter,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryLight,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ],

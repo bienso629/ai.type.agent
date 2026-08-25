@@ -269,11 +269,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               width: 40,
                               height: 40,
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.15),
+                                color: AppColors.primary.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
                               ),
-                              child: const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
+                              alignment: Alignment.center,
+                              child: Text(
+                                (auth.userEmail?.isNotEmpty == true)
+                                    ? auth.userEmail![0].toUpperCase()
+                                    : 'U',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primaryLight,
+                                ),
+                              ),
                             ),
                             const SizedBox(width: 14),
                             Column(
