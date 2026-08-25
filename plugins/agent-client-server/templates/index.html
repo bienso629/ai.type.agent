@@ -1212,19 +1212,19 @@
                                 <i class="fa-solid fa-network-wired text-success" style="margin-right: 0 !important;"></i>
                                 <span>Băng thông Mạng (Network I/O)</span>
                             </h6>
-                            <span id="net-rx-badge" class="badge bg-success-subtle text-success fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">↓ 0 KB/s</span>
+                            <span id="net-rx-badge" class="badge bg-success-subtle text-success fw-bold font-mono px-2 py-1" style="font-size: 0.72rem;">↓ 0.0 KB/s</span>
                         </div>
                         <div class="my-2">
                             <div class="d-flex align-items-center justify-content-between mb-1.5" style="font-size: 0.75rem;">
                                 <span class="text-secondary">Tốc độ tải xuống / Tải lên</span>
-                                <span id="net-stat-text" class="text-white font-mono fw-semibold">↓ 0 KB/s  ↑ 0 KB/s</span>
+                                <span id="net-stat-text" class="text-white font-mono fw-semibold">↓ 0.0 KB/s  ↑ 0.0 KB/s</span>
                             </div>
                             <div class="progress" style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px;">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: 100%; border-radius: 4px;"></div>
+                                <div id="net-progress-bar" class="progress-bar bg-success" role="progressbar" style="width: 15%; border-radius: 4px;"></div>
                             </div>
                         </div>
                         <div class="d-flex align-items-center justify-content-between pt-2 border-top border-secondary border-opacity-10" style="font-size: 0.72rem;">
-                            <span class="text-secondary">Giao thức: <span class="text-success font-mono fw-semibold">SSH Native</span></span>
+                            <span class="text-secondary">Tổng truyền tải: <span id="net-total-text" class="text-light font-mono fw-semibold">Rx: -- / Tx: --</span></span>
                             <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check"></i> Ổn định</span>
                         </div>
                     </div>
@@ -1453,7 +1453,12 @@
     <script>
         // State
         let chatHistory = [];
+        let chatOldestMessageId = null;
+        let chatHasMoreHistory = false;
+        let isLoadingHistory = false;
+        const CHAT_PAGE_QUESTIONS_LIMIT = 3;
         let logInterval = null;
+        let systemInfoInterval = null;
         let selectedFiles = [];
 
         // Directory Scope & Autocomplete State
@@ -1994,7 +1999,12 @@
             } else {
                 syncLogInterval(false);
             }
-            if (tabId === 'server') fetchSystemInfo();
+            if (tabId === 'server') {
+                fetchSystemInfo();
+                syncSystemInfoInterval(true);
+            } else {
+                syncSystemInfoInterval(false);
+            }
             if (tabId === 'settings') loadSettings();
         }
 
@@ -2008,6 +2018,21 @@
                         fetchServiceLogs();
                     }
                 }, 3000);
+            }
+        }
+
+        function syncSystemInfoInterval(isServerTabActive) {
+            if (systemInfoInterval) {
+                clearInterval(systemInfoInterval);
+                systemInfoInterval = null;
+            }
+            if (isServerTabActive) {
+                systemInfoInterval = setInterval(() => {
+                    const serverTab = document.getElementById('tab-server');
+                    if (serverTab && !serverTab.classList.contains('d-none')) {
+                        fetchSystemInfo();
+                    }
+                }, 3500);
             }
         }
 
@@ -2285,6 +2310,9 @@
 
         function renderEmptyGreeting() {
             chatHistory = [];
+            chatOldestMessageId = null;
+            chatHasMoreHistory = false;
+            isLoadingHistory = false;
             selectedFiles = [];
             renderAttachments();
             const container = document.getElementById('chat-messages');
@@ -2331,6 +2359,9 @@
         // Clear Chat History
         function clearChatHistory() {
             chatHistory = [];
+            chatOldestMessageId = null;
+            chatHasMoreHistory = false;
+            isLoadingHistory = false;
             selectedFiles = [];
             renderAttachments();
             document.getElementById('chat-messages').innerHTML = `
@@ -2572,23 +2603,68 @@
             });
         }
 
-        // Load Chat History from SQLite
+        function renderHistoryLoaderHeader(container) {
+            let loaderEl = document.getElementById('chat-history-loader');
+            if (!chatHasMoreHistory) {
+                if (loaderEl) loaderEl.remove();
+                return;
+            }
+            if (!loaderEl) {
+                loaderEl = document.createElement('div');
+                loaderEl.id = 'chat-history-loader';
+                loaderEl.className = 'text-center py-2 w-100 mb-2 flex-shrink-0';
+                container.insertBefore(loaderEl, container.firstChild);
+            }
+            if (isLoadingHistory) {
+                loaderEl.innerHTML = `
+                    <div class="d-inline-flex align-items-center gap-2 px-3 py-1.5 rounded-pill bg-dark bg-opacity-75 border border-secondary border-opacity-50 text-secondary font-mono shadow-sm" style="font-size: 0.75rem;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 0.85rem; height: 0.85rem;"></div>
+                        <span>Đang tải thêm tin nhắn cũ...</span>
+                    </div>
+                `;
+            } else {
+                loaderEl.innerHTML = `
+                    <button type="button" onclick="loadMoreHistory()" class="btn btn-sm btn-dark border border-secondary border-opacity-50 text-secondary font-mono px-3 py-1 rounded-pill shadow-sm d-inline-flex align-items-center gap-1.5" style="font-size: 0.73rem; background: rgba(30, 41, 59, 0.7);">
+                        <i class="fa-solid fa-clock-rotate-left text-info" style="font-size: 0.75rem;"></i>
+                        <span>Cuộn lên hoặc bấm để tải thêm lịch sử</span>
+                    </button>
+                `;
+            }
+        }
+
+        // Load Chat History from SQLite (Chỉ tải trước 3 câu hỏi và câu trả lời gần nhất)
         async function loadChatHistory(sessionId = currentSessionId) {
             try {
-                const res = await fetch(`/api/chat/history?session_id=${sessionId}`);
-                const data = await res.json();
-                const container = document.getElementById('chat-messages');
+                currentSessionId = sessionId;
+                chatOldestMessageId = null;
+                chatHasMoreHistory = false;
+                isLoadingHistory = false;
                 chatHistory = [];
+
+                const container = document.getElementById('chat-messages');
+                if (!container) return;
+
+                const res = await fetch(`/api/chat/history?session_id=${sessionId}&limit_questions=${CHAT_PAGE_QUESTIONS_LIMIT}`);
+                const data = await res.json();
+
                 if (data.status === 'success' && data.messages && data.messages.length > 0) {
                     container.innerHTML = '';
+                    chatOldestMessageId = data.oldest_id || data.messages[0].id;
+                    chatHasMoreHistory = !!data.has_more;
+
+                    renderHistoryLoaderHeader(container);
+
                     data.messages.forEach(msg => {
                         chatHistory.push({ role: msg.role, content: msg.content });
                         if (msg.role === 'user') {
-                            appendUserMessage(msg.content, msg.attachments, msg.created_at);
+                            const el = createUserMessageElement(msg.content, msg.attachments, msg.created_at);
+                            container.appendChild(el);
                         } else if (msg.role === 'assistant') {
-                            appendAiMessage(msg.content, msg.tool_calls, msg.created_at, false);
+                            const el = createAiMessageElement(msg.content, msg.tool_calls, msg.created_at);
+                            container.appendChild(el);
                         }
                     });
+
                     highlightElementCode(container);
                     container.scrollTop = container.scrollHeight;
                 } else {
@@ -2597,6 +2673,86 @@
             } catch (e) {
                 console.error("Lỗi tải lịch sử chat từ SQLite:", e);
             }
+        }
+
+        // Tải thêm các câu hỏi và câu trả lời cũ hơn khi cuộn lên trên cùng
+        async function loadMoreHistory() {
+            if (isLoadingHistory || !chatHasMoreHistory || !chatOldestMessageId || isChatGenerating) return;
+            isLoadingHistory = true;
+            const container = document.getElementById('chat-messages');
+            if (!container) {
+                isLoadingHistory = false;
+                return;
+            }
+
+            renderHistoryLoaderHeader(container);
+
+            try {
+                const res = await fetch(`/api/chat/history?session_id=${currentSessionId}&limit_questions=${CHAT_PAGE_QUESTIONS_LIMIT}&before_id=${chatOldestMessageId}`);
+                const data = await res.json();
+
+                if (data.status === 'success' && data.messages && data.messages.length > 0) {
+                    chatOldestMessageId = data.oldest_id || data.messages[0].id;
+                    chatHasMoreHistory = !!data.has_more;
+
+                    // Lưu vị trí cuộn trước khi chèn để không bị giật màn hình
+                    const oldScrollHeight = container.scrollHeight;
+                    const oldScrollTop = container.scrollTop;
+
+                    const fragment = document.createDocumentFragment();
+                    const prependHistoryItems = [];
+
+                    data.messages.forEach(msg => {
+                        prependHistoryItems.push({ role: msg.role, content: msg.content });
+                        if (msg.role === 'user') {
+                            const el = createUserMessageElement(msg.content, msg.attachments, msg.created_at);
+                            fragment.appendChild(el);
+                        } else if (msg.role === 'assistant') {
+                            const el = createAiMessageElement(msg.content, msg.tool_calls, msg.created_at);
+                            fragment.appendChild(el);
+                        }
+                    });
+
+                    chatHistory = [...prependHistoryItems, ...chatHistory];
+
+                    const loaderEl = document.getElementById('chat-history-loader');
+                    if (loaderEl) {
+                        container.insertBefore(fragment, loaderEl.nextSibling);
+                    } else {
+                        container.insertBefore(fragment, container.firstChild);
+                    }
+
+                    highlightElementCode(container);
+
+                    // Khôi phục vị trí cuộn mượt mà
+                    container.scrollTop = (container.scrollHeight - oldScrollHeight) + oldScrollTop;
+                } else {
+                    chatHasMoreHistory = false;
+                }
+            } catch (err) {
+                console.error("Lỗi tải thêm lịch sử chat:", err);
+                showToast("Không thể tải thêm tin nhắn cũ: " + err.message, "error");
+            } finally {
+                isLoadingHistory = false;
+                renderHistoryLoaderHeader(container);
+            }
+        }
+
+        function setupChatScrollListener() {
+            const container = document.getElementById('chat-messages');
+            if (!container || container.dataset.scrollListenerAttached) return;
+            container.dataset.scrollListenerAttached = "true";
+
+            let scrollTimeout = null;
+            container.addEventListener('scroll', () => {
+                if (scrollTimeout) return;
+                scrollTimeout = setTimeout(() => {
+                    scrollTimeout = null;
+                    if (container.scrollTop <= 40 && chatHasMoreHistory && !isLoadingHistory && !isChatGenerating) {
+                        loadMoreHistory();
+                    }
+                }, 120);
+            }, { passive: true });
         }
 
                         // Global state for chat generation & abort controller
@@ -2936,8 +3092,7 @@
             }
         }
 
-        function appendUserMessage(msg, attachments = [], timeStr = null, scopedDir = null) {
-            const container = document.getElementById('chat-messages');
+        function createUserMessageElement(msg, attachments = [], timeStr = null, scopedDir = null) {
             const wrapper = document.createElement('div');
             wrapper.className = "d-flex flex-column align-items-end w-100";
 
@@ -2997,12 +3152,18 @@
                     </button>
                 </div>
             `;
+            return wrapper;
+        }
+
+        function appendUserMessage(msg, attachments = [], timeStr = null, scopedDir = null) {
+            const container = document.getElementById('chat-messages');
+            if (!container) return;
+            const wrapper = createUserMessageElement(msg, attachments, timeStr, scopedDir);
             container.appendChild(wrapper);
             container.scrollTop = container.scrollHeight;
         }
 
-        function appendAiMessage(reply, toolCalls = [], timeStr = null, autoHighlight = true) {
-            const container = document.getElementById('chat-messages');
+        function createAiMessageElement(reply, toolCalls = [], timeStr = null) {
             const wrapper = document.createElement('div');
             wrapper.className = "d-flex align-items-start gap-3 w-100";
 
@@ -3050,6 +3211,13 @@
                     </div>
                 </div>
             `;
+            return wrapper;
+        }
+
+        function appendAiMessage(reply, toolCalls = [], timeStr = null, autoHighlight = true) {
+            const container = document.getElementById('chat-messages');
+            if (!container) return;
+            const wrapper = createAiMessageElement(reply, toolCalls, timeStr);
             container.appendChild(wrapper);
             container.scrollTop = container.scrollHeight;
             if (autoHighlight) {
@@ -3411,8 +3579,22 @@
             // 4. Network
             const netRx = m.net_rx_kbs || '0.0 KB/s';
             const netTx = m.net_tx_kbs || '0.0 KB/s';
-            if (document.getElementById('net-stat-text')) document.getElementById('net-stat-text').innerText = `↓ ${netRx}  ↑ ${netTx}`;
-            if (document.getElementById('net-rx-badge')) document.getElementById('net-rx-badge').innerText = `↓ ${netRx}`;
+            const netTotalRx = m.net_rx_total || '--';
+            const netTotalTx = m.net_tx_total || '--';
+            const netPct = m.net_percent !== undefined ? m.net_percent : 15;
+
+            if (document.getElementById('net-stat-text')) {
+                document.getElementById('net-stat-text').innerText = `↓ ${netRx}  ↑ ${netTx}`;
+            }
+            if (document.getElementById('net-rx-badge')) {
+                document.getElementById('net-rx-badge').innerText = `↓ ${netRx}`;
+            }
+            if (document.getElementById('net-progress-bar')) {
+                document.getElementById('net-progress-bar').style.width = `${netPct}%`;
+            }
+            if (document.getElementById('net-total-text')) {
+                document.getElementById('net-total-text').innerText = `Rx: ${netTotalRx} / Tx: ${netTotalTx}`;
+            }
 
             // Cache data and update with privacy masking
             if (info && info.server_ip) cachedServerData.server_ip = info.server_ip;
@@ -3901,7 +4083,7 @@
                             
                             <div>
                                 <!-- Card Header -->
-                                <div class="d-flex align-items-center justify-content-between mb-3 pb-3 border-bottom border-secondary border-opacity-20">
+                                <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
                                     <div class="d-flex align-items-center gap-3 overflow-hidden">
                                         <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" 
                                              style="width: 38px; height: 38px; background: ${isActive ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.06)'}; color: ${isActive ? '#a5b4fc' : '#94a3b8'};">
@@ -3946,7 +4128,7 @@
                             </div>
 
                             <!-- Card Action Buttons Footer -->
-                            <div class="d-flex align-items-center justify-content-between pt-3 mt-auto border-top border-secondary border-opacity-20">
+                            <div class="d-flex align-items-center justify-content-between pt-3 mt-auto" style="border-top: 1px solid rgba(255, 255, 255, 0.05);">
                                 <button onclick="testServerSSH('${s.id}')" class="btn btn-sm btn-outline-info px-3 py-1.5 d-inline-flex align-items-center gap-1.5 fw-medium" style="font-size: 0.74rem;" title="Kiểm tra kết nối SSH tới server này">
                                     <i class="fa-solid fa-plug"></i>
                                     <span>Test SSH</span>
@@ -4246,6 +4428,7 @@
 
         // INITIAL LOAD
         window.addEventListener('DOMContentLoaded', async () => {
+            setupChatScrollListener();
             await loadSettings();
             await loadSessions();
             await loadChatHistory(currentSessionId);

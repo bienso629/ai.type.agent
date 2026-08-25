@@ -6,6 +6,12 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --no-sandbox",
+    "flutter:run": "cd mobile && flutter run",
+    "flutter:run:linux": "cd mobile && flutter run -d linux",
+    "flutter:run:android": "cd mobile && flutter run -d android",
+    "flutter:build:apk": "cd mobile && flutter build apk --release",
+    "flutter:build:linux": "cd mobile && flutter build linux --release",
+    "flutter:build:win": "cd mobile && flutter build windows --release",
     "build:go:linux": "cd tadu-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent . && cd ../server-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service . && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service_linux_amd64 . && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service_linux_arm64 .",
     "build:go:win": "cd tadu-go && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent.exe .",
     "build:installer:linux": "npm run build:go:linux && electron-builder --linux deb AppImage",

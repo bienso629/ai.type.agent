@@ -1076,7 +1076,7 @@ func main() {
 		}
 	})
 
-	// 5. Chat History API: GET /api/chat/history?session_id=...
+	// 5. Chat History API: GET /api/chat/history?session_id=...&limit_questions=3&before_id=...
 	mux.HandleFunc("/api/chat/history", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		sessionID := r.URL.Query().Get("session_id")
@@ -1084,33 +1084,128 @@ func main() {
 			sessionID = "default"
 		}
 
+		limitQuestions := 3
+		if lqStr := r.URL.Query().Get("limit_questions"); lqStr != "" {
+			if lq, err := strconv.Atoi(lqStr); err == nil && lq > 0 {
+				limitQuestions = lq
+			}
+		}
+
+		var beforeID int64 = 0
+		if bidStr := r.URL.Query().Get("before_id"); bidStr != "" {
+			if bid, err := strconv.ParseInt(bidStr, 10, 64); err == nil && bid > 0 {
+				beforeID = bid
+			}
+		}
+
 		dbMutex.Lock()
 		defer dbMutex.Unlock()
 
-		rows, err := db.Query(`
-			SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
-			FROM (
-				SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
-				FROM chat_messages
-				WHERE session_id = ?
-				ORDER BY id DESC
-				LIMIT 300
-			) sub
-			ORDER BY id ASC
-		`, sessionID)
+		var userIDs []int64
+		var uRows *sql.Rows
+		var err error
 
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "messages": []interface{}{}})
+		if beforeID > 0 {
+			uRows, err = db.Query(`
+				SELECT id FROM chat_messages
+				WHERE session_id = ? AND role = 'user' AND id < ?
+				ORDER BY id DESC
+				LIMIT ?
+			`, sessionID, beforeID, limitQuestions)
+		} else {
+			uRows, err = db.Query(`
+				SELECT id FROM chat_messages
+				WHERE session_id = ? AND role = 'user'
+				ORDER BY id DESC
+				LIMIT ?
+			`, sessionID, limitQuestions)
+		}
+
+		if err == nil && uRows != nil {
+			for uRows.Next() {
+				var uid int64
+				if err := uRows.Scan(&uid); err == nil {
+					userIDs = append(userIDs, uid)
+				}
+			}
+			uRows.Close()
+		}
+
+		var rows *sql.Rows
+		var oldestID int64 = 0
+
+		if len(userIDs) > 0 {
+			minUserID := userIDs[0]
+			for _, uid := range userIDs {
+				if uid < minUserID {
+					minUserID = uid
+				}
+			}
+
+			if beforeID > 0 {
+				rows, err = db.Query(`
+					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+					FROM chat_messages
+					WHERE session_id = ? AND id >= ? AND id < ?
+					ORDER BY id ASC
+				`, sessionID, minUserID, beforeID)
+			} else {
+				rows, err = db.Query(`
+					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+					FROM chat_messages
+					WHERE session_id = ? AND id >= ?
+					ORDER BY id ASC
+				`, sessionID, minUserID)
+			}
+		} else {
+			if beforeID > 0 {
+				rows, err = db.Query(`
+					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+					FROM (
+						SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+						FROM chat_messages
+						WHERE session_id = ? AND id < ?
+						ORDER BY id DESC
+						LIMIT ?
+					) sub
+					ORDER BY id ASC
+				`, sessionID, beforeID, limitQuestions*2)
+			} else {
+				rows, err = db.Query(`
+					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+					FROM (
+						SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+						FROM chat_messages
+						WHERE session_id = ?
+						ORDER BY id DESC
+						LIMIT ?
+					) sub
+					ORDER BY id ASC
+				`, sessionID, limitQuestions*2)
+			}
+		}
+
+		if err != nil || rows == nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":    "success",
+				"messages":  []interface{}{},
+				"has_more":  false,
+				"oldest_id": 0,
+			})
 			return
 		}
 		defer rows.Close()
 
 		messages := []map[string]interface{}{}
 		for rows.Next() {
-			var id int
+			var id int64
 			var sID, role string
 			var content, att, tc, model, createdAt sql.NullString
 			rows.Scan(&id, &sID, &role, &content, &att, &tc, &model, &createdAt)
+
+			if oldestID == 0 || id < oldestID {
+				oldestID = id
+			}
 
 			msg := map[string]interface{}{
 				"id":         id,
@@ -1138,7 +1233,22 @@ func main() {
 			}
 			messages = append(messages, msg)
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "messages": messages})
+
+		hasMore := false
+		if oldestID > 0 {
+			var dummy int
+			chkErr := db.QueryRow("SELECT 1 FROM chat_messages WHERE session_id = ? AND id < ? LIMIT 1", sessionID, oldestID).Scan(&dummy)
+			if chkErr == nil {
+				hasMore = true
+			}
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "success",
+			"messages":  messages,
+			"has_more":  hasMore,
+			"oldest_id": oldestID,
+		})
 	})
 
 	// 6. Clear Chat API: POST /api/chat/clear
@@ -1307,7 +1417,8 @@ func main() {
 			"df -h / 2>/dev/null; echo '---'; " +
 			"ps -e | wc -l 2>/dev/null; echo '---'; " +
 			fmt.Sprintf("(if systemctl is-active --quiet ai-agent.service 2>/dev/null || (export XDG_RUNTIME_DIR=/run/user/$(id -u); export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus; systemctl --user is-active --quiet ai-agent.service 2>/dev/null) || pidof ai_agent_service 2>/dev/null || pidof ai_agent_servic 2>/dev/null || pgrep -x ai_agent_service 2>/dev/null || (curl -s -m 1 http://127.0.0.1:%d/health 2>/dev/null | grep -q 'healthy'); then echo 'active'; else echo 'inactive'; fi)", apiPort) + "; echo '---'; " +
-			"cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
+			"cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s; echo '---'; " +
+			"cat /proc/net/dev 2>/dev/null"
 
 		outBytes, _ := session.CombinedOutput(cmd)
 		parts := strings.Split(string(outBytes), "---")
@@ -1319,6 +1430,7 @@ func main() {
 		procsRaw := ""
 		serviceStatus := "inactive"
 		osName := "Linux"
+		netRaw := ""
 
 		if len(parts) > 0 {
 			uptimeRaw = strings.TrimSpace(parts[0])
@@ -1346,9 +1458,13 @@ func main() {
 		if len(parts) > 6 {
 			osName = strings.TrimSpace(parts[6])
 		}
+		if len(parts) > 7 {
+			netRaw = strings.TrimSpace(parts[7])
+		}
 
 		uptimeHuman := formatUptimeHuman(uptimeRaw)
-		safeMetrics := parseSafeMetrics(dfRaw, freeRaw, loadavgRaw, uptimeRaw, procsRaw)
+		serverIP, _ := cfg["server_ip"].(string)
+		safeMetrics := parseSafeMetrics(dfRaw, freeRaw, loadavgRaw, uptimeRaw, procsRaw, netRaw, serverIP)
 
 		infoDict := map[string]interface{}{
 			"uptime":         uptimeHuman,
@@ -2520,7 +2636,124 @@ func formatUptimeHuman(secStr string) string {
 	return strings.Join(res, ", ")
 }
 
-func parseSafeMetrics(dfRaw, freeRaw, loadavgRaw, uptimeSecRaw, procsRaw string) map[string]interface{} {
+type NetStatTracker struct {
+	sync.Mutex
+	lastServerIP string
+	lastTime     time.Time
+	lastRxBytes  int64
+	lastTxBytes  int64
+	lastSpeedRx  float64
+	lastSpeedTx  float64
+}
+
+var globalNetTracker NetStatTracker
+
+func formatNetSpeed(bytesPerSec float64) string {
+	if bytesPerSec >= 1024*1024 {
+		return fmt.Sprintf("%.2f MB/s", bytesPerSec/(1024*1024))
+	}
+	if bytesPerSec >= 1024 {
+		return fmt.Sprintf("%.1f KB/s", bytesPerSec/1024)
+	}
+	return fmt.Sprintf("%.1f KB/s", bytesPerSec/1024)
+}
+
+func formatBytesHuman(b int64) string {
+	if b < 1024 {
+		return fmt.Sprintf("%d B", b)
+	}
+	exp := 0
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	val := float64(b)
+	for val >= 1024 && exp < len(units) {
+		val /= 1024
+		exp++
+	}
+	if exp == 0 {
+		return fmt.Sprintf("%d B", b)
+	}
+	return fmt.Sprintf("%.2f %s", val, units[exp-1])
+}
+
+func parseProcNetDev(netRaw string) (int64, int64) {
+	var totalRx, totalTx int64 = 0, 0
+	lines := strings.Split(netRaw, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, ":") {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		iface := strings.TrimSpace(parts[0])
+		if iface == "lo" {
+			continue
+		}
+		fields := strings.Fields(parts[1])
+		if len(fields) >= 9 {
+			rx, _ := strconv.ParseInt(fields[0], 10, 64)
+			tx, _ := strconv.ParseInt(fields[8], 10, 64)
+			totalRx += rx
+			totalTx += tx
+		}
+	}
+	return totalRx, totalTx
+}
+
+func (nt *NetStatTracker) Update(serverIP string, currentRx, currentTx int64) (speedRxStr, speedTxStr, totalRxStr, totalTxStr string, netPct int) {
+	nt.Lock()
+	defer nt.Unlock()
+
+	now := time.Now()
+	speedRx := nt.lastSpeedRx
+	speedTx := nt.lastSpeedTx
+
+	if nt.lastServerIP == serverIP && !nt.lastTime.IsZero() {
+		elapsed := now.Sub(nt.lastTime).Seconds()
+		if elapsed >= 0.5 && elapsed <= 120.0 {
+			deltaRx := currentRx - nt.lastRxBytes
+			deltaTx := currentTx - nt.lastTxBytes
+			if deltaRx >= 0 && deltaTx >= 0 {
+				speedRx = float64(deltaRx) / elapsed
+				speedTx = float64(deltaTx) / elapsed
+				nt.lastSpeedRx = speedRx
+				nt.lastSpeedTx = speedTx
+			}
+		}
+	} else {
+		nt.lastServerIP = serverIP
+		nt.lastSpeedRx = 0
+		nt.lastSpeedTx = 0
+		speedRx = 0
+		speedTx = 0
+	}
+
+	nt.lastTime = now
+	nt.lastRxBytes = currentRx
+	nt.lastTxBytes = currentTx
+
+	speedRxStr = formatNetSpeed(speedRx)
+	speedTxStr = formatNetSpeed(speedTx)
+	totalRxStr = formatBytesHuman(currentRx)
+	totalTxStr = formatBytesHuman(currentTx)
+
+	totalSpeedKB := (speedRx + speedTx) / 1024.0
+	netPct = int((totalSpeedKB / 5000.0) * 100.0)
+	if netPct > 100 {
+		netPct = 100
+	}
+	if netPct < 8 && (speedRx > 0 || speedTx > 0 || currentRx > 0) {
+		netPct = 15
+	} else if netPct < 5 {
+		netPct = 5
+	}
+
+	return speedRxStr, speedTxStr, totalRxStr, totalTxStr, netPct
+}
+
+func parseSafeMetrics(dfRaw, freeRaw, loadavgRaw, uptimeSecRaw, procsRaw, netRaw, serverIP string) map[string]interface{} {
+	currentRx, currentTx := parseProcNetDev(netRaw)
+	speedRxStr, speedTxStr, totalRxStr, totalTxStr, netPct := globalNetTracker.Update(serverIP, currentRx, currentTx)
+
 	metrics := map[string]interface{}{
 		"disk_total":     "40 GB",
 		"disk_used":      "21 GB",
@@ -2537,6 +2770,11 @@ func parseSafeMetrics(dfRaw, freeRaw, loadavgRaw, uptimeSecRaw, procsRaw string)
 		"loadavg":        strings.TrimSpace(loadavgRaw),
 		"procs":          strings.TrimSpace(procsRaw),
 		"uptime_seconds": 0,
+		"net_rx_kbs":     speedRxStr,
+		"net_tx_kbs":     speedTxStr,
+		"net_rx_total":   totalRxStr,
+		"net_tx_total":   totalTxStr,
+		"net_percent":    netPct,
 		"last_sync":      time.Now().Format("15:04:05"),
 	}
 

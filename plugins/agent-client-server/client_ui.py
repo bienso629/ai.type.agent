@@ -370,6 +370,115 @@ def get_messages_from_db(session_id: str = "default", limit: int = 300) -> List[
         print(f"Lỗi đọc SQLite: {e}")
         return []
 
+def get_chat_history_paginated(session_id: str = "default", limit_questions: int = 3, before_id: Optional[int] = None) -> Dict[str, Any]:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # 1. Tìm ID các câu hỏi (role = 'user') thoả mãn điều kiện
+        if before_id is not None and before_id > 0:
+            cursor.execute("""
+                SELECT id FROM chat_messages
+                WHERE session_id = ? AND role = 'user' AND id < ?
+                ORDER BY id DESC
+                LIMIT ?
+            """, (session_id, before_id, limit_questions))
+        else:
+            cursor.execute("""
+                SELECT id FROM chat_messages
+                WHERE session_id = ? AND role = 'user'
+                ORDER BY id DESC
+                LIMIT ?
+            """, (session_id, limit_questions))
+
+        user_msg_rows = cursor.fetchall()
+
+        if user_msg_rows:
+            min_user_id = min(r[0] for r in user_msg_rows)
+            if before_id is not None and before_id > 0:
+                cursor.execute("""
+                    SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+                    FROM chat_messages
+                    WHERE session_id = ? AND id >= ? AND id < ?
+                    ORDER BY id ASC
+                """, (session_id, min_user_id, before_id))
+            else:
+                cursor.execute("""
+                    SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+                    FROM chat_messages
+                    WHERE session_id = ? AND id >= ?
+                    ORDER BY id ASC
+                """, (session_id, min_user_id))
+            rows = cursor.fetchall()
+        else:
+            if before_id is not None and before_id > 0:
+                cursor.execute("""
+                    SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+                    FROM (
+                        SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+                        FROM chat_messages
+                        WHERE session_id = ? AND id < ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                    ) sub
+                    ORDER BY id ASC
+                """, (session_id, before_id, limit_questions * 2))
+            else:
+                cursor.execute("""
+                    SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+                    FROM (
+                        SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
+                        FROM chat_messages
+                        WHERE session_id = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                    ) sub
+                    ORDER BY id ASC
+                """, (session_id, limit_questions * 2))
+            rows = cursor.fetchall()
+
+        oldest_id = rows[0][0] if rows else 0
+
+        # Kiểm tra xem còn tin nhắn cũ hơn nữa không (has_more)
+        has_more = False
+        if rows and oldest_id > 0:
+            cursor.execute("""
+                SELECT 1 FROM chat_messages
+                WHERE session_id = ? AND id < ?
+                LIMIT 1
+            """, (session_id, oldest_id))
+            has_more = cursor.fetchone() is not None
+
+        conn.close()
+
+        results = []
+        for r in rows:
+            raw_c = r[3]
+            dec_c = decrypt_value(raw_c) if raw_c else ""
+            raw_att = decrypt_value(r[4]) if r[4] else None
+            raw_tc = decrypt_value(r[5]) if r[5] else None
+
+            results.append({
+                "id": r[0],
+                "session_id": r[1],
+                "role": r[2],
+                "content": dec_c,
+                "attachments": json.loads(raw_att) if raw_att else [],
+                "tool_calls": json.loads(raw_tc) if raw_tc else [],
+                "model": r[6],
+                "created_at": str(r[7])
+            })
+
+        return {
+            "status": "success",
+            "messages": results,
+            "has_more": has_more,
+            "oldest_id": oldest_id
+        }
+    except Exception as e:
+        print(f"Lỗi đọc SQLite lịch sử chat: {e}")
+        return {"status": "error", "messages": [], "has_more": False, "oldest_id": 0}
+
 def clear_messages_in_db(session_id: str = "default"):
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -617,7 +726,92 @@ def format_uptime_human(sec_str: str) -> str:
     except Exception:
         return "N/A"
 
-def parse_safe_metrics(df_raw: str, free_raw: str, loadavg_raw: str = "", uptime_sec_raw: str = "", procs_raw: str = "") -> Dict[str, Any]:
+_net_tracker = {
+    "server_ip": "",
+    "time": 0.0,
+    "rx": 0,
+    "tx": 0,
+    "speed_rx": 0.0,
+    "speed_tx": 0.0
+}
+_net_tracker_lock = threading.Lock()
+
+def parse_proc_net_dev(net_raw: str):
+    total_rx, total_tx = 0, 0
+    for line in (net_raw or "").splitlines():
+        line = line.strip()
+        if ":" not in line:
+            continue
+        parts = line.split(":", 1)
+        iface = parts[0].strip()
+        if iface == "lo":
+            continue
+        fields = parts[1].split()
+        if len(fields) >= 9:
+            try:
+                rx = int(fields[0])
+                tx = int(fields[8])
+                total_rx += rx
+                total_tx += tx
+            except Exception:
+                pass
+    return total_rx, total_tx
+
+def update_net_tracker(server_ip: str, current_rx: int, current_tx: int):
+    global _net_tracker
+    with _net_tracker_lock:
+        now = time.time()
+        speed_rx = _net_tracker["speed_rx"]
+        speed_tx = _net_tracker["speed_tx"]
+        if _net_tracker["server_ip"] == server_ip and _net_tracker["time"] > 0:
+            elapsed = now - _net_tracker["time"]
+            if 0.5 <= elapsed <= 120.0:
+                delta_rx = current_rx - _net_tracker["rx"]
+                delta_tx = current_tx - _net_tracker["tx"]
+                if delta_rx >= 0 and delta_tx >= 0:
+                    speed_rx = delta_rx / elapsed
+                    speed_tx = delta_tx / elapsed
+                    _net_tracker["speed_rx"] = speed_rx
+                    _net_tracker["speed_tx"] = speed_tx
+        else:
+            _net_tracker["server_ip"] = server_ip
+            _net_tracker["speed_rx"] = 0.0
+            _net_tracker["speed_tx"] = 0.0
+            speed_rx = 0.0
+            speed_tx = 0.0
+
+        _net_tracker["time"] = now
+        _net_tracker["rx"] = current_rx
+        _net_tracker["tx"] = current_tx
+
+        def format_speed(bps):
+            if bps >= 1024 * 1024:
+                return f"{bps / (1024 * 1024):.2f} MB/s"
+            return f"{bps / 1024:.1f} KB/s"
+
+        def format_bytes(b):
+            val = float(b)
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if val < 1024.0:
+                    return f"{val:.2f} {unit}"
+                val /= 1024.0
+            return f"{val:.2f} PB"
+
+        speed_rx_str = format_speed(speed_rx)
+        speed_tx_str = format_speed(speed_tx)
+        total_rx_str = format_bytes(current_rx)
+        total_tx_str = format_bytes(current_tx)
+
+        total_kb = (speed_rx + speed_tx) / 1024.0
+        net_pct = int((total_kb / 5000.0) * 100)
+        net_pct = min(100, max(15 if (current_rx > 0 or speed_rx > 0) else 5, net_pct))
+
+        return speed_rx_str, speed_tx_str, total_rx_str, total_tx_str, net_pct
+
+def parse_safe_metrics(df_raw: str, free_raw: str, loadavg_raw: str = "", uptime_sec_raw: str = "", procs_raw: str = "", net_raw: str = "", server_ip: str = "") -> Dict[str, Any]:
+    rx_bytes, tx_bytes = parse_proc_net_dev(net_raw)
+    speed_rx_str, speed_tx_str, total_rx_str, total_tx_str, net_pct = update_net_tracker(server_ip, rx_bytes, tx_bytes)
+
     metrics = {
         "disk_total": "40 GB",
         "disk_used": "21 GB",
@@ -634,6 +828,11 @@ def parse_safe_metrics(df_raw: str, free_raw: str, loadavg_raw: str = "", uptime
         "loadavg": loadavg_raw.strip(),
         "procs": procs_raw.strip(),
         "uptime_seconds": 0,
+        "net_rx_kbs": speed_rx_str,
+        "net_tx_kbs": speed_tx_str,
+        "net_rx_total": total_rx_str,
+        "net_tx_total": total_tx_str,
+        "net_percent": net_pct,
         "last_sync": time.strftime("%H:%M:%S")
     }
     try:
@@ -688,7 +887,8 @@ def background_metrics_collector():
         "df -h / 2>/dev/null; echo '---'; "
         "ps -e | wc -l 2>/dev/null; echo '---'; "
         "systemctl is-active ai-agent.service 2>/dev/null || echo 'inactive'; echo '---'; "
-        "cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
+        "cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s; echo '---'; "
+        "cat /proc/net/dev 2>/dev/null"
     )
 
     while True:
@@ -716,9 +916,10 @@ def background_metrics_collector():
             procs_raw = parts[4].strip() if len(parts) > 4 else ""
             service_status = parts[5].strip() if len(parts) > 5 else "inactive"
             os_name = parts[6].strip() if len(parts) > 6 else "Linux"
+            net_raw = parts[7].strip() if len(parts) > 7 else ""
 
             uptime_human = format_uptime_human(uptime_raw)
-            safe_metrics = parse_safe_metrics(df_raw, free_raw, loadavg_raw, uptime_raw, procs_raw)
+            safe_metrics = parse_safe_metrics(df_raw, free_raw, loadavg_raw, uptime_raw, procs_raw, net_raw, server_ip)
 
             info_dict = {
                 "uptime": uptime_human,
@@ -760,7 +961,7 @@ def background_metrics_collector():
                 ssh_client = None
             time.sleep(10)
 
-        time.sleep(30.0)
+        time.sleep(5.0)
 
 def start_metrics_thread_if_needed():
     global _collector_thread_started
@@ -781,6 +982,7 @@ def get_server_metrics():
             return _metrics_cache
 
     cfg = load_config()
+    server_ip = cfg.get("server_ip", "127.0.0.1")
     try:
         ssh = get_ssh_client(cfg)
         stdin, stdout, stderr = ssh.exec_command(
@@ -790,7 +992,8 @@ def get_server_metrics():
             "df -h / 2>/dev/null; echo '---'; "
             "ps -e | wc -l 2>/dev/null; echo '---'; "
             "systemctl is-active ai-agent.service 2>/dev/null || echo 'inactive'; echo '---'; "
-            "cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s"
+            "cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"' 2>/dev/null || uname -s; echo '---'; "
+            "cat /proc/net/dev 2>/dev/null"
         )
         output = stdout.read().decode()
         ssh.close()
@@ -802,9 +1005,10 @@ def get_server_metrics():
         procs_raw = parts[4].strip() if len(parts) > 4 else ""
         service_status = parts[5].strip() if len(parts) > 5 else "inactive"
         os_name = parts[6].strip() if len(parts) > 6 else "Linux"
+        net_raw = parts[7].strip() if len(parts) > 7 else ""
 
         uptime_human = format_uptime_human(uptime_raw)
-        safe_metrics = parse_safe_metrics(df_raw, free_raw, loadavg_raw, uptime_raw, procs_raw)
+        safe_metrics = parse_safe_metrics(df_raw, free_raw, loadavg_raw, uptime_raw, procs_raw, net_raw, server_ip)
         info_dict = {
             "uptime": uptime_human,
             "uptime_seconds": safe_metrics.get("uptime_seconds", 0),
@@ -815,7 +1019,7 @@ def get_server_metrics():
             "service_active": service_status,
             "service_status": service_status,
             "os": os_name,
-            "server_ip": cfg.get("server_ip", "127.0.0.1"),
+            "server_ip": server_ip,
             "api_port": cfg.get("api_port", 8000),
             "ai_model": cfg.get("ai_model", "glm-5.3"),
             "last_sync": time.strftime("%H:%M:%S")
@@ -1221,9 +1425,8 @@ def delete_session_api(session_id: str):
     return {"status": "success" if success else "error"}
 
 @app.get("/api/chat/history")
-def get_chat_history_api(session_id: str = "default"):
-    messages = get_messages_from_db(session_id)
-    return {"status": "success", "messages": messages}
+def get_chat_history_api(session_id: str = "default", limit_questions: int = 3, before_id: Optional[int] = None):
+    return get_chat_history_paginated(session_id=session_id, limit_questions=limit_questions, before_id=before_id)
 
 @app.post("/api/chat/clear")
 def clear_chat_history_api(session_id: str = "default"):
