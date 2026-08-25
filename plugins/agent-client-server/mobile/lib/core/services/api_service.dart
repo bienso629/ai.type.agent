@@ -19,6 +19,7 @@ class ApiService {
 
   Future<Map<String, String>> _getHeaders({bool isJson = true}) async {
     final token = await _storage.getSecretToken();
+    final userEmail = await _storage.getUserEmail();
     final headers = <String, String>{
       if (isJson) 'Content-Type': 'application/json; charset=utf-8',
       'Accept': 'application/json',
@@ -26,6 +27,11 @@ class ApiService {
     if (token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
       headers['X-Secret-Token'] = token;
+    }
+    if (userEmail != null && userEmail.isNotEmpty) {
+      headers['X-User-Email'] = userEmail;
+      final username = userEmail.split('@')[0];
+      headers['X-User-Name'] = username;
     }
     return headers;
   }

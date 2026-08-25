@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xterm/xterm.dart';
 import '../../core/constants/api_constants.dart';
+import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/gateway_provider.dart';
 import '../../providers/server_provider.dart';
@@ -43,7 +44,20 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
     try {
       final base = gateway.gatewayUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
-      final uri = Uri.parse('$base${ApiConstants.wsTerminal}');
+      final storage = StorageService();
+      final userEmail = await storage.getUserEmail();
+      var wsUrl = '$base${ApiConstants.wsTerminal}';
+      final params = <String>[];
+      if (userEmail != null && userEmail.isNotEmpty) {
+        params.add('user_email=${Uri.encodeComponent(userEmail)}');
+      }
+      if (serverProvider.selectedServer?.id != null) {
+        params.add('server_id=${Uri.encodeComponent(serverProvider.selectedServer!.id)}');
+      }
+      if (params.isNotEmpty) {
+        wsUrl += '?${params.join('&')}';
+      }
+      final uri = Uri.parse(wsUrl);
 
       _channel = WebSocketChannel.connect(uri);
       await _channel!.ready;

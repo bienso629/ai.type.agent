@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -31,14 +32,138 @@ import (
 )
 
 var (
-	appDir     string
-	configFile string
-	dbPath     string
-	db         *sql.DB
-	dbMutex    sync.Mutex
-	cfgMutex   sync.RWMutex
-	upgrader   = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	appDir          string
+	configFile      string
+	dbPath          string
+	db              *sql.DB
+	dbMutex         sync.Mutex
+	cfgMutex        sync.RWMutex
+	userTaduBaseDir string
+	userDBMap       = make(map[string]*sql.DB)
+	userDBMutex     sync.Mutex
+	upgrader        = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 )
+
+func sanitizeUserKey(user string) string {
+	user = strings.TrimSpace(user)
+	if user == "" {
+		return ""
+	}
+	if strings.Contains(user, "@") {
+		parts := strings.Split(user, "@")
+		user = parts[0]
+	}
+	reg := regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+	cleaned := strings.ToLower(reg.ReplaceAllString(user, "_"))
+	return strings.Trim(cleaned, "_")
+}
+
+func getUserKeyFromReq(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if u := r.Header.Get("X-User-Email"); u != "" {
+		return sanitizeUserKey(u)
+	}
+	if u := r.Header.Get("X-User-Name"); u != "" {
+		return sanitizeUserKey(u)
+	}
+	if u := r.Header.Get("X-User"); u != "" {
+		return sanitizeUserKey(u)
+	}
+	if u := r.URL.Query().Get("user_email"); u != "" {
+		return sanitizeUserKey(u)
+	}
+	if u := r.URL.Query().Get("user"); u != "" {
+		return sanitizeUserKey(u)
+	}
+	if u := r.URL.Query().Get("email"); u != "" {
+		return sanitizeUserKey(u)
+	}
+	return ""
+}
+
+func getConfigFilePath(userKey string) string {
+	if userKey == "" {
+		return configFile
+	}
+	baseDir := userTaduBaseDir
+	if baseDir == "" {
+		baseDir = "."
+	}
+	userCfgPath := filepath.Join(baseDir, fmt.Sprintf("config_%s.json", userKey))
+	if _, err := os.Stat(userCfgPath); os.IsNotExist(err) {
+		// Copy initial configuration from base config if exists
+		if data, err := os.ReadFile(configFile); err == nil && len(data) > 0 {
+			_ = os.WriteFile(userCfgPath, data, 0644)
+		}
+	}
+	return userCfgPath
+}
+
+func getDBFilePath(userKey string) string {
+	if userKey == "" {
+		return dbPath
+	}
+	baseDir := userTaduBaseDir
+	if baseDir == "" {
+		baseDir = "."
+	}
+	return filepath.Join(baseDir, fmt.Sprintf("chat_history_%s.db", userKey))
+}
+
+func getDB(r ...*http.Request) *sql.DB {
+	var userKey string
+	if len(r) > 0 && r[0] != nil {
+		userKey = getUserKeyFromReq(r[0])
+	}
+	return getDBForUserKey(userKey)
+}
+
+func getDBForUserKey(userKey string) *sql.DB {
+	userDBMutex.Lock()
+	defer userDBMutex.Unlock()
+
+	if userKey == "" && db != nil {
+		return db
+	}
+
+	if dbInst, ok := userDBMap[userKey]; ok && dbInst != nil {
+		return dbInst
+	}
+
+	targetPath := getDBFilePath(userKey)
+	inst, err := sql.Open("sqlite", targetPath)
+	if err != nil {
+		if db != nil {
+			return db
+		}
+		return nil
+	}
+
+	query := `
+	CREATE TABLE IF NOT EXISTS chat_sessions (
+		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		is_pinned INTEGER DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS chat_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		session_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		content TEXT,
+		attachments_json TEXT,
+		tool_calls_json TEXT,
+		model TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+	_, _ = inst.Exec(query)
+	userDBMap[userKey] = inst
+	return inst
+}
 
 func getCryptoKeys() ([]byte, []byte) {
 	machineID := "tadu-cloud-ai-agent-control-center-secret-salt-2026"
@@ -129,22 +254,22 @@ func initPaths() {
 	if err != nil {
 		userHome = "."
 	}
-	userTaduDir := filepath.Join(userHome, ".tadu_ai_agent")
-	_ = os.MkdirAll(userTaduDir, 0755)
+	userTaduBaseDir = filepath.Join(userHome, ".tadu_ai_agent")
+	_ = os.MkdirAll(userTaduBaseDir, 0755)
 
 	// Ưu tiên đọc DB và Config của user thực tế
-	if _, err := os.Stat(filepath.Join(userTaduDir, "config.json")); err == nil {
-		configFile = filepath.Join(userTaduDir, "config.json")
-		dbPath = filepath.Join(userTaduDir, "chat_history.db")
-		appDir = userTaduDir
+	if _, err := os.Stat(filepath.Join(userTaduBaseDir, "config.json")); err == nil {
+		configFile = filepath.Join(userTaduBaseDir, "config.json")
+		dbPath = filepath.Join(userTaduBaseDir, "chat_history.db")
+		appDir = userTaduBaseDir
 	} else if _, err := os.Stat(filepath.Join("..", "config.json")); err == nil {
 		configFile = filepath.Join("..", "config.json")
 		dbPath = filepath.Join("..", "chat_history.db")
 		appDir = ".."
 	} else {
-		configFile = filepath.Join(userTaduDir, "config.json")
-		dbPath = filepath.Join(userTaduDir, "chat_history.db")
-		appDir = userTaduDir
+		configFile = filepath.Join(userTaduBaseDir, "config.json")
+		dbPath = filepath.Join(userTaduBaseDir, "chat_history.db")
+		appDir = userTaduBaseDir
 	}
 }
 
@@ -228,9 +353,15 @@ func normalizeServerMap(s map[string]interface{}) map[string]interface{} {
 	return server
 }
 
-func loadConfig() map[string]interface{} {
+func loadConfig(r ...*http.Request) map[string]interface{} {
 	cfgMutex.RLock()
 	defer cfgMutex.RUnlock()
+
+	var userKey string
+	if len(r) > 0 && r[0] != nil {
+		userKey = getUserKeyFromReq(r[0])
+	}
+	targetCfgFile := getConfigFilePath(userKey)
 
 	defaultCfg := map[string]interface{}{
 		"active_server_id": "srv_default",
@@ -259,7 +390,7 @@ func loadConfig() map[string]interface{} {
 		"secret_token":    "super_secret_token_123",
 	}
 
-	data, err := os.ReadFile(configFile)
+	data, err := os.ReadFile(targetCfgFile)
 	if err != nil {
 		return defaultCfg
 	}
@@ -376,9 +507,15 @@ func loadConfig() map[string]interface{} {
 	return result
 }
 
-func saveConfig(cfg map[string]interface{}) error {
+func saveConfig(cfg map[string]interface{}, r ...*http.Request) error {
 	cfgMutex.Lock()
 	defer cfgMutex.Unlock()
+
+	var userKey string
+	if len(r) > 0 && r[0] != nil {
+		userKey = getUserKeyFromReq(r[0])
+	}
+	targetCfgFile := getConfigFilePath(userKey)
 
 	// Normalize servers and active_server_id
 	var serverList []map[string]interface{}
@@ -432,7 +569,7 @@ func saveConfig(cfg map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(configFile, data, 0644)
+	return os.WriteFile(targetCfgFile, data, 0644)
 }
 
 func getSSHClient(cfg map[string]interface{}) (*ssh.Client, error) {
@@ -732,7 +869,7 @@ func main() {
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodGet {
-			cfg := loadConfig()
+			cfg := loadConfig(r)
 			json.NewEncoder(w).Encode(cfg)
 			return
 		}
@@ -742,11 +879,11 @@ func main() {
 				http.Error(w, err.Error(), 400)
 				return
 			}
-			cfg := loadConfig()
+			cfg := loadConfig(r)
 			for k, v := range newCfg {
 				cfg[k] = v
 			}
-			if err := saveConfig(cfg); err != nil {
+			if err := saveConfig(cfg, r); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -759,7 +896,7 @@ func main() {
 	// Server Management APIs
 	mux.HandleFunc("/api/servers", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 
 		if r.Method == http.MethodGet {
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -788,7 +925,7 @@ func main() {
 				cfg["active_server_id"] = normServer["id"]
 			}
 
-			if err := saveConfig(cfg); err != nil {
+			if err := saveConfig(cfg, r); err != nil {
 				json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
 				return
 			}
@@ -824,7 +961,7 @@ func main() {
 			return
 		}
 
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		rawServers, _ := cfg["servers"].([]interface{})
 		found := false
 		for i, s := range rawServers {
@@ -850,7 +987,7 @@ func main() {
 		}
 
 		cfg["servers"] = rawServers
-		if err := saveConfig(cfg); err != nil {
+		if err := saveConfig(cfg, r); err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
 			return
 		}
@@ -878,7 +1015,7 @@ func main() {
 			return
 		}
 
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		rawServers, _ := cfg["servers"].([]interface{})
 		if len(rawServers) <= 1 {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": "Không thể xoá máy chủ cuối cùng trong danh sách"})
@@ -903,7 +1040,7 @@ func main() {
 			}
 		}
 
-		if err := saveConfig(cfg); err != nil {
+		if err := saveConfig(cfg, r); err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
 			return
 		}
@@ -931,7 +1068,7 @@ func main() {
 			return
 		}
 
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		rawServers, _ := cfg["servers"].([]interface{})
 		var matchedServer map[string]interface{}
 		for _, s := range rawServers {
@@ -949,7 +1086,7 @@ func main() {
 		}
 
 		cfg["active_server_id"] = req.ServerID
-		if err := saveConfig(cfg); err != nil {
+		if err := saveConfig(cfg, r); err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
 			return
 		}
@@ -967,9 +1104,10 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		dbMutex.Lock()
 		defer dbMutex.Unlock()
+		targetDB := getDB(r)
 
 		if r.Method == http.MethodGet {
-			rows, err := db.Query("SELECT id, title, is_pinned, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC")
+			rows, err := targetDB.Query("SELECT id, title, is_pinned, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC")
 			if err != nil {
 				json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "sessions": []interface{}{}})
 				return
@@ -1006,7 +1144,7 @@ func main() {
 				req.Title = "Cuộc hội thoại mới"
 			}
 			encTitle := encryptValue(req.Title)
-			_, _ = db.Exec("INSERT OR IGNORE INTO chat_sessions (id, title, is_pinned, created_at, updated_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", req.ID, encTitle)
+			_, _ = targetDB.Exec("INSERT OR IGNORE INTO chat_sessions (id, title, is_pinned, created_at, updated_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", req.ID, encTitle)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"status": "success",
 				"session": map[string]interface{}{
@@ -1030,6 +1168,7 @@ func main() {
 
 		dbMutex.Lock()
 		defer dbMutex.Unlock()
+		targetDB := getDB(r)
 
 		if len(parts) > 1 && parts[1] == "pin" && r.Method == http.MethodPost {
 			var req struct {
@@ -1045,14 +1184,14 @@ func main() {
 				}
 			} else {
 				var current int
-				_ = db.QueryRow("SELECT is_pinned FROM chat_sessions WHERE id = ?", sessionID).Scan(&current)
+				_ = targetDB.QueryRow("SELECT is_pinned FROM chat_sessions WHERE id = ?", sessionID).Scan(&current)
 				if current == 1 {
 					newPin = 0
 				} else {
 					newPin = 1
 				}
 			}
-			_, _ = db.Exec("UPDATE chat_sessions SET is_pinned = ? WHERE id = ?", newPin, sessionID)
+			_, _ = targetDB.Exec("UPDATE chat_sessions SET is_pinned = ? WHERE id = ?", newPin, sessionID)
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "success"})
 			return
 		}
@@ -1063,14 +1202,14 @@ func main() {
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			encTitle := encryptValue(req.Title)
-			_, _ = db.Exec("UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", encTitle, sessionID)
+			_, _ = targetDB.Exec("UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", encTitle, sessionID)
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "success"})
 			return
 		}
 
 		if r.Method == http.MethodDelete {
-			_, _ = db.Exec("DELETE FROM chat_sessions WHERE id = ?", sessionID)
-			_, _ = db.Exec("DELETE FROM chat_messages WHERE session_id = ?", sessionID)
+			_, _ = targetDB.Exec("DELETE FROM chat_sessions WHERE id = ?", sessionID)
+			_, _ = targetDB.Exec("DELETE FROM chat_messages WHERE session_id = ?", sessionID)
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "success"})
 			return
 		}
@@ -1100,20 +1239,21 @@ func main() {
 
 		dbMutex.Lock()
 		defer dbMutex.Unlock()
+		targetDB := getDB(r)
 
 		var userIDs []int64
 		var uRows *sql.Rows
 		var err error
 
 		if beforeID > 0 {
-			uRows, err = db.Query(`
+			uRows, err = targetDB.Query(`
 				SELECT id FROM chat_messages
 				WHERE session_id = ? AND role = 'user' AND id < ?
 				ORDER BY id DESC
 				LIMIT ?
 			`, sessionID, beforeID, limitQuestions)
 		} else {
-			uRows, err = db.Query(`
+			uRows, err = targetDB.Query(`
 				SELECT id FROM chat_messages
 				WHERE session_id = ? AND role = 'user'
 				ORDER BY id DESC
@@ -1143,14 +1283,14 @@ func main() {
 			}
 
 			if beforeID > 0 {
-				rows, err = db.Query(`
+				rows, err = targetDB.Query(`
 					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
 					FROM chat_messages
 					WHERE session_id = ? AND id >= ? AND id < ?
 					ORDER BY id ASC
 				`, sessionID, minUserID, beforeID)
 			} else {
-				rows, err = db.Query(`
+				rows, err = targetDB.Query(`
 					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
 					FROM chat_messages
 					WHERE session_id = ? AND id >= ?
@@ -1159,7 +1299,7 @@ func main() {
 			}
 		} else {
 			if beforeID > 0 {
-				rows, err = db.Query(`
+				rows, err = targetDB.Query(`
 					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
 					FROM (
 						SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
@@ -1171,7 +1311,7 @@ func main() {
 					ORDER BY id ASC
 				`, sessionID, beforeID, limitQuestions*2)
 			} else {
-				rows, err = db.Query(`
+				rows, err = targetDB.Query(`
 					SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
 					FROM (
 						SELECT id, session_id, role, content, attachments_json, tool_calls_json, model, created_at
@@ -1237,7 +1377,7 @@ func main() {
 		hasMore := false
 		if oldestID > 0 {
 			var dummy int
-			chkErr := db.QueryRow("SELECT 1 FROM chat_messages WHERE session_id = ? AND id < ? LIMIT 1", sessionID, oldestID).Scan(&dummy)
+			chkErr := targetDB.QueryRow("SELECT 1 FROM chat_messages WHERE session_id = ? AND id < ? LIMIT 1", sessionID, oldestID).Scan(&dummy)
 			if chkErr == nil {
 				hasMore = true
 			}
@@ -1258,7 +1398,8 @@ func main() {
 			sessionID = "default"
 		}
 		dbMutex.Lock()
-		_, _ = db.Exec("DELETE FROM chat_messages WHERE session_id = ?", sessionID)
+		targetDB := getDB(r)
+		_, _ = targetDB.Exec("DELETE FROM chat_messages WHERE session_id = ?", sessionID)
 		dbMutex.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "success"})
@@ -1285,7 +1426,7 @@ func main() {
 	// 7. SSH Test API: POST /api/ssh/test
 	mux.HandleFunc("/api/ssh/test", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		targetCfg := make(map[string]interface{})
 		for k, v := range cfg {
 			targetCfg[k] = v
@@ -1367,7 +1508,7 @@ func main() {
 	// 8. Server Health API: GET /api/server/health
 	mux.HandleFunc("/api/server/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		targetURL := fmt.Sprintf("http://%v:%v/health", cfg["server_ip"], cfg["api_port"])
 		client := http.Client{Timeout: 3 * time.Second}
 		resp, err := client.Get(targetURL)
@@ -1389,7 +1530,7 @@ func main() {
 	// Server System Info / Metrics: GET /api/server/system-info, GET /api/server/metrics
 	handleSystemInfo := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		client, err := getSSHClient(cfg)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1507,7 +1648,7 @@ func main() {
 		if body.Action == "" {
 			body.Action = "status"
 		}
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		client, err := getSSHClient(cfg)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
@@ -1582,7 +1723,7 @@ func main() {
 		if lines == "" {
 			lines = "100"
 		}
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		client, err := getSSHClient(cfg)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "message": err.Error()})
@@ -1626,7 +1767,7 @@ func main() {
 
 		sendStep("Bắt đầu kết nối SSH tới máy chủ...")
 
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		serverIP, _ := cfg["server_ip"].(string)
 		sshUser, _ := cfg["ssh_user"].(string)
 		sshPass, _ := cfg["ssh_pass"].(string)
@@ -1895,7 +2036,7 @@ WantedBy=default.target
 		if prefix == "" {
 			prefix = "/"
 		}
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		client, err := getSSHClient(cfg)
 		dirs := []string{"/var/www", "/etc/nginx", "/opt/ai_agent", "/home", "/var/log", "/etc", "/opt"}
 		if err == nil {
@@ -1929,7 +2070,7 @@ WantedBy=default.target
 			return
 		}
 
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		client, err := getSSHClient(cfg)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Lỗi kết nối SSH: %v", err), http.StatusInternalServerError)
@@ -1985,7 +2126,7 @@ WantedBy=default.target
 		defer file.Close()
 
 		targetDir := r.FormValue("target_dir")
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		sshUser, _ := cfg["ssh_user"].(string)
 		if sshUser == "" {
 			sshUser = "admin"
@@ -2055,7 +2196,7 @@ WantedBy=default.target
 		}
 		defer ws.Close()
 
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		sshConn, err := getSSHClient(cfg)
 		if err != nil {
 			ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[31m[Lỗi SSH]: %v\x1b[0m\r\n", err)))
@@ -2155,7 +2296,7 @@ WantedBy=default.target
 			return
 		}
 
-		cfg := loadConfig()
+		cfg := loadConfig(r)
 		model := req.Model
 		if model == "" {
 			if m, ok := cfg["ai_model"].(string); ok && m != "" {
@@ -2167,10 +2308,11 @@ WantedBy=default.target
 
 		encMsg := encryptValue(req.Message)
 		dbMutex.Lock()
-		_, _ = db.Exec("INSERT OR IGNORE INTO chat_sessions (id, title) VALUES (?, ?)", req.SessionID, encryptValue("Cuộc hội thoại mới"))
+		targetDB := getDB(r)
+		_, _ = targetDB.Exec("INSERT OR IGNORE INTO chat_sessions (id, title) VALUES (?, ?)", req.SessionID, encryptValue("Cuộc hội thoại mới"))
 		smartTitle := makeSmartTitle(req.Message, 65)
-		_, _ = db.Exec("UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", encryptValue(smartTitle), req.SessionID)
-		_, _ = db.Exec("INSERT INTO chat_messages (session_id, role, content, model) VALUES (?, 'user', ?, ?)", req.SessionID, encMsg, model)
+		_, _ = targetDB.Exec("UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", encryptValue(smartTitle), req.SessionID)
+		_, _ = targetDB.Exec("INSERT INTO chat_messages (session_id, role, content, model) VALUES (?, 'user', ?, ?)", req.SessionID, encMsg, model)
 		dbMutex.Unlock()
 
 		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -2467,7 +2609,8 @@ WantedBy=default.target
 				encTools = encryptValue(string(b))
 			}
 			dbMutex.Lock()
-			_, _ = db.Exec("INSERT INTO chat_messages (session_id, role, content, tool_calls_json, model) VALUES (?, 'assistant', ?, ?, ?)", req.SessionID, encReply, encTools, model)
+			targetDB := getDB(r)
+			_, _ = targetDB.Exec("INSERT INTO chat_messages (session_id, role, content, tool_calls_json, model) VALUES (?, 'assistant', ?, ?, ?)", req.SessionID, encReply, encTools, model)
 			dbMutex.Unlock()
 		}
 
