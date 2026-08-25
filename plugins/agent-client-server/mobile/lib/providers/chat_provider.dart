@@ -37,11 +37,12 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> initChat() async {
-    await loadSessions();
+    await loadSessions(silent: true);
     if (_sessions.isNotEmpty) {
-      if (_currentSession == null || !_sessions.any((s) => s.id == _currentSession!.id)) {
-        await selectSession(_sessions.first);
-      }
+      final target = (_currentSession != null && _sessions.any((s) => s.id == _currentSession!.id))
+          ? _sessions.firstWhere((s) => s.id == _currentSession!.id)
+          : _sessions.first;
+      await selectSession(target);
     } else {
       await createNewSession();
     }
@@ -54,16 +55,11 @@ class ChatProvider extends ChangeNotifier {
     }
     try {
       final list = await _api.getChatSessions();
-      if (list.isNotEmpty) {
-        _sessions = list;
-        if (_currentSession == null) {
-          _currentSession = _sessions.first;
-        } else {
-          // Update reference
-          final match = _sessions.where((s) => s.id == _currentSession!.id);
-          if (match.isNotEmpty) {
-            _currentSession = match.first;
-          }
+      _sessions = list;
+      if (_currentSession != null) {
+        final match = _sessions.where((s) => s.id == _currentSession!.id);
+        if (match.isNotEmpty) {
+          _currentSession = match.first;
         }
       }
     } catch (_) {}
@@ -102,13 +98,58 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> pinSession(ChatSessionModel session) async {
     final newPinState = !session.isPinned;
+    // 1. Optimistic local update
+    final idx = _sessions.indexWhere((s) => s.id == session.id);
+    if (idx != -1) {
+      final updated = ChatSessionModel(
+        id: session.id,
+        title: session.title,
+        isPinned: newPinState,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        messageCount: session.messageCount,
+      );
+      _sessions[idx] = updated;
+      _sessions.sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
+      if (_currentSession?.id == session.id) {
+        _currentSession = updated;
+      }
+      notifyListeners();
+    }
+
+    // 2. Sync with API
     await _api.pinChatSession(session.id, newPinState);
     await loadSessions(silent: true);
   }
 
   Future<void> renameSession(ChatSessionModel session, String newTitle) async {
-    if (newTitle.trim().isEmpty) return;
-    await _api.renameChatSession(session.id, newTitle.trim());
+    final cleanTitle = newTitle.trim();
+    if (cleanTitle.isEmpty) return;
+
+    // 1. Optimistic local update
+    final idx = _sessions.indexWhere((s) => s.id == session.id);
+    if (idx != -1) {
+      final updated = ChatSessionModel(
+        id: session.id,
+        title: cleanTitle,
+        isPinned: session.isPinned,
+        createdAt: session.createdAt,
+        updatedAt: DateTime.now(),
+        messageCount: session.messageCount,
+      );
+      _sessions[idx] = updated;
+      if (_currentSession?.id == session.id) {
+        _currentSession = updated;
+      }
+      notifyListeners();
+    }
+
+    // 2. Sync with API
+    await _api.renameChatSession(session.id, cleanTitle);
     await loadSessions(silent: true);
   }
 

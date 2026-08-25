@@ -69,10 +69,9 @@ class ServersScreen extends StatelessWidget {
           ],
         ),
         actions: [
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.borderDark)),
+          TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -211,10 +210,9 @@ class ServersScreen extends StatelessWidget {
                                     ),
                                     content: Text('Bạn có chắc muốn xóa "${s.name}"?'),
                                     actions: [
-                                      OutlinedButton(
-                                        style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.borderDark)),
+                                      TextButton(
                                         onPressed: () => Navigator.pop(ctx),
-                                        child: const Text('Hủy'),
+                                        child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
                                       ),
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),

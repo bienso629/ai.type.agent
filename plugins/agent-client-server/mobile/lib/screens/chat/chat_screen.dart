@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/chat_message.dart';
 import '../../providers/chat_provider.dart';
@@ -21,6 +24,17 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _workingDirScope;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final chat = context.read<ChatProvider>();
+      if (chat.currentSession != null && chat.messages.isEmpty && !chat.isLoading) {
+        chat.selectSession(chat.currentSession!);
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _textController.dispose();
     _scrollController.dispose();
@@ -37,11 +51,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _handleSend(ChatProvider chat) {
+  void _handleSend(ChatProvider chat, ServerProvider serverProvider) {
     final text = _textController.text.trim();
     if (text.isEmpty || chat.isGenerating) return;
     _textController.clear();
-    chat.sendMessage(text);
+    chat.sendMessage(text, model: serverProvider.currentAiModel);
     Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
   }
 
@@ -78,8 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.borderDark)),
+          TextButton(
             onPressed: () {
               setState(() {
                 _workingDirScope = null;
@@ -170,7 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                serverProvider.selectedServer?.aiModel ?? 'glm-5.3',
+                                serverProvider.currentAiModel,
                                 style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
                               ),
                             ),
@@ -233,10 +246,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                 itemCount: chat.messages.isEmpty ? 1 : chat.messages.length + 1,
                                 itemBuilder: (context, idx) {
                                   if (idx == 0) {
-                                    return _buildGreetingBubble(chat);
+                                    return _buildGreetingBubble(chat, serverProvider);
                                   }
                                   final msg = chat.messages[idx - 1];
-                                  return _buildMessageItem(msg);
+                                  return _buildMessageItem(msg, chat);
                                 },
                               ),
                       ),
@@ -267,7 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
 
                       // Input Bar
-                      _buildInputBar(chat),
+                      _buildInputBar(chat, serverProvider),
                     ],
                   ),
                 ),
@@ -282,7 +295,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildGreetingBubble(ChatProvider chat) {
+  Widget _buildGreetingBubble(ChatProvider chat, ServerProvider serverProvider) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -314,9 +327,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              const Text(
-                '👋 Xin chào! Tôi là Tadu Cloud AI Agent (GLM-5.3)',
-                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+              Text(
+                '👋 Xin chào! Tôi là Tadu Cloud AI Agent (${serverProvider.currentAiModel})',
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -390,7 +403,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildMessageItem(ChatMessageModel msg) {
+  Widget _buildMessageItem(ChatMessageModel msg, ChatProvider chat) {
     final isUser = msg.role == 'user';
 
     return Padding(
@@ -421,77 +434,168 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 10),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isUser ? AppColors.primaryHover : AppColors.cardBg,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: isUser ? AppColors.primary : AppColors.borderDark,
-                  width: 1,
+            child: Column(
+              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? AppColors.primary.withValues(alpha: 0.12)
+                        : AppColors.cardBg,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isUser
+                          ? AppColors.primary.withValues(alpha: 0.4)
+                          : AppColors.borderDark,
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (msg.content.isNotEmpty)
+                        MarkdownBody(
+                          data: msg.content,
+                          selectable: true,
+                          styleSheet: MarkdownStyleSheet(
+                            p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.45),
+                            code: const TextStyle(
+                              fontFamily: 'monospace',
+                              backgroundColor: AppColors.codeBg,
+                              color: AppColors.terminalGreen,
+                              fontSize: 12,
+                            ),
+                            codeblockDecoration: BoxDecoration(
+                              color: AppColors.codeBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.borderDark),
+                            ),
+                            tableBorder: TableBorder.all(
+                              color: AppColors.borderDark,
+                              width: 1.0,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            tableHead: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textWhite,
+                            ),
+                            tableBody: const TextStyle(
+                              fontSize: 12.5,
+                              color: AppColors.textBody,
+                            ),
+                            tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            tableCellsDecoration: const BoxDecoration(
+                              color: AppColors.inputBg,
+                            ),
+                          ),
+                        ),
+
+                      if (msg.content.isEmpty && msg.isStreaming)
+                        const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Đang xử lý...', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                          ],
+                        ),
+
+                      if (msg.toolExecutions.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (msg.content.isNotEmpty)
-                    MarkdownBody(
-                      data: msg.content,
-                      selectable: true,
-                      styleSheet: MarkdownStyleSheet(
-                        p: const TextStyle(fontSize: 13.5, color: AppColors.textBody, height: 1.45),
-                        code: const TextStyle(
-                          fontFamily: 'monospace',
-                          backgroundColor: AppColors.codeBg,
-                          color: AppColors.terminalGreen,
-                          fontSize: 12,
-                        ),
-                        codeblockDecoration: BoxDecoration(
-                          color: AppColors.codeBg,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: AppColors.borderDark),
-                        ),
-                        tableBorder: TableBorder.all(
-                          color: AppColors.borderDark,
-                          width: 1.0,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        tableHead: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textWhite,
-                        ),
-                        tableBody: const TextStyle(
-                          fontSize: 12.5,
-                          color: AppColors.textBody,
-                        ),
-                        tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        tableCellsDecoration: const BoxDecoration(
-                          color: AppColors.inputBg,
+
+                // Message Action Bar (Timestamp, Copy, Retry)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 2, right: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.schedule_rounded, size: 11, color: AppColors.textDim),
+                      const SizedBox(width: 3),
+                      Text(
+                        _formatSessionTime(msg.createdAt),
+                        style: const TextStyle(fontSize: 10.5, color: AppColors.textDim, fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(width: 10),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(3),
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: msg.content));
+                          AppToast.success(context, 'Đã sao chép nội dung vào bộ nhớ tạm!');
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Row(
+                            children: [
+                              Icon(Icons.copy_rounded, size: 11, color: AppColors.textDim),
+                              SizedBox(width: 3),
+                              Text('Sao chép', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-
-                  if (msg.content.isEmpty && msg.isStreaming)
-                    const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                      if (!isUser) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(3),
+                          onTap: () async {
+                            final server = context.read<ServerProvider>().selectedServer;
+                            final srvInfo = server != null ? '${server.sshUser}@${server.serverIp}' : null;
+                            AppToast.info(context, 'Đang tạo và lưu tài liệu PDF chuẩn A4...');
+                            try {
+                              final path = await PdfExportService.exportMessageToPdf(msg, serverInfo: srvInfo);
+                              if (mounted) {
+                                AppToast.success(context, 'Đã lưu PDF tại Downloads: ${path?.split('/').last ?? ''}');
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                AppToast.error(context, 'Lỗi xuất PDF: $e');
+                              }
+                            }
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Row(
+                              children: [
+                                Icon(Icons.picture_as_pdf_outlined, size: 11, color: AppColors.primaryLight),
+                                SizedBox(width: 3),
+                                Text('Tải PDF A4', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w500)),
+                              ],
+                            ),
+                          ),
                         ),
-                        SizedBox(width: 8),
-                        Text('Đang xử lý...', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                       ],
-                    ),
-
-                  if (msg.toolExecutions.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
-                  ],
-                ],
-              ),
+                      if (isUser) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(3),
+                          onTap: () => chat.sendMessage(msg.content),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Row(
+                              children: [
+                                Icon(Icons.rotate_right_rounded, size: 12, color: AppColors.primaryLight),
+                                SizedBox(width: 3),
+                                Text('Hỏi lại', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           if (isUser) ...[
@@ -558,7 +662,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildInputBar(ChatProvider chat) {
+  Widget _buildInputBar(ChatProvider chat, ServerProvider serverProvider) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -612,7 +716,7 @@ class _ChatScreenState extends State<ChatScreen> {
               minLines: 2,
               maxLines: 5,
               textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _handleSend(chat),
+              onSubmitted: (_) => _handleSend(chat, serverProvider),
               decoration: const InputDecoration(
                 hintText: "Nhập yêu cầu, gõ '/' để chọn thư mục giới hạn...",
                 contentPadding: EdgeInsets.zero,
@@ -648,9 +752,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       icon: const Icon(Icons.attach_file_rounded, size: 14, color: AppColors.accentCyan),
                       label: const Text('Attach', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Chức năng đính kèm tệp đã sẵn sàng')),
-                        );
+                        AppToast.info(context, 'Chức năng đính kèm tệp đã sẵn sàng');
                       },
                     ),
                   ],
@@ -662,7 +764,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   icon: const Icon(Icons.send_rounded, size: 14),
                   label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  onPressed: chat.isGenerating ? null : () => _handleSend(chat),
+                  onPressed: chat.isGenerating ? null : () => _handleSend(chat, serverProvider),
                 ),
               ],
             ),
@@ -883,14 +985,17 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.borderDark)),
+          TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
             onPressed: () {
-              chat.renameSession(sess, titleCtrl.text.trim());
+              final newTitle = titleCtrl.text.trim();
+              if (newTitle.isNotEmpty) {
+                chat.renameSession(sess, newTitle);
+                AppToast.success(context, 'Đã đổi tên hộp hội thoại!');
+              }
               Navigator.pop(ctx);
             },
             child: const Text('Lưu thay đổi'),
@@ -918,15 +1023,15 @@ class _ChatScreenState extends State<ChatScreen> {
           style: const TextStyle(fontSize: 13, height: 1.5),
         ),
         actions: [
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.borderDark)),
+          TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () {
               chat.deleteSession(sess.id);
+              AppToast.info(context, 'Đã xóa hộp hội thoại!');
               Navigator.pop(ctx);
             },
             child: const Text('Xóa vĩnh viễn'),

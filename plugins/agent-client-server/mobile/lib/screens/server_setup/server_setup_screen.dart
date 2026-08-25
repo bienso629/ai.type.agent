@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
@@ -30,7 +31,6 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
   }
 
   void _handleServiceAction(String action) async {
-    final messenger = ScaffoldMessenger.of(context);
     final res = await _api.executeServiceAction('ai-agent', action);
     final msg = res['message']?.toString() ?? res['output']?.toString() ?? 'Đã gửi lệnh $action';
 
@@ -69,13 +69,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
         ),
       );
     } else {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          duration: const Duration(seconds: 2),
-        ),
-      );
       if (mounted) {
+        AppToast.info(context, msg);
         context.read<MetricsProvider>().fetchMetrics(silent: true);
       }
     }
@@ -241,7 +236,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                           title: 'Mô hình AI',
                           icon: Icons.memory_rounded,
                           iconColor: AppColors.primaryLight,
-                          value: s?.aiModel ?? 'glm-5.3',
+                          value: serverProvider.currentAiModel,
                           valueColor: AppColors.textWhite,
                           subtitle: 'Function Calling',
                         ),

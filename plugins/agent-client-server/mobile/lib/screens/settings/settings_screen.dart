@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/server_model.dart';
 import '../../providers/gateway_provider.dart';
@@ -44,23 +45,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveAISettings() async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final cfg = await _api.getConfig();
       cfg['ai_model'] = _modelCtrl.text.trim();
       cfg['proxy_base_url'] = _baseUrlCtrl.text.trim();
       cfg['proxy_api_key'] = _apiKeyCtrl.text.trim();
       final ok = await _api.saveConfig(cfg);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(ok ? '✔ Đã lưu cấu hình AI thành công!' : '❌ Lưu cấu hình thất bại'),
-          backgroundColor: ok ? AppColors.accent : AppColors.danger,
-        ),
-      );
+      if (mounted) {
+        if (ok) {
+          context.read<ServerProvider>().setGlobalAiModel(_modelCtrl.text.trim());
+          AppToast.success(context, 'Đã lưu cấu hình AI thành công!');
+        } else {
+          AppToast.error(context, 'Lưu cấu hình AI thất bại!');
+        }
+      }
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.danger),
-      );
+      if (mounted) {
+        AppToast.error(context, 'Lỗi: $e');
+      }
     }
   }
 
@@ -163,10 +165,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         actions: [
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.borderDark)),
+          TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -212,21 +213,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.tune_rounded, color: AppColors.primaryLight, size: 24),
-                    SizedBox(width: 12),
+                    const Icon(Icons.tune_rounded, color: AppColors.primaryLight, size: 24),
+                    const SizedBox(width: 12),
                     Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Quản Lý Đa Máy Chủ & Cấu Hình AI',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                         ),
                         Text(
-                          'Thêm, sửa, chuyển đổi máy chủ SSH Remote và cấu hình AI Model (GLM-5.3)',
-                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                          'Thêm, sửa, chuyển đổi máy chủ SSH Remote và cấu hình AI Model (${serverProvider.currentAiModel})',
+                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       ],
                     ),

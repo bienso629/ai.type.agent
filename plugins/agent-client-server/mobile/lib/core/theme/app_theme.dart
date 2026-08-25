@@ -126,6 +126,17 @@ class AppTheme {
         ),
         actionsPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.textMuted,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+            side: BorderSide.none,
+          ),
+          textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500),
+        ),
+      ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
           if (states.contains(WidgetState.selected)) {

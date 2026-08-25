@@ -9,16 +9,45 @@ class ServerProvider extends ChangeNotifier {
 
   List<ServerModel> _servers = [];
   ServerModel? _selectedServer;
+  String _globalAiModel = 'glm-5.3';
   bool _isLoading = false;
   String? _error;
 
   List<ServerModel> get servers => _servers;
   ServerModel? get selectedServer => _selectedServer;
+  String get globalAiModel => _globalAiModel;
+  String get currentAiModel {
+    if (_globalAiModel.isNotEmpty) {
+      return _globalAiModel;
+    }
+    if (_selectedServer != null && _selectedServer!.aiModel.isNotEmpty) {
+      return _selectedServer!.aiModel;
+    }
+    return 'glm-5.3';
+  }
   bool get isLoading => _isLoading;
   String? get error => _error;
 
   ServerProvider() {
     loadServers();
+    loadGlobalConfig();
+  }
+
+  Future<void> loadGlobalConfig() async {
+    try {
+      final cfg = await _api.getConfig();
+      if (cfg['ai_model'] != null && cfg['ai_model'].toString().isNotEmpty) {
+        _globalAiModel = cfg['ai_model'].toString();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  void setGlobalAiModel(String model) {
+    if (model.isNotEmpty) {
+      _globalAiModel = model;
+      notifyListeners();
+    }
   }
 
   Future<void> loadServers() async {
@@ -43,6 +72,7 @@ class ServerProvider extends ChangeNotifier {
       } else {
         _selectedServer = null;
       }
+      await loadGlobalConfig();
     } catch (e) {
       _error = e.toString();
     } finally {
