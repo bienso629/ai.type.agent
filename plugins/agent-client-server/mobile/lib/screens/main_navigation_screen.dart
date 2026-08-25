@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 import 'chat/chat_screen.dart';
@@ -158,6 +160,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget _buildDesktopLayout() {
     final serverProvider = context.watch<ServerProvider>();
     final metricsProvider = context.watch<MetricsProvider>();
+    final auth = context.watch<AuthProvider>();
     final m = metricsProvider.metrics;
     final isAgentActive = m.serviceStatus == 'active';
 
@@ -386,6 +389,57 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     ),
                   ),
 
+                // 1.45 User Account Info & Logout in sidebar
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBg,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.borderDark),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        ),
+                        child: const Icon(Icons.person_rounded, size: 16, color: AppColors.primaryLight),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              auth.userEmail ?? 'admin@tadu.vn',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                            ),
+                            const Text(
+                              'Đã xác thực',
+                              style: TextStyle(fontSize: 9.5, color: AppColors.accent, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                        icon: const Icon(Icons.logout_rounded, size: 15, color: AppColors.textDim),
+                        tooltip: 'Đăng xuất',
+                        onPressed: () => _confirmLogout(context, auth),
+                      ),
+                    ],
+                  ),
+                ),
+
                 // 1.5 Footer
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -472,6 +526,42 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _confirmLogout(BuildContext context, AuthProvider auth) {
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 420,
+        maxWidth: 480,
+        title: const Row(
+          children: [
+            Icon(Icons.logout_rounded, color: AppColors.danger, size: 20),
+            SizedBox(width: 8),
+            Text('Xác Nhận Đăng Xuất'),
+          ],
+        ),
+        content: const Text(
+          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Tadu Cloud Control Center?',
+          style: TextStyle(fontSize: 13, color: AppColors.textBody),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () {
+              Navigator.pop(ctx);
+              auth.logout();
+              AppToast.info(context, 'Đã đăng xuất tài khoản.');
+            },
+            child: const Text('Đăng xuất'),
+          ),
+        ],
       ),
     );
   }

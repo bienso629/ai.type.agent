@@ -45,11 +45,41 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "tadu_cloud_ai_agent_mobile");
+    gtk_header_bar_set_title(header_bar, "Tadu Cloud AI Agent Control Server");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
+
+    GtkCssProvider* provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(
+        provider,
+        "headerbar, .titlebar {"
+        "  min-height: 28px;"
+        "  padding-top: 1px;"
+        "  padding-bottom: 1px;"
+        "  padding-left: 6px;"
+        "  padding-right: 6px;"
+        "  margin: 0px;"
+        "}"
+        "headerbar .title {"
+        "  font-size: 11.5px;"
+        "  font-weight: bold;"
+        "  padding: 0px;"
+        "}"
+        "headerbar button.titlebutton {"
+        "  min-height: 18px;"
+        "  min-width: 18px;"
+        "  padding: 1px 3px;"
+        "  margin: 0px 1px;"
+        "}",
+        -1, nullptr);
+    GtkStyleContext* style_context = gtk_widget_get_style_context(GTK_WIDGET(header_bar));
+    gtk_style_context_add_provider(
+        style_context, GTK_STYLE_PROVIDER(provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
+
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "tadu_cloud_ai_agent_mobile");
+    gtk_window_set_title(window, "Tadu Cloud AI Agent Control Server");
   }
 
   gtk_window_set_default_size(window, 1280, 720);

@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'core/services/storage_service.dart';
 import 'core/theme/app_theme.dart';
+import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/gateway_provider.dart';
 import 'providers/logs_provider.dart';
 import 'providers/metrics_provider.dart';
 import 'providers/server_provider.dart';
+import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation_screen.dart';
 
 void main() async {
@@ -36,6 +38,7 @@ class TaduCloudAiAgentApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => GatewayProvider()),
         ChangeNotifierProvider(create: (_) => ServerProvider()),
         ChangeNotifierProvider(create: (_) => MetricsProvider()),
@@ -43,11 +46,35 @@ class TaduCloudAiAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LogsProvider()),
       ],
       child: MaterialApp(
-        title: 'Tadu Cloud AI Agent Control Center',
+        title: 'Tadu Cloud AI Agent Control Server',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
-        home: const MainNavigationScreen(),
+        home: const AuthGate(),
       ),
     );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
+    if (auth.isCheckingAuth) {
+      return const Scaffold(
+        backgroundColor: AppColors.bgDark,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
+
+    if (auth.isAuthenticated) {
+      return const MainNavigationScreen();
+    }
+
+    return const LoginScreen();
   }
 }

@@ -13,6 +13,11 @@ class StorageService {
   static const String _keyActiveServerId = 'active_server_id';
   static const String _keyDefaultModel = 'default_ai_model';
   static const String _keyBiometricEnabled = 'biometric_enabled';
+  static const String _keyAuthToken = 'auth_token';
+  static const String _keyUserEmail = 'user_email';
+  static const String _keyUserName = 'user_name';
+  static const String _keyIsLoggedIn = 'is_logged_in';
+  static const String _keyRememberMe = 'remember_me';
 
   Future<void> init() async {
     if (_isInitialized) return;
@@ -77,5 +82,76 @@ class StorageService {
   Future<void> setBiometricEnabled(bool enabled) async {
     await init();
     await _prefs.setBool(_keyBiometricEnabled, enabled);
+  }
+
+  // Tadu Cloud Authentication
+  Future<String?> getAuthToken() async {
+    await init();
+    return _prefs.getString(_keyAuthToken);
+  }
+
+  Future<void> setAuthToken(String? token) async {
+    await init();
+    if (token == null || token.isEmpty) {
+      await _prefs.remove(_keyAuthToken);
+    } else {
+      await _prefs.setString(_keyAuthToken, token);
+    }
+  }
+
+  Future<String?> getUserEmail() async {
+    await init();
+    return _prefs.getString(_keyUserEmail);
+  }
+
+  Future<void> setUserEmail(String? email) async {
+    await init();
+    if (email == null || email.isEmpty) {
+      await _prefs.remove(_keyUserEmail);
+    } else {
+      await _prefs.setString(_keyUserEmail, email);
+    }
+  }
+
+  Future<String?> getUserName() async {
+    await init();
+    return _prefs.getString(_keyUserName);
+  }
+
+  Future<void> setUserName(String? name) async {
+    await init();
+    if (name == null || name.isEmpty) {
+      await _prefs.remove(_keyUserName);
+    } else {
+      await _prefs.setString(_keyUserName, name);
+    }
+  }
+
+  Future<bool> isLoggedIn() async {
+    await init();
+    return _prefs.getBool(_keyIsLoggedIn) ?? false;
+  }
+
+  Future<void> setLoggedIn(bool value) async {
+    await init();
+    await _prefs.setBool(_keyIsLoggedIn, value);
+  }
+
+  Future<bool> getRememberMe() async {
+    await init();
+    return _prefs.getBool(_keyRememberMe) ?? true;
+  }
+
+  Future<void> setRememberMe(bool value) async {
+    await init();
+    await _prefs.setBool(_keyRememberMe, value);
+  }
+
+  Future<void> clearAuth() async {
+    await init();
+    await _prefs.remove(_keyAuthToken);
+    await _prefs.remove(_keyUserEmail);
+    await _prefs.remove(_keyUserName);
+    await _prefs.setBool(_keyIsLoggedIn, false);
   }
 }
