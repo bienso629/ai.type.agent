@@ -11,6 +11,9 @@ class ChatProvider extends ChangeNotifier {
   ChatSessionModel? _currentSession;
   List<ChatMessageModel> _messages = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMoreMessages = false;
+  int _oldestMessageId = 0;
   bool _isGenerating = false;
   String _currentStatus = '';
   StreamSubscription? _streamSub;
@@ -19,6 +22,9 @@ class ChatProvider extends ChangeNotifier {
   ChatSessionModel? get currentSession => _currentSession;
   List<ChatMessageModel> get messages => _messages;
   bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get hasMoreMessages => _hasMoreMessages;
+  int get oldestMessageId => _oldestMessageId;
   bool get isGenerating => _isGenerating;
   String get currentStatus => _currentStatus;
 
@@ -85,15 +91,50 @@ class ChatProvider extends ChangeNotifier {
   Future<void> selectSession(ChatSessionModel session) async {
     _currentSession = session;
     _messages = [];
+    _hasMoreMessages = false;
+    _isLoadingMore = false;
+    _oldestMessageId = 0;
     _isLoading = true;
     notifyListeners();
 
     try {
-      final history = await _api.getChatHistory(session.id);
-      _messages = history;
+      final result = await _api.getChatHistory(session.id, limitQuestions: 3, beforeId: 0);
+      _messages = result.messages;
+      _hasMoreMessages = result.hasMore;
+      _oldestMessageId = result.oldestId;
     } catch (_) {}
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<void> loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages || _currentSession == null || _oldestMessageId <= 0) return;
+
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      final result = await _api.getChatHistory(
+        _currentSession!.id,
+        limitQuestions: 3,
+        beforeId: _oldestMessageId,
+      );
+
+      if (result.messages.isNotEmpty) {
+        _messages.insertAll(0, result.messages);
+        _hasMoreMessages = result.hasMore;
+        if (result.oldestId > 0) {
+          _oldestMessageId = result.oldestId;
+        }
+      } else {
+        _hasMoreMessages = false;
+      }
+    } catch (_) {
+      _hasMoreMessages = false;
+    } finally {
+      _isLoadingMore = false;
+      notifyListeners();
+    }
   }
 
   Future<void> pinSession(ChatSessionModel session) async {
@@ -171,6 +212,8 @@ class ChatProvider extends ChangeNotifier {
     if (_currentSession == null) return;
     await _api.clearChatHistory(_currentSession!.id);
     _messages.clear();
+    _hasMoreMessages = false;
+    _oldestMessageId = 0;
     notifyListeners();
   }
 

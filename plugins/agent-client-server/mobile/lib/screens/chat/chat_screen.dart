@@ -23,32 +23,81 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isRightSidebarOpen = true;
   String? _workingDirScope;
 
+  String? _lastSessionId;
+  String _lastTrackedContent = '';
+  int _lastMessageCount = 0;
+
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final chat = context.read<ChatProvider>();
-      if (chat.currentSession != null && chat.messages.isEmpty && !chat.isLoading) {
-        chat.selectSession(chat.currentSession!);
+      if (chat.currentSession != null) {
+        chat.selectSession(chat.currentSession!).then((_) {
+          _safeScrollToBottom(instant: true);
+        });
       }
     });
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 120,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels <= 60) {
+      final chat = context.read<ChatProvider>();
+      if (chat.hasMoreMessages && !chat.isLoadingMore && !chat.isLoading) {
+        final oldMaxScroll = _scrollController.position.maxScrollExtent;
+        final oldPixels = _scrollController.position.pixels;
+        chat.loadMoreMessages().then((_) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              final newMaxScroll = _scrollController.position.maxScrollExtent;
+              final diff = newMaxScroll - oldMaxScroll;
+              if (diff > 0) {
+                _scrollController.jumpTo(oldPixels + diff);
+              }
+            }
+          });
+        });
+      }
     }
+  }
+
+  void _scrollToBottom({bool instant = false}) {
+    if (!_scrollController.hasClients) return;
+    try {
+      final target = _scrollController.position.maxScrollExtent + 200;
+      if (instant) {
+        _scrollController.jumpTo(target);
+      } else {
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+        );
+      }
+    } catch (_) {}
+  }
+
+  void _safeScrollToBottom({bool instant = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollToBottom(instant: instant);
+        Future.delayed(const Duration(milliseconds: 60), () {
+          if (_scrollController.hasClients) {
+            _scrollToBottom(instant: instant);
+          }
+        });
+      }
+    });
   }
 
   void _handleSend(ChatProvider chat, ServerProvider serverProvider) {
@@ -56,7 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty || chat.isGenerating) return;
     _textController.clear();
     chat.sendMessage(text, model: serverProvider.currentAiModel);
-    Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    _safeScrollToBottom();
   }
 
   void _triggerScopePicker() async {
@@ -119,6 +168,20 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
     final serverProvider = context.watch<ServerProvider>();
+
+    if (_lastSessionId != chat.currentSession?.id) {
+      _lastSessionId = chat.currentSession?.id;
+      _lastTrackedContent = '';
+      _lastMessageCount = chat.messages.length;
+      _safeScrollToBottom(instant: true);
+    } else if (chat.isGenerating) {
+      _safeScrollToBottom();
+    } else if (chat.messages.length != _lastMessageCount ||
+        (chat.messages.isNotEmpty && _lastTrackedContent != chat.messages.last.content)) {
+      _lastMessageCount = chat.messages.length;
+      _lastTrackedContent = chat.messages.isNotEmpty ? chat.messages.last.content : '';
+      _safeScrollToBottom();
+    }
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
@@ -243,9 +306,14 @@ class _ChatScreenState extends State<ChatScreen> {
                             : ListView.builder(
                                 controller: _scrollController,
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                                itemCount: chat.messages.isEmpty ? 1 : chat.messages.length + 1,
+                                itemCount: chat.hasMoreMessages
+                                    ? chat.messages.length + 1
+                                    : (chat.messages.isEmpty ? 1 : chat.messages.length + 1),
                                 itemBuilder: (context, idx) {
                                   if (idx == 0) {
+                                    if (chat.hasMoreMessages) {
+                                      return _buildLoadMoreBanner(chat);
+                                    }
                                     return _buildGreetingBubble(chat, serverProvider);
                                   }
                                   final msg = chat.messages[idx - 1];
@@ -292,6 +360,60 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLoadMoreBanner(ChatProvider chat) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      alignment: Alignment.center,
+      child: chat.isLoadingMore
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.sidebarBg,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.borderDark),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Đang tải thêm 3 tin nhắn trước đó...',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.primaryLight),
+                  ),
+                ],
+              ),
+            )
+          : InkWell(
+              onTap: () => chat.loadMoreMessages(),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.borderDark),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.arrow_upward_rounded, size: 13, color: AppColors.textMuted),
+                    SizedBox(width: 6),
+                    Text(
+                      'Cuộn lên hoặc bấm để tải thêm 3 tin nhắn cũ',
+                      style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 
@@ -399,7 +521,10 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       icon: Icon(icon, size: 14, color: iconColor),
       label: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
-      onPressed: () => chat.sendMessage(prompt),
+      onPressed: () {
+        chat.sendMessage(prompt);
+        _safeScrollToBottom();
+      },
     );
   }
 
@@ -438,7 +563,7 @@ class _ChatScreenState extends State<ChatScreen> {
               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: isUser
                         ? AppColors.primary.withValues(alpha: 0.12)
@@ -459,17 +584,49 @@ class _ChatScreenState extends State<ChatScreen> {
                           data: msg.content,
                           selectable: true,
                           styleSheet: MarkdownStyleSheet(
-                            p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.45),
+                            p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.55),
+                            pPadding: const EdgeInsets.only(bottom: 6),
+                            strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.textBody),
+                            h1: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
+                            h1Padding: const EdgeInsets.only(top: 10, bottom: 5),
+                            h2: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
+                            h2Padding: const EdgeInsets.only(top: 9, bottom: 4),
+                            h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.3),
+                            h3Padding: const EdgeInsets.only(top: 7, bottom: 4),
+                            h4: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
+                            h4Padding: const EdgeInsets.only(top: 6, bottom: 3),
+                            h5: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
+                            h5Padding: const EdgeInsets.only(top: 4, bottom: 2),
+                            h6: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600, color: AppColors.textMuted, height: 1.3),
+                            h6Padding: const EdgeInsets.only(top: 4, bottom: 2),
+                            blockSpacing: 8.0,
+                            listBullet: const TextStyle(fontSize: 13.5, color: AppColors.primaryLight),
+                            listBulletPadding: const EdgeInsets.only(right: 6, top: 1),
+                            listIndent: 20.0,
                             code: const TextStyle(
                               fontFamily: 'monospace',
                               backgroundColor: AppColors.codeBg,
                               color: AppColors.terminalGreen,
                               fontSize: 12,
                             ),
+                            codeblockPadding: const EdgeInsets.all(10),
                             codeblockDecoration: BoxDecoration(
                               color: AppColors.codeBg,
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(color: AppColors.borderDark),
+                            ),
+                            blockquote: const TextStyle(fontSize: 13, color: AppColors.textBody, fontStyle: FontStyle.italic),
+                            blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            blockquoteDecoration: BoxDecoration(
+                              color: AppColors.inputBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: const Border(
+                                left: BorderSide(color: AppColors.primaryLight, width: 3),
+                              ),
+                            ),
+                            horizontalRuleDecoration: const BoxDecoration(
+                              border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
                             ),
                             tableBorder: TableBorder.all(
                               color: AppColors.borderDark,
@@ -477,15 +634,15 @@ class _ChatScreenState extends State<ChatScreen> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             tableHead: const TextStyle(
-                              fontSize: 13,
+                              fontSize: 12.5,
                               fontWeight: FontWeight.bold,
                               color: AppColors.textWhite,
                             ),
                             tableBody: const TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 12,
                               color: AppColors.textBody,
                             ),
-                            tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                             tableCellsDecoration: const BoxDecoration(
                               color: AppColors.inputBg,
                             ),
@@ -579,7 +736,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         const SizedBox(width: 8),
                         InkWell(
                           borderRadius: BorderRadius.circular(3),
-                          onTap: () => chat.sendMessage(msg.content),
+                          onTap: () {
+                            chat.sendMessage(msg.content);
+                            _safeScrollToBottom();
+                          },
                           child: const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                             child: Row(
@@ -845,7 +1005,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: Colors.transparent,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(4),
-                            onTap: () => chat.selectSession(sess),
+                            onTap: () => chat.selectSession(sess).then((_) {
+                              _scrollToBottom(instant: true);
+                            }),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                               child: Row(

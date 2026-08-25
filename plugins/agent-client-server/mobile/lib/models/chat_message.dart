@@ -56,7 +56,7 @@ class ChatMessageModel {
       content: json['content']?.toString() ?? '',
       model: json['model']?.toString() ?? 'glm-5.3',
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() : DateTime.now(),
-      toolExecutions: (json['tools'] as List<dynamic>?)
+      toolExecutions: ((json['tool_calls'] ?? json['tools']) as List<dynamic>?)
           ?.map((e) => ToolExecutionItem.fromJson(e as Map<String, dynamic>))
           .toList() ?? [],
       isStreaming: false,
@@ -73,3 +73,16 @@ class ChatMessageModel {
     'tools': toolExecutions.map((e) => e.toJson()).toList(),
   };
 }
+
+class ChatHistoryResult {
+  final List<ChatMessageModel> messages;
+  final bool hasMore;
+  final int oldestId;
+
+  ChatHistoryResult({
+    required this.messages,
+    required this.hasMore,
+    required this.oldestId,
+  });
+}
+

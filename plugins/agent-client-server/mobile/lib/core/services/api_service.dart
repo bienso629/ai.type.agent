@@ -297,25 +297,47 @@ class ApiService {
     return res.statusCode == 200;
   }
 
-  Future<List<ChatMessageModel>> getChatHistory(String sessionId) async {
+  Future<ChatHistoryResult> getChatHistory(
+    String sessionId, {
+    int limitQuestions = 3,
+    int beforeId = 0,
+  }) async {
     final baseUrl = await _getBaseUrl();
     try {
+      var query = 'session_id=$sessionId&limit_questions=$limitQuestions';
+      if (beforeId > 0) {
+        query += '&before_id=$beforeId';
+      }
       final res = await _client.get(
-        Uri.parse('$baseUrl${ApiConstants.epChatHistory}?session_id=$sessionId'),
+        Uri.parse('$baseUrl${ApiConstants.epChatHistory}?$query'),
         headers: await _getHeaders(),
       ).timeout(const Duration(seconds: 6));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(utf8.decode(res.bodyBytes));
         if (data is List) {
-          return data.map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>)).toList();
-        } else if (data is Map<String, dynamic> && data['messages'] is List) {
-          final list = data['messages'] as List;
-          return list.map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>)).toList();
+          final msgs = data.map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>)).toList();
+          return ChatHistoryResult(
+            messages: msgs,
+            hasMore: false,
+            oldestId: msgs.isNotEmpty ? (msgs.first.id ?? 0) : 0,
+          );
+        } else if (data is Map<String, dynamic>) {
+          final rawList = data['messages'] as List? ?? [];
+          final msgs = rawList.map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>)).toList();
+          final hasMore = data['has_more'] == true;
+          final oldestId = data['oldest_id'] is int
+              ? data['oldest_id'] as int
+              : int.tryParse(data['oldest_id']?.toString() ?? '') ?? (msgs.isNotEmpty ? (msgs.first.id ?? 0) : 0);
+          return ChatHistoryResult(
+            messages: msgs,
+            hasMore: hasMore,
+            oldestId: oldestId,
+          );
         }
       }
     } catch (_) {}
-    return [];
+    return ChatHistoryResult(messages: [], hasMore: false, oldestId: 0);
   }
 
   Future<bool> clearChatHistory(String sessionId) async {
