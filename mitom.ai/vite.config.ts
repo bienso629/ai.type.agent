@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 
 import siteConfiguration from './.figma/make/site.json'
+import { app as backendApp } from './server/src/app'
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -23,6 +24,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      backendDevPlugin(),
     ],
     resolve: {
       alias: {
@@ -351,6 +353,16 @@ function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin
           next(err as Error)
         }
       })
+    },
+  }
+}
+
+/** Tích hợp Backend API trực tiếp vào Vite Development Server */
+function backendDevPlugin(): Plugin {
+  return {
+    name: 'backend-dev-plugin',
+    configureServer(server) {
+      server.middlewares.use(backendApp)
     },
   }
 }
