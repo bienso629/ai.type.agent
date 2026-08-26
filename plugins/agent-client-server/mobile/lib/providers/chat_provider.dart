@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
+import '../models/attachment_item.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 
@@ -217,9 +218,14 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sendMessage(String text, {String? model}) async {
+  Future<void> sendMessage(
+    String text, {
+    String? model,
+    List<AttachmentItem>? attachments,
+    String? workingDir,
+  }) async {
     final query = text.trim();
-    if (query.isEmpty || _isGenerating) return;
+    if ((query.isEmpty && (attachments == null || attachments.isEmpty)) || _isGenerating) return;
 
     if (_currentSession == null) {
       await createNewSession();
@@ -231,8 +237,9 @@ class ChatProvider extends ChangeNotifier {
     final userMsg = ChatMessageModel(
       sessionId: sessionId,
       role: 'user',
-      content: query,
+      content: query.isNotEmpty ? query : 'Đã đính kèm ${attachments?.length ?? 0} tệp',
       model: model ?? 'glm-5.3',
+      attachments: attachments,
     );
     _messages.add(userMsg);
 
@@ -260,9 +267,11 @@ class ChatProvider extends ChangeNotifier {
     _streamSub?.cancel();
     _streamSub = _api.streamChatMessage(
       sessionId: sessionId,
-      message: query,
+      message: query.isNotEmpty ? query : 'Vui lòng đọc và phân tích các tệp đính kèm.',
       model: model,
+      attachments: attachments,
       history: historySnap,
+      workingDir: workingDir,
       onToken: (token) {
         assistantMsg.content += token;
         assistantMsg.statusMessage = null;

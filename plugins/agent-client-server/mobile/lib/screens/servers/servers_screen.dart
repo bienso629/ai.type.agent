@@ -133,7 +133,8 @@ class ServersScreen extends StatelessWidget {
                   itemCount: serverProvider.servers.length,
                   itemBuilder: (context, index) {
                     final s = serverProvider.servers[index];
-                    final isSelected = s.id == serverProvider.selectedServer?.id || s.isSelected;
+                    final isSelected = serverProvider.selectedServer != null &&
+                        (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -217,7 +218,7 @@ class ServersScreen extends StatelessWidget {
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
                                         onPressed: () {
-                                          serverProvider.deleteServer(s.serverIp);
+                                          serverProvider.deleteServer(s.id);
                                           Navigator.pop(ctx);
                                         },
                                         child: const Text('Xóa'),

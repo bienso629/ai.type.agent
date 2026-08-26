@@ -1,3 +1,5 @@
+import '../core/services/encryption_service.dart';
+
 class ServerModel {
   final String id;
   final String name;
@@ -30,20 +32,36 @@ class ServerModel {
   });
 
   factory ServerModel.fromJson(Map<String, dynamic> json, {bool isCurrent = false}) {
+    final enc = EncryptionService();
+    String dec(dynamic val) {
+      if (val == null) return '';
+      final s = val.toString();
+      if (s.startsWith('enc:')) {
+        return enc.decryptValue(s);
+      }
+      return s;
+    }
+
+    final ip = dec(json['server_ip']);
+    final rawName = dec(json['name'] ?? json['server_name']);
+    final defaultName = ip.isNotEmpty ? 'Máy chủ chính ($ip)' : 'Máy chủ chính';
+
+    final sshPortStr = dec(json['ssh_port']);
+    final apiPortStr = dec(json['api_port']);
     return ServerModel(
-      id: json['id']?.toString() ?? json['server_ip']?.toString() ?? UniqueKey().toString(),
-      name: json['name']?.toString() ?? json['server_name']?.toString() ?? json['server_ip']?.toString() ?? 'VPS Server',
-      serverIp: json['server_ip']?.toString() ?? '',
-      sshPort: int.tryParse(json['ssh_port']?.toString() ?? '22') ?? 22,
-      sshUser: json['ssh_user']?.toString() ?? 'root',
-      sshPass: json['ssh_pass']?.toString() ?? '',
-      sshKey: json['ssh_key']?.toString(),
-      aiModel: json['ai_model']?.toString() ?? 'glm-5.3',
-      remoteWorkDir: json['remote_work_dir']?.toString() ?? '/root',
-      apiPort: int.tryParse(json['api_port']?.toString() ?? '8000') ?? 8000,
-      secretToken: json['secret_token']?.toString() ?? '',
-      isSelected: isCurrent || (json['is_selected'] == true),
-      status: json['status']?.toString() ?? 'online',
+      id: dec(json['id']).isNotEmpty ? dec(json['id']) : (ip.isNotEmpty ? 'srv_$ip' : 'srv_default'),
+      name: (rawName.isNotEmpty) ? rawName : defaultName,
+      serverIp: ip,
+      sshPort: int.tryParse(sshPortStr.isNotEmpty ? sshPortStr : '22') ?? 22,
+      sshUser: dec(json['ssh_user']).isNotEmpty ? dec(json['ssh_user']) : 'root',
+      sshPass: dec(json['ssh_pass']),
+      sshKey: json['ssh_key'] != null ? dec(json['ssh_key']) : null,
+      aiModel: dec(json['ai_model']).isNotEmpty ? dec(json['ai_model']) : 'glm-5.3',
+      remoteWorkDir: dec(json['remote_work_dir']).isNotEmpty ? dec(json['remote_work_dir']) : '/root',
+      apiPort: int.tryParse(apiPortStr.isNotEmpty ? apiPortStr : '8000') ?? 8000,
+      secretToken: dec(json['secret_token']),
+      isSelected: isCurrent,
+      status: dec(json['status']).isNotEmpty ? dec(json['status']) : 'online',
     );
   }
 

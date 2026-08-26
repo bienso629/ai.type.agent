@@ -5,7 +5,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/server_model.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/gateway_provider.dart';
 import '../../providers/server_provider.dart';
 
@@ -76,7 +75,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final modelCtrl = TextEditingController(text: existing?.aiModel ?? 'glm-5.3');
     final dirCtrl = TextEditingController(text: existing?.remoteWorkDir ?? '/opt/ai_agent');
     final apiPortCtrl = TextEditingController(text: existing?.apiPort.toString() ?? '8000');
-
     showDialog(
       context: context,
       builder: (ctx) => TaduDialog(
@@ -171,23 +169,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              final ip = ipCtrl.text.trim();
+              if (ip.isEmpty) {
+                AppToast.error(context, 'Vui lòng nhập Địa chỉ IP máy chủ');
+                return;
+              }
               final newServer = ServerModel(
                 id: existing?.id ?? 'srv_${DateTime.now().millisecondsSinceEpoch}',
-                name: nameCtrl.text.trim().isEmpty ? ipCtrl.text.trim() : nameCtrl.text.trim(),
-                serverIp: ipCtrl.text.trim(),
+                name: nameCtrl.text.trim().isEmpty ? ip : nameCtrl.text.trim(),
+                serverIp: ip,
                 sshPort: int.tryParse(portCtrl.text.trim()) ?? 22,
-                sshUser: userCtrl.text.trim(),
+                sshUser: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
                 sshPass: passCtrl.text.trim(),
-                aiModel: modelCtrl.text.trim(),
-                remoteWorkDir: dirCtrl.text.trim(),
+                aiModel: modelCtrl.text.trim().isEmpty ? 'glm-5.3' : modelCtrl.text.trim(),
+                remoteWorkDir: dirCtrl.text.trim().isEmpty ? '/opt/ai_agent' : dirCtrl.text.trim(),
                 apiPort: int.tryParse(apiPortCtrl.text.trim()) ?? 8000,
                 isSelected: existing?.isSelected ?? false,
               );
-              context.read<ServerProvider>().addOrUpdateServer(newServer);
               Navigator.pop(ctx);
+              final ok = await context.read<ServerProvider>().addOrUpdateServer(newServer);
+              if (mounted) {
+                if (ok) {
+                  AppToast.success(context, 'Đã lưu thông tin máy chủ!');
+                } else {
+                  AppToast.error(context, 'Lưu thông tin máy chủ thất bại');
+                }
+              }
             },
             child: const Text('Lưu Máy Chủ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteServerConfirmDialog(ServerModel server) {
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 420,
+        maxWidth: 500,
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 22),
+            SizedBox(width: 8),
+            Text('Xác Nhận Xóa Máy Chủ'),
+          ],
+        ),
+        content: Text(
+          'Bạn có chắc chắn muốn xóa máy chủ "${server.name}" (${server.serverIp}:${server.sshPort}) khỏi danh sách kết nối không?',
+          style: const TextStyle(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final ok = await context.read<ServerProvider>().deleteServer(server.id);
+              if (mounted) {
+                if (ok) {
+                  AppToast.info(context, 'Đã xóa máy chủ "${server.name}"');
+                } else {
+                  AppToast.error(context, 'Không thể xóa máy chủ');
+                }
+              }
+            },
+            child: const Text('Xóa vĩnh viễn'),
           ),
         ],
       ),
@@ -198,7 +250,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
     final gateway = context.watch<GatewayProvider>();
-    final auth = context.watch<AuthProvider>();
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
@@ -252,84 +303,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // GROUP 0: ACCOUNT & AUTHENTICATION
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                (auth.userEmail?.isNotEmpty == true)
-                                    ? auth.userEmail![0].toUpperCase()
-                                    : 'U',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.primaryLight,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      auth.userEmail ?? 'admin@tadu.vn',
-                                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.accent.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Text('Đã xác thực', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accent)),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Tài khoản quản trị viên Tadu Cloud Control Center',
-                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.danger,
-                            side: BorderSide(color: AppColors.danger.withValues(alpha: 0.4)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                          icon: const Icon(Icons.logout_rounded, size: 15),
-                          label: const Text('Đăng xuất', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-                          onPressed: () => _confirmLogout(context, auth),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
                   // GROUP 1: MULTI-SERVER MANAGEMENT
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -385,7 +358,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       itemCount: serverProvider.servers.length,
                       itemBuilder: (context, idx) {
                         final s = serverProvider.servers[idx];
-                        final isSelected = s.id == serverProvider.selectedServer?.id || s.isSelected;
+                        final isSelected = serverProvider.selectedServer != null &&
+                            (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
 
                         return Container(
                           padding: const EdgeInsets.all(14),
@@ -454,7 +428,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       ),
                                       IconButton(
                                         icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.danger),
-                                        onPressed: () => serverProvider.deleteServer(s.serverIp),
+                                        tooltip: 'Xóa máy chủ',
+                                        onPressed: () => _showDeleteServerConfirmDialog(s),
                                       ),
                                     ],
                                   ),
@@ -611,42 +586,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
           const SizedBox(height: 4),
           Text(desc, style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
-        ],
-      ),
-    );
-  }
-
-  void _confirmLogout(BuildContext context, AuthProvider auth) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 420,
-        maxWidth: 480,
-        title: const Row(
-          children: [
-            Icon(Icons.logout_rounded, color: AppColors.danger, size: 20),
-            SizedBox(width: 8),
-            Text('Xác Nhận Đăng Xuất'),
-          ],
-        ),
-        content: const Text(
-          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Tadu Cloud Control Center?',
-          style: TextStyle(fontSize: 13, color: AppColors.textBody),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
-              Navigator.pop(ctx);
-              auth.logout();
-              AppToast.info(context, 'Đã đăng xuất tài khoản.');
-            },
-            child: const Text('Đăng xuất'),
-          ),
         ],
       ),
     );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'core/services/database_service.dart';
+import 'core/services/local_config_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
@@ -17,6 +19,12 @@ void main() async {
 
   // Initialize Storage Service
   await StorageService().init();
+
+  // Initialize Database and Local Config (Desktop & Mobile)
+  try {
+    await DatabaseService().init();
+    await LocalConfigService().loadConfig();
+  } catch (_) {}
 
   // Setup System UI Overlay styles
   SystemChrome.setSystemUIOverlayStyle(

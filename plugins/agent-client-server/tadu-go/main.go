@@ -430,6 +430,21 @@ func loadConfig(r ...*http.Request) map[string]interface{} {
 						continue
 					}
 				}
+				if k == "servers" || strings.HasPrefix(dec, "[") || strings.HasPrefix(dec, "{") {
+					var jsonVal interface{}
+					if err := json.Unmarshal([]byte(dec), &jsonVal); err == nil {
+						result[k] = jsonVal
+						continue
+					}
+				}
+				if dec == "true" {
+					result[k] = true
+					continue
+				}
+				if dec == "false" {
+					result[k] = false
+					continue
+				}
 				result[k] = dec
 			} else {
 				if (k == "ssh_port" || k == "api_port") && s != "" {
@@ -556,8 +571,15 @@ func saveConfig(cfg map[string]interface{}, r ...*http.Request) error {
 
 	diskData := make(map[string]interface{})
 	for k, v := range cfg {
-		if k == "_encrypted_vault" || k == "servers" {
+		if k == "_encrypted_vault" {
 			continue
+		}
+		if k == "servers" {
+			b, err := json.Marshal(v)
+			if err == nil {
+				diskData[k] = encryptValue(string(b))
+				continue
+			}
 		}
 		diskData[k] = encryptValue(fmt.Sprintf("%v", v))
 	}

@@ -31,25 +31,36 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
   }
 
   void _handleServiceAction(String action) async {
+    final actionLabel = action == 'start'
+        ? 'khởi động'
+        : action == 'restart'
+            ? 'khởi động lại'
+            : action == 'stop'
+                ? 'tắt'
+                : 'kiểm tra chi tiết';
+    AppToast.info(context, 'Đang gửi lệnh $actionLabel dịch vụ...');
+
     final res = await _api.executeServiceAction('ai-agent', action);
-    final msg = res['message']?.toString() ?? res['output']?.toString() ?? 'Đã gửi lệnh $action';
+    final output = res['output']?.toString() ?? res['message']?.toString() ?? 'Không có phản hồi từ máy chủ';
+    final msg = res['message']?.toString() ?? output;
 
     if (action == 'status') {
       if (!mounted) return;
       showDialog(
         context: context,
         builder: (ctx) => TaduDialog(
-          minWidth: 560,
-          maxWidth: 720,
-          maxHeight: 460,
+          minWidth: 640,
+          maxWidth: 820,
+          maxHeight: 520,
           title: const Row(
             children: [
               Icon(Icons.info_outline_rounded, color: AppColors.primaryLight, size: 22),
               SizedBox(width: 8),
-              Text('Chi Tiết Trạng Thái Service'),
+              Text('Chi Tiết Trạng Thái Service & Tiến Trình'),
             ],
           ),
           content: Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: AppColors.terminalBg,
@@ -58,7 +69,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
             ),
             child: SingleChildScrollView(
               child: SelectableText(
-                msg,
+                output,
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.terminalGreen, height: 1.4),
               ),
             ),
@@ -70,8 +81,15 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
       );
     } else {
       if (mounted) {
-        AppToast.info(context, msg);
-        context.read<MetricsProvider>().fetchMetrics(silent: true);
+        if (res['status'] == 'error') {
+          AppToast.error(context, msg);
+        } else {
+          AppToast.success(context, msg);
+        }
+        await Future.delayed(const Duration(milliseconds: 1200));
+        if (mounted) {
+          context.read<MetricsProvider>().fetchMetrics(silent: true);
+        }
       }
     }
   }
@@ -209,15 +227,33 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: _buildStatusCard(
-                          title: 'Trạng thái Service',
-                          icon: Icons.shield_rounded,
-                          iconColor: m.serviceStatus == 'active' ? AppColors.accent : AppColors.warning,
-                          value: m.serviceStatus == 'active' ? 'Đang chạy' : 'Chưa bật',
-                          valueColor: m.serviceStatus == 'active' ? AppColors.accent : AppColors.warning,
-                          subtitle: 'ai-agent.service',
-                          hasDot: true,
-                        ),
+                        child: () {
+                          final st = m.serviceStatus.toLowerCase().trim();
+                          String label = 'Chưa bật';
+                          Color color = AppColors.warning;
+                          if (st == 'active') {
+                            label = 'Đang chạy';
+                            color = AppColors.accent;
+                          } else if (st == 'failed') {
+                            label = 'Bị lỗi (Failed)';
+                            color = AppColors.danger;
+                          } else if (st == 'activating') {
+                            label = 'Đang bật...';
+                            color = AppColors.warning;
+                          } else if (st == 'deactivating') {
+                            label = 'Đang tắt...';
+                            color = AppColors.textDim;
+                          }
+                          return _buildStatusCard(
+                            title: 'Trạng thái Service',
+                            icon: Icons.shield_rounded,
+                            iconColor: color,
+                            value: label,
+                            valueColor: color,
+                            subtitle: 'ai-agent.service',
+                            hasDot: true,
+                          );
+                        }(),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

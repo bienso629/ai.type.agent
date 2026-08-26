@@ -9,6 +9,8 @@ import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/gateway_provider.dart';
 import '../../providers/server_provider.dart';
+import 'package:dartssh2/dartssh2.dart';
+import '../../core/services/native_ssh_service.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key});
@@ -20,8 +22,11 @@ class TerminalScreen extends StatefulWidget {
 class _TerminalScreenState extends State<TerminalScreen> {
   late final Terminal _terminal;
   WebSocketChannel? _channel;
+  SSHClient? _sshClient;
+  SSHSession? _sshSession;
   bool _isConnected = false;
   bool _isConnecting = false;
+  bool _showVirtualKeyboard = false;
 
   @override
   void initState() {
@@ -39,6 +44,56 @@ class _TerminalScreenState extends State<TerminalScreen> {
     setState(() {
       _isConnecting = true;
     });
+
+    final isNative = gateway.gatewayUrl.isEmpty ||
+        gateway.gatewayUrl.contains('127.0.0.1:8888') ||
+        gateway.gatewayUrl.contains('localhost:8888');
+
+    if (isNative) {
+      _terminal.write('\r\n\x1b[36m⚡ Đang kết nối Native SSH Terminal trực tiếp...\x1b[0m\r\n');
+      try {
+        _sshClient = await NativeSshService().getClient();
+        _sshSession = await _sshClient!.shell(
+          pty: const SSHPtyConfig(
+            width: 80,
+            height: 24,
+          ),
+        );
+
+        setState(() {
+          _isConnected = true;
+          _isConnecting = false;
+        });
+
+        _terminal.write('\x1b[32m✔ Kết nối thành công đến máy chủ: ${serverProvider.selectedServer?.name ?? "VPS"}\x1b[0m\r\n\r\n');
+
+        _sshSession!.stdout.listen((data) {
+          _terminal.write(utf8.decode(data, allowMalformed: true));
+        }, onDone: () {
+          setState(() => _isConnected = false);
+          _terminal.write('\r\n\x1b[33m[Phiên SSH đã đóng]\x1b[0m\r\n');
+        }, onError: (err) {
+          setState(() => _isConnected = false);
+          _terminal.write('\r\n\x1b[31m[Lỗi SSH]: $err\x1b[0m\r\n');
+        });
+
+        _sshSession!.stderr.listen((data) {
+          _terminal.write(utf8.decode(data, allowMalformed: true));
+        });
+
+        _terminal.onOutput = (data) {
+          _sshSession?.write(Uint8List.fromList(utf8.encode(data)));
+        };
+        return;
+      } catch (e) {
+        setState(() {
+          _isConnecting = false;
+          _isConnected = false;
+        });
+        _terminal.write('\r\n\x1b[31m[Lỗi kết nối SSH]: $e\x1b[0m\r\n');
+        return;
+      }
+    }
 
     _terminal.write('\r\n\x1b[36m⚡ Đang kết nối SSH WebSocket Terminal...\x1b[0m\r\n');
 
@@ -104,27 +159,39 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _sendCmd(String cmd) {
-    if (_isConnected && _channel != null) {
-      _channel!.sink.add('$cmd\r');
+    if (_isConnected) {
+      if (_sshSession != null) {
+        _sshSession!.write(Uint8List.fromList(utf8.encode('$cmd\r')));
+      } else if (_channel != null) {
+        _channel!.sink.add('$cmd\r');
+      }
     }
   }
 
   void _sendKey(String code) {
-    if (_isConnected && _channel != null) {
-      _channel!.sink.add(code);
+    if (_isConnected) {
+      if (_sshSession != null) {
+        _sshSession!.write(Uint8List.fromList(utf8.encode(code)));
+      } else if (_channel != null) {
+        _channel!.sink.add(code);
+      }
     }
   }
 
   @override
   void dispose() {
     _channel?.sink.close();
+    try {
+      _sshSession?.close();
+      _sshClient?.close();
+    } catch (_) {}
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
+      backgroundColor: Colors.black,
       body: Column(
         children: [
           // 1. Topbar Header (Height 66px)
@@ -194,6 +261,20 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 ),
                 Row(
                   children: [
+                    IconButton(
+                      icon: Icon(
+                        _showVirtualKeyboard ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
+                        color: _showVirtualKeyboard ? AppColors.accentCyan : AppColors.textDim,
+                        size: 18,
+                      ),
+                      tooltip: _showVirtualKeyboard ? 'Ẩn thanh phím tắt ảo' : 'Hiện thanh phím tắt ảo (ESC, TAB, CTRL...)',
+                      onPressed: () {
+                        setState(() {
+                          _showVirtualKeyboard = !_showVirtualKeyboard;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 4),
                     IconButton(
                       icon: _isConnecting
                           ? const SizedBox(
@@ -267,44 +348,50 @@ class _TerminalScreenState extends State<TerminalScreen> {
             ),
           ),
 
-          // 3. XTerm Terminal View
+          // 3. XTerm Terminal View - Full Width & Full Height with Pure Black Background
           Expanded(
-            child: Container(
-              color: AppColors.terminalBg,
-              padding: const EdgeInsets.all(8),
-              child: TerminalView(
-                _terminal,
-                backgroundOpacity: 0.98,
-                autofocus: true,
-              ),
-            ),
-          ),
-
-          // 4. Touch Keyboard Accessory Bar
-          Container(
-            color: AppColors.sidebarBg,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildKeyBtn('ESC', () => _sendKey('\x1b')),
-                    _buildKeyBtn('TAB', () => _sendKey('\t')),
-                    _buildKeyBtn('CTRL+C', () => _sendKey('\x03'), isAccent: true),
-                    _buildKeyBtn('CTRL+D', () => _sendKey('\x04')),
-                    _buildKeyBtn('CTRL+Z', () => _sendKey('\x1a')),
-                    _buildKeyBtn('▲', () => _sendKey('\x1b[A')),
-                    _buildKeyBtn('▼', () => _sendKey('\x1b[B')),
-                    _buildKeyBtn('◀', () => _sendKey('\x1b[D')),
-                    _buildKeyBtn('▶', () => _sendKey('\x1b[C')),
-                    _buildKeyBtn('clear', () => _sendKey('clear\r')),
-                  ],
+            child: SizedBox.expand(
+              child: Container(
+                color: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: TerminalView(
+                  _terminal,
+                  backgroundOpacity: 1.0,
+                  autofocus: true,
                 ),
               ),
             ),
           ),
+
+          // 4. Touch Keyboard Accessory Bar (Collapsible / Toggleable)
+          if (_showVirtualKeyboard)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              decoration: const BoxDecoration(
+                color: AppColors.sidebarBg,
+                border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildKeyBtn('ESC', () => _sendKey('\x1b')),
+                      _buildKeyBtn('TAB', () => _sendKey('\t')),
+                      _buildKeyBtn('CTRL+C', () => _sendKey('\x03'), isAccent: true),
+                      _buildKeyBtn('CTRL+D', () => _sendKey('\x04')),
+                      _buildKeyBtn('CTRL+Z', () => _sendKey('\x1a')),
+                      _buildKeyBtn('▲', () => _sendKey('\x1b[A')),
+                      _buildKeyBtn('▼', () => _sendKey('\x1b[B')),
+                      _buildKeyBtn('◀', () => _sendKey('\x1b[D')),
+                      _buildKeyBtn('▶', () => _sendKey('\x1b[C')),
+                      _buildKeyBtn('clear', () => _sendKey('clear\r')),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

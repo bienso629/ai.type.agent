@@ -1,13 +1,19 @@
 // ignore_for_file: use_null_aware_elements
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
 import '../../models/server_model.dart';
 import '../../models/metrics_model.dart';
+import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import 'storage_service.dart';
+import 'local_config_service.dart';
+import 'database_service.dart';
+import 'native_ai_service.dart';
+import 'native_ssh_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -16,6 +22,22 @@ class ApiService {
 
   final StorageService _storage = StorageService();
   final http.Client _client = http.Client();
+
+  final LocalConfigService _localConfig = LocalConfigService();
+  final DatabaseService _db = DatabaseService();
+  final NativeAiService _ai = NativeAiService();
+  final NativeSshService _ssh = NativeSshService();
+
+  Future<bool> _isNativeMode() async {
+    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      return true;
+    }
+    final gatewayUrl = await _storage.getGatewayUrl();
+    // Use Native Mode if gateway is default localhost or empty
+    return gatewayUrl.isEmpty ||
+        gatewayUrl.contains('127.0.0.1:8888') ||
+        gatewayUrl.contains('localhost:8888');
+  }
 
   Future<Map<String, String>> _getHeaders({bool isJson = true}) async {
     final token = await _storage.getSecretToken();
@@ -42,6 +64,9 @@ class ApiService {
 
   // 1. Connectivity & Ping Check
   Future<bool> checkHealth() async {
+    if (await _isNativeMode()) {
+      return true;
+    }
     try {
       final baseUrl = await _getBaseUrl();
       final res = await _client.get(
@@ -56,6 +81,9 @@ class ApiService {
 
   // 2. Config APIs
   Future<Map<String, dynamic>> getConfig() async {
+    if (await _isNativeMode()) {
+      return await _localConfig.loadConfig();
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.get(
       Uri.parse('$baseUrl${ApiConstants.epConfig}'),
@@ -68,6 +96,9 @@ class ApiService {
   }
 
   Future<bool> saveConfig(Map<String, dynamic> config) async {
+    if (await _isNativeMode()) {
+      return await _localConfig.saveConfig(config);
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
       Uri.parse('$baseUrl${ApiConstants.epConfig}'),
@@ -79,6 +110,9 @@ class ApiService {
 
   // 3. Servers Management APIs
   Future<List<ServerModel>> getServers() async {
+    if (await _isNativeMode()) {
+      return await _localConfig.getServers();
+    }
     final baseUrl = await _getBaseUrl();
     try {
       final res = await _client.get(
@@ -100,6 +134,14 @@ class ApiService {
   }
 
   Future<bool> selectServer(String serverIp) async {
+    if (await _isNativeMode()) {
+      final servers = await _localConfig.getServers();
+      final target = servers.firstWhere(
+        (s) => s.serverIp == serverIp,
+        orElse: () => ServerModel(id: serverIp, name: serverIp, serverIp: serverIp),
+      );
+      return await _localConfig.selectServer(target);
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
       Uri.parse('$baseUrl${ApiConstants.epServersSelect}'),
@@ -110,6 +152,9 @@ class ApiService {
   }
 
   Future<bool> updateServer(ServerModel server) async {
+    if (await _isNativeMode()) {
+      return await _localConfig.addOrUpdateServer(server);
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
       Uri.parse('$baseUrl${ApiConstants.epServersUpdate}'),
@@ -120,6 +165,9 @@ class ApiService {
   }
 
   Future<bool> deleteServer(String serverIp) async {
+    if (await _isNativeMode()) {
+      return await _localConfig.deleteServer(serverIp);
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
       Uri.parse('$baseUrl${ApiConstants.epServersDelete}'),
@@ -131,6 +179,9 @@ class ApiService {
 
   // 4. System Metrics & Info
   Future<SystemMetricsModel> getSystemMetrics() async {
+    if (await _isNativeMode()) {
+      return await _ssh.getSystemMetrics();
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.get(
       Uri.parse('$baseUrl${ApiConstants.epSystemInfo}'),
@@ -145,6 +196,9 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> executeServiceAction(String service, String action) async {
+    if (await _isNativeMode()) {
+      return await _ssh.executeServiceAction(service, action);
+    }
     final baseUrl = await _getBaseUrl();
     try {
       final res = await _client.post(
@@ -162,8 +216,11 @@ class ApiService {
     return {'status': 'error', 'message': 'Không thể kết nối đến máy chủ'};
   }
 
-  // 5. Service Logs API: GET /api/server/logs?lines=100
+  // 5. Service Logs API
   Future<String> getServerLogs({int lines = 100}) async {
+    if (await _isNativeMode()) {
+      return await _ssh.getServerLogs(lines: lines);
+    }
     final baseUrl = await _getBaseUrl();
     try {
       final res = await _client.get(
@@ -181,7 +238,7 @@ class ApiService {
     return 'Không thể tải nhật ký.';
   }
 
-  // 6. 1-Click Deploy SSE Stream: POST /api/server/deploy
+  // 6. 1-Click Deploy Stream
   StreamSubscription<String> streamDeploy({
     required void Function(String step) onStep,
     required void Function() onDone,
@@ -190,6 +247,19 @@ class ApiService {
     final controller = StreamController<String>();
 
     () async {
+      if (await _isNativeMode()) {
+        try {
+          await _ssh.streamDeploy(
+            onStep: onStep,
+            onDone: onDone,
+            onError: onError,
+          );
+        } catch (e) {
+          onError(e);
+        }
+        return;
+      }
+
       http.Client? deployClient;
       try {
         final baseUrl = await _getBaseUrl();
@@ -235,6 +305,9 @@ class ApiService {
 
   // 7. Chat & AI Sessions APIs
   Future<List<ChatSessionModel>> getChatSessions() async {
+    if (await _isNativeMode()) {
+      return await _db.getSessions();
+    }
     final baseUrl = await _getBaseUrl();
     try {
       final res = await _client.get(
@@ -256,34 +329,26 @@ class ApiService {
   }
 
   Future<ChatSessionModel> createChatSession({String title = 'Cuộc hội thoại mới'}) async {
+    if (await _isNativeMode()) {
+      return await _db.createSession(title: title);
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
       Uri.parse('$baseUrl${ApiConstants.epChatSessions}'),
       headers: await _getHeaders(),
       body: jsonEncode({'title': title}),
     );
-    if (res.statusCode == 200 || res.statusCode == 201) {
-      final data = jsonDecode(utf8.decode(res.bodyBytes));
-      if (data is Map<String, dynamic> && data['session'] is Map) {
-        return ChatSessionModel.fromJson(data['session'] as Map<String, dynamic>);
-      }
-      if (data is Map<String, dynamic>) {
-        return ChatSessionModel.fromJson(data);
-      }
+    if (res.statusCode == 200) {
+      final json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      return ChatSessionModel.fromJson(json);
     }
-    return ChatSessionModel(id: 'sess_${DateTime.now().millisecondsSinceEpoch}', title: title);
-  }
-
-  Future<bool> deleteChatSession(String sessionId) async {
-    final baseUrl = await _getBaseUrl();
-    final res = await _client.delete(
-      Uri.parse('$baseUrl${ApiConstants.epChatSessions}/$sessionId'),
-      headers: await _getHeaders(),
-    );
-    return res.statusCode == 200;
+    throw Exception('Failed to create session');
   }
 
   Future<bool> renameChatSession(String sessionId, String newTitle) async {
+    if (await _isNativeMode()) {
+      return await _db.updateSessionTitle(sessionId, newTitle);
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.put(
       Uri.parse('$baseUrl${ApiConstants.epChatSessions}/$sessionId'),
@@ -293,60 +358,82 @@ class ApiService {
     return res.statusCode == 200;
   }
 
-  Future<bool> pinChatSession(String sessionId, bool isPinned) async {
+  Future<bool> deleteChatSession(String sessionId) async {
+    if (await _isNativeMode()) {
+      return await _db.deleteSession(sessionId);
+    }
     final baseUrl = await _getBaseUrl();
-    final res = await _client.post(
-      Uri.parse('$baseUrl${ApiConstants.epChatSessions}/$sessionId/pin'),
+    final res = await _client.delete(
+      Uri.parse('$baseUrl${ApiConstants.epChatSessions}/$sessionId'),
       headers: await _getHeaders(),
-      body: jsonEncode({'is_pinned': isPinned}),
     );
     return res.statusCode == 200;
   }
 
+  Future<bool> togglePinSession(String sessionId, {bool? isPinned}) async {
+    if (await _isNativeMode()) {
+      return await _db.togglePinSession(sessionId, isPinned: isPinned);
+    }
+    final baseUrl = await _getBaseUrl();
+    final res = await _client.post(
+      Uri.parse('$baseUrl${ApiConstants.epChatSessions}/$sessionId/pin'),
+      headers: await _getHeaders(),
+      body: jsonEncode(isPinned != null ? {'is_pinned': isPinned} : {}),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<bool> pinChatSession(String sessionId, [bool? isPinned]) =>
+      togglePinSession(sessionId, isPinned: isPinned);
+
+  // 8. Chat History API
   Future<ChatHistoryResult> getChatHistory(
     String sessionId, {
-    int limitQuestions = 3,
-    int beforeId = 0,
+    int limit = 50,
+    int? beforeId,
+    int? limitQuestions,
   }) async {
+    final effectiveLimit = limitQuestions ?? limit;
+    if (await _isNativeMode()) {
+      return await _db.getMessages(sessionId, limit: effectiveLimit, beforeId: beforeId);
+    }
     final baseUrl = await _getBaseUrl();
+    final query = [
+      'session_id=$sessionId',
+      'limit=$effectiveLimit',
+      if (beforeId != null) 'before_id=$beforeId',
+    ].join('&');
+
     try {
-      var query = 'session_id=$sessionId&limit_questions=$limitQuestions';
-      if (beforeId > 0) {
-        query += '&before_id=$beforeId';
-      }
       final res = await _client.get(
         Uri.parse('$baseUrl${ApiConstants.epChatHistory}?$query'),
         headers: await _getHeaders(),
       ).timeout(const Duration(seconds: 6));
 
       if (res.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(res.bodyBytes));
-        if (data is List) {
-          final msgs = data.map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>)).toList();
-          return ChatHistoryResult(
-            messages: msgs,
-            hasMore: false,
-            oldestId: msgs.isNotEmpty ? (msgs.first.id ?? 0) : 0,
-          );
-        } else if (data is Map<String, dynamic>) {
-          final rawList = data['messages'] as List? ?? [];
-          final msgs = rawList.map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>)).toList();
-          final hasMore = data['has_more'] == true;
-          final oldestId = data['oldest_id'] is int
-              ? data['oldest_id'] as int
-              : int.tryParse(data['oldest_id']?.toString() ?? '') ?? (msgs.isNotEmpty ? (msgs.first.id ?? 0) : 0);
-          return ChatHistoryResult(
-            messages: msgs,
-            hasMore: hasMore,
-            oldestId: oldestId,
-          );
-        }
+        final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+        final rawMessages = (data['messages'] as List<dynamic>?) ?? [];
+        final messages = rawMessages
+            .map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        final hasMore = data['has_more'] == true;
+        final oldestId = int.tryParse(data['oldest_id']?.toString() ?? '0') ?? 0;
+
+        return ChatHistoryResult(
+          messages: messages,
+          hasMore: hasMore,
+          oldestId: oldestId,
+        );
       }
     } catch (_) {}
+
     return ChatHistoryResult(messages: [], hasMore: false, oldestId: 0);
   }
 
   Future<bool> clearChatHistory(String sessionId) async {
+    if (await _isNativeMode()) {
+      return await _db.clearChat(sessionId);
+    }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
       Uri.parse('$baseUrl${ApiConstants.epChatClear}'),
@@ -356,11 +443,12 @@ class ApiService {
     return res.statusCode == 200;
   }
 
-  // 8. AI Chat SSE Stream Request
+  // 9. AI Agent Chat Stream
   StreamSubscription<String> streamChatMessage({
     required String sessionId,
     required String message,
     String? model,
+    List<AttachmentItem>? attachments,
     List<Map<String, dynamic>>? history,
     String? workingDir,
     required void Function(String token) onToken,
@@ -372,6 +460,24 @@ class ApiService {
     final controller = StreamController<String>();
 
     () async {
+      if (await _isNativeMode()) {
+        final sub = _ai.streamChatMessage(
+          sessionId: sessionId,
+          message: message,
+          model: model,
+          attachments: attachments,
+          history: history,
+          workingDir: workingDir,
+          onToken: onToken,
+          onStatus: onStatus,
+          onTool: onTool,
+          onDone: onDone,
+          onError: onError,
+        );
+        controller.onCancel = () => sub.cancel();
+        return;
+      }
+
       http.Client? streamClient;
       try {
         final baseUrl = await _getBaseUrl();
@@ -383,6 +489,8 @@ class ApiService {
           'session_id': sessionId,
           'message': message,
           if (model != null && model.isNotEmpty) 'model': model,
+          if (attachments != null && attachments.isNotEmpty)
+            'attachments': attachments.map((e) => e.toJson()).toList(),
           if (history != null) 'history': history,
           if (workingDir != null) 'working_dir': workingDir,
         });
@@ -428,14 +536,10 @@ class ApiService {
                 } else if (type == 'error') {
                   onError(data['message'] ?? data['error'] ?? 'AI Error');
                 }
-              } catch (e) {
-                // If not JSON, ignore
-              }
+              } catch (_) {}
             }
           },
-          onError: (e) {
-            onError(e);
-          },
+          onError: (e) => onError(e),
           onDone: () {
             onDone(accumulatedReply);
             streamClient?.close();
@@ -451,22 +555,30 @@ class ApiService {
     return controller.stream.listen((_) {});
   }
 
-  // 9. SSH Remote Directories & Files
-  Future<List<String>> listRemoteDirectories({String prefix = '/'}) async {
+  // 10. File System Browser APIs
+  Future<List<String>> listDirectories({String prefix = ''}) async {
+    if (await _isNativeMode()) {
+      return await _ssh.listRemoteDirs(prefix);
+    }
     final baseUrl = await _getBaseUrl();
     try {
       final res = await _client.get(
         Uri.parse('$baseUrl${ApiConstants.epFsListDirs}?prefix=${Uri.encodeComponent(prefix)}'),
         headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 6));
+      ).timeout(const Duration(seconds: 8));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(utf8.decode(res.bodyBytes));
-        if (data['directories'] is List) {
+        if (data is List) {
+          return data.map((e) => e.toString()).toList();
+        } else if (data is Map && data['directories'] is List) {
           return (data['directories'] as List).map((e) => e.toString()).toList();
         }
       }
     } catch (_) {}
-    return ['/var/www', '/etc/nginx', '/opt/ai_agent', '/home', '/var/log', '/etc', '/opt'];
+    return [];
   }
+
+  Future<List<String>> listRemoteDirectories({String prefix = ''}) =>
+      listDirectories(prefix: prefix);
 }

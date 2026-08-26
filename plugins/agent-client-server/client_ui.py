@@ -561,10 +561,19 @@ def load_config() -> Dict[str, Any]:
                             dec_val = int(dec_val)
                         except Exception:
                             pass
+                    elif k == "servers" or (isinstance(dec_val, str) and dec_val.startswith(("[", "{"))):
+                        try:
+                            dec_val = json.loads(dec_val)
+                        except Exception:
+                            pass
+                    elif dec_val == "true":
+                        dec_val = True
+                    elif dec_val == "false":
+                        dec_val = False
                     in_memory_data[k] = dec_val
                 else:
                     in_memory_data[k] = v
-                    if k in ALL_CONFIG_KEYS and v:
+                    if v is not None:
                         needs_resave = True
             
             # Chuẩn hoá kiểu dữ liệu số cổng
@@ -589,7 +598,10 @@ def save_config(cfg: Dict[str, Any]):
         if k == "_encrypted_vault":
             continue
         if v is not None:
-            disk_data[k] = encrypt_value(v)
+            if isinstance(v, (list, dict)):
+                disk_data[k] = encrypt_value(json.dumps(v, ensure_ascii=False))
+            else:
+                disk_data[k] = encrypt_value(str(v))
             
     # Ghi thêm toàn bộ vault mã hóa tổng thể
     raw_json = json.dumps(cfg, ensure_ascii=False)

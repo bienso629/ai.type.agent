@@ -1,11 +1,16 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/api_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
+import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
@@ -19,10 +24,20 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  final ApiService _apiService = ApiService();
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _inputFocusNode = FocusNode();
   bool _isRightSidebarOpen = true;
   String? _workingDirScope;
+  final List<AttachmentItem> _attachedFiles = [];
+
+  // Inline slash autocomplete state
+  List<String> _inlineDirSuggestions = [];
+  bool _isInlineDirLoading = false;
+  String _currentSlashWord = '';
+  int _inlineActiveIndex = 0;
+  Timer? _dirDebounceTimer;
 
   String? _lastSessionId;
   String _lastTrackedContent = '';
@@ -32,22 +47,143 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _textController.addListener(_onTextChanged);
+    _inputFocusNode.onKeyEvent = _handleInputKeyEvent;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final chat = context.read<ChatProvider>();
-      if (chat.currentSession != null) {
-        chat.selectSession(chat.currentSession!).then((_) {
-          _safeScrollToBottom(instant: true);
-        });
-      }
+      final server = context.read<ServerProvider>();
+      server.loadServers();
+      chat.loadSessions().then((_) {
+        if (chat.currentSession != null) {
+          chat.selectSession(chat.currentSession!).then((_) {
+            _safeScrollToBottom(instant: true);
+          });
+        } else if (chat.sessions.isNotEmpty) {
+          chat.selectSession(chat.sessions.first).then((_) {
+            _safeScrollToBottom(instant: true);
+          });
+        }
+      });
     });
   }
 
   @override
   void dispose() {
+    _dirDebounceTimer?.cancel();
+    _textController.removeListener(_onTextChanged);
     _scrollController.removeListener(_onScroll);
+    _inputFocusNode.dispose();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  KeyEventResult _handleInputKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      if (_inlineDirSuggestions.isNotEmpty) {
+        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          setState(() {
+            _inlineActiveIndex = (_inlineActiveIndex + 1) % _inlineDirSuggestions.length;
+          });
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          setState(() {
+            _inlineActiveIndex = (_inlineActiveIndex - 1 + _inlineDirSuggestions.length) % _inlineDirSuggestions.length;
+          });
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+          if (_inlineActiveIndex >= 0 && _inlineActiveIndex < _inlineDirSuggestions.length) {
+            final selectedDir = _inlineDirSuggestions[_inlineActiveIndex];
+            _applyInlineDirAsScope(selectedDir);
+            return KeyEventResult.handled;
+          }
+        } else if (event.logicalKey == LogicalKeyboardKey.tab) {
+          if (_inlineActiveIndex >= 0 && _inlineActiveIndex < _inlineDirSuggestions.length) {
+            final selectedDir = _inlineDirSuggestions[_inlineActiveIndex];
+            _insertInlineDirIntoText(selectedDir);
+            return KeyEventResult.handled;
+          }
+        } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+          setState(() {
+            _inlineDirSuggestions.clear();
+            _currentSlashWord = '';
+          });
+          return KeyEventResult.handled;
+        }
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _onTextChanged() {
+    final text = _textController.text;
+    final selection = _textController.selection;
+    if (selection.baseOffset < 0) {
+      if (_inlineDirSuggestions.isNotEmpty) {
+        setState(() => _inlineDirSuggestions.clear());
+      }
+      return;
+    }
+
+    final cursor = selection.baseOffset;
+    final textUpToCursor = text.substring(0, cursor);
+    final match = RegExp(r'(?:^|\s)(/[^\s]*)$').firstMatch(textUpToCursor);
+
+    if (match != null) {
+      final word = match.group(1) ?? '/';
+      _currentSlashWord = word;
+      _dirDebounceTimer?.cancel();
+      _dirDebounceTimer = Timer(const Duration(milliseconds: 120), () async {
+        if (!mounted) return;
+        setState(() => _isInlineDirLoading = true);
+        final dirs = await _apiService.listDirectories(prefix: word);
+        if (mounted && _currentSlashWord == word) {
+          setState(() {
+            _inlineDirSuggestions = dirs;
+            _inlineActiveIndex = 0;
+            _isInlineDirLoading = false;
+          });
+        }
+      });
+    } else {
+      if (_inlineDirSuggestions.isNotEmpty || _isInlineDirLoading) {
+        _dirDebounceTimer?.cancel();
+        setState(() {
+          _inlineDirSuggestions.clear();
+          _inlineActiveIndex = 0;
+          _isInlineDirLoading = false;
+          _currentSlashWord = '';
+        });
+      }
+    }
+  }
+
+  void _applyInlineDirAsScope(String dir) {
+    setState(() {
+      _workingDirScope = dir;
+      final text = _textController.text;
+      final idx = text.lastIndexOf(_currentSlashWord);
+      if (idx != -1) {
+        _textController.text = (text.substring(0, idx) + text.substring(idx + _currentSlashWord.length)).trim();
+      }
+      _inlineDirSuggestions.clear();
+      _currentSlashWord = '';
+    });
+    AppToast.success(context, 'Đã đặt phạm vi Agent: $dir');
+  }
+
+  void _insertInlineDirIntoText(String dir) {
+    final text = _textController.text;
+    final idx = text.lastIndexOf(_currentSlashWord);
+    if (idx != -1) {
+      final newText = '${text.substring(0, idx)}$dir ${text.substring(idx + _currentSlashWord.length)}';
+      _textController.text = newText;
+      _textController.selection = TextSelection.fromPosition(TextPosition(offset: idx + dir.length + 1));
+    }
+    setState(() {
+      _inlineDirSuggestions.clear();
+      _currentSlashWord = '';
+    });
   }
 
   void _onScroll() {
@@ -101,66 +237,84 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        int addedCount = 0;
+        for (final f in result.files) {
+          if (f.bytes != null) {
+            _attachedFiles.add(
+              AttachmentItem.fromBytes(
+                name: f.name,
+                bytes: f.bytes!,
+                path: f.path,
+              ),
+            );
+            addedCount++;
+          } else if (f.path != null) {
+            final file = File(f.path!);
+            if (file.existsSync()) {
+              final item = await AttachmentItem.fromFile(file, fileName: f.name);
+              if (item != null) {
+                _attachedFiles.add(item);
+                addedCount++;
+              }
+            }
+          }
+        }
+        if (mounted) {
+          setState(() {});
+          if (addedCount > 0) {
+            AppToast.success(context, 'Đã đính kèm $addedCount tệp');
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi chọn tệp: $e');
+      }
+    }
+  }
+
   void _handleSend(ChatProvider chat, ServerProvider serverProvider) {
     final text = _textController.text.trim();
-    if (text.isEmpty || chat.isGenerating) return;
+    if ((text.isEmpty && _attachedFiles.isEmpty) || chat.isGenerating) return;
+
+    final attachmentsToSend = _attachedFiles.isNotEmpty ? List<AttachmentItem>.from(_attachedFiles) : null;
     _textController.clear();
-    chat.sendMessage(text, model: serverProvider.currentAiModel);
+    setState(() {
+      _attachedFiles.clear();
+    });
+
+    chat.sendMessage(
+      text,
+      model: serverProvider.currentAiModel,
+      attachments: attachmentsToSend,
+      workingDir: _workingDirScope,
+    );
     _safeScrollToBottom();
   }
 
   void _triggerScopePicker() async {
-    final textCtrl = TextEditingController(text: _workingDirScope ?? '/var/www');
     showDialog(
       context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 480,
-        maxWidth: 560,
-        title: const Row(
-          children: [
-            Icon(Icons.folder_open_rounded, color: AppColors.warning, size: 20),
-            SizedBox(width: 8),
-            Text('Phạm Vi Thư Mục Làm Việc'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Giới hạn thao tác của AI Agent trong thư mục này trên máy chủ Linux:',
-              style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: textCtrl,
-              decoration: const InputDecoration(
-                hintText: '/var/www/my_project',
-                prefixIcon: Icon(Icons.folder_rounded, size: 18),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _workingDirScope = null;
-              });
-              Navigator.pop(ctx);
-            },
-            child: const Text('Xóa giới hạn', style: TextStyle(color: AppColors.danger)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _workingDirScope = textCtrl.text.trim().isEmpty ? null : textCtrl.text.trim();
-              });
-              Navigator.pop(ctx);
-            },
-            child: const Text('Áp dụng'),
-          ),
-        ],
+      builder: (ctx) => _ScopePickerDialog(
+        currentScope: _workingDirScope,
+        onSelect: (val) {
+          setState(() {
+            _workingDirScope = val;
+          });
+          if (val != null) {
+            AppToast.success(context, 'Đã đặt phạm vi Agent: $val');
+          } else {
+            AppToast.info(context, 'Đã xóa giới hạn phạm vi làm việc');
+          }
+        },
       ),
     );
   }
@@ -580,6 +734,48 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (msg.attachments.isNotEmpty) ...[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: msg.attachments.map((att) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.bgDark,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                                    size: 14,
+                                    color: att.isImage ? AppColors.accentCyan : AppColors.warning,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 160),
+                                    child: Text(
+                                      att.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '(${att.formattedSize})',
+                                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        if (msg.content.isNotEmpty) const SizedBox(height: 8),
+                      ],
                       if (msg.content.isNotEmpty)
                         MarkdownBody(
                           data: msg.content,
@@ -889,8 +1085,211 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ],
+            if (_attachedFiles.isNotEmpty) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.borderDark),
+                ),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _attachedFiles.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final att = entry.value;
+                      return Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                              size: 14,
+                              color: att.isImage ? AppColors.accentCyan : AppColors.warning,
+                            ),
+                            const SizedBox(width: 6),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 140),
+                              child: Text(
+                                att.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, color: AppColors.textWhite),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '(${att.formattedSize})',
+                              style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _attachedFiles.removeAt(idx);
+                                });
+                              },
+                              child: const Icon(Icons.close_rounded, size: 13, color: AppColors.danger),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+            if (_inlineDirSuggestions.isNotEmpty || _isInlineDirLoading) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.flash_on_rounded, size: 14, color: AppColors.warning),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Gợi ý thư mục VPS (${_currentSlashWord.isNotEmpty ? _currentSlashWord : '/'}):',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                            ),
+                          ],
+                        ),
+                        if (_isInlineDirLoading)
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                          )
+                        else
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _inlineDirSuggestions.clear();
+                                _currentSlashWord = '';
+                              });
+                            },
+                            child: const Icon(Icons.close_rounded, size: 14, color: AppColors.textMuted),
+                          ),
+                      ],
+                    ),
+                    if (_inlineDirSuggestions.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 150),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _inlineDirSuggestions.length,
+                          itemBuilder: (ctx, idx) {
+                            final dir = _inlineDirSuggestions[idx];
+                            final isHighlighted = idx == _inlineActiveIndex;
+                            return MouseRegion(
+                              onEnter: (_) => setState(() => _inlineActiveIndex = idx),
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: isHighlighted
+                                      ? AppColors.primary.withValues(alpha: 0.25)
+                                      : AppColors.cardBg,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: isHighlighted
+                                        ? AppColors.primaryLight
+                                        : AppColors.borderDark,
+                                    width: isHighlighted ? 1.2 : 1.0,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.folder_rounded,
+                                      size: 14,
+                                      color: isHighlighted ? AppColors.primaryLight : AppColors.warning,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        dir,
+                                        style: TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontSize: 11.5,
+                                          color: isHighlighted ? AppColors.primaryLight : AppColors.textWhite,
+                                          fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    InkWell(
+                                      onTap: () => _applyInlineDirAsScope(dir),
+                                      borderRadius: BorderRadius.circular(3),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary,
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: Text(
+                                          isHighlighted ? '⏎ Đặt Scope' : 'Đặt Scope',
+                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    InkWell(
+                                      onTap: () => _insertInlineDirIntoText(dir),
+                                      borderRadius: BorderRadius.circular(3),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.inputBg,
+                                          borderRadius: BorderRadius.circular(3),
+                                          border: Border.all(color: AppColors.borderDark),
+                                        ),
+                                        child: const Text('Tab: Chèn', style: TextStyle(fontSize: 10, color: AppColors.textBody)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             TextField(
               controller: _textController,
+              focusNode: _inputFocusNode,
               minLines: 2,
               maxLines: 5,
               textInputAction: TextInputAction.send,
@@ -923,15 +1322,27 @@ class _ChatScreenState extends State<ChatScreen> {
                     const SizedBox(width: 8),
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderDark),
+                        side: BorderSide(
+                          color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                        ),
+                        backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      icon: const Icon(Icons.attach_file_rounded, size: 14, color: AppColors.accentCyan),
-                      label: const Text('Attach', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
-                      onPressed: () {
-                        AppToast.info(context, 'Chức năng đính kèm tệp đã sẵn sàng');
-                      },
+                      icon: Icon(
+                        Icons.attach_file_rounded,
+                        size: 14,
+                        color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.accentCyan,
+                      ),
+                      label: Text(
+                        _attachedFiles.isNotEmpty ? 'Attach (${_attachedFiles.length})' : 'Attach',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
+                          fontWeight: _attachedFiles.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      onPressed: _pickFiles,
                     ),
                   ],
                 ),
@@ -1218,6 +1629,303 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ScopePickerDialog extends StatefulWidget {
+  final String? currentScope;
+  final ValueChanged<String?> onSelect;
+
+  const _ScopePickerDialog({
+    required this.currentScope,
+    required this.onSelect,
+  });
+
+  @override
+  State<_ScopePickerDialog> createState() => _ScopePickerDialogState();
+}
+
+class _ScopePickerDialogState extends State<_ScopePickerDialog> {
+  final ApiService _api = ApiService();
+  late final TextEditingController _controller;
+  final FocusNode _dialogFocusNode = FocusNode();
+  List<String> _suggestions = [];
+  bool _isLoading = false;
+  int _selectedIndex = 0;
+  Timer? _debounce;
+
+  static const List<String> _presets = [
+    '/var/www',
+    '/home',
+    '/root',
+    '/etc/nginx',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.currentScope ?? '/var/www');
+    _dialogFocusNode.onKeyEvent = _handleDialogKeyEvent;
+    _loadSuggestions(_controller.text);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _dialogFocusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _handleDialogKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      if (_suggestions.isNotEmpty) {
+        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          setState(() {
+            _selectedIndex = (_selectedIndex + 1) % _suggestions.length;
+            _controller.text = _suggestions[_selectedIndex];
+            _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
+          });
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          setState(() {
+            _selectedIndex = (_selectedIndex - 1 + _suggestions.length) % _suggestions.length;
+            _controller.text = _suggestions[_selectedIndex];
+            _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
+          });
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+          if (_selectedIndex >= 0 && _selectedIndex < _suggestions.length) {
+            final val = _suggestions[_selectedIndex];
+            widget.onSelect(val);
+            Navigator.pop(context);
+            return KeyEventResult.handled;
+          }
+        }
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _loadSuggestions(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 120), () async {
+      setState(() => _isLoading = true);
+      final list = await _api.listDirectories(prefix: query.trim());
+      if (mounted) {
+        setState(() {
+          _suggestions = list;
+          _selectedIndex = 0;
+          _isLoading = false;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TaduDialog(
+      minWidth: 540,
+      maxWidth: 620,
+      title: const Row(
+        children: [
+          Icon(Icons.folder_open_rounded, color: AppColors.warning, size: 20),
+          SizedBox(width: 8),
+          Text('Phạm Vi Thư Mục Làm Việc (Scope /)'),
+        ],
+      ),
+      content: SizedBox(
+        width: 540,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Giới hạn thao tác của AI Agent trong thư mục này trên máy chủ Linux:',
+              style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 10),
+
+            // Quick preset chips
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _presets.map((preset) {
+                final isSelected = _controller.text.trim() == preset;
+                return InkWell(
+                  onTap: () {
+                    _controller.text = preset;
+                    _loadSuggestions(preset);
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.2)
+                          : AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : AppColors.borderDark,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.folder_rounded,
+                          size: 12,
+                          color: isSelected ? AppColors.primaryLight : AppColors.warning,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          preset,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: isSelected ? AppColors.primaryLight : AppColors.textBody,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+
+            // Input with auto-complete
+            TextField(
+              controller: _controller,
+              focusNode: _dialogFocusNode,
+              onChanged: _loadSuggestions,
+              decoration: InputDecoration(
+                hintText: 'Nhập đường dẫn, dùng phím ↑ ↓ Enter để chọn...',
+                prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                suffixIcon: _isLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                        ),
+                      )
+                    : (_controller.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 16),
+                            onPressed: () {
+                              _controller.clear();
+                              _loadSuggestions('');
+                            },
+                          )
+                        : null),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Suggestions List
+            Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: AppColors.bgDark,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.borderDark),
+              ),
+              child: _suggestions.isEmpty
+                  ? Center(
+                      child: Text(
+                        _isLoading ? 'Đang tìm kiếm thư mục...' : 'Không có gợi ý thư mục nào',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _suggestions.length,
+                      itemBuilder: (context, idx) {
+                        final dir = _suggestions[idx];
+                        final isHighlighted = idx == _selectedIndex || _controller.text.trim() == dir;
+                        return MouseRegion(
+                          onEnter: (_) => setState(() => _selectedIndex = idx),
+                          child: InkWell(
+                            onTap: () {
+                              _controller.text = dir;
+                              _loadSuggestions(dir);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isHighlighted
+                                    ? AppColors.primary.withValues(alpha: 0.22)
+                                    : Colors.transparent,
+                                border: Border(
+                                  bottom: const BorderSide(color: AppColors.borderDark, width: 0.5),
+                                  left: isHighlighted
+                                      ? const BorderSide(color: AppColors.primaryLight, width: 3)
+                                      : BorderSide.none,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.folder_rounded,
+                                    size: 16,
+                                    color: isHighlighted ? AppColors.primaryLight : AppColors.warning,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      dir,
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 12,
+                                        color: isHighlighted ? AppColors.primaryLight : AppColors.textWhite,
+                                        fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isHighlighted ? AppColors.primary : AppColors.cardBg,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: isHighlighted ? AppColors.primaryLight : AppColors.borderDark),
+                                    ),
+                                    child: Text(
+                                      isHighlighted ? '⏎ Chọn' : 'Chọn',
+                                      style: const TextStyle(fontSize: 10, color: AppColors.textWhite, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            widget.onSelect(null);
+            Navigator.pop(context);
+          },
+          child: const Text('Xóa giới hạn', style: TextStyle(color: AppColors.danger)),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final val = _controller.text.trim();
+            widget.onSelect(val.isEmpty ? null : val);
+            Navigator.pop(context);
+          },
+          child: const Text('Áp dụng'),
+        ),
+      ],
     );
   }
 }

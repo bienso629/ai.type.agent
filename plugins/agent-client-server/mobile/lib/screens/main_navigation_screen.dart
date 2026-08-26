@@ -4,6 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/chat_provider.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 import 'chat/chat_screen.dart';
@@ -21,6 +22,15 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ServerProvider>().loadServers();
+      context.read<ChatProvider>().loadSessions();
+    });
+  }
 
   final List<Widget> _screens = const [
     ChatScreen(),
@@ -81,7 +91,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 itemCount: serverProvider.servers.length,
                 itemBuilder: (context, idx) {
                   final s = serverProvider.servers[idx];
-                  final isSelected = s.id == serverProvider.selectedServer?.id || s.isSelected;
+                  final isSelected = serverProvider.selectedServer != null &&
+                      (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -93,39 +104,43 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         width: isSelected ? 1.5 : 1,
                       ),
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary.withValues(alpha: 0.2) : AppColors.sidebarBg,
-                          borderRadius: BorderRadius.circular(6),
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppColors.primary.withValues(alpha: 0.2) : AppColors.sidebarBg,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.storage_rounded,
+                            size: 20,
+                            color: isSelected ? AppColors.primaryLight : AppColors.textMuted,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.storage_rounded,
-                          size: 20,
-                          color: isSelected ? AppColors.primaryLight : AppColors.textMuted,
+                        title: Text(
+                          s.name,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            color: isSelected ? AppColors.primaryLight : AppColors.textWhite,
+                          ),
                         ),
-                      ),
-                      title: Text(
-                        s.name,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          color: isSelected ? AppColors.primaryLight : AppColors.textWhite,
+                        subtitle: Text(
+                          '${s.sshUser}@${s.serverIp}:${s.sshPort}',
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
                         ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_circle_rounded, color: AppColors.primaryLight, size: 20)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          serverProvider.selectServer(s);
+                        },
                       ),
-                      subtitle: Text(
-                        '${s.sshUser}@${s.serverIp}:${s.sshPort}',
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: AppColors.textDim),
-                      ),
-                      trailing: isSelected
-                          ? const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.accent)
-                          : null,
-                      onTap: () {
-                        serverProvider.selectServer(s);
-                        Navigator.pop(ctx);
-                      },
                     ),
                   );
                 },

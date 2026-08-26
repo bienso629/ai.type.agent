@@ -154,4 +154,31 @@ class StorageService {
     await _prefs.remove(_keyUserName);
     await _prefs.setBool(_keyIsLoggedIn, false);
   }
+
+  static String sanitizeUserKey(String? user) {
+    if (user == null || user.trim().isEmpty) {
+      return '';
+    }
+    var u = user.trim();
+    if (u.contains('@')) {
+      u = u.split('@')[0];
+    }
+    final cleaned = u.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_').toLowerCase();
+    return cleaned.replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  Future<String> getUserKey() async {
+    await init();
+    final email = await getUserEmail();
+    if (email != null && email.isNotEmpty) {
+      final key = sanitizeUserKey(email);
+      if (key.isNotEmpty) return key;
+    }
+    final name = await getUserName();
+    if (name != null && name.isNotEmpty) {
+      final key = sanitizeUserKey(name);
+      if (key.isNotEmpty) return key;
+    }
+    return '';
+  }
 }

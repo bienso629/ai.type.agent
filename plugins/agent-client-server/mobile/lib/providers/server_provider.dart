@@ -57,19 +57,19 @@ class ServerProvider extends ChangeNotifier {
 
     try {
       final list = await _api.getServers();
-      _servers = list;
-
       final savedId = await _storage.getActiveServerId();
       if (list.isNotEmpty) {
-        if (savedId != null) {
+        if (savedId != null && savedId.isNotEmpty) {
           _selectedServer = list.firstWhere(
             (s) => s.id == savedId || s.serverIp == savedId,
-            orElse: () => list.first,
+            orElse: () => list.firstWhere((s) => s.isSelected, orElse: () => list.first),
           );
         } else {
           _selectedServer = list.firstWhere((s) => s.isSelected, orElse: () => list.first);
         }
+        _servers = list.map((s) => s.copyWith(isSelected: s.id == _selectedServer!.id)).toList();
       } else {
+        _servers = [];
         _selectedServer = null;
       }
       await loadGlobalConfig();
