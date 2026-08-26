@@ -10,15 +10,18 @@
     "flutter:run:linux": "cd mobile && flutter run -d linux",
     "flutter:run:android": "cd mobile && flutter run -d android",
     "flutter:build:apk": "cd mobile && flutter build apk --release",
-    "flutter:build:linux": "cd mobile && flutter build linux --release",
-    "flutter:build:win": "cd mobile && flutter build windows --release",
+    "flutter:build:web": "cd mobile && flutter build web --release && cd build/web && zip -r -q ../../../dist-flutter/tadu-cloud-ai-agent-flutter-web.zip .",
+    "flutter:serve:web": "python3 -m http.server 8088 --directory mobile/build/web",
+    "flutter:build:linux": "cd mobile && ./scripts/build_linux.sh",
+    "flutter:build:win": "cd mobile && ./scripts/build_windows.bat",
+    "flutter:build:mac": "cd mobile && ./scripts/build_macos.sh",
     "build:go:linux": "cd tadu-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent . && cd ../server-go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service . && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service_linux_amd64 . && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags=\"-s -w\" -o ../dist/ai_agent_service_linux_arm64 .",
     "build:go:win": "cd tadu-go && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent.exe .",
     "build:go:mac": "cd tadu-go && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent-darwin-amd64 . && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags=\"-s -w\" -o ../dist/tadu-cloud-ai-agent-darwin-arm64 .",
     "build:installer:linux": "npm run build:go:linux && electron-builder --linux deb AppImage",
     "build:installer:win": "npm run build:go:win && electron-builder --win nsis",
-    "build:installer:mac": "npm run build:go:mac && electron-builder --mac dmg zip",
-    "build:all": "npm run build:go:linux && npm run build:go:win && npm run build:go:mac && electron-builder --linux deb AppImage --win nsis --mac dmg zip"
+    "build:installer:mac": "npm run build:go:mac && electron-builder --mac zip",
+    "build:all": "npm run build:go:linux && npm run build:go:win && npm run build:go:mac && electron-builder --linux deb AppImage --win nsis --mac zip"
   },
   "keywords": [
     "tadu",

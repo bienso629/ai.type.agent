@@ -1369,31 +1369,32 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ],
             if (_attachedFiles.isNotEmpty) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.bgDark,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: AppColors.borderDark),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: _attachedFiles.asMap().entries.map((entry) {
                       final idx = entry.key;
                       final att = entry.value;
+                      final Color chipBorderColor = att.error != null
+                          ? AppColors.danger.withValues(alpha: 0.5)
+                          : (att.isUploaded
+                              ? AppColors.accent.withValues(alpha: 0.5)
+                              : AppColors.accentCyan.withValues(alpha: 0.5));
+                      final Color chipBgColor = att.error != null
+                          ? AppColors.danger.withValues(alpha: 0.12)
+                          : (att.isUploaded
+                              ? AppColors.accent.withValues(alpha: 0.12)
+                              : AppColors.accentCyan.withValues(alpha: 0.12));
+
                       return Container(
                         margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppColors.cardBg,
+                          color: chipBgColor,
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: att.isUploaded
-                                ? AppColors.accent.withValues(alpha: 0.6)
-                                : (att.isUploading ? AppColors.accentCyan : AppColors.borderDark),
-                          ),
+                          border: Border.all(color: chipBorderColor),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1409,12 +1410,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                                 const SizedBox(width: 6),
                                 ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 140),
+                                  constraints: const BoxConstraints(maxWidth: 160),
                                   child: Text(
                                     att.name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textWhite),
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textWhite),
                                   ),
                                 ),
                                 const SizedBox(width: 4),
@@ -1446,13 +1447,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ] else if (att.isUploaded) ...[
                                   const Tooltip(
                                     message: 'Đã lưu trên VPS',
-                                    child: Icon(Icons.check_circle_rounded, size: 13, color: AppColors.accent),
+                                    child: Icon(Icons.check_circle_rounded, size: 14, color: AppColors.accent),
                                   ),
                                   const SizedBox(width: 6),
                                 ] else if (att.error != null) ...[
                                   Tooltip(
                                     message: att.error!,
-                                    child: const Icon(Icons.error_outline_rounded, size: 13, color: AppColors.danger),
+                                    child: const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.danger),
                                   ),
                                   const SizedBox(width: 6),
                                 ],
@@ -1462,7 +1463,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       _attachedFiles.removeAt(idx);
                                     });
                                   },
-                                  child: const Icon(Icons.close_rounded, size: 13, color: AppColors.danger),
+                                  child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
                                 ),
                               ],
                             ),
@@ -1474,7 +1475,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   width: 160,
                                   child: LinearProgressIndicator(
                                     value: att.uploadProgress > 0 ? att.uploadProgress : null,
-                                    minHeight: 3,
+                                    minHeight: 2.5,
                                     backgroundColor: AppColors.bgDark,
                                     valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
                                   ),

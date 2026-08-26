@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Tadu Cloud AI Agent
+Comment=Tadu Cloud AI Agent Native Desktop Application
+Exec=/opt/tadu-cloud-ai-agent/tadu_cloud_ai_agent_mobile
+Icon=tadu-cloud-ai-agent
+Terminal=false
+Type=Application
+Categories=Development;Utility;
