@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
 import '../../models/server_model.dart';
@@ -581,4 +582,65 @@ class ApiService {
 
   Future<List<String>> listRemoteDirectories({String prefix = ''}) =>
       listDirectories(prefix: prefix);
+
+  Future<Map<String, dynamic>> uploadFile({
+    required String fileName,
+    required Uint8List bytes,
+    String? targetDir,
+    void Function(int sentBytes, int totalBytes, double progress)? onProgress,
+  }) async {
+    if (await _isNativeMode()) {
+      return await _ssh.uploadFile(
+        fileName: fileName,
+        bytes: bytes,
+        targetDir: targetDir,
+        onProgress: onProgress,
+      );
+    }
+    final baseUrl = await _getBaseUrl();
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl${ApiConstants.epFsUpload}'));
+      final headers = await _getHeaders();
+      request.headers.addAll(headers);
+      if (targetDir != null && targetDir.isNotEmpty) {
+        request.fields['target_dir'] = targetDir;
+      }
+      request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
+
+      final streamedResponse = await _client.send(request);
+      final response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        if (onProgress != null) onProgress(bytes.length, bytes.length, 1.0);
+        return data is Map<String, dynamic> ? data : {'status': 'success'};
+      }
+      return {'status': 'error', 'message': 'HTTP ${response.statusCode}'};
+    } catch (e) {
+      return {'status': 'error', 'message': e.toString()};
+    }
+  }
+
+  Future<Uint8List?> downloadFile({
+    required String remotePath,
+    void Function(int receivedBytes, int totalBytes, double progress)? onProgress,
+  }) async {
+    if (await _isNativeMode()) {
+      return await _ssh.downloadFile(
+        remotePath: remotePath,
+        onProgress: onProgress,
+      );
+    }
+    final baseUrl = await _getBaseUrl();
+    try {
+      final res = await _client.get(
+        Uri.parse('$baseUrl${ApiConstants.epFsDownload}?path=${Uri.encodeComponent(remotePath)}'),
+        headers: await _getHeaders(),
+      );
+      if (res.statusCode == 200) {
+        if (onProgress != null) onProgress(res.bodyBytes.length, res.bodyBytes.length, 1.0);
+        return res.bodyBytes;
+      }
+    } catch (_) {}
+    return null;
+  }
 }

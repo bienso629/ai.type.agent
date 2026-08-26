@@ -28,11 +28,37 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _isConnecting = false;
   bool _showVirtualKeyboard = false;
 
+  static final _taduTerminalTheme = TerminalTheme(
+    cursor: AppColors.accentCyan,
+    selection: AppColors.primary.withValues(alpha: 0.35),
+    foreground: AppColors.textWhite,
+    background: AppColors.bgDark,
+    black: AppColors.bgDark,
+    red: AppColors.danger,
+    green: AppColors.accent,
+    yellow: AppColors.warning,
+    blue: AppColors.accentCyan,
+    magenta: const Color(0xFFC084FC),
+    cyan: AppColors.accentCyan,
+    white: AppColors.textWhite,
+    brightBlack: AppColors.borderLight,
+    brightRed: AppColors.primaryLight,
+    brightGreen: const Color(0xFF4ADE80),
+    brightYellow: const Color(0xFFFDE047),
+    brightBlue: const Color(0xFF38BDF8),
+    brightMagenta: const Color(0xFFE879F9),
+    brightCyan: const Color(0xFF67E8F9),
+    brightWhite: Colors.white,
+    searchHitBackground: AppColors.warning,
+    searchHitBackgroundCurrent: AppColors.accent,
+    searchHitForeground: Colors.black,
+  );
+
   @override
   void initState() {
     super.initState();
     _terminal = Terminal(
-      maxLines: 1500,
+      maxLines: 2000,
     );
     _connectTerminal();
   }
@@ -53,12 +79,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _terminal.write('\r\n\x1b[36m⚡ Đang kết nối Native SSH Terminal trực tiếp...\x1b[0m\r\n');
       try {
         _sshClient = await NativeSshService().getClient();
+        final ptyWidth = _terminal.viewWidth > 20 ? _terminal.viewWidth : 120;
+        final ptyHeight = _terminal.viewHeight > 10 ? _terminal.viewHeight : 35;
         _sshSession = await _sshClient!.shell(
-          pty: const SSHPtyConfig(
-            width: 80,
-            height: 24,
+          pty: SSHPtyConfig(
+            width: ptyWidth,
+            height: ptyHeight,
           ),
         );
+
+        _terminal.onResize = (width, height, pixelWidth, pixelHeight) {
+          _sshSession?.resizeTerminal(width, height, pixelWidth, pixelHeight);
+        };
 
         setState(() {
           _isConnected = true;
@@ -191,7 +223,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.bgDark,
       body: Column(
         children: [
           // 1. Topbar Header (Height 66px)
@@ -348,16 +380,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
             ),
           ),
 
-          // 3. XTerm Terminal View - Full Width & Full Height with Pure Black Background
+          // 3. XTerm Terminal View - Full Width & Full Height Seamless Background
           Expanded(
             child: SizedBox.expand(
               child: Container(
-                color: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                color: AppColors.bgDark,
                 child: TerminalView(
                   _terminal,
-                  backgroundOpacity: 1.0,
+                  theme: _taduTerminalTheme,
+                  backgroundOpacity: 0.0,
                   autofocus: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
               ),
             ),

@@ -25,6 +25,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ApiService _apiService = ApiService();
+  ApiService get _api => _apiService;
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
@@ -245,32 +246,30 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (result != null && result.files.isNotEmpty) {
-        int addedCount = 0;
+        final startIdx = _attachedFiles.length;
         for (final f in result.files) {
+          AttachmentItem? item;
           if (f.bytes != null) {
-            _attachedFiles.add(
-              AttachmentItem.fromBytes(
-                name: f.name,
-                bytes: f.bytes!,
-                path: f.path,
-              ),
+            item = AttachmentItem.fromBytes(
+              name: f.name,
+              bytes: f.bytes!,
+              path: f.path,
             );
-            addedCount++;
           } else if (f.path != null) {
             final file = File(f.path!);
             if (file.existsSync()) {
-              final item = await AttachmentItem.fromFile(file, fileName: f.name);
-              if (item != null) {
-                _attachedFiles.add(item);
-                addedCount++;
-              }
+              item = await AttachmentItem.fromFile(file, fileName: f.name);
             }
+          }
+          if (item != null) {
+            _attachedFiles.add(item);
           }
         }
         if (mounted) {
           setState(() {});
-          if (addedCount > 0) {
-            AppToast.success(context, 'Đã đính kèm $addedCount tệp');
+          // Trigger background upload to VPS with progress tracking
+          for (int i = startIdx; i < _attachedFiles.length; i++) {
+            _uploadAttachment(i);
           }
         }
       }
@@ -281,9 +280,280 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _handleSend(ChatProvider chat, ServerProvider serverProvider) {
+  Future<void> _uploadAttachment(int index) async {
+    if (index >= _attachedFiles.length) return;
+    final item = _attachedFiles[index];
+    if (item.isUploaded || item.isUploading) return;
+
+    setState(() {
+      _attachedFiles[index] = item.copyWith(isUploading: true, uploadProgress: 0.01);
+    });
+
+    try {
+      Uint8List? fileBytes = item.rawBytes;
+      if (fileBytes == null && item.path != null) {
+        final f = File(item.path!);
+        if (f.existsSync()) {
+          fileBytes = await f.readAsBytes();
+        }
+      }
+
+      if (fileBytes == null || fileBytes.isEmpty) {
+        if (mounted) {
+          final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
+          if (idx != -1) {
+            setState(() {
+              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
+                isUploading: false,
+                isUploaded: false,
+                error: 'Không đọc được dữ liệu',
+              );
+            });
+          }
+        }
+        return;
+      }
+
+      final res = await _api.uploadFile(
+        fileName: item.name,
+        bytes: fileBytes,
+        targetDir: _workingDirScope,
+        onProgress: (sent, total, prog) {
+          if (!mounted) return;
+          final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
+          if (idx != -1) {
+            setState(() {
+              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
+                uploadProgress: prog,
+                isUploading: prog < 1.0,
+                isUploaded: prog >= 1.0,
+              );
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
+        if (idx != -1) {
+          if (res['status'] == 'success') {
+            setState(() {
+              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
+                isUploading: false,
+                isUploaded: true,
+                uploadProgress: 1.0,
+                remotePath: res['remote_path']?.toString(),
+              );
+            });
+          } else {
+            setState(() {
+              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
+                isUploading: false,
+                isUploaded: false,
+                error: res['message']?.toString() ?? 'Lỗi tải lên',
+              );
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
+        if (idx != -1) {
+          setState(() {
+            _attachedFiles[idx] = _attachedFiles[idx].copyWith(
+              isUploading: false,
+              isUploaded: false,
+              error: e.toString(),
+            );
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _downloadAttachment(AttachmentItem att) async {
+    final remotePath = att.remotePath ?? '/opt/ai_agent/uploads/${att.name}';
+    final homeDir = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    final downloadsDir = Directory('$homeDir/Downloads');
+    if (!downloadsDir.existsSync()) {
+      downloadsDir.createSync(recursive: true);
+    }
+    final destFile = File('${downloadsDir.path}/${att.name}');
+
+    double progress = 0.0;
+    int received = 0;
+    int total = att.size;
+    bool isDone = false;
+    String? errorMsg;
+    StateSetter? dialogSetState;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDState) {
+          dialogSetState = setDState;
+          final pct = (progress * 100).toInt();
+          final receivedFormatted = received < 1024 * 1024
+              ? '${(received / 1024).toStringAsFixed(1)} KB'
+              : '${(received / (1024 * 1024)).toStringAsFixed(1)} MB';
+          final totalFormatted = total > 0
+              ? (total < 1024 * 1024
+                  ? '${(total / 1024).toStringAsFixed(1)} KB'
+                  : '${(total / (1024 * 1024)).toStringAsFixed(1)} MB')
+              : att.formattedSize;
+
+          return AlertDialog(
+            backgroundColor: AppColors.cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: const BorderSide(color: AppColors.borderDark),
+            ),
+            title: Row(
+              children: [
+                Icon(
+                  isDone
+                      ? Icons.check_circle_rounded
+                      : (errorMsg != null ? Icons.error_outline_rounded : Icons.download_rounded),
+                  color: isDone ? AppColors.accent : (errorMsg != null ? AppColors.danger : AppColors.accentCyan),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isDone ? 'Tải xuống hoàn tất' : (errorMsg != null ? 'Lỗi tải xuống' : 'Đang tải xuống từ VPS'),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded, size: 16, color: AppColors.warning),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          att.name,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: isDone ? 1.0 : (total > 0 ? progress : null),
+                      minHeight: 8,
+                      backgroundColor: AppColors.bgDark,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isDone ? AppColors.accent : (errorMsg != null ? AppColors.danger : AppColors.accentCyan),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isDone
+                              ? 'Đã lưu: ${destFile.path}'
+                              : (errorMsg != null ? errorMsg! : '$receivedFormatted / $totalFormatted'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: errorMsg != null ? AppColors.danger : AppColors.textMuted,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (!isDone && errorMsg == null)
+                        Text(
+                          '$pct%',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (isDone)
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.folder_open_rounded, size: 14),
+                  label: const Text('Mở thư mục'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    if (Platform.isLinux) {
+                      Process.run('xdg-open', [downloadsDir.path]);
+                    } else if (Platform.isWindows) {
+                      Process.run('explorer.exe', [downloadsDir.path]);
+                    } else if (Platform.isMacOS) {
+                      Process.run('open', [downloadsDir.path]);
+                    }
+                  },
+                ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(isDone ? 'Đóng' : 'Huỷ'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    try {
+      final bytes = await _api.downloadFile(
+        remotePath: remotePath,
+        onProgress: (rec, tot, prog) {
+          received = rec;
+          if (tot > 0) total = tot;
+          progress = prog;
+          dialogSetState?.call(() {});
+        },
+      );
+
+      if (bytes != null && bytes.isNotEmpty) {
+        await destFile.writeAsBytes(bytes);
+        isDone = true;
+        progress = 1.0;
+        dialogSetState?.call(() {});
+        if (mounted) {
+          AppToast.success(context, 'Đã tải xuống: ${att.name}');
+        }
+      } else {
+        errorMsg = 'Không tải được nội dung tệp từ server';
+        dialogSetState?.call(() {});
+      }
+    } catch (e) {
+      errorMsg = 'Lỗi: $e';
+      dialogSetState?.call(() {});
+    }
+  }
+
+  Future<void> _handleSend(ChatProvider chat, ServerProvider serverProvider) async {
     final text = _textController.text.trim();
     if ((text.isEmpty && _attachedFiles.isEmpty) || chat.isGenerating) return;
+
+    // Await any in-flight uploads if necessary
+    if (_attachedFiles.any((a) => a.isUploading)) {
+      int waitMs = 0;
+      while (_attachedFiles.any((a) => a.isUploading) && waitMs < 12000 && mounted) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        waitMs += 250;
+      }
+    }
 
     final attachmentsToSend = _attachedFiles.isNotEmpty ? List<AttachmentItem>.from(_attachedFiles) : null;
     _textController.clear();
@@ -739,37 +1009,50 @@ class _ChatScreenState extends State<ChatScreen> {
                           spacing: 8,
                           runSpacing: 8,
                           children: msg.attachments.map((att) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: AppColors.bgDark,
+                            return Material(
+                              color: AppColors.bgDark,
+                              borderRadius: BorderRadius.circular(4),
+                              child: InkWell(
                                 borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                                    size: 14,
-                                    color: att.isImage ? AppColors.accentCyan : AppColors.warning,
+                                onTap: () => _downloadAttachment(att),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
                                   ),
-                                  const SizedBox(width: 6),
-                                  ConstrainedBox(
-                                    constraints: const BoxConstraints(maxWidth: 160),
-                                    child: Text(
-                                      att.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                                        size: 14,
+                                        color: att.isImage ? AppColors.accentCyan : AppColors.warning,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 160),
+                                        child: Text(
+                                          att.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '(${att.formattedSize})',
+                                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(
+                                        Icons.download_rounded,
+                                        size: 14,
+                                        color: AppColors.accentCyan,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '(${att.formattedSize})',
-                                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                  ),
-                                ],
+                                ),
                               ),
                             );
                           }).toList(),
@@ -1102,44 +1385,102 @@ class _ChatScreenState extends State<ChatScreen> {
                       final att = entry.value;
                       return Container(
                         margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
                           color: AppColors.cardBg,
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
+                          border: Border.all(
+                            color: att.isUploaded
+                                ? AppColors.accent.withValues(alpha: 0.6)
+                                : (att.isUploading ? AppColors.accentCyan : AppColors.borderDark),
+                          ),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                              size: 14,
-                              color: att.isImage ? AppColors.accentCyan : AppColors.warning,
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                                  size: 14,
+                                  color: att.isImage ? AppColors.accentCyan : AppColors.warning,
+                                ),
+                                const SizedBox(width: 6),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 140),
+                                  child: Text(
+                                    att.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textWhite),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '(${att.formattedSize})',
+                                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                ),
+                                const SizedBox(width: 6),
+                                if (att.isUploading) ...[
+                                  SizedBox(
+                                    width: 10,
+                                    height: 10,
+                                    child: CircularProgressIndicator(
+                                      value: att.uploadProgress > 0 ? att.uploadProgress : null,
+                                      strokeWidth: 1.5,
+                                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${(att.uploadProgress * 100).toInt()}%',
+                                    style: const TextStyle(
+                                      fontSize: 9.5,
+                                      color: AppColors.accentCyan,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ] else if (att.isUploaded) ...[
+                                  const Tooltip(
+                                    message: 'Đã lưu trên VPS',
+                                    child: Icon(Icons.check_circle_rounded, size: 13, color: AppColors.accent),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ] else if (att.error != null) ...[
+                                  Tooltip(
+                                    message: att.error!,
+                                    child: const Icon(Icons.error_outline_rounded, size: 13, color: AppColors.danger),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _attachedFiles.removeAt(idx);
+                                    });
+                                  },
+                                  child: const Icon(Icons.close_rounded, size: 13, color: AppColors.danger),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 6),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 140),
-                              child: Text(
-                                att.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11, color: AppColors.textWhite),
+                            if (att.isUploading) ...[
+                              const SizedBox(height: 4),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(2),
+                                child: SizedBox(
+                                  width: 160,
+                                  child: LinearProgressIndicator(
+                                    value: att.uploadProgress > 0 ? att.uploadProgress : null,
+                                    minHeight: 3,
+                                    backgroundColor: AppColors.bgDark,
+                                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                                  ),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '(${att.formattedSize})',
-                              style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                            ),
-                            const SizedBox(width: 6),
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _attachedFiles.removeAt(idx);
-                                });
-                              },
-                              child: const Icon(Icons.close_rounded, size: 13, color: AppColors.danger),
-                            ),
+                            ],
                           ],
                         ),
                       );
