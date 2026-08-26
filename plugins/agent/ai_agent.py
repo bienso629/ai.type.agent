@@ -8,6 +8,8 @@ import base64
 import subprocess
 import queue
 import threading
+import datetime
+import time
 from typing import List, Optional, Dict
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
@@ -61,6 +63,57 @@ connected_pcs: List[WebSocket] = []
 active_tasks: Dict[str, asyncio.Queue] = {}
 
 CLAUDE_MODEL_HINTS = ("claude", "opus", "sonnet", "haiku", "fable")
+
+def normalize_agent_model(model: Optional[str], is_image: bool = False):
+    """
+    Returns (is_claude, model_name, effort)
+    For image generation (is_image=True), Claude cannot be used because it lacks generate_image tool.
+    Gemini models supported by agy are used instead.
+    """
+    if is_image or not model:
+        if model and "3.6" in model:
+            return False, "gemini-3.6-flash", "high"
+        elif model and "3.1" in model:
+            return False, "gemini-3.1-pro", "high"
+        elif model and "3.5" in model:
+            return False, "gemini-3.5-flash", "high"
+        return False, "gemini-3.7-flash", "high"
+
+    model_lower = model.lower().strip()
+
+    # Check if Claude model (for non-image requests)
+    if any(h in model_lower for h in CLAUDE_MODEL_HINTS):
+        return True, model, None
+
+    # Normalization for agy models
+    effort = None
+    if "flash" in model_lower:
+        if "low" in model_lower:
+            effort = "low"
+        elif "medium" in model_lower:
+            effort = "medium"
+        else:
+            effort = "high"
+
+        if "3.7" in model_lower:
+            return False, "gemini-3.7-flash", effort
+        elif "3.6" in model_lower:
+            return False, "gemini-3.6-flash", effort
+        elif "3.5" in model_lower:
+            return False, "gemini-3.5-flash", effort
+        else:
+            return False, "gemini-3.7-flash", effort
+    elif "pro" in model_lower:
+        if "low" in model_lower:
+            effort = "low"
+        else:
+            effort = "high"
+        return False, "gemini-3.1-pro", effort
+    elif "gpt-oss" in model_lower or "120b" in model_lower:
+        return False, "GPT-OSS 120B (Medium)", None
+    else:
+        # Unknown / custom / legacy model names (glm-5.3, glm-5, gpt-4, etc.) -> default to gemini-3.7-flash
+        return False, "gemini-3.7-flash", "high"
 
 def claude_session_exists(session_id: str) -> bool:
     # Không dùng biến RAM để nhớ session đã tạo: process này có thể bị Electron
@@ -614,6 +667,7 @@ def format_reference_files_prompt(file_infos: list) -> str:
 
 async def run_agent_task_logic(req_data: dict, yield_callback):
     try:
+        request_start_time = time.time()
         prompt = req_data.get("prompt", "")
         system_instructions = req_data.get("system_instructions", "")
         model = req_data.get("model")
@@ -718,13 +772,13 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
             )
             full_prompt = f"[{system_instructions}]\n\n{reference_instruction}\n\n{chat_instructions}\n\nLịch sử trò chuyện và Yêu cầu mới:\n{full_prompt}\n\n[LỆNH HỆ THỐNG QUAN TRỌNG - PHẢI ĐỌC CUỐI CÙNG]: Bất cứ khi nào bạn gọi công cụ tạo ảnh, bạn BẮT BUỘC phải truyền tham số ImageName chính xác là: '{image_uid}'. Bất kỳ tên nào khác (kể cả tên từng dùng trong lịch sử) đều sẽ gây lỗi hệ thống nghiêm trọng! (Nếu không gọi công cụ tạo ảnh thì bỏ qua lưu ý này)."
         
-        is_claude_model = bool(model) and any(h in model.lower() for h in CLAUDE_MODEL_HINTS)
+        is_claude_model, selected_model, selected_effort = normalize_agent_model(model, is_image=is_image)
 
         if is_claude_model:
             command = [
                 "claude", "--print", full_prompt,
                 "--dangerously-skip-permissions",
-                "--model", model,
+                "--model", selected_model,
             ]
             if conversation_id:
                 claude_session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, conversation_id))
@@ -735,12 +789,11 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         else:
             command = [
                 "agy", "--print", full_prompt,
-                "--dangerously-skip-permissions"
+                "--dangerously-skip-permissions",
+                "--model", selected_model
             ]
-            if model:
-                command.extend(["--model", model])
-                if "flash" in model:
-                    command.extend(["--effort", "high"])
+            if selected_effort:
+                command.extend(["--effort", selected_effort])
             if conversation_id:
                 command.extend(["--conversation", conversation_id])
 
@@ -870,7 +923,7 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
             process.stdout.close()
             process.wait()
             audio_task_queue.put(None)
-            worker_thread.join()
+            worker_thread.join(timeout=8.0)
             event_queue.put(None)
 
         reader_thread = threading.Thread(target=text_reader)
@@ -906,23 +959,63 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
         image_base64 = None
         video_base64 = None
         img_path = target_path
-        
-        match = re.search(r"(?:IMAGE_PATH|VIDEO_PATH)=([^\s]+)", reply_text)
+
+        # 1. Thử parse từ reply_text: IMAGE_PATH=... hoặc VIDEO_PATH=...
+        match = re.search(r"(?:IMAGE_PATH|VIDEO_PATH)=([^\s\n\r]+)", reply_text)
         if match:
-            img_path = match.group(1).strip()
-            if img_path.endswith(']'): img_path = img_path[:-1]
+            extracted_path = match.group(1).strip().strip("`'\"[]()")
+            if os.path.exists(extracted_path) and os.path.isfile(extracted_path):
+                img_path = extracted_path
 
-        if not os.path.exists(img_path) and image_uid:
+        # 2. Thử parse từ thẻ markdown ảnh: ![...](/path) hoặc (file:///path)
+        if not os.path.exists(img_path) or not os.path.isfile(img_path):
+            md_img_match = re.search(r"!\[.*?\]\((?:file:\/\/)?(\/[^\)]+)\)", reply_text)
+            if md_img_match:
+                extracted_md_path = md_img_match.group(1).strip()
+                if os.path.exists(extracted_md_path) and os.path.isfile(extracted_md_path):
+                    img_path = extracted_md_path
+
+        # 3. Tìm theo image_uid trong thư mục brain
+        brain_dir = os.path.expanduser("~/.gemini/antigravity-cli/brain")
+        if (not os.path.exists(img_path) or not os.path.isfile(img_path)) and image_uid and os.path.exists(brain_dir):
             import glob
-            brain_dir = os.path.expanduser("~/.gemini/antigravity-cli/brain")
-            pattern_png = os.path.join(brain_dir, "**", f"*{image_uid}*.png")
-            pattern_jpg = os.path.join(brain_dir, "**", f"*{image_uid}*.jpg")
-            pattern_jpeg = os.path.join(brain_dir, "**", f"*{image_uid}*.jpeg")
-            found_files = glob.glob(pattern_png, recursive=True) + glob.glob(pattern_jpg, recursive=True) + glob.glob(pattern_jpeg, recursive=True)
-            if found_files: img_path = found_files[0]
+            patterns = [
+                os.path.join(brain_dir, "**", f"*{image_uid}*.png"),
+                os.path.join(brain_dir, "**", f"*{image_uid}*.jpg"),
+                os.path.join(brain_dir, "**", f"*{image_uid}*.jpeg"),
+                os.path.join(brain_dir, "**", f"*{image_uid}*.webp"),
+            ]
+            found_files = []
+            for pat in patterns:
+                found_files.extend(glob.glob(pat, recursive=True))
+            if found_files:
+                found_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+                img_path = found_files[0]
 
-        if os.path.exists(img_path):
-            if img_path.endswith('.png') or img_path.endswith('.jpg') or img_path.endswith('.jpeg'):
+        # 4. Tìm kiếm fallback: quét thư mục brain tìm file ảnh/video mới nhất tạo sau request_start_time
+        if (not os.path.exists(img_path) or not os.path.isfile(img_path)) and (is_image or is_video) and os.path.exists(brain_dir):
+            all_recent_files = []
+            valid_exts = ('.png', '.jpg', '.jpeg', '.webp') if is_image else ('.mp4', '.mkv', '.webm')
+            for root, _, files in os.walk(brain_dir):
+                if '.system_generated' in root:
+                    continue
+                for f in files:
+                    if f.lower().endswith(valid_exts):
+                        full_fpath = os.path.join(root, f)
+                        try:
+                            mtime = os.path.getmtime(full_fpath)
+                            if mtime >= request_start_time - 10:
+                                all_recent_files.append((full_fpath, mtime))
+                        except Exception:
+                            pass
+            if all_recent_files:
+                all_recent_files.sort(key=lambda x: x[1], reverse=True)
+                img_path = all_recent_files[0][0]
+
+        if os.path.exists(img_path) and os.path.isfile(img_path):
+            is_media = img_path.lower().endswith(('.mp4', '.mkv', '.webm'))
+            is_png = img_path.lower().endswith('.png')
+            if not is_media:
                 try:
                     img = Image.open(img_path)
                     width, height = img.size
@@ -937,22 +1030,33 @@ async def run_agent_task_logic(req_data: dict, yield_callback):
                         new_height = int(target_width * aspect)
                         resample_method = getattr(Image, "Resampling", Image).LANCZOS
                         img = img.resize((target_width, new_height), resample_method)
-                        img.save(img_path, format="PNG", quality=100, optimize=True)
+
+                    if is_png:
+                        img.save(img_path, format="PNG")
+                    else:
+                        if img.mode in ("RGBA", "P"):
+                            img = img.convert("RGB")
+                        img.save(img_path, format="JPEG", quality=95)
                 except Exception as e:
-                    print("Lỗi khi upscale/tối ưu chất lượng ảnh:", e)
+                    print("Lỗi khi xử lý chất lượng ảnh:", e)
                     pass
                 
             with open(img_path, "rb") as f:
                 b64_data = base64.b64encode(f.read()).decode("utf-8")
-                if img_path.endswith('.mp4'): video_base64 = b64_data
-                else: image_base64 = b64_data
-            try: os.remove(img_path)
-            except: pass
+                if is_media:
+                    video_base64 = b64_data
+                else:
+                    image_base64 = b64_data
+            try:
+                os.remove(img_path)
+            except Exception:
+                pass
         
         if image_base64 or video_base64:
             if image_base64:
-                data_uri = f"data:image/png;base64,{image_base64}"
-                img_md = f"\n\n![Ảnh 3D vừa tạo]({data_uri})\n\n"
+                mime_type = "image/png" if is_png else "image/jpeg"
+                data_uri = f"data:{mime_type};base64,{image_base64}"
+                img_md = f"\n\n![Ảnh vừa tạo]({data_uri})\n\n"
             else:
                 data_uri = f"data:video/mp4;base64,{video_base64}"
                 img_md = f"\n\n<video src=\"{data_uri}\" controls></video>\n\n"

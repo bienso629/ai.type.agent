@@ -448,7 +448,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                               style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
                             ),
                             const Text(
-                              'Đã xác thực',
+                              '50k token AI',
                               style: TextStyle(fontSize: 9.5, color: AppColors.accent, fontWeight: FontWeight.w500),
                             ),
                           ],
