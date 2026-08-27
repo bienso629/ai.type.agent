@@ -10,11 +10,11 @@ class AppColors {
   static const Color borderDark = Color(0xFF1E293B); // --tadu-border
   static const Color borderLight = Color(0xFF334155);
 
-  // Tadu Primary Red Palette
-  static const Color primary = Color(0xFFDC2626); // Crimson Red (Red 600)
-  static const Color primaryHover = Color(0xFFB91C1C); // Red 700
-  static const Color primaryLight = Color(0xFFF87171); // Red 400
-  static const Color primaryDark = Color(0xFF991B1B); // Red 800
+  // AI Type Primary Teal Palette (#0d9488)
+  static const Color primary = Color(0xFF0D9488); // Teal 600 (#0d9488)
+  static const Color primaryHover = Color(0xFF0F766E); // Teal 700
+  static const Color primaryLight = Color(0xFF2DD4BF); // Teal 400
+  static const Color primaryDark = Color(0xFF115E59); // Teal 800
 
   // Accents
   static const Color accent = Color(0xFF10B981); // Emerald Green
@@ -36,6 +36,14 @@ class AppColors {
   static const Color terminalBg = Color(0xFF070A10);
   static const Color terminalGreen = Color(0xFF22C55E);
   static const Color codeBg = Color(0xFF0F172A);
+}
+
+/// Project-wide unified border radius standard: rounded-sm (4px)
+class AppRadius {
+  static const double sm = 4.0;
+  static final BorderRadius radius = BorderRadius.circular(4);
+  static const Radius r = Radius.circular(4);
+  static final RoundedRectangleBorder shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(4));
 }
 
 class AppTheme {
@@ -76,7 +84,7 @@ class AppTheme {
         color: AppColors.cardBg,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(4),
           side: const BorderSide(color: AppColors.borderDark, width: 1),
         ),
       ),
@@ -86,15 +94,15 @@ class AppTheme {
         hintStyle: const TextStyle(color: AppColors.textDim, fontSize: 13),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(4),
           borderSide: const BorderSide(color: AppColors.borderDark),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(4),
           borderSide: const BorderSide(color: AppColors.borderDark),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(4),
           borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
@@ -104,7 +112,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
           textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
         ),
       ),
@@ -112,7 +120,7 @@ class AppTheme {
         backgroundColor: AppColors.cardBg,
         elevation: 16,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(4),
           side: const BorderSide(color: AppColors.borderDark, width: 1),
         ),
         titleTextStyle: GoogleFonts.inter(

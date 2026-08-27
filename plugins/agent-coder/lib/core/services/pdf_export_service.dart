@@ -96,11 +96,11 @@ class PdfExportService {
             style: pw.TextStyle(
               font: fontMono,
               fontSize: fontSize * 0.9,
-              color: PdfColors.red800,
+              color: PdfColors.teal800,
               lineSpacing: lineSpacing,
               background: const pw.BoxDecoration(
                 color: PdfColors.grey200,
-                borderRadius: pw.BorderRadius.all(pw.Radius.circular(2)),
+                borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
               ),
             ),
           ),
@@ -230,7 +230,7 @@ class PdfExportService {
                           height: 36,
                           margin: const pw.EdgeInsets.only(right: 10),
                           decoration: pw.BoxDecoration(
-                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
                             border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
                           ),
                           child: pw.ClipRRect(
@@ -245,8 +245,8 @@ class PdfExportService {
                           height: 36,
                           margin: const pw.EdgeInsets.only(right: 10),
                           decoration: const pw.BoxDecoration(
-                            color: PdfColors.red800,
-                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(6)),
+                            color: PdfColors.teal800,
+                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
                           ),
                           alignment: pw.Alignment.center,
                           child: pw.Text('AI TYPE', style: pw.TextStyle(font: fontBold, color: PdfColors.white, fontSize: 8.5)),
@@ -259,7 +259,7 @@ class PdfExportService {
                             style: pw.TextStyle(
                               font: fontBold,
                               fontSize: 13,
-                              color: PdfColors.red800,
+                              color: PdfColors.teal800,
                             ),
                           ),
                           pw.SizedBox(height: 2),
@@ -282,7 +282,7 @@ class PdfExportService {
                         padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                         decoration: const pw.BoxDecoration(
                           color: PdfColors.grey100,
-                          borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                          borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
                         ),
                         child: pw.Text(
                           'Thời gian: $timeStr',
@@ -301,7 +301,7 @@ class PdfExportService {
               pw.SizedBox(height: 10),
               pw.Container(
                 height: 2,
-                color: PdfColors.red700,
+                color: PdfColors.teal700,
               ),
               pw.SizedBox(height: 16),
             ],
@@ -341,7 +341,7 @@ class PdfExportService {
                   padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: const pw.BoxDecoration(
                     color: PdfColors.grey200,
-                    borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                    borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
                   ),
                   child: pw.Row(
                     crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -350,7 +350,7 @@ class PdfExportService {
                         padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: const pw.BoxDecoration(
                           color: PdfColors.blue800,
-                          borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                          borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
                         ),
                         child: pw.Text(
                           '>_ SHELL',
@@ -404,7 +404,7 @@ class PdfExportService {
                       padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                       decoration: const pw.BoxDecoration(
                         color: PdfColor.fromInt(0xFF0F172A),
-                        borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                        borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
                       ),
                       child: pw.Text(
                         chunkText,
@@ -583,7 +583,7 @@ class PdfExportService {
                       fontBold,
                       fontBold,
                       fontMono,
-                      defaultColor: PdfColors.red800,
+                      defaultColor: PdfColors.teal800,
                       fontSize: 10.5,
                       lineSpacing: 1.15,
                     ),
@@ -600,7 +600,7 @@ class PdfExportService {
                       fontBold,
                       fontBold,
                       fontMono,
-                      defaultColor: PdfColors.red900,
+                      defaultColor: PdfColors.teal900,
                       fontSize: 11.2,
                       lineSpacing: 1.15,
                     ),
@@ -617,7 +617,7 @@ class PdfExportService {
                       fontBold,
                       fontBold,
                       fontMono,
-                      defaultColor: PdfColors.red900,
+                      defaultColor: PdfColors.teal900,
                       fontSize: 12.5,
                       lineSpacing: 1.15,
                     ),
@@ -633,7 +633,7 @@ class PdfExportService {
                   decoration: const pw.BoxDecoration(
                     color: PdfColors.grey100,
                     border: pw.Border(
-                      left: pw.BorderSide(color: PdfColors.red800, width: 3),
+                      left: pw.BorderSide(color: PdfColors.teal800, width: 3),
                     ),
                   ),
                   child: pw.RichText(
@@ -654,7 +654,7 @@ class PdfExportService {
                         height: 4,
                         margin: const pw.EdgeInsets.only(top: 5, right: 7),
                         decoration: const pw.BoxDecoration(
-                          color: PdfColors.red800,
+                          color: PdfColors.teal800,
                           shape: pw.BoxShape.circle,
                         ),
                       ),
@@ -683,7 +683,7 @@ class PdfExportService {
                         width: 18,
                         child: pw.Text(
                           numPrefix,
-                          style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: PdfColors.red800),
+                          style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: PdfColors.teal800),
                         ),
                       ),
                       pw.Expanded(
@@ -735,10 +735,10 @@ class PdfExportService {
           margin: const pw.EdgeInsets.all(36),
           build: (pw.Context context) {
             return [
-              pw.Text('AI TYPE AGENT - REPORT', style: pw.TextStyle(font: fontBold, fontSize: 14, color: PdfColors.red800)),
+              pw.Text('AI TYPE AGENT - REPORT', style: pw.TextStyle(font: fontBold, fontSize: 14, color: PdfColors.teal800)),
               pw.SizedBox(height: 4),
               pw.Text('Thời gian: $timeStr | Hệ thống: ${serverInfo ?? 'Linux Server'}', style: pw.TextStyle(font: font, fontSize: 8.5, color: PdfColors.grey700)),
-              pw.Divider(color: PdfColors.red700, thickness: 1.5),
+              pw.Divider(color: PdfColors.teal700, thickness: 1.5),
               pw.SizedBox(height: 12),
               ...cleanText.split('\n').map((l) => pw.Paragraph(
                 text: l,

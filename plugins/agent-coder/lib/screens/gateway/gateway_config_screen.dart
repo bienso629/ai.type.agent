@@ -47,7 +47,7 @@ class _GatewayConfigScreenState extends State<GatewayConfigScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppColors.cardDark,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(
                   color: gateway.isConnected ? AppColors.accent : AppColors.danger,
                 ),

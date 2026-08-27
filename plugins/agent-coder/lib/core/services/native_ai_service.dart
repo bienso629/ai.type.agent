@@ -7,6 +7,8 @@ import '../../models/chat_message.dart';
 import 'database_service.dart';
 import 'local_config_service.dart';
 
+import 'native_ssh_service.dart';
+
 class NativeAiService {
   static final NativeAiService _instance = NativeAiService._internal();
   factory NativeAiService() => _instance;
@@ -14,14 +16,15 @@ class NativeAiService {
 
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
+  final NativeSshService _sshService = NativeSshService();
 
-  static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình và tự động hoá thao tác trên máy tính cục bộ (Local Agent).
-Bạn có quyền thực thi lệnh bash/shell thực tế trên máy tính người dùng qua công cụ `execute_terminal_command`.
+  static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
+Bạn có quyền thực thi lệnh bash/shell/terminal thực tế qua công cụ `execute_terminal_command`.
 
 CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
 1. THỰC THI TRIỆT ĐỂ ĐẾN CÙNG - KHÔNG DỪNG NỬA CHỪNG (END-TO-END EXECUTION):
-   - Khi nhận yêu cầu (lập trình, tạo file, build dự án, cài đặt thư viện, debug, chạy lệnh, kiểm tra hệ thống...): Bạn PHẢI CHỦ ĐỘNG GỌI `execute_terminal_command` chạy liên tục toàn bộ các bước cho đến khi XONG HOÀN TOÀN và KIỂM CHỨNG THÀNH CÔNG.
+   - Khi nhận yêu cầu (lập trình, quản trị website, cài đặt dịch vụ, tạo file, build dự án, cài đặt thư viện, debug, chạy lệnh, kiểm tra hệ thống...): Bạn PHẢI CHỦ ĐỘNG GỌI `execute_terminal_command` chạy liên tục toàn bộ các bước cho đến khi XONG HOÀN TOÀN và KIỂM CHỨNG THÀNH CÔNG.
    - TUYỆT ĐỐI CẤM dừng lại ở câu nói lấp lửng/dự định (như "Giờ copy...", "Tiếp theo sẽ build...", "Đang kiểm tra..."). Đã định làm gì là PHẢI GỌI TOOL CHẠY LỆNH ĐÓ NGAY LẬP TỨC.
    - Luôn kiểm tra kết quả bước trước. Nếu lệnh phát sinh lỗi, tự động chẩn đoán và chạy lệnh sửa lỗi ngay.
 
@@ -32,6 +35,22 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
    - Khi hoàn tất, báo cáo rõ kết quả thực thi và kết luận ngắn gọn.
    - Không chào hỏi dài dòng, không văn mẫu xã giao.
 ''';
+
+  Future<String> _executeCommand(String command, {String? workingDir, int timeoutSeconds = 60}) async {
+    try {
+      final cfg = await _configService.loadConfig();
+      final serverIp = cfg['server_ip']?.toString() ?? '127.0.0.1';
+      final isRemote = serverIp.isNotEmpty && serverIp != '127.0.0.1' && serverIp != 'localhost';
+
+      if (isRemote) {
+        return await _sshService.executeCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds);
+      } else {
+        return await _executeLocalCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds);
+      }
+    } catch (e) {
+      return 'Lỗi thực thi lệnh: $e';
+    }
+  }
 
   Future<String> _executeLocalCommand(String command, {String? workingDir, int timeoutSeconds = 60}) async {
     try {
@@ -311,7 +330,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               );
               onTool(toolItem);
 
-              final cmdOutput = await _executeLocalCommand(cmd, workingDir: workingDir);
+              final cmdOutput = await _executeCommand(cmd, workingDir: workingDir);
 
               final finishedTool = ToolExecutionItem(
                 tool: funcName,

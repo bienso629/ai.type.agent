@@ -47,66 +47,32 @@ class LocalConfigService {
     final configFileName = key.isNotEmpty ? 'config_$key.json' : 'config.json';
 
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      final execDir = p.dirname(Platform.resolvedExecutable);
-      final currentDir = Directory.current.path;
-      final candidates = [
-        p.join(currentDir, configFileName),
-        p.join(currentDir, '..', configFileName),
-        p.join(currentDir, '..', '..', configFileName),
-        p.join(currentDir, '..', '..', '..', configFileName),
-        p.join(execDir, configFileName),
-        p.join(execDir, '..', configFileName),
-        p.join(execDir, '..', '..', configFileName),
-        p.join(execDir, '..', '..', '..', configFileName),
-        p.join(execDir, '..', '..', '..', '..', configFileName),
-        p.join(execDir, '..', '..', '..', '..', '..', configFileName),
-        '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/$configFileName',
-        p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', configFileName),
-      ];
+      final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+      final appDir = Directory(p.join(home, '.ai_type_agent'));
+      if (!appDir.existsSync()) {
+        try {
+          appDir.createSync(recursive: true);
+        } catch (_) {}
+      }
 
-      for (final candidate in candidates) {
-        if (File(candidate).existsSync()) {
-          _resolvedConfigPath = p.normalize(candidate);
+      final userCfgPath = p.join(appDir.path, configFileName);
+      final masterCfgPath = p.join(appDir.path, 'config.json');
+
+      if (File(userCfgPath).existsSync()) {
+        _resolvedConfigPath = p.normalize(userCfgPath);
+        return _resolvedConfigPath!;
+      }
+
+      if (key.isNotEmpty && File(masterCfgPath).existsSync()) {
+        try {
+          File(masterCfgPath).copySync(userCfgPath);
+          _resolvedConfigPath = p.normalize(userCfgPath);
           return _resolvedConfigPath!;
-        }
+        } catch (_) {}
       }
 
-      // If user-specific config does not exist yet, search for base config.json and seed/copy it
-      if (key.isNotEmpty) {
-        final fallbackCandidates = [
-          p.join(currentDir, 'config.json'),
-          p.join(currentDir, '..', 'config.json'),
-          p.join(currentDir, '..', '..', 'config.json'),
-          p.join(currentDir, '..', '..', '..', 'config.json'),
-          p.join(execDir, 'config.json'),
-          p.join(execDir, '..', 'config.json'),
-          p.join(execDir, '..', '..', 'config.json'),
-          p.join(execDir, '..', '..', '..', 'config.json'),
-          p.join(execDir, '..', '..', '..', '..', 'config.json'),
-          p.join(execDir, '..', '..', '..', '..', '..', 'config.json'),
-          '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/config.json',
-          p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', 'config.json'),
-        ];
-        for (final fallback in fallbackCandidates) {
-          if (File(fallback).existsSync()) {
-            final targetDir = p.dirname(fallback);
-            final newPath = p.join(targetDir, configFileName);
-            try {
-              File(fallback).copySync(newPath);
-              _resolvedConfigPath = p.normalize(newPath);
-              return _resolvedConfigPath!;
-            } catch (_) {
-              _resolvedConfigPath = p.normalize(fallback);
-              return _resolvedConfigPath!;
-            }
-          }
-        }
-      }
-
-      // If not found in candidates, create in current directory or user home
-      final defaultDesk = p.join(currentDir, configFileName);
-      _resolvedConfigPath = defaultDesk;
-      return defaultDesk;
+      _resolvedConfigPath = p.normalize(userCfgPath);
+      return _resolvedConfigPath!;
     }
 
     try {
@@ -277,50 +243,56 @@ class LocalConfigService {
     }
   }
 
+  List<Map<String, dynamic>> _extractServersList(Map<String, dynamic> cfg) {
+    dynamic raw = cfg['servers'];
+    if (raw is String) {
+      if (raw.startsWith('enc:')) {
+        raw = _enc.decryptValue(raw);
+      }
+      try {
+        raw = jsonDecode(raw);
+      } catch (_) {}
+    }
+
+    final list = <Map<String, dynamic>>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map) {
+          list.add(Map<String, dynamic>.from(item));
+        } else if (item is String) {
+          try {
+            final m = jsonDecode(item);
+            if (m is Map) list.add(Map<String, dynamic>.from(m));
+          } catch (_) {}
+        }
+      }
+    }
+    return list;
+  }
+
   Future<List<ServerModel>> getServers() async {
     final cfg = await loadConfig();
     final serversList = <ServerModel>[];
     final activeId = cfg['active_server_id']?.toString() ?? '';
-    final activeIp = cfg['server_ip']?.toString() ?? '';
 
-    // 1. If 'servers' array exists and is not empty, use it as the source of truth
-    if (cfg['servers'] is List && (cfg['servers'] as List).isNotEmpty) {
-      bool hasActive = false;
-      for (final item in (cfg['servers'] as List)) {
-        if (item is Map) {
-          final itemMap = Map<String, dynamic>.from(item);
-          final id = itemMap['id']?.toString() ?? '';
-          final ip = itemMap['server_ip']?.toString() ?? '';
-
-          bool isCurr = false;
-          if (!hasActive) {
-            if (activeId.isNotEmpty && (id == activeId || ip == activeId)) {
-              isCurr = true;
-              hasActive = true;
-            } else if (activeId.isEmpty && activeIp.isNotEmpty && ip == activeIp) {
-              isCurr = true;
-              hasActive = true;
-            }
-          }
-
-          final s = ServerModel.fromJson(itemMap, isCurrent: isCurr);
-          serversList.add(s);
-        }
-      }
-
-      // If no server matched activeId, ensure exactly the first one is marked active
-      if (!hasActive && serversList.isNotEmpty) {
-        serversList[0] = serversList[0].copyWith(isSelected: true);
-      }
+    final rawList = _extractServersList(cfg);
+    for (final item in rawList) {
+      final id = item['id']?.toString() ?? '';
+      final ip = item['server_ip']?.toString() ?? '';
+      final isCurr = activeId.isNotEmpty && activeId != 'local' && (id == activeId || ip == activeId);
+      final s = ServerModel.fromJson(item, isCurrent: isCurr);
+      serversList.add(s);
     }
 
-    // 2. If serversList is still empty, populate from root config
-    if (serversList.isEmpty && cfg['server_ip'] != null && cfg['server_ip'].toString().isNotEmpty) {
-      final defaultS = ServerModel.fromJson(cfg, isCurrent: true);
-      serversList.add(defaultS);
-      cfg['servers'] = [defaultS.toJson()];
-      cfg['active_server_id'] = defaultS.id;
-      await saveConfig(cfg, userKey: _currentUserKey);
+    // Recovery check: If serversList is empty, but cfg has a remote server_ip, restore it!
+    if (serversList.isEmpty) {
+      final ip = cfg['server_ip']?.toString() ?? '';
+      if (ip.isNotEmpty && ip != '127.0.0.1' && ip != 'localhost') {
+        final restored = ServerModel.fromJson(cfg, isCurrent: activeId != 'local');
+        serversList.add(restored);
+        cfg['servers'] = [restored.toJson()];
+        await saveConfig(cfg, userKey: _currentUserKey);
+      }
     }
 
     return serversList;
@@ -328,15 +300,7 @@ class LocalConfigService {
 
   Future<bool> addOrUpdateServer(ServerModel server) async {
     final cfg = await loadConfig();
-    List<Map<String, dynamic>> servers = [];
-
-    if (cfg['servers'] is List) {
-      for (final item in (cfg['servers'] as List)) {
-        if (item is Map) {
-          servers.add(Map<String, dynamic>.from(item));
-        }
-      }
-    }
+    final servers = _extractServersList(cfg);
 
     int existingIdx = servers.indexWhere((item) =>
         item['id'] == server.id || (item['server_ip'] == server.serverIp && item['ssh_port']?.toString() == server.sshPort.toString()));
@@ -347,11 +311,9 @@ class LocalConfigService {
       servers.add(server.toJson());
     }
 
-    // If active server or if this is the only server, sync root fields
     final activeId = cfg['active_server_id']?.toString() ?? '';
     final isActive = server.isSelected ||
-        (activeId.isNotEmpty && (activeId == server.id || activeId == server.serverIp)) ||
-        servers.length == 1;
+        (activeId.isNotEmpty && activeId != 'local' && (activeId == server.id || activeId == server.serverIp));
 
     if (isActive) {
       cfg['active_server_id'] = server.id;
@@ -365,11 +327,11 @@ class LocalConfigService {
       cfg['secret_token'] = server.secretToken;
     }
 
-    final currentActiveId = cfg['active_server_id']?.toString() ?? (servers.isNotEmpty ? servers.first['id']?.toString() : '');
+    final currentActiveId = cfg['active_server_id']?.toString() ?? '';
     for (int i = 0; i < servers.length; i++) {
       final sId = servers[i]['id']?.toString();
       final sIp = servers[i]['server_ip']?.toString();
-      final isAct = (sId == currentActiveId || sIp == currentActiveId);
+      final isAct = (currentActiveId.isNotEmpty && currentActiveId != 'local') && (sId == currentActiveId || sIp == currentActiveId);
       servers[i]['is_selected'] = isAct;
       servers[i]['set_active'] = isAct;
     }
@@ -380,74 +342,52 @@ class LocalConfigService {
 
   Future<bool> selectServer(ServerModel server) async {
     final cfg = await loadConfig();
-    List<Map<String, dynamic>> servers = [];
+    final rawServers = _extractServersList(cfg);
+    final isLocal = (server.id == 'local' || server.serverIp == '127.0.0.1' || server.serverIp == 'localhost');
 
-    if (cfg['servers'] is List) {
-      for (final item in (cfg['servers'] as List)) {
-        if (item is Map) {
-          final m = Map<String, dynamic>.from(item);
-          final isSel = (m['id'] == server.id || m['server_ip'] == server.serverIp);
-          m['is_selected'] = isSel;
-          m['set_active'] = isSel;
-          servers.add(m);
-        }
-      }
+    final updatedServers = <Map<String, dynamic>>[];
+    for (final item in rawServers) {
+      final m = Map<String, dynamic>.from(item);
+      final isSel = !isLocal && (m['id'] == server.id || m['server_ip'] == server.serverIp);
+      m['is_selected'] = isSel;
+      m['set_active'] = isSel;
+      updatedServers.add(m);
     }
 
-    cfg['servers'] = servers;
-    cfg['active_server_id'] = server.id;
-    cfg['server_ip'] = server.serverIp;
-    cfg['ssh_user'] = server.sshUser;
-    cfg['ssh_pass'] = server.sshPass;
-    cfg['ssh_port'] = server.sshPort;
-    cfg['ai_model'] = server.aiModel;
-    cfg['remote_work_dir'] = server.remoteWorkDir;
-    cfg['api_port'] = server.apiPort;
-    cfg['secret_token'] = server.secretToken;
+    cfg['servers'] = updatedServers;
+    if (isLocal) {
+      cfg['active_server_id'] = 'local';
+      cfg['server_ip'] = '127.0.0.1';
+    } else {
+      cfg['active_server_id'] = server.id;
+      cfg['server_ip'] = server.serverIp;
+      cfg['ssh_user'] = server.sshUser;
+      cfg['ssh_pass'] = server.sshPass;
+      cfg['ssh_port'] = server.sshPort;
+      cfg['ai_model'] = server.aiModel;
+      cfg['remote_work_dir'] = server.remoteWorkDir;
+      cfg['api_port'] = server.apiPort;
+      cfg['secret_token'] = server.secretToken;
+    }
 
     return await saveConfig(cfg, userKey: _currentUserKey);
   }
 
   Future<bool> deleteServer(String serverIdOrIp) async {
+    if (serverIdOrIp.trim().isEmpty) return false;
     final cfg = await loadConfig();
-    List<Map<String, dynamic>> servers = [];
+    final servers = _extractServersList(cfg);
 
-    if (cfg['servers'] is List) {
-      for (final item in (cfg['servers'] as List)) {
-        if (item is Map) {
-          servers.add(Map<String, dynamic>.from(item));
-        }
-      }
-    }
-
-    servers.removeWhere((item) =>
-        item['id'] == serverIdOrIp || item['server_ip'] == serverIdOrIp);
+    servers.removeWhere((item) {
+      final id = item['id']?.toString() ?? '';
+      final ip = item['server_ip']?.toString() ?? '';
+      return (id.isNotEmpty && id == serverIdOrIp) || (ip.isNotEmpty && ip == serverIdOrIp);
+    });
 
     cfg['servers'] = servers;
-
-    // If deleted server was active, switch active server to remaining server
-    final activeId = cfg['active_server_id']?.toString();
-    final wasActive = activeId == serverIdOrIp || cfg['server_ip'] == serverIdOrIp;
-
-    if (wasActive) {
-      if (servers.isNotEmpty) {
-        final nextActive = servers.first;
-        cfg['active_server_id'] = nextActive['id'];
-        cfg['server_ip'] = nextActive['server_ip'];
-        cfg['ssh_user'] = nextActive['ssh_user'];
-        cfg['ssh_pass'] = nextActive['ssh_pass'];
-        cfg['ssh_port'] = nextActive['ssh_port'];
-        cfg['ai_model'] = nextActive['ai_model'];
-        cfg['remote_work_dir'] = nextActive['remote_work_dir'];
-        cfg['api_port'] = nextActive['api_port'];
-        cfg['secret_token'] = nextActive['secret_token'];
-      } else {
-        cfg['active_server_id'] = '';
-        cfg['server_ip'] = '';
-        cfg['ssh_user'] = 'root';
-        cfg['ssh_pass'] = '';
-        cfg['ssh_port'] = 22;
-      }
+    if (cfg['active_server_id'] == serverIdOrIp || cfg['server_ip'] == serverIdOrIp || servers.isEmpty) {
+      cfg['active_server_id'] = 'local';
+      cfg['server_ip'] = '127.0.0.1';
     }
 
     return await saveConfig(cfg, userKey: _currentUserKey);

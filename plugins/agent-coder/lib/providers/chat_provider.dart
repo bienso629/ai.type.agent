@@ -67,7 +67,15 @@ class ChatProvider extends ChangeNotifier {
         final match = _sessions.where((s) => s.id == _currentSession!.id);
         if (match.isNotEmpty) {
           _currentSession = match.first;
+        } else {
+          if (_sessions.isNotEmpty) {
+            _currentSession = _sessions.first;
+          } else {
+            _currentSession = null;
+          }
         }
+      } else if (_sessions.isNotEmpty) {
+        _currentSession = _sessions.first;
       }
     } catch (_) {}
     _isLoading = false;
@@ -89,6 +97,26 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  String? get currentSessionScope => _currentSession?.workingDirScope;
+
+  Future<void> setScopeForCurrentSession(String? scope) async {
+    if (_currentSession == null) {
+      await createNewSession();
+    }
+    final cleanScope = (scope != null && scope.trim().isNotEmpty) ? scope.trim() : null;
+    final updated = _currentSession!.copyWith(
+      workingDirScope: cleanScope,
+      clearWorkingDirScope: cleanScope == null,
+    );
+    _currentSession = updated;
+    final idx = _sessions.indexWhere((s) => s.id == updated.id);
+    if (idx != -1) {
+      _sessions[idx] = updated;
+    }
+    notifyListeners();
+    await _api.updateChatSessionScope(updated.id, cleanScope);
+  }
+
   Future<void> selectSession(ChatSessionModel session) async {
     _currentSession = session;
     _messages = [];
@@ -99,17 +127,22 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await _api.getChatHistory(session.id, limitQuestions: 3, beforeId: 0);
+      final result = await _api.getChatHistory(
+        session.id,
+        limitQuestions: 3,
+        beforeId: 0,
+      );
       _messages = result.messages;
       _hasMoreMessages = result.hasMore;
       _oldestMessageId = result.oldestId;
     } catch (_) {}
+
     _isLoading = false;
     notifyListeners();
   }
 
   Future<void> loadMoreMessages() async {
-    if (_isLoadingMore || !_hasMoreMessages || _currentSession == null || _oldestMessageId <= 0) return;
+    if (_currentSession == null || _isLoadingMore || !_hasMoreMessages) return;
 
     _isLoadingMore = true;
     notifyListeners();
@@ -143,13 +176,8 @@ class ChatProvider extends ChangeNotifier {
     // 1. Optimistic local update
     final idx = _sessions.indexWhere((s) => s.id == session.id);
     if (idx != -1) {
-      final updated = ChatSessionModel(
-        id: session.id,
-        title: session.title,
+      final updated = session.copyWith(
         isPinned: newPinState,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-        messageCount: session.messageCount,
       );
       _sessions[idx] = updated;
       _sessions.sort((a, b) {
@@ -163,7 +191,7 @@ class ChatProvider extends ChangeNotifier {
       notifyListeners();
     }
 
-    // 2. Sync with API
+    // 2. Sync with SQLite
     await _api.pinChatSession(session.id, newPinState);
     await loadSessions(silent: true);
   }
@@ -175,13 +203,9 @@ class ChatProvider extends ChangeNotifier {
     // 1. Optimistic local update
     final idx = _sessions.indexWhere((s) => s.id == session.id);
     if (idx != -1) {
-      final updated = ChatSessionModel(
-        id: session.id,
+      final updated = session.copyWith(
         title: cleanTitle,
-        isPinned: session.isPinned,
-        createdAt: session.createdAt,
         updatedAt: DateTime.now(),
-        messageCount: session.messageCount,
       );
       _sessions[idx] = updated;
       if (_currentSession?.id == session.id) {
@@ -190,7 +214,7 @@ class ChatProvider extends ChangeNotifier {
       notifyListeners();
     }
 
-    // 2. Sync with API
+    // 2. Sync with SQLite
     await _api.renameChatSession(session.id, cleanTitle);
     await loadSessions(silent: true);
   }
@@ -202,11 +226,27 @@ class ChatProvider extends ChangeNotifier {
       if (_sessions.isNotEmpty) {
         await selectSession(_sessions.first);
       } else {
-        await createNewSession();
+        _currentSession = null;
+        _messages = [];
+        _hasMoreMessages = false;
+        _oldestMessageId = 0;
+        notifyListeners();
       }
     } else {
       notifyListeners();
     }
+    await loadSessions(silent: true);
+  }
+
+  Future<void> deleteAllSessions() async {
+    await _api.deleteAllChatSessions();
+    _sessions.clear();
+    _currentSession = null;
+    _messages.clear();
+    _hasMoreMessages = false;
+    _oldestMessageId = 0;
+    notifyListeners();
+    await loadSessions(silent: true);
   }
 
   Future<void> clearHistory() async {
@@ -271,7 +311,7 @@ class ChatProvider extends ChangeNotifier {
       model: model,
       attachments: attachments,
       history: historySnap,
-      workingDir: workingDir,
+      workingDir: workingDir ?? _currentSession?.workingDirScope,
       onToken: (token) {
         assistantMsg.content += token;
         assistantMsg.statusMessage = null;

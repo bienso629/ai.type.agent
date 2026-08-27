@@ -7,7 +7,6 @@ import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import 'encryption_service.dart';
-import 'storage_service.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -23,27 +22,13 @@ class DatabaseService {
   String? get currentUserKey => _currentUserKey;
 
   Future<void> switchUser(String userKey) async {
-    final sanitized = StorageService.sanitizeUserKey(userKey);
-    if (_currentUserKey == sanitized && _db != null && _db!.isOpen) return;
-    _currentUserKey = sanitized;
-    if (_db != null && _db!.isOpen) {
-      await _db!.close();
-      _db = null;
+    // Single local database mode
+    if (_db == null || !_db!.isOpen) {
+      await init();
     }
-    _resolvedPath = null;
-    await init(userKey: _currentUserKey);
   }
 
   Future<void> init({String? userKey}) async {
-    if (userKey != null && userKey.isNotEmpty) {
-      final sanitized = StorageService.sanitizeUserKey(userKey);
-      if (_currentUserKey != sanitized && _db != null && _db!.isOpen) {
-        await _db!.close();
-        _db = null;
-      }
-      _currentUserKey = sanitized;
-    }
-
     if (_db != null && _db!.isOpen) return;
 
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
@@ -51,7 +36,7 @@ class DatabaseService {
       databaseFactory = databaseFactoryFfi;
     }
 
-    _resolvedPath = await _resolveDbPath(userKey: _currentUserKey);
+    _resolvedPath = await _resolveDbPath();
     _db = await openDatabase(
       _resolvedPath!,
       version: 1,
@@ -61,6 +46,7 @@ class DatabaseService {
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             is_pinned INTEGER DEFAULT 0,
+            working_dir TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
@@ -79,86 +65,31 @@ class DatabaseService {
         ''');
       },
     );
+    try {
+      await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN working_dir TEXT;');
+    } catch (_) {}
   }
 
-  Future<String> _resolveDbPath({String? userKey}) async {
-    final key = userKey ?? _currentUserKey ?? await StorageService().getUserKey();
-    final dbFileName = key.isNotEmpty ? 'chat_history_$key.db' : 'chat_history.db';
-
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      final execDir = p.dirname(Platform.resolvedExecutable);
-      final currentDir = Directory.current.path;
-      final candidates = [
-        p.join(currentDir, dbFileName),
-        p.join(currentDir, '..', dbFileName),
-        p.join(currentDir, '..', '..', dbFileName),
-        p.join(currentDir, '..', '..', '..', dbFileName),
-        p.join(execDir, dbFileName),
-        p.join(execDir, '..', dbFileName),
-        p.join(execDir, '..', '..', dbFileName),
-        p.join(execDir, '..', '..', '..', dbFileName),
-        p.join(execDir, '..', '..', '..', '..', dbFileName),
-        p.join(execDir, '..', '..', '..', '..', '..', dbFileName),
-        '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/$dbFileName',
-        p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', dbFileName),
-      ];
-
-      for (final candidate in candidates) {
-        if (File(candidate).existsSync()) {
-          return p.normalize(candidate);
-        }
+  Future<String> _resolveDbPath() async {
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    if (home.isNotEmpty) {
+      final appDir = Directory(p.join(home, '.ai_type_agent'));
+      if (!appDir.existsSync()) {
+        try {
+          appDir.createSync(recursive: true);
+        } catch (_) {}
       }
-
-      // If user-specific DB does not exist yet, search for base chat_history.db and seed/copy it
-      if (key.isNotEmpty) {
-        final fallbackCandidates = [
-          p.join(currentDir, 'chat_history.db'),
-          p.join(currentDir, '..', 'chat_history.db'),
-          p.join(currentDir, '..', '..', 'chat_history.db'),
-          p.join(currentDir, '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, 'chat_history.db'),
-          p.join(execDir, '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', '..', '..', 'chat_history.db'),
-          '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/chat_history.db',
-          p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', 'chat_history.db'),
-        ];
-        for (final fallback in fallbackCandidates) {
-          if (File(fallback).existsSync()) {
-            final targetDir = p.dirname(fallback);
-            final newPath = p.join(targetDir, dbFileName);
-            try {
-              File(fallback).copySync(newPath);
-              return p.normalize(newPath);
-            } catch (_) {
-              return p.normalize(fallback);
-            }
-          }
-        }
-      }
-
-      final defaultDesk = p.join(currentDir, dbFileName);
-      return defaultDesk;
+      final targetPath = p.join(appDir.path, 'chat_history.db');
+      return targetPath;
     }
 
     try {
       final appDocDir = await getApplicationDocumentsDirectory();
       final dir = Directory(appDocDir.path);
       if (!dir.existsSync()) dir.createSync(recursive: true);
-      final targetPath = p.join(appDocDir.path, dbFileName);
-      if (key.isNotEmpty && !File(targetPath).existsSync()) {
-        final defaultDb = p.join(appDocDir.path, 'chat_history.db');
-        if (File(defaultDb).existsSync()) {
-          try {
-            File(defaultDb).copySync(targetPath);
-          } catch (_) {}
-        }
-      }
-      return targetPath;
+      return p.join(appDocDir.path, 'chat_history.db');
     } catch (_) {
-      return dbFileName;
+      return 'chat_history.db';
     }
   }
 
@@ -171,33 +102,16 @@ class DatabaseService {
     try {
       final db = await _getDb();
       final rows = await db.rawQuery(
-        'SELECT id, title, is_pinned, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
+        'SELECT id, title, is_pinned, working_dir, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
       );
-
-      if (rows.isEmpty) {
-        final defaultId = 'default';
-        final encTitle = _enc.encryptValue('Cuộc hội thoại mới');
-        await db.insert('chat_sessions', {
-          'id': defaultId,
-          'title': encTitle,
-          'is_pinned': 0,
-          'created_at': DateTime.now().toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
-        });
-        return [
-          ChatSessionModel(
-            id: defaultId,
-            title: 'Cuộc hội thoại mới',
-            isPinned: false,
-          ),
-        ];
-      }
 
       final result = <ChatSessionModel>[];
       for (final row in rows) {
         final id = row['id']?.toString() ?? '';
         final rawTitle = row['title']?.toString() ?? '';
         final decTitle = _enc.decryptValue(rawTitle);
+        final rawScope = row['working_dir']?.toString();
+        final decScope = (rawScope != null && rawScope.isNotEmpty) ? _enc.decryptValue(rawScope) : null;
 
         // Count messages
         final countRows = await db.rawQuery(
@@ -216,6 +130,7 @@ class DatabaseService {
             createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''),
             updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? ''),
             messageCount: msgCount,
+            workingDirScope: decScope,
           ),
         );
       }
@@ -225,10 +140,15 @@ class DatabaseService {
     }
   }
 
-  Future<ChatSessionModel> createSession({String? id, String title = 'Cuộc hội thoại mới'}) async {
+  Future<ChatSessionModel> createSession({
+    String? id,
+    String title = 'Cuộc hội thoại mới',
+    String? workingDir,
+  }) async {
     final db = await _getDb();
     final sessId = id ?? 's_${DateTime.now().millisecondsSinceEpoch.toRadixString(16)}';
     final encTitle = _enc.encryptValue(title);
+    final encScope = (workingDir != null && workingDir.isNotEmpty) ? _enc.encryptValue(workingDir) : null;
     final now = DateTime.now().toIso8601String();
 
     await db.insert(
@@ -237,6 +157,7 @@ class DatabaseService {
         'id': sessId,
         'title': encTitle,
         'is_pinned': 0,
+        'working_dir': encScope,
         'created_at': now,
         'updated_at': now,
       },
@@ -247,9 +168,30 @@ class DatabaseService {
       id: sessId,
       title: title,
       isPinned: false,
+      workingDirScope: workingDir,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
+  }
+
+  Future<bool> updateSessionScope(String id, String? scope) async {
+    try {
+      final db = await _getDb();
+      final encScope = (scope != null && scope.isNotEmpty) ? _enc.encryptValue(scope) : null;
+      final now = DateTime.now().toIso8601String();
+      await db.update(
+        'chat_sessions',
+        {
+          'working_dir': encScope,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> updateSessionTitle(String id, String title) async {
@@ -297,6 +239,17 @@ class DatabaseService {
       final db = await _getDb();
       await db.delete('chat_messages', where: 'session_id = ?', whereArgs: [id]);
       await db.delete('chat_sessions', where: 'id = ?', whereArgs: [id]);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteAllSessions() async {
+    try {
+      final db = await _getDb();
+      await db.delete('chat_messages');
+      await db.delete('chat_sessions');
       return true;
     } catch (_) {
       return false;

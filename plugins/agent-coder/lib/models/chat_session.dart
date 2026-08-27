@@ -5,6 +5,7 @@ class ChatSessionModel {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int messageCount;
+  final String? workingDirScope;
 
   ChatSessionModel({
     required this.id,
@@ -13,6 +14,7 @@ class ChatSessionModel {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.messageCount = 0,
+    this.workingDirScope,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
@@ -28,6 +30,7 @@ class ChatSessionModel {
           ? (DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now())
           : DateTime.now(),
       messageCount: int.tryParse(json['message_count']?.toString() ?? '0') ?? 0,
+      workingDirScope: json['working_dir']?.toString() ?? json['working_dir_scope']?.toString(),
     );
   }
 
@@ -38,5 +41,28 @@ class ChatSessionModel {
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
         'message_count': messageCount,
+        if (workingDirScope != null && workingDirScope!.isNotEmpty)
+          'working_dir': workingDirScope,
       };
+
+  ChatSessionModel copyWith({
+    String? id,
+    String? title,
+    bool? isPinned,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? messageCount,
+    String? workingDirScope,
+    bool clearWorkingDirScope = false,
+  }) {
+    return ChatSessionModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      isPinned: isPinned ?? this.isPinned,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      messageCount: messageCount ?? this.messageCount,
+      workingDirScope: clearWorkingDirScope ? null : (workingDirScope ?? this.workingDirScope),
+    );
+  }
 }

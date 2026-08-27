@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/clipboard_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_logo.dart';
@@ -13,7 +15,6 @@ import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/server_provider.dart';
 
@@ -31,7 +32,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
   bool _isRightSidebarOpen = true;
-  String? _workingDirScope;
   final List<AttachmentItem> _attachedFiles = [];
 
   // Inline slash autocomplete state
@@ -80,7 +80,44 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  bool _isPastingImage = false;
+  DateTime _lastPasteTime = DateTime.fromMillisecondsSinceEpoch(0);
+
+  Future<void> _checkAndPasteClipboardImage() async {
+    final now = DateTime.now();
+    if (_isPastingImage || now.difference(_lastPasteTime).inMilliseconds < 800) {
+      return;
+    }
+    _isPastingImage = true;
+    _lastPasteTime = now;
+    try {
+      final img = await ClipboardService.getClipboardImage();
+      if (img != null && mounted) {
+        // Prevent duplicate addition if already attached
+        final isDuplicate = _attachedFiles.any((a) =>
+            a.name == img.name ||
+            (a.rawBytes != null &&
+                img.rawBytes != null &&
+                listEquals(a.rawBytes, img.rawBytes)));
+        if (!isDuplicate) {
+          setState(() {
+            _attachedFiles.add(img);
+          });
+          AppToast.success(context, 'Đã đính kèm ảnh chụp màn hình (${img.name})');
+        }
+      }
+    } finally {
+      _isPastingImage = false;
+    }
+  }
+
   KeyEventResult _handleInputKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final isCtrl = HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed;
+      if (isCtrl && event.logicalKey == LogicalKeyboardKey.keyV) {
+        _checkAndPasteClipboardImage();
+      }
+    }
     if (event is KeyDownEvent || event is KeyRepeatEvent) {
       if (_inlineDirSuggestions.isNotEmpty) {
         if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -161,17 +198,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _applyInlineDirAsScope(String dir) {
+    context.read<ChatProvider>().setScopeForCurrentSession(dir);
+    final text = _textController.text;
+    final idx = text.lastIndexOf(_currentSlashWord);
+    if (idx != -1) {
+      _textController.text = (text.substring(0, idx) + text.substring(idx + _currentSlashWord.length)).trim();
+    }
     setState(() {
-      _workingDirScope = dir;
-      final text = _textController.text;
-      final idx = text.lastIndexOf(_currentSlashWord);
-      if (idx != -1) {
-        _textController.text = (text.substring(0, idx) + text.substring(idx + _currentSlashWord.length)).trim();
-      }
       _inlineDirSuggestions.clear();
       _currentSlashWord = '';
     });
-    AppToast.success(context, 'Đã đặt phạm vi Agent: $dir');
+    AppToast.success(context, 'Đã gán Scope cho cuộc hội thoại này: $dir');
   }
 
   void _insertInlineDirIntoText(String dir) {
@@ -315,10 +352,12 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
+      if (!mounted) return;
+      final currentScope = context.read<ChatProvider>().currentSessionScope;
       final res = await _api.uploadFile(
         fileName: item.name,
         bytes: fileBytes,
-        targetDir: _workingDirScope,
+        targetDir: currentScope,
         onProgress: (sent, total, prog) {
           if (!mounted) return;
           final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
@@ -408,7 +447,7 @@ class _ChatScreenState extends State<ChatScreen> {
           return AlertDialog(
             backgroundColor: AppColors.cardBg,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(4),
               side: const BorderSide(color: AppColors.borderDark),
             ),
             title: Row(
@@ -566,24 +605,23 @@ class _ChatScreenState extends State<ChatScreen> {
       text,
       model: serverProvider.currentAiModel,
       attachments: attachmentsToSend,
-      workingDir: _workingDirScope,
+      workingDir: chat.currentSessionScope,
     );
     _safeScrollToBottom();
   }
 
   void _triggerScopePicker() async {
+    final chat = context.read<ChatProvider>();
     showDialog(
       context: context,
       builder: (ctx) => _ScopePickerDialog(
-        currentScope: _workingDirScope,
+        currentScope: chat.currentSessionScope,
         onSelect: (val) {
-          setState(() {
-            _workingDirScope = val;
-          });
+          chat.setScopeForCurrentSession(val);
           if (val != null) {
-            AppToast.success(context, 'Đã đặt phạm vi Agent: $val');
+            AppToast.success(context, 'Đã gán Scope cho cuộc hội thoại này: $val');
           } else {
-            AppToast.info(context, 'Đã xóa giới hạn phạm vi làm việc');
+            AppToast.info(context, 'Đã xóa giới hạn Scope của cuộc hội thoại');
           }
         },
       ),
@@ -609,10 +647,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _safeScrollToBottom();
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.bgDark,
-      body: Column(
-        children: [
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyV, control: true): _checkAndPasteClipboardImage,
+        const SingleActivator(LogicalKeyboardKey.keyV, meta: true): _checkAndPasteClipboardImage,
+      },
+      child: Focus(
+        autofocus: false,
+        child: Scaffold(
+          backgroundColor: AppColors.bgDark,
+          body: Column(
+            children: [
           // 1. Topbar Header (Height 66px)
           Container(
             height: 66,
@@ -652,7 +697,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         Row(
                           children: [
                             Text(
-                              chat.currentSession?.title ?? 'AI Type AI Assistant',
+                              chat.currentSession?.title ?? 'AI Type Agent',
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                             ),
                             const SizedBox(width: 8),
@@ -669,9 +714,13 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ],
                         ),
-                        const Text(
-                          'Có quyền thực thi lệnh bash an toàn trên máy chủ Linux',
-                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                        Text(
+                          (serverProvider.selectedServer != null &&
+                                  serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                  serverProvider.selectedServer!.serverIp != 'localhost')
+                              ? 'Quản trị & thực thi trên Server: ${serverProvider.selectedServer!.name} (${serverProvider.selectedServer!.serverIp})'
+                              : 'Có quyền thực thi lệnh Terminal an toàn trên máy tính cục bộ (${Platform.operatingSystem})',
+                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       ],
                     ),
@@ -777,6 +826,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 
@@ -789,7 +840,7 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.sidebarBg,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: AppColors.borderDark),
               ),
               child: const Row(
@@ -810,12 +861,12 @@ class _ChatScreenState extends State<ChatScreen> {
             )
           : InkWell(
               onTap: () => chat.loadMoreMessages(),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(4),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: AppColors.cardBg,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(4),
                   border: Border.all(color: AppColors.borderDark),
                 ),
                 child: const Row(
@@ -840,21 +891,15 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: AppColors.borderDark),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const AppLogo(size: 32),
-              const SizedBox(width: 10),
-              Text(
-                '👋 Xin chào! Tôi là AI Type Agent (${serverProvider.currentAiModel})',
-                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-              ),
-            ],
+          Text(
+            'Xin chào! Tôi là AI Type Agent (${serverProvider.currentAiModel})',
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
           ),
           const SizedBox(height: 6),
           const Text(
@@ -872,29 +917,21 @@ class _ChatScreenState extends State<ChatScreen> {
             runSpacing: 8,
             children: [
               _buildPromptChip(
-                icon: Icons.pie_chart_rounded,
-                iconColor: AppColors.accentCyan,
                 label: 'Kiểm tra RAM & Ổ đĩa',
                 prompt: 'Kiểm tra dung lượng ổ đĩa và RAM hiện tại',
                 chat: chat,
               ),
               _buildPromptChip(
-                icon: Icons.bolt_rounded,
-                iconColor: AppColors.warning,
                 label: 'Top tiến trình CPU',
                 prompt: 'Xem danh sách tiến trình đang chạy và chiếm nhiều CPU nhất',
                 chat: chat,
               ),
               _buildPromptChip(
-                icon: Icons.lan_rounded,
-                iconColor: AppColors.primaryLight,
                 label: 'Cổng đang mở',
                 prompt: 'Kiểm tra các cổng mạng đang mở (listening ports)',
                 chat: chat,
               ),
               _buildPromptChip(
-                icon: Icons.sync_rounded,
-                iconColor: AppColors.accent,
                 label: 'Trạng thái Services',
                 prompt: 'Kiểm tra trạng thái service nginx và uvicorn',
                 chat: chat,
@@ -907,21 +944,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildPromptChip({
-    required IconData icon,
-    required Color iconColor,
     required String label,
     required String prompt,
     required ChatProvider chat,
   }) {
-    return OutlinedButton.icon(
+    return OutlinedButton(
       style: OutlinedButton.styleFrom(
         side: const BorderSide(color: AppColors.borderDark),
         backgroundColor: AppColors.inputBg,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
-      icon: Icon(icon, size: 14, color: iconColor),
-      label: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
+      child: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
       onPressed: () {
         chat.sendMessage(prompt);
         _safeScrollToBottom();
@@ -938,10 +972,6 @@ class _ChatScreenState extends State<ChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          if (!isUser) ...[
-            const AppLogo(size: 30),
-            const SizedBox(width: 10),
-          ],
           Flexible(
             child: Column(
               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -952,7 +982,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     color: isUser
                         ? AppColors.primary.withValues(alpha: 0.12)
                         : AppColors.cardBg,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(4),
                     border: Border.all(
                       color: isUser
                           ? AppColors.primary.withValues(alpha: 0.4)
@@ -983,12 +1013,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(
-                                        att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                                        size: 14,
-                                        color: att.isImage ? AppColors.accentCyan : AppColors.warning,
-                                      ),
-                                      const SizedBox(width: 6),
                                       ConstrainedBox(
                                         constraints: const BoxConstraints(maxWidth: 160),
                                         child: Text(
@@ -1004,10 +1028,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                         style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
                                       ),
                                       const SizedBox(width: 6),
-                                      const Icon(
-                                        Icons.download_rounded,
-                                        size: 14,
-                                        color: AppColors.accentCyan,
+                                      const Text(
+                                        'Tải xuống',
+                                        style: TextStyle(fontSize: 10, color: AppColors.accentCyan, fontWeight: FontWeight.w500),
                                       ),
                                     ],
                                   ),
@@ -1110,40 +1133,36 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
 
-                // Message Action Bar (Timestamp, Copy, Retry)
+                // Message Action Bar (Timestamp, Copy, Retry, PDF)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 2, right: 2),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.schedule_rounded, size: 11, color: AppColors.textDim),
-                      const SizedBox(width: 3),
                       Text(
                         _formatSessionTime(msg.createdAt),
                         style: const TextStyle(fontSize: 10.5, color: AppColors.textDim, fontFamily: 'monospace'),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
+                      const Text('•', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
+                      const SizedBox(width: 8),
                       InkWell(
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: BorderRadius.circular(4),
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: msg.content));
                           AppToast.success(context, 'Đã sao chép nội dung vào bộ nhớ tạm!');
                         },
                         child: const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          child: Row(
-                            children: [
-                              Icon(Icons.copy_rounded, size: 11, color: AppColors.textDim),
-                              SizedBox(width: 3),
-                              Text('Sao chép', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
-                            ],
-                          ),
+                          child: Text('Sao chép', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
                         ),
                       ),
                       if (!isUser) ...[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
+                        const Text('•', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
+                        const SizedBox(width: 6),
                         InkWell(
-                          borderRadius: BorderRadius.circular(3),
+                          borderRadius: BorderRadius.circular(4),
                           onTap: () async {
                             final server = context.read<ServerProvider>().selectedServer;
                             final srvInfo = server != null ? '${server.sshUser}@${server.serverIp}' : null;
@@ -1161,33 +1180,23 @@ class _ChatScreenState extends State<ChatScreen> {
                           },
                           child: const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Row(
-                              children: [
-                                Icon(Icons.picture_as_pdf_outlined, size: 11, color: AppColors.primaryLight),
-                                SizedBox(width: 3),
-                                Text('Tải PDF A4', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w500)),
-                              ],
-                            ),
+                            child: Text('Tải PDF A4', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w500)),
                           ),
                         ),
                       ],
                       if (isUser) ...[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
+                        const Text('•', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
+                        const SizedBox(width: 6),
                         InkWell(
-                          borderRadius: BorderRadius.circular(3),
+                          borderRadius: BorderRadius.circular(4),
                           onTap: () {
                             chat.sendMessage(msg.content);
                             _safeScrollToBottom();
                           },
                           child: const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Row(
-                              children: [
-                                Icon(Icons.rotate_right_rounded, size: 12, color: AppColors.primaryLight),
-                                SizedBox(width: 3),
-                                Text('Hỏi lại', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w600)),
-                              ],
-                            ),
+                            child: Text('Hỏi lại', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ],
@@ -1197,35 +1206,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-          if (isUser) ...[
-            const SizedBox(width: 10),
-            Builder(
-              builder: (ctx) {
-                final auth = ctx.watch<AuthProvider>();
-                final letter = (auth.userEmail?.isNotEmpty == true)
-                    ? auth.userEmail![0].toUpperCase()
-                    : 'U';
-                return Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    letter,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryLight,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
         ],
       ),
     );
@@ -1243,22 +1223,14 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.terminal_rounded, size: 14, color: AppColors.accent),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  tool.command,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.accent,
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            tool.command,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: AppColors.accent,
+            ),
           ),
           if (tool.output.isNotEmpty) ...[
             const Divider(color: AppColors.borderDark, height: 10),
@@ -1289,37 +1261,35 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: AppColors.inputBg,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(4),
           border: Border.all(color: AppColors.borderDark),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_workingDirScope != null) ...[
+            if (chat.currentSessionScope != null && chat.currentSessionScope!.isNotEmpty) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.accentCyan.withValues(alpha: 0.12),
+                  color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.5)),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.folder_open_rounded, size: 14, color: AppColors.accentCyan),
+                    const Icon(Icons.folder_open_rounded, size: 14, color: AppColors.primaryLight),
                     const SizedBox(width: 6),
-                    const Text('Phạm vi Agent: ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                    const Text('Scope Hội Thoại: ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
                     Text(
-                      _workingDirScope!,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
+                      chat.currentSessionScope!,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
                     ),
                     const SizedBox(width: 6),
                     GestureDetector(
                       onTap: () {
-                        setState(() {
-                          _workingDirScope = null;
-                        });
+                        chat.setScopeForCurrentSession(null);
                       },
                       child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
                     ),
@@ -1429,7 +1399,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             if (att.isUploading) ...[
                               const SizedBox(height: 4),
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(2),
+                                borderRadius: BorderRadius.circular(4),
                                 child: SizedBox(
                                   width: 160,
                                   child: LinearProgressIndicator(
@@ -1455,7 +1425,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.bgDark,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(4),
                   border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
                   boxShadow: [
                     BoxShadow(
@@ -1549,12 +1519,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                     const SizedBox(width: 8),
                                     InkWell(
                                       onTap: () => _applyInlineDirAsScope(dir),
-                                      borderRadius: BorderRadius.circular(3),
+                                      borderRadius: BorderRadius.circular(4),
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
                                           color: AppColors.primary,
-                                          borderRadius: BorderRadius.circular(3),
+                                          borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
                                           isHighlighted ? '⏎ Đặt Scope' : 'Đặt Scope',
@@ -1565,12 +1535,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                     const SizedBox(width: 6),
                                     InkWell(
                                       onTap: () => _insertInlineDirIntoText(dir),
-                                      borderRadius: BorderRadius.circular(3),
+                                      borderRadius: BorderRadius.circular(4),
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
                                           color: AppColors.inputBg,
-                                          borderRadius: BorderRadius.circular(3),
+                                          borderRadius: BorderRadius.circular(4),
                                           border: Border.all(color: AppColors.borderDark),
                                         ),
                                         child: const Text('Tab: Chèn', style: TextStyle(fontSize: 10, color: AppColors.textBody)),
@@ -1608,45 +1578,71 @@ class _ChatScreenState extends State<ChatScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      ),
-                      icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
-                      label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
-                      onPressed: _triggerScopePicker,
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                Expanded(
+                  child: Row(
+                    children: [
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.borderDark),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                         ),
-                        backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
+                        label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
+                        onPressed: _triggerScopePicker,
                       ),
-                      icon: Icon(
-                        Icons.attach_file_rounded,
-                        size: 14,
-                        color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.accentCyan,
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                          ),
+                          backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        icon: Icon(
+                          Icons.attach_file_rounded,
+                          size: 14,
+                          color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.accentCyan,
+                        ),
+                        label: Text(
+                          _attachedFiles.isNotEmpty ? 'Attach (${_attachedFiles.length})' : 'Attach',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
+                            fontWeight: _attachedFiles.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        onPressed: _pickFiles,
                       ),
-                      label: Text(
-                        _attachedFiles.isNotEmpty ? 'Attach (${_attachedFiles.length})' : 'Attach',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
-                          fontWeight: _attachedFiles.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Builder(
+                          builder: (context) {
+                            final server = serverProvider.selectedServer;
+                            final isLocal = server == null || server.serverIp == '127.0.0.1' || server.serverIp == 'localhost';
+                            final targetHintText = isLocal
+                                ? 'AI Type Agent đang tương tác với Local Machine ${Platform.operatingSystem.toUpperCase()}'
+                                : 'AI Type Agent đang tương tác với ${server.name} (${server.serverIp})';
+
+                            return Text(
+                              targetHintText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textMuted,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            );
+                          },
                         ),
                       ),
-                      onPressed: _pickFiles,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 10),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
@@ -1664,7 +1660,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  String _formatSessionTime(DateTime dt) {
+  String _formatSessionTime(DateTime? dt) {
+    if (dt == null) return '';
     final now = DateTime.now();
     if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
       return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -1783,12 +1780,37 @@ class _ChatScreenState extends State<ChatScreen> {
                                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
                                                 decoration: BoxDecoration(
                                                   color: AppColors.warning.withValues(alpha: 0.15),
-                                                  borderRadius: BorderRadius.circular(2),
+                                                  borderRadius: BorderRadius.circular(4),
                                                   border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
                                                 ),
                                                 child: const Text(
                                                   'Ghim',
                                                   style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.warning),
+                                                ),
+                                              ),
+                                            if (sess.workingDirScope != null && sess.workingDirScope!.isNotEmpty)
+                                              Container(
+                                                margin: const EdgeInsets.only(right: 6),
+                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.primary.withValues(alpha: 0.15),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.folder_rounded, size: 9, color: AppColors.primaryLight),
+                                                    const SizedBox(width: 2),
+                                                    ConstrainedBox(
+                                                      constraints: const BoxConstraints(maxWidth: 80),
+                                                      child: Text(
+                                                        sess.workingDirScope!.replaceAll(RegExp(r'[/\\]+$'), '').split(Platform.pathSeparator).last,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             Text(
@@ -1834,10 +1856,11 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('${chat.sessions.length} hội thoại', style: const TextStyle(fontSize: 11, color: AppColors.textDim)),
-                TextButton(
-                  onPressed: () => chat.clearHistory(),
-                  child: const Text('Xoá chat', style: TextStyle(fontSize: 11, color: AppColors.danger)),
-                ),
+                if (chat.sessions.isNotEmpty)
+                  TextButton(
+                    onPressed: () => _showClearAllSessionsDialog(chat),
+                    child: const Text('Xoá tất cả', style: TextStyle(fontSize: 11, color: AppColors.danger)),
+                  ),
               ],
             ),
           ),
@@ -1846,8 +1869,57 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _showClearAllSessionsDialog(ChatProvider chat) {
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 420,
+        maxWidth: 500,
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
+            SizedBox(width: 8),
+            Text('Xác Nhận Xóa Tất Cả'),
+          ],
+        ),
+        content: const Text(
+          'Bạn có chắc chắn muốn xóa toàn bộ danh sách hội thoại và lịch sử chat không?',
+          style: TextStyle(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await chat.deleteAllSessions();
+              if (mounted) {
+                AppToast.success(context, 'Đã xóa toàn bộ các cuộc hội thoại!');
+              }
+            },
+            child: const Text('Xóa tất cả'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showRenameDialog(ChatProvider chat, dynamic sess) {
     final titleCtrl = TextEditingController(text: sess.title);
+    void doSubmit(BuildContext ctx) async {
+      final newTitle = titleCtrl.text.trim();
+      Navigator.pop(ctx);
+      if (newTitle.isNotEmpty && newTitle != sess.title) {
+        await chat.renameSession(sess, newTitle);
+        if (mounted) {
+          AppToast.success(context, 'Đã đổi tên hộp hội thoại!');
+        }
+      }
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => TaduDialog(
@@ -1869,6 +1941,7 @@ class _ChatScreenState extends State<ChatScreen> {
             TextField(
               controller: titleCtrl,
               autofocus: true,
+              onSubmitted: (_) => doSubmit(ctx),
               decoration: const InputDecoration(
                 labelText: 'Tiêu đề cuộc hội thoại',
                 prefixIcon: Icon(Icons.chat_bubble_outline_rounded, size: 16),
@@ -1882,14 +1955,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
-            onPressed: () {
-              final newTitle = titleCtrl.text.trim();
-              if (newTitle.isNotEmpty) {
-                chat.renameSession(sess, newTitle);
-                AppToast.success(context, 'Đã đổi tên hộp hội thoại!');
-              }
-              Navigator.pop(ctx);
-            },
+            onPressed: () => doSubmit(ctx),
             child: const Text('Lưu thay đổi'),
           ),
         ],
@@ -1905,7 +1971,7 @@ class _ChatScreenState extends State<ChatScreen> {
         maxWidth: 500,
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 22),
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
             SizedBox(width: 8),
             Text('Xác Nhận Xóa Hội Thoại'),
           ],
@@ -1921,10 +1987,12 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
-              chat.deleteSession(sess.id);
-              AppToast.info(context, 'Đã xóa hộp hội thoại!');
+            onPressed: () async {
               Navigator.pop(ctx);
+              await chat.deleteSession(sess.id);
+              if (mounted) {
+                AppToast.success(context, 'Đã xóa cuộc hội thoại thành công!');
+              }
             },
             child: const Text('Xóa vĩnh viễn'),
           ),
@@ -1956,17 +2024,25 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
   int _selectedIndex = 0;
   Timer? _debounce;
 
-  static const List<String> _presets = [
-    '/var/www',
-    '/home',
-    '/root',
-    '/etc/nginx',
-  ];
+  static List<String> get _presets {
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    final list = <String>[];
+    if (home.isNotEmpty) {
+      list.add(home);
+      final doc = '$home/Documents';
+      final proj = '$home/Projects';
+      final dl = '$home/Downloads';
+      if (Directory(doc).existsSync() && !list.contains(doc)) list.add(doc);
+      if (Directory(proj).existsSync() && !list.contains(proj)) list.add(proj);
+      if (Directory(dl).existsSync() && !list.contains(dl)) list.add(dl);
+    }
+    return list;
+  }
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.currentScope ?? '/var/www');
+    _controller = TextEditingController(text: widget.currentScope ?? '');
     _dialogFocusNode.onKeyEvent = _handleDialogKeyEvent;
     _loadSuggestions(_controller.text);
   }
@@ -2024,27 +2100,64 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
     });
   }
 
+  Future<void> _pickLocalDirectory() async {
+    try {
+      final initialDir = _controller.text.isNotEmpty && Directory(_controller.text).existsSync()
+          ? _controller.text
+          : (Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '/');
+
+      final String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Chọn thư mục dự án cục bộ (Local Scope)',
+        initialDirectory: initialDir,
+      );
+
+      if (selectedDirectory != null && selectedDirectory.isNotEmpty) {
+        setState(() {
+          _controller.text = selectedDirectory;
+        });
+        _loadSuggestions(selectedDirectory);
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return TaduDialog(
-      minWidth: 540,
-      maxWidth: 620,
+      minWidth: 560,
+      maxWidth: 660,
       title: const Row(
         children: [
-          Icon(Icons.folder_open_rounded, color: AppColors.warning, size: 20),
+          Icon(Icons.folder_open_rounded, color: AppColors.primaryLight, size: 20),
           SizedBox(width: 8),
-          Text('Phạm Vi Thư Mục Làm Việc (Scope /)'),
+          Text('Phạm Vi Thư Mục Làm Việc Cục Bộ (Scope)'),
         ],
       ),
       content: SizedBox(
-        width: 540,
+        width: 560,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Giới hạn thao tác của AI Agent trong thư mục này trên máy chủ Linux:',
-              style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Giới hạn phạm vi thao tác của AI Agent trong thư mục này trên máy tính:',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardBg,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.drive_folder_upload_rounded, size: 14, color: AppColors.primaryLight),
+                  label: const Text('Duyệt máy tính...', style: TextStyle(fontSize: 11.5, color: AppColors.primaryLight)),
+                  onPressed: _pickLocalDirectory,
+                ),
+              ],
             ),
             const SizedBox(height: 10),
 
@@ -2078,7 +2191,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                         Icon(
                           Icons.folder_rounded,
                           size: 12,
-                          color: isSelected ? AppColors.primaryLight : AppColors.warning,
+                          color: isSelected ? AppColors.primaryLight : AppColors.accentCyan,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -2104,7 +2217,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
               focusNode: _dialogFocusNode,
               onChanged: _loadSuggestions,
               decoration: InputDecoration(
-                hintText: 'Nhập đường dẫn, dùng phím ↑ ↓ Enter để chọn...',
+                hintText: 'Nhập đường dẫn thư mục cục bộ, dùng ↑ ↓ Enter để chọn...',
                 prefixIcon: const Icon(Icons.search_rounded, size: 18),
                 suffixIcon: _isLoading
                     ? const Padding(
@@ -2133,13 +2246,13 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
               height: 180,
               decoration: BoxDecoration(
                 color: AppColors.bgDark,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: AppColors.borderDark),
               ),
               child: _suggestions.isEmpty
                   ? Center(
                       child: Text(
-                        _isLoading ? 'Đang tìm kiếm thư mục...' : 'Không có gợi ý thư mục nào',
+                        _isLoading ? 'Đang đọc danh sách thư mục cục bộ...' : 'Không có thư mục con nào',
                         style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                       ),
                     )
@@ -2173,7 +2286,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                                   Icon(
                                     Icons.folder_rounded,
                                     size: 16,
-                                    color: isHighlighted ? AppColors.primaryLight : AppColors.warning,
+                                    color: isHighlighted ? AppColors.primaryLight : AppColors.accentCyan,
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -2224,7 +2337,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
             widget.onSelect(val.isEmpty ? null : val);
             Navigator.pop(context);
           },
-          child: const Text('Áp dụng'),
+          child: const Text('Áp dụng Scope'),
         ),
       ],
     );
