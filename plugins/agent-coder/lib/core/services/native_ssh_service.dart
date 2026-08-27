@@ -76,9 +76,9 @@ class NativeSshService {
     }
   }
 
-  Future<String> executeCommand(String command, {String? workingDir, int timeoutSeconds = 60}) async {
+  Future<String> executeCommand(String command, {String? workingDir, int timeoutSeconds = 60, ServerModel? server}) async {
     try {
-      final client = await getClient();
+      final client = await getClient(server: server);
       String fullCmd = command;
       if (workingDir != null && workingDir.isNotEmpty) {
         fullCmd = 'cd "$workingDir" 2>/dev/null; $command';
@@ -283,17 +283,17 @@ class NativeSshService {
     }
   }
 
-  Future<Map<String, dynamic>> executeServiceAction(String service, String action) async {
+  Future<Map<String, dynamic>> executeServiceAction(String service, String action, {ServerModel? server}) async {
     try {
       final cfg = await _configService.loadConfig();
-      final apiPort = int.tryParse(cfg['api_port']?.toString() ?? '8000') ?? 8000;
-      final remoteDir = cfg['remote_work_dir']?.toString() ?? '/opt/ai_agent';
+      final apiPort = server?.apiPort ?? int.tryParse(cfg['api_port']?.toString() ?? '8000') ?? 8000;
+      final remoteDir = (server != null && server.remoteWorkDir.isNotEmpty) ? server.remoteWorkDir : (cfg['remote_work_dir']?.toString() ?? '/opt/ai_agent');
       final proxyKey = cfg['proxy_api_key']?.toString() ?? '';
       final proxyBase = cfg['proxy_base_url']?.toString() ?? 'https://api-us-ca.umodelverse.ai/v1';
       final aiModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
       final secretToken = cfg['secret_token']?.toString() ?? 'super_secret_token_123';
 
-      final client = await getClient();
+      final client = await getClient(server: server);
       String cmd;
       String friendlyMsg;
 
@@ -510,25 +510,26 @@ journalctl -u $service.service -n 15 --no-pager 2>/dev/null || tail -n 15 $remot
   }
 
   Future<void> streamDeploy({
+    ServerModel? server,
     required void Function(String step) onStep,
     required void Function() onDone,
     required void Function(dynamic error) onError,
   }) async {
     try {
       final cfg = await _configService.loadConfig();
-      final serverIp = cfg['server_ip']?.toString() ?? '127.0.0.1';
-      final sshPort = int.tryParse(cfg['ssh_port']?.toString() ?? '22') ?? 22;
-      final sshUser = cfg['ssh_user']?.toString() ?? 'root';
-      var remoteDir = cfg['remote_work_dir']?.toString() ?? '/opt/ai_agent';
+      final serverIp = server?.serverIp ?? (cfg['server_ip']?.toString() ?? '127.0.0.1');
+      final sshPort = server?.sshPort ?? (int.tryParse(cfg['ssh_port']?.toString() ?? '22') ?? 22);
+      final sshUser = server?.sshUser ?? (cfg['ssh_user']?.toString() ?? 'root');
+      var remoteDir = (server != null && server.remoteWorkDir.isNotEmpty) ? server.remoteWorkDir : (cfg['remote_work_dir']?.toString() ?? '/opt/ai_agent');
       if (remoteDir.isEmpty) remoteDir = '/opt/ai_agent';
-      final apiPort = int.tryParse(cfg['api_port']?.toString() ?? '8000') ?? 8000;
+      final apiPort = server?.apiPort ?? (int.tryParse(cfg['api_port']?.toString() ?? '8000') ?? 8000);
       final proxyKey = cfg['proxy_api_key']?.toString() ?? '';
       final proxyBase = cfg['proxy_base_url']?.toString() ?? 'https://api-us-ca.umodelverse.ai/v1';
       final aiModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
       final secretToken = cfg['secret_token']?.toString() ?? 'super_secret_token_123';
 
       onStep('⚡ Bắt đầu kết nối SSH tới máy chủ $serverIp:$sshPort...');
-      final client = await getClient();
+      final client = await getClient(server: server);
       onStep('✅ Kết nối SSH thành công tới $serverIp (User: $sshUser | SSH Port: $sshPort | API Port: $apiPort)!');
 
       onStep('🔍 Đang kiểm tra môi trường và kiến trúc CPU máy chủ...');

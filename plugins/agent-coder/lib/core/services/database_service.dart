@@ -68,6 +68,9 @@ class DatabaseService {
     try {
       await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN working_dir TEXT;');
     } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN target_server TEXT;');
+    } catch (_) {}
   }
 
   Future<String> _resolveDbPath() async {
@@ -102,7 +105,7 @@ class DatabaseService {
     try {
       final db = await _getDb();
       final rows = await db.rawQuery(
-        'SELECT id, title, is_pinned, working_dir, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
+        'SELECT id, title, is_pinned, working_dir, target_server, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
       );
 
       final result = <ChatSessionModel>[];
@@ -112,6 +115,10 @@ class DatabaseService {
         final decTitle = _enc.decryptValue(rawTitle);
         final rawScope = row['working_dir']?.toString();
         final decScope = (rawScope != null && rawScope.isNotEmpty) ? _enc.decryptValue(rawScope) : null;
+        final rawServer = row['target_server']?.toString();
+        final decServer = (rawServer != null && rawServer.isNotEmpty)
+            ? _enc.decryptValue(rawServer)
+            : 'Local Machine';
 
         // Count messages
         final countRows = await db.rawQuery(
@@ -131,6 +138,7 @@ class DatabaseService {
             updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? ''),
             messageCount: msgCount,
             workingDirScope: decScope,
+            targetServer: decServer,
           ),
         );
       }
@@ -144,11 +152,14 @@ class DatabaseService {
     String? id,
     String title = 'Cuộc hội thoại mới',
     String? workingDir,
+    String? targetServer,
   }) async {
     final db = await _getDb();
     final sessId = id ?? 's_${DateTime.now().millisecondsSinceEpoch.toRadixString(16)}';
     final encTitle = _enc.encryptValue(title);
     final encScope = (workingDir != null && workingDir.isNotEmpty) ? _enc.encryptValue(workingDir) : null;
+    final finalServer = (targetServer != null && targetServer.isNotEmpty) ? targetServer : 'Local Machine';
+    final encServer = _enc.encryptValue(finalServer);
     final now = DateTime.now().toIso8601String();
 
     await db.insert(
@@ -158,6 +169,7 @@ class DatabaseService {
         'title': encTitle,
         'is_pinned': 0,
         'working_dir': encScope,
+        'target_server': encServer,
         'created_at': now,
         'updated_at': now,
       },
@@ -169,9 +181,30 @@ class DatabaseService {
       title: title,
       isPinned: false,
       workingDirScope: workingDir,
+      targetServer: finalServer,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
+  }
+
+  Future<bool> updateSessionServer(String id, String? targetServer) async {
+    try {
+      final db = await _getDb();
+      final encServer = (targetServer != null && targetServer.isNotEmpty) ? _enc.encryptValue(targetServer) : null;
+      final now = DateTime.now().toIso8601String();
+      await db.update(
+        'chat_sessions',
+        {
+          'target_server': encServer,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> updateSessionScope(String id, String? scope) async {

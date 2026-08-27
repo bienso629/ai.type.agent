@@ -82,19 +82,39 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> createNewSession({String title = 'Cuộc hội thoại mới'}) async {
+  Future<void> createNewSession({String title = 'Cuộc hội thoại mới', String? targetServer}) async {
     try {
-      final newSess = await _api.createChatSession(title: title);
+      final newSess = await _api.createChatSession(title: title, targetServer: targetServer);
       _sessions.insert(0, newSess);
       await selectSession(newSess);
     } catch (_) {
       final fallbackSess = ChatSessionModel(
         id: 'sess_${DateTime.now().millisecondsSinceEpoch}',
         title: title,
+        targetServer: targetServer,
       );
       _sessions.insert(0, fallbackSess);
       await selectSession(fallbackSess);
     }
+  }
+
+  Future<void> setServerForCurrentSession(String? serverName) async {
+    if (_currentSession == null) {
+      await createNewSession(targetServer: serverName);
+      return;
+    }
+    final cleanServer = (serverName != null && serverName.trim().isNotEmpty) ? serverName.trim() : null;
+    final updated = _currentSession!.copyWith(
+      targetServer: cleanServer,
+      clearTargetServer: cleanServer == null,
+    );
+    _currentSession = updated;
+    final idx = _sessions.indexWhere((s) => s.id == updated.id);
+    if (idx != -1) {
+      _sessions[idx] = updated;
+    }
+    notifyListeners();
+    await _api.updateChatSessionServer(updated.id, cleanServer);
   }
 
   String? get currentSessionScope => _currentSession?.workingDirScope;
@@ -196,15 +216,23 @@ class ChatProvider extends ChangeNotifier {
     await loadSessions(silent: true);
   }
 
-  Future<void> renameSession(ChatSessionModel session, String newTitle) async {
-    final cleanTitle = newTitle.trim();
-    if (cleanTitle.isEmpty) return;
+  Future<void> updateSession(
+    ChatSessionModel session, {
+    String? newTitle,
+    String? newTargetServer,
+  }) async {
+    final cleanTitle = newTitle?.trim();
+    final cleanServer = newTargetServer?.trim();
+
+    final finalTitle = (cleanTitle != null && cleanTitle.isNotEmpty) ? cleanTitle : session.title;
+    final finalServer = (cleanServer != null && cleanServer.isNotEmpty) ? cleanServer : (session.targetServer ?? 'Local Machine');
 
     // 1. Optimistic local update
     final idx = _sessions.indexWhere((s) => s.id == session.id);
     if (idx != -1) {
       final updated = session.copyWith(
-        title: cleanTitle,
+        title: finalTitle,
+        targetServer: finalServer,
         updatedAt: DateTime.now(),
       );
       _sessions[idx] = updated;
@@ -215,8 +243,17 @@ class ChatProvider extends ChangeNotifier {
     }
 
     // 2. Sync with SQLite
-    await _api.renameChatSession(session.id, cleanTitle);
+    if (cleanTitle != null && cleanTitle.isNotEmpty && cleanTitle != session.title) {
+      await _api.renameChatSession(session.id, cleanTitle);
+    }
+    if (cleanServer != null && cleanServer.isNotEmpty && cleanServer != session.targetServer) {
+      await _api.updateChatSessionServer(session.id, cleanServer);
+    }
     await loadSessions(silent: true);
+  }
+
+  Future<void> renameSession(ChatSessionModel session, String newTitle) async {
+    await updateSession(session, newTitle: newTitle);
   }
 
   Future<void> deleteSession(String sessionId) async {
@@ -263,12 +300,15 @@ class ChatProvider extends ChangeNotifier {
     String? model,
     List<AttachmentItem>? attachments,
     String? workingDir,
+    String? targetServer,
   }) async {
     final query = text.trim();
     if ((query.isEmpty && (attachments == null || attachments.isEmpty)) || _isGenerating) return;
 
     if (_currentSession == null) {
-      await createNewSession();
+      await createNewSession(targetServer: targetServer);
+    } else if (targetServer != null && targetServer.isNotEmpty && (_currentSession!.targetServer == null || _currentSession!.targetServer!.isEmpty)) {
+      await setServerForCurrentSession(targetServer);
     }
 
     final sessionId = _currentSession!.id;
@@ -312,6 +352,7 @@ class ChatProvider extends ChangeNotifier {
       attachments: attachments,
       history: historySnap,
       workingDir: workingDir ?? _currentSession?.workingDirScope,
+      targetServer: targetServer ?? _currentSession?.targetServer,
       onToken: (token) {
         assistantMsg.content += token;
         assistantMsg.statusMessage = null;

@@ -1,10 +1,7 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
-import '../../core/widgets/tadu_dialog.dart';
 import '../../models/server_model.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
@@ -17,122 +14,6 @@ class ServerSetupScreen extends StatefulWidget {
 }
 
 class _ServerSetupScreenState extends State<ServerSetupScreen> {
-  final ApiService _api = ApiService();
-  bool _isPrivacyMode = true;
-  bool _isDeploying = false;
-  final List<String> _deployLogs = [];
-  final ScrollController _deployScrollCtrl = ScrollController();
-  StreamSubscription? _deploySub;
-
-  @override
-  void dispose() {
-    _deploySub?.cancel();
-    _deployScrollCtrl.dispose();
-    super.dispose();
-  }
-
-  void _handleServiceAction(String action) async {
-    final actionLabel = action == 'start'
-        ? 'khởi động'
-        : action == 'restart'
-            ? 'khởi động lại'
-            : action == 'stop'
-                ? 'tắt'
-                : 'kiểm tra chi tiết';
-    AppToast.info(context, 'Đang gửi lệnh $actionLabel dịch vụ...');
-
-    final res = await _api.executeServiceAction('ai-agent', action);
-    final output = res['output']?.toString() ?? res['message']?.toString() ?? 'Không có phản hồi từ máy chủ';
-    final msg = res['message']?.toString() ?? output;
-
-    if (action == 'status') {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => TaduDialog(
-          minWidth: 640,
-          maxWidth: 820,
-          maxHeight: 520,
-          title: const Row(
-            children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.primaryLight, size: 22),
-              SizedBox(width: 8),
-              Text('Chi Tiết Trạng Thái Service & Tiến Trình'),
-            ],
-          ),
-          content: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.terminalBg,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppColors.borderDark),
-            ),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                output,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.terminalGreen, height: 1.4),
-              ),
-            ),
-          ),
-          actions: [
-            ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Đóng')),
-          ],
-        ),
-      );
-    } else {
-      if (mounted) {
-        if (res['status'] == 'error') {
-          AppToast.error(context, msg);
-        } else {
-          AppToast.success(context, msg);
-        }
-        await Future.delayed(const Duration(milliseconds: 1200));
-        if (mounted) {
-          context.read<MetricsProvider>().fetchMetrics(silent: true);
-        }
-      }
-    }
-  }
-
-  void _startDeploy() {
-    if (_isDeploying) return;
-    setState(() {
-      _isDeploying = true;
-      _deployLogs.clear();
-      _deployLogs.add('⚡ Bắt đầu tự động thiết lập & Deploy Agent lên máy chủ...');
-    });
-
-    _deploySub?.cancel();
-    _deploySub = _api.streamDeploy(
-      onStep: (step) {
-        setState(() {
-          _deployLogs.add(step);
-        });
-        if (_deployScrollCtrl.hasClients) {
-          _deployScrollCtrl.animateTo(
-            _deployScrollCtrl.position.maxScrollExtent + 40,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-          );
-        }
-      },
-      onDone: () {
-        setState(() {
-          _isDeploying = false;
-          _deployLogs.add('✔ Quá trình thiết lập hoàn tất!');
-        });
-        context.read<MetricsProvider>().fetchMetrics();
-      },
-      onError: (err) {
-        setState(() {
-          _isDeploying = false;
-          _deployLogs.add('❌ Lỗi thiết lập: $err');
-        });
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final metricsProvider = context.watch<MetricsProvider>();
@@ -243,30 +124,6 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                       ),
                       const SizedBox(width: 8),
                     ],
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      icon: Icon(
-                        Icons.shield_rounded,
-                        size: 15,
-                        color: _isPrivacyMode ? AppColors.accent : AppColors.textDim,
-                      ),
-                      label: Text(
-                        _isPrivacyMode ? 'Bảo Mật: BẬT' : 'Bảo Mật: TẮT',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _isPrivacyMode ? AppColors.accent : AppColors.textDim,
-                        ),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPrivacyMode = !_isPrivacyMode;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.cardBg,
@@ -328,7 +185,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                           title: 'Địa chỉ Máy Chủ',
                           icon: Icons.public_rounded,
                           iconColor: AppColors.accentCyan,
-                          value: _isPrivacyMode ? '103.***.***.***' : (s?.serverIp ?? '127.0.0.1'),
+                          value: s?.serverIp ?? '127.0.0.1',
                           valueColor: AppColors.textWhite,
                           subtitle: 'Cổng API: ${s?.apiPort ?? 8000}',
                         ),
@@ -359,144 +216,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 2. Service Action Buttons Card
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.power_settings_new_rounded, size: 16, color: AppColors.primaryLight),
-                            SizedBox(width: 8),
-                            Text(
-                              'Điều Khiển Dịch Vụ AI Agent (Systemd)',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
-                              icon: const Icon(Icons.play_arrow_rounded, size: 16),
-                              label: const Text('Khởi Động'),
-                              onPressed: () => _handleServiceAction('start'),
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning, foregroundColor: Colors.black),
-                              icon: const Icon(Icons.rotate_right_rounded, size: 16),
-                              label: const Text('Khởi Động Lại', style: TextStyle(fontWeight: FontWeight.bold)),
-                              onPressed: () => _handleServiceAction('restart'),
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-                              icon: const Icon(Icons.stop_rounded, size: 16),
-                              label: const Text('Tắt'),
-                              onPressed: () => _handleServiceAction('stop'),
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.inputBg, side: const BorderSide(color: AppColors.borderDark)),
-                              icon: const Icon(Icons.info_outline_rounded, size: 16),
-                              label: const Text('Chi Tiết Status'),
-                              onPressed: () => _handleServiceAction('status'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 3. 1-Click Deploy Section
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.cloud_upload_rounded, size: 18, color: AppColors.accentCyan),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      '1-Click Deploy & Tự Động Thiết Lập Trọn Gói',
-                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Tự động cài đặt nhị phân, cấu hình Systemd service và kết nối Agent trên VPS',
-                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                ),
-                              ],
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-                              icon: _isDeploying
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                    )
-                                  : const Icon(Icons.rocket_launch_rounded, size: 16),
-                              label: Text(_isDeploying ? 'Đang thiết lập...' : 'Bắt đầu thiết lập'),
-                              onPressed: _isDeploying ? null : _startDeploy,
-                            ),
-                          ],
-                        ),
-                        if (_deployLogs.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          Container(
-                            height: 160,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.terminalBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.borderDark),
-                            ),
-                            child: ListView.builder(
-                              controller: _deployScrollCtrl,
-                              itemCount: _deployLogs.length,
-                              itemBuilder: (context, idx) {
-                                return Text(
-                                  _deployLogs[idx],
-                                  style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 11,
-                                    color: AppColors.terminalGreen,
-                                    height: 1.4,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 4. Server Resource Metrics (CPU, RAM, DISK, NETWORK)
+                  // 2. Server Resource Metrics (CPU, RAM, DISK, NETWORK)
                   const Text(
                     'Tài Nguyên Máy Chủ Đám Mây',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),

@@ -199,9 +199,9 @@ class ApiService {
     throw Exception('Failed to get metrics: ${res.statusCode}');
   }
 
-  Future<Map<String, dynamic>> executeServiceAction(String service, String action) async {
+  Future<Map<String, dynamic>> executeServiceAction(String service, String action, {ServerModel? server}) async {
     if (await _isNativeMode()) {
-      return await _ssh.executeServiceAction(service, action);
+      return await _ssh.executeServiceAction(service, action, server: server);
     }
     final baseUrl = await _getBaseUrl();
     try {
@@ -253,6 +253,7 @@ class ApiService {
 
   // 6. 1-Click Deploy Stream
   StreamSubscription<String> streamDeploy({
+    ServerModel? server,
     required void Function(String step) onStep,
     required void Function() onDone,
     required void Function(dynamic error) onError,
@@ -263,6 +264,7 @@ class ApiService {
       if (await _isNativeMode()) {
         try {
           await _ssh.streamDeploy(
+            server: server,
             onStep: onStep,
             onDone: onDone,
             onError: onError,
@@ -341,9 +343,13 @@ class ApiService {
     return [];
   }
 
-  Future<ChatSessionModel> createChatSession({String title = 'Cuộc hội thoại mới', String? workingDir}) async {
+  Future<ChatSessionModel> createChatSession({
+    String title = 'Cuộc hội thoại mới',
+    String? workingDir,
+    String? targetServer,
+  }) async {
     if (await _isNativeMode()) {
-      return await _db.createSession(title: title, workingDir: workingDir);
+      return await _db.createSession(title: title, workingDir: workingDir, targetServer: targetServer);
     }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
@@ -352,6 +358,7 @@ class ApiService {
       body: jsonEncode({
         'title': title,
         if (workingDir != null && workingDir.isNotEmpty) 'working_dir': workingDir,
+        if (targetServer != null && targetServer.isNotEmpty) 'target_server': targetServer,
       }),
     );
     if (res.statusCode == 200) {
@@ -359,6 +366,13 @@ class ApiService {
       return ChatSessionModel.fromJson(json);
     }
     throw Exception('Failed to create session');
+  }
+
+  Future<bool> updateChatSessionServer(String sessionId, String? targetServer) async {
+    if (await _isNativeMode()) {
+      return await _db.updateSessionServer(sessionId, targetServer);
+    }
+    return true;
   }
 
   Future<bool> updateChatSessionScope(String sessionId, String? scope) async {
@@ -481,6 +495,7 @@ class ApiService {
     List<AttachmentItem>? attachments,
     List<Map<String, dynamic>>? history,
     String? workingDir,
+    String? targetServer,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
     required void Function(ToolExecutionItem tool) onTool,
@@ -498,6 +513,7 @@ class ApiService {
           attachments: attachments,
           history: history,
           workingDir: workingDir,
+          targetServer: targetServer,
           onToken: onToken,
           onStatus: onStatus,
           onTool: onTool,
