@@ -1,35 +1,50 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
+import '../core/services/native_ssh_service.dart';
+import '../models/server_model.dart';
 
 class LogsProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
+  final NativeSshService _ssh = NativeSshService();
 
   String _logs = 'Đang tải nhật ký...';
   bool _isLoading = false;
-  bool _autoRefresh = true;
+  int _refreshInterval = 0; // 0 = Tắt/Thủ công, 3 = 3s, 5 = 5s, 10 = 10s, 30 = 30s
   int _lines = 100;
+  ServerModel? _selectedServer; // null = Local Machine
+  String _logType = 'agent'; // 'agent', 'syslog', 'auth', 'nginx', 'dmesg'
   Timer? _timer;
 
   String get logs => _logs;
   bool get isLoading => _isLoading;
-  bool get autoRefresh => _autoRefresh;
+  int get refreshInterval => _refreshInterval;
+  bool get isAutoRefresh => _refreshInterval > 0;
   int get lines => _lines;
+  ServerModel? get selectedServer => _selectedServer;
+  bool get isLocal => _selectedServer == null || _selectedServer!.serverIp == '127.0.0.1' || _selectedServer!.serverIp == 'localhost';
+  String get logType => _logType;
 
   LogsProvider() {
     fetchLogs();
-    startAutoRefresh();
   }
 
-  void setAutoRefresh(bool val) {
-    _autoRefresh = val;
+  void setServer(ServerModel? srv) {
+    _selectedServer = (srv == null || srv.serverIp == '127.0.0.1' || srv.serverIp == 'localhost') ? null : srv;
     notifyListeners();
-    if (_autoRefresh) {
-      startAutoRefresh();
-    } else {
-      _timer?.cancel();
-      _timer = null;
-    }
+    fetchLogs();
+  }
+
+  void setLogType(String type) {
+    _logType = type;
+    notifyListeners();
+    fetchLogs();
+  }
+
+  void setRefreshInterval(int seconds) {
+    _refreshInterval = seconds;
+    notifyListeners();
+    _restartTimer();
   }
 
   void setLines(int count) {
@@ -38,12 +53,23 @@ class LogsProvider extends ChangeNotifier {
     fetchLogs();
   }
 
-  void startAutoRefresh() {
+  void _restartTimer() {
     _timer?.cancel();
-    if (!_autoRefresh) return;
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
-      fetchLogs(silent: true);
-    });
+    _timer = null;
+    if (_refreshInterval > 0) {
+      _timer = Timer.periodic(Duration(seconds: _refreshInterval), (_) {
+        fetchLogs(silent: true);
+      });
+    }
+  }
+
+  void pauseAutoRefresh() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void resumeAutoRefresh() {
+    _restartTimer();
   }
 
   Future<void> fetchLogs({bool silent = false}) async {
@@ -53,10 +79,19 @@ class LogsProvider extends ChangeNotifier {
     }
 
     try {
-      final data = await _api.getServerLogs(lines: _lines);
-      _logs = data;
+      if (isLocal) {
+        final data = await _api.getServerLogs(lines: _lines);
+        _logs = data;
+      } else {
+        final data = await _ssh.getServerLogs(
+          lines: _lines,
+          server: _selectedServer,
+          logType: _logType,
+        );
+        _logs = data;
+      }
     } catch (e) {
-      _logs = 'Lỗi tải log: $e';
+      _logs = 'Lỗi tải nhật ký: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
