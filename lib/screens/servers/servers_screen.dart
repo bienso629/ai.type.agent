@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/api_service.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
@@ -15,13 +17,25 @@ class ServersScreen extends StatefulWidget {
 }
 
 class _ServersScreenState extends State<ServersScreen> {
+  final ApiService _api = ApiService();
   final TextEditingController _searchCtrl = TextEditingController();
   final Map<String, String> _testStatus = {}; // serverId -> 'testing' | 'success' | 'failed'
+  final Set<String> _expandedServerIds = {};
+  String? _deployingServerId;
+  final Map<String, List<String>> _deployLogs = {};
+  final Map<String, ScrollController> _deployScrollCtrls = {};
+  final Map<String, StreamSubscription> _deploySubs = {};
   String _searchQuery = '';
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    for (final sub in _deploySubs.values) {
+      sub.cancel();
+    }
+    for (final ctrl in _deployScrollCtrls.values) {
+      ctrl.dispose();
+    }
     super.dispose();
   }
 
@@ -50,17 +64,112 @@ class _ServersScreenState extends State<ServersScreen> {
     }
   }
 
-  Future<void> _switchToLocal(ServerProvider serverProvider) async {
-    final localSrv = ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1');
-    await serverProvider.selectServer(localSrv);
-    if (!mounted) return;
-    AppToast.success(context, 'Đã chuyển về chế độ Local Machine');
-  }
 
   Future<void> _switchToServer(ServerProvider serverProvider, ServerModel server) async {
     await serverProvider.selectServer(server);
     if (!mounted) return;
     AppToast.success(context, 'Đã kích hoạt máy chủ "${server.name}" (${server.serverIp})');
+  }
+
+  void _handleServiceAction(ServerModel server, String action) async {
+    final actionLabel = action == 'start'
+        ? 'khởi động'
+        : action == 'restart'
+            ? 'khởi động lại'
+            : action == 'stop'
+                ? 'tắt'
+                : 'kiểm tra chi tiết';
+    AppToast.info(context, 'Đang gửi lệnh $actionLabel dịch vụ trên ${server.name}...');
+
+    final res = await _api.executeServiceAction('ai-agent', action, server: server);
+    final output = res['output']?.toString() ?? res['message']?.toString() ?? 'Không có phản hồi từ máy chủ';
+    final msg = res['message']?.toString() ?? output;
+
+    if (action == 'status') {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => TaduDialog(
+          minWidth: 640,
+          maxWidth: 820,
+          maxHeight: 520,
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: AppColors.primaryLight, size: 22),
+              const SizedBox(width: 8),
+              Text('Chi Tiết Trạng Thái Service - ${server.name} (${server.serverIp})'),
+            ],
+          ),
+          content: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.terminalBg,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: AppColors.borderDark),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                output,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.terminalGreen, height: 1.4),
+              ),
+            ),
+          ),
+          actions: [
+            ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Đóng')),
+          ],
+        ),
+      );
+    } else {
+      if (mounted) {
+        if (res['status'] == 'error') {
+          AppToast.error(context, msg);
+        } else {
+          AppToast.success(context, msg);
+        }
+      }
+    }
+  }
+
+  void _startDeploy(ServerModel server) {
+    if (_deployingServerId != null) return;
+    setState(() {
+      _deployingServerId = server.id;
+      _expandedServerIds.add(server.id);
+      _deployLogs[server.id] = ['⚡ Bắt đầu tự động thiết lập & Deploy Agent lên máy chủ ${server.name} (${server.serverIp})...'];
+    });
+
+    final scrollCtrl = _deployScrollCtrls.putIfAbsent(server.id, () => ScrollController());
+    _deploySubs[server.id]?.cancel();
+    _deploySubs[server.id] = _api.streamDeploy(
+      server: server,
+      onStep: (step) {
+        setState(() {
+          _deployLogs[server.id]?.add(step);
+        });
+        if (scrollCtrl.hasClients) {
+          scrollCtrl.animateTo(
+            scrollCtrl.position.maxScrollExtent + 40,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+          );
+        }
+      },
+      onDone: () {
+        setState(() {
+          _deployingServerId = null;
+          _deployLogs[server.id]?.add('✔ Quá trình thiết lập trên máy chủ ${server.name} hoàn tất!');
+        });
+        if (mounted) AppToast.success(context, 'Thiết lập thành công trên ${server.name}!');
+      },
+      onError: (err) {
+        setState(() {
+          _deployingServerId = null;
+          _deployLogs[server.id]?.add('❌ Lỗi thiết lập: $err');
+        });
+        if (mounted) AppToast.error(context, 'Lỗi thiết lập trên ${server.name}: $err');
+      },
+    );
   }
 
   void _showAddServerDialog(BuildContext context, [ServerModel? existing]) {
@@ -303,7 +412,7 @@ class _ServersScreenState extends State<ServersScreen> {
                         Text(
                           isRemoteActive
                               ? 'Đang kết nối: ${serverProvider.selectedServer!.name} (${serverProvider.selectedServer!.serverIp})'
-                              : 'Đang ở chế độ Local Machine (thực thi trên máy cục bộ)',
+                              : 'Chọn một máy chủ VPS bên dưới để kết nối và quản trị',
                           style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       ],
@@ -403,148 +512,22 @@ class _ServersScreenState extends State<ServersScreen> {
               ),
             ),
 
-          // 4. Main Server List
+          // 3. Main Server List
           Expanded(
             child: serverProvider.isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    padding: const EdgeInsets.all(20),
-                    itemCount: _searchQuery.isEmpty ? (servers.isEmpty ? 2 : servers.length + 1) : (servers.isEmpty ? 1 : servers.length),
-                    itemBuilder: (context, index) {
-                      // 1. Local Machine Card (when at top of search)
-                      if (_searchQuery.isEmpty && index == 0) {
-                        final isLocalActive = !isRemoteActive;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: isLocalActive ? AppColors.cardBg : AppColors.cardBg.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: isLocalActive ? AppColors.accent : AppColors.borderDark,
-                              width: isLocalActive ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Tooltip(
-                                  message: isLocalActive ? 'Đang kích hoạt' : 'Bật để chuyển sang chạy Local',
-                                  child: Switch(
-                                    value: isLocalActive,
-                                    activeThumbColor: AppColors.accent,
-                                    activeTrackColor: AppColors.accent.withValues(alpha: 0.4),
-                                    onChanged: (bool val) {
-                                      if (val) _switchToLocal(serverProvider);
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: isLocalActive
-                                        ? AppColors.accent.withValues(alpha: 0.15)
-                                        : AppColors.inputBg,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: isLocalActive ? AppColors.accent.withValues(alpha: 0.4) : AppColors.borderDark,
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    Icons.laptop_chromebook_rounded,
-                                    size: 24,
-                                    color: isLocalActive ? AppColors.accent : AppColors.textDim,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: InkWell(
-                                    onTap: () {
-                                      if (!isLocalActive) _switchToLocal(serverProvider);
-                                    },
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Text(
-                                              'Máy Cục Bộ (Local Machine)',
-                                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppColors.textWhite),
-                                            ),
-                                            if (isLocalActive) ...[
-                                              const SizedBox(width: 10),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.accent,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: const Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.check_circle_rounded, size: 11, color: Colors.white),
-                                                    SizedBox(width: 3),
-                                                    Text(
-                                                      'ĐANG HOẠT ĐỘNG',
-                                                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.inputBg,
-                                                borderRadius: BorderRadius.circular(4),
-                                                border: Border.all(color: AppColors.borderDark),
-                                              ),
-                                              child: const Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(Icons.terminal_rounded, size: 12, color: AppColors.accentCyan),
-                                                  SizedBox(width: 4),
-                                                  Text(
-                                                    'localhost (127.0.0.1)',
-                                                    style: TextStyle(fontSize: 10.5, fontFamily: 'monospace', color: AppColors.textMuted),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            const Text(
-                                              'Thực thi câu lệnh trực tiếp trên máy của bạn',
-                                              style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-
-                      // Empty state when servers is empty
-                      if (servers.isEmpty) {
-                        return Container(
+                : servers.isEmpty
+                    ? Center(
+                        child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-                          margin: const EdgeInsets.only(top: 8),
+                          margin: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
                             color: AppColors.cardBg.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(color: AppColors.borderDark),
                           ),
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               const Icon(Icons.dns_outlined, size: 36, color: AppColors.textDim),
                               const SizedBox(height: 10),
@@ -563,14 +546,21 @@ class _ServersScreenState extends State<ServersScreen> {
                               ),
                             ],
                           ),
-                        );
-                      }
-
-                      final s = _searchQuery.isEmpty ? servers[index - 1] : servers[index];
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(20),
+                        itemCount: servers.length,
+                        itemBuilder: (context, index) {
+                          final s = servers[index];
                           final isSelected = isRemoteActive &&
                               serverProvider.selectedServer != null &&
                               (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
                           final test = _testStatus[s.id];
+                          final isDeployingThis = _deployingServerId == s.id;
+                          final isExpanded = _expandedServerIds.contains(s.id) || isDeployingThis;
+                          final deployLogs = _deployLogs[s.id];
+                          final scrollCtrl = _deployScrollCtrls[s.id];
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -584,60 +574,45 @@ class _ServersScreenState extends State<ServersScreen> {
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(16),
-                              child: Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Switch Button to Toggle this Server Active Status
-                                  Tooltip(
-                                    message: isSelected ? 'Bấm để tắt (chuyển về Local)' : 'Bấm để kích hoạt máy chủ này',
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Switch(
-                                          value: isSelected,
-                                          activeThumbColor: AppColors.primaryLight,
-                                          activeTrackColor: AppColors.primary,
-                                          onChanged: (bool val) {
-                                            if (val) {
-                                              _switchToServer(serverProvider, s);
-                                            } else {
-                                              _switchToLocal(serverProvider);
-                                            }
-                                          },
+                                  // Top Row: Icon, Server Info, Action Buttons
+                                  Row(
+                                    children: [
+                                      // Server Icon & Active Indicator
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? AppColors.primary.withValues(alpha: 0.15)
+                                              : AppColors.inputBg,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: isSelected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.borderDark,
+                                          ),
                                         ),
-                                        const SizedBox(width: 8),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // Server Icon & Active Indicator
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? AppColors.primary.withValues(alpha: 0.15)
-                                          : AppColors.inputBg,
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: isSelected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.borderDark,
+                                        child: Icon(
+                                          Icons.dns_rounded,
+                                          size: 24,
+                                          color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+                                        ),
                                       ),
-                                    ),
-                                    child: Icon(
-                                      Icons.dns_rounded,
-                                      size: 24,
-                                      color: isSelected ? AppColors.primaryLight : AppColors.textDim,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
+                                      const SizedBox(width: 16),
 
-                                  // Server Information
-                                  Expanded(
-                                    child: InkWell(
-                                      onTap: () {
-                                        if (!isSelected) _switchToServer(serverProvider, s);
-                                      },
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
+                                      // Server Information
+                                      Expanded(
+                                        child: InkWell(
+                                          hoverColor: Colors.transparent,
+                                          splashColor: Colors.transparent,
+                                          highlightColor: Colors.transparent,
+                                          mouseCursor: SystemMouseCursors.click,
+                                          onTap: () {
+                                            if (!isSelected) _switchToServer(serverProvider, s);
+                                          },
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
                                           Row(
                                             children: [
                                               Text(
@@ -827,14 +802,204 @@ class _ServersScreenState extends State<ServersScreen> {
                                           );
                                         },
                                       ),
+
+                                      const SizedBox(width: 4),
+
+                                      // Expand / Collapse Chevron Button
+                                      IconButton(
+                                        icon: Icon(
+                                          isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                                          size: 20,
+                                          color: isExpanded ? AppColors.primaryLight : AppColors.textDim,
+                                        ),
+                                        tooltip: isExpanded ? 'Thu gọn thiết lập' : 'Mở rộng điều khiển Systemd & 1-Click Deploy',
+                                        onPressed: () {
+                                          setState(() {
+                                            if (_expandedServerIds.contains(s.id)) {
+                                              _expandedServerIds.remove(s.id);
+                                            } else {
+                                              _expandedServerIds.add(s.id);
+                                            }
+                                          });
+                                        },
+                                      ),
                                     ],
                                   ),
                                 ],
                               ),
-                            ),
-                          );
-                        },
-                      ),
+
+                              // Collapsible Content (Systemd Control & 1-Click Deploy)
+                              if (isExpanded) ...[
+                                // Divider
+                                const SizedBox(height: 14),
+                                const Divider(color: AppColors.borderDark, height: 1),
+                                const SizedBox(height: 14),
+
+                                // Block 1: Điều Khiển Dịch Vụ AI Agent (Systemd)
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.inputBg,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.borderDark),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Row(
+                                        children: [
+                                          Icon(Icons.power_settings_new_rounded, size: 16, color: AppColors.primaryLight),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Điều Khiển Dịch Vụ AI Agent (Systemd)',
+                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Wrap(
+                                        spacing: 10,
+                                        runSpacing: 8,
+                                        children: [
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFF16A34A),
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                            icon: const Icon(Icons.play_arrow_rounded, size: 15),
+                                            label: const Text('Khởi Động', style: TextStyle(fontSize: 11.5)),
+                                            onPressed: () => _handleServiceAction(s, 'start'),
+                                          ),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.warning,
+                                              foregroundColor: Colors.black,
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                            icon: const Icon(Icons.rotate_right_rounded, size: 15),
+                                            label: const Text('Khởi Động Lại', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                            onPressed: () => _handleServiceAction(s, 'restart'),
+                                          ),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.danger,
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                            icon: const Icon(Icons.stop_rounded, size: 15),
+                                            label: const Text('Tắt', style: TextStyle(fontSize: 11.5)),
+                                            onPressed: () => _handleServiceAction(s, 'stop'),
+                                          ),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.cardBg,
+                                              side: const BorderSide(color: AppColors.borderDark),
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                            icon: const Icon(Icons.info_outline_rounded, size: 15),
+                                            label: const Text('Chi Tiết Status', style: TextStyle(fontSize: 11.5)),
+                                            onPressed: () => _handleServiceAction(s, 'status'),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+
+                                // Block 2: 1-Click Deploy & Tự Động Thiết Lập Trọn Gói
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.inputBg,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.borderDark),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Icon(Icons.cloud_upload_rounded, size: 16, color: AppColors.accentCyan),
+                                                    SizedBox(width: 8),
+                                                    Text(
+                                                      '1-Click Deploy & Tự Động Thiết Lập Trọn Gói',
+                                                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                                    ),
+                                                  ],
+                                                ),
+                                                SizedBox(height: 4),
+                                                Text(
+                                                  'Tự động cài đặt nhị phân, cấu hình Systemd service và kết nối Agent trên VPS',
+                                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.primary,
+                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                            ),
+                                            icon: isDeployingThis
+                                                ? const SizedBox(
+                                                    width: 14,
+                                                    height: 14,
+                                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                                  )
+                                                : const Icon(Icons.rocket_launch_rounded, size: 15),
+                                            label: Text(
+                                              isDeployingThis ? 'Đang thiết lập...' : 'Bắt đầu thiết lập',
+                                              style: const TextStyle(fontSize: 11.5),
+                                            ),
+                                            onPressed: isDeployingThis ? null : () => _startDeploy(s),
+                                          ),
+                                        ],
+                                      ),
+                                      if (deployLogs != null && deployLogs.isNotEmpty) ...[
+                                        const SizedBox(height: 12),
+                                        Container(
+                                          height: 140,
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.terminalBg,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: AppColors.borderDark),
+                                          ),
+                                          child: ListView.builder(
+                                            controller: scrollCtrl,
+                                            itemCount: deployLogs.length,
+                                            itemBuilder: (context, idx) {
+                                              return Text(
+                                                deployLogs[idx],
+                                                style: const TextStyle(
+                                                  fontFamily: 'monospace',
+                                                  fontSize: 11,
+                                                  color: AppColors.terminalGreen,
+                                                  height: 1.35,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

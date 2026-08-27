@@ -6,6 +6,7 @@ class ChatSessionModel {
   final DateTime updatedAt;
   final int messageCount;
   final String? workingDirScope;
+  final String? targetServer;
 
   ChatSessionModel({
     required this.id,
@@ -15,6 +16,7 @@ class ChatSessionModel {
     DateTime? updatedAt,
     this.messageCount = 0,
     this.workingDirScope,
+    this.targetServer,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
@@ -31,6 +33,7 @@ class ChatSessionModel {
           : DateTime.now(),
       messageCount: int.tryParse(json['message_count']?.toString() ?? '0') ?? 0,
       workingDirScope: json['working_dir']?.toString() ?? json['working_dir_scope']?.toString(),
+      targetServer: json['target_server']?.toString() ?? json['server_name']?.toString(),
     );
   }
 
@@ -43,6 +46,8 @@ class ChatSessionModel {
         'message_count': messageCount,
         if (workingDirScope != null && workingDirScope!.isNotEmpty)
           'working_dir': workingDirScope,
+        if (targetServer != null && targetServer!.isNotEmpty)
+          'target_server': targetServer,
       };
 
   ChatSessionModel copyWith({
@@ -54,6 +59,8 @@ class ChatSessionModel {
     int? messageCount,
     String? workingDirScope,
     bool clearWorkingDirScope = false,
+    String? targetServer,
+    bool clearTargetServer = false,
   }) {
     return ChatSessionModel(
       id: id ?? this.id,
@@ -63,6 +70,7 @@ class ChatSessionModel {
       updatedAt: updatedAt ?? this.updatedAt,
       messageCount: messageCount ?? this.messageCount,
       workingDirScope: clearWorkingDirScope ? null : (workingDirScope ?? this.workingDirScope),
+      targetServer: clearTargetServer ? null : (targetServer ?? this.targetServer),
     );
   }
 }

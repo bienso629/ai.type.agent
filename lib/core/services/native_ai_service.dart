@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
+import '../../models/server_model.dart';
 import 'database_service.dart';
 import 'local_config_service.dart';
 
@@ -36,8 +37,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
    - Không chào hỏi dài dòng, không văn mẫu xã giao.
 ''';
 
-  Future<String> _executeCommand(String command, {String? workingDir, int timeoutSeconds = 60}) async {
+  Future<String> _executeCommand(String command, {String? workingDir, int timeoutSeconds = 60, ServerModel? server}) async {
     try {
+      if (server != null && server.serverIp != '127.0.0.1' && server.serverIp != 'localhost') {
+        return await _sshService.executeCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds, server: server);
+      }
       final cfg = await _configService.loadConfig();
       final serverIp = cfg['server_ip']?.toString() ?? '127.0.0.1';
       final isRemote = serverIp.isNotEmpty && serverIp != '127.0.0.1' && serverIp != 'localhost';
@@ -91,6 +95,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     List<AttachmentItem>? attachments,
     List<Map<String, dynamic>>? history,
     String? workingDir,
+    String? targetServer,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
     required void Function(ToolExecutionItem tool) onTool,
@@ -112,6 +117,16 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           baseUrl = baseUrl.substring(0, baseUrl.length - 1);
         }
 
+        // Resolve Target Server for this specific session
+        ServerModel? targetServerModel;
+        final allServers = await _configService.getServers();
+        if (targetServer != null && targetServer.isNotEmpty && targetServer != 'Local Machine' && targetServer != 'Local' && targetServer != '127.0.0.1') {
+          final matches = allServers.where((s) => s.name == targetServer || s.id == targetServer || s.serverIp == targetServer);
+          if (matches.isNotEmpty) {
+            targetServerModel = matches.first;
+          }
+        }
+
         // Save user message to database
         final userMsg = ChatMessageModel(
           sessionId: sessionId,
@@ -125,8 +140,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
         // Build System Prompt
         String sysPrompt = systemPromptBase;
+        if (targetServerModel != null) {
+          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Mọi lệnh terminal của bạn sẽ được gửi trực tiếp qua SSH tới máy chủ này.';
+        } else {
+          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
+        }
         if (workingDir != null && workingDir.isNotEmpty) {
-          sysPrompt += '\n\n🎯 THƯ MỤC LÀM VIỆC CỤC BỘ: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
+          sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
         }
 
         final messages = <Map<String, dynamic>>[
@@ -330,7 +350,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               );
               onTool(toolItem);
 
-              final cmdOutput = await _executeCommand(cmd, workingDir: workingDir);
+              final cmdOutput = await _executeCommand(cmd, workingDir: workingDir, server: targetServerModel);
 
               final finishedTool = ToolExecutionItem(
                 tool: funcName,
