@@ -43,6 +43,14 @@ class ChatProvider extends ChangeNotifier {
     initChat();
   }
 
+  void _sortSessions() {
+    _sessions.sort((a, b) {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+  }
+
   Future<void> initChat() async {
     await loadSessions(silent: true);
     if (_sessions.isNotEmpty) {
@@ -63,6 +71,7 @@ class ChatProvider extends ChangeNotifier {
     try {
       final list = await _api.getChatSessions();
       _sessions = list;
+      _sortSessions();
       if (_currentSession != null) {
         final match = _sessions.where((s) => s.id == _currentSession!.id);
         if (match.isNotEmpty) {
@@ -85,15 +94,20 @@ class ChatProvider extends ChangeNotifier {
   Future<void> createNewSession({String title = 'Cuộc hội thoại mới', String? targetServer}) async {
     try {
       final newSess = await _api.createChatSession(title: title, targetServer: targetServer);
+      _sessions.removeWhere((s) => s.id == newSess.id);
       _sessions.insert(0, newSess);
+      _sortSessions();
       await selectSession(newSess);
     } catch (_) {
       final fallbackSess = ChatSessionModel(
         id: 'sess_${DateTime.now().millisecondsSinceEpoch}',
         title: title,
         targetServer: targetServer,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
       _sessions.insert(0, fallbackSess);
+      _sortSessions();
       await selectSession(fallbackSess);
     }
   }
@@ -104,14 +118,17 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
     final cleanServer = (serverName != null && serverName.trim().isNotEmpty) ? serverName.trim() : null;
+    final now = DateTime.now();
     final updated = _currentSession!.copyWith(
       targetServer: cleanServer,
       clearTargetServer: cleanServer == null,
+      updatedAt: now,
     );
     _currentSession = updated;
     final idx = _sessions.indexWhere((s) => s.id == updated.id);
     if (idx != -1) {
       _sessions[idx] = updated;
+      _sortSessions();
     }
     notifyListeners();
     await _api.updateChatSessionServer(updated.id, cleanServer);
@@ -124,14 +141,17 @@ class ChatProvider extends ChangeNotifier {
       await createNewSession();
     }
     final cleanScope = (scope != null && scope.trim().isNotEmpty) ? scope.trim() : null;
+    final now = DateTime.now();
     final updated = _currentSession!.copyWith(
       workingDirScope: cleanScope,
       clearWorkingDirScope: cleanScope == null,
+      updatedAt: now,
     );
     _currentSession = updated;
     final idx = _sessions.indexWhere((s) => s.id == updated.id);
     if (idx != -1) {
       _sessions[idx] = updated;
+      _sortSessions();
     }
     notifyListeners();
     await _api.updateChatSessionScope(updated.id, cleanScope);
@@ -200,11 +220,7 @@ class ChatProvider extends ChangeNotifier {
         isPinned: newPinState,
       );
       _sessions[idx] = updated;
-      _sessions.sort((a, b) {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return b.updatedAt.compareTo(a.updatedAt);
-      });
+      _sortSessions();
       if (_currentSession?.id == session.id) {
         _currentSession = updated;
       }
@@ -236,6 +252,7 @@ class ChatProvider extends ChangeNotifier {
         updatedAt: DateTime.now(),
       );
       _sessions[idx] = updated;
+      _sortSessions();
       if (_currentSession?.id == session.id) {
         _currentSession = updated;
       }
@@ -312,6 +329,15 @@ class ChatProvider extends ChangeNotifier {
     }
 
     final sessionId = _currentSession!.id;
+
+    // Touch and update session timestamp so it moves to top
+    final now = DateTime.now();
+    _currentSession = _currentSession!.copyWith(updatedAt: now);
+    final sIdx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (sIdx != -1) {
+      _sessions[sIdx] = _currentSession!;
+      _sortSessions();
+    }
 
     // 1. Add User Message
     final userMsg = ChatMessageModel(

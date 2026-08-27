@@ -109,6 +109,70 @@ class ApiService {
     return res.statusCode == 200;
   }
 
+  Future<List<String>> fetchRemoteModels({String? customBaseUrl, String? customApiKey}) async {
+    try {
+      final cfg = await getConfig();
+      var baseUrl = (customBaseUrl != null && customBaseUrl.trim().isNotEmpty)
+          ? customBaseUrl.trim()
+          : (cfg['proxy_base_url']?.toString().trim() ?? '');
+      final apiKey = (customApiKey != null && customApiKey.trim().isNotEmpty)
+          ? customApiKey.trim()
+          : (cfg['proxy_api_key']?.toString().trim() ?? '');
+
+      if (baseUrl.isEmpty) {
+        baseUrl = 'https://openrouter.ai/api/v1';
+      }
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+      }
+
+      final url = Uri.parse('$baseUrl/models');
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+      };
+      if (apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
+
+      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+        final modelsList = <String>[];
+
+        if (decoded is Map && decoded['data'] is List) {
+          for (final item in decoded['data']) {
+            if (item is Map && item['id'] != null) {
+              final id = item['id'].toString().trim();
+              if (id.isNotEmpty && !modelsList.contains(id)) {
+                modelsList.add(id);
+              }
+            } else if (item is String && item.trim().isNotEmpty) {
+              final id = item.trim();
+              if (!modelsList.contains(id)) modelsList.add(id);
+            }
+          }
+        } else if (decoded is List) {
+          for (final item in decoded) {
+            if (item is Map && item['id'] != null) {
+              final id = item['id'].toString().trim();
+              if (id.isNotEmpty && !modelsList.contains(id)) {
+                modelsList.add(id);
+              }
+            } else if (item is String && item.trim().isNotEmpty) {
+              final id = item.trim();
+              if (!modelsList.contains(id)) modelsList.add(id);
+            }
+          }
+        }
+
+        if (modelsList.isNotEmpty) {
+          return modelsList;
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
   // 3. Servers Management APIs
   Future<List<ServerModel>> getServers() async {
     if (await _isNativeMode()) {
