@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 import '../../models/metrics_model.dart';
+import '../../models/server_model.dart';
 import 'local_config_service.dart';
 
 class NativeSshService {
@@ -13,13 +14,27 @@ class NativeSshService {
 
   final LocalConfigService _configService = LocalConfigService();
 
-  Future<SSHClient> getClient({Map<String, dynamic>? overrideConfig}) async {
-    final cfg = overrideConfig ?? await _configService.loadConfig();
-    final host = cfg['server_ip']?.toString() ?? '127.0.0.1';
-    final port = int.tryParse(cfg['ssh_port']?.toString() ?? '22') ?? 22;
-    final user = cfg['ssh_user']?.toString() ?? 'root';
-    final pass = cfg['ssh_pass']?.toString() ?? '';
-    final key = cfg['ssh_key']?.toString();
+  Future<SSHClient> getClient({Map<String, dynamic>? overrideConfig, ServerModel? server}) async {
+    String host;
+    int port;
+    String user;
+    String pass;
+    String? key;
+
+    if (server != null) {
+      host = server.serverIp;
+      port = server.sshPort;
+      user = server.sshUser;
+      pass = server.sshPass;
+      key = server.sshKey;
+    } else {
+      final cfg = overrideConfig ?? await _configService.loadConfig();
+      host = cfg['server_ip']?.toString() ?? '127.0.0.1';
+      port = int.tryParse(cfg['ssh_port']?.toString() ?? '22') ?? 22;
+      user = cfg['ssh_user']?.toString() ?? 'root';
+      pass = cfg['ssh_pass']?.toString() ?? '';
+      key = cfg['ssh_key']?.toString();
+    }
 
     final socket = await SSHSocket.connect(host, port, timeout: const Duration(seconds: 10));
     return SSHClient(
@@ -239,19 +254,32 @@ class NativeSshService {
     }
   }
 
-  Future<String> getServerLogs({int lines = 100}) async {
+  Future<String> getServerLogs({int lines = 100, ServerModel? server, String logType = 'agent'}) async {
     try {
-      final client = await getClient();
-      final res = await client.run(
-        "journalctl -u ai-agent.service -n $lines --no-pager 2>/dev/null || "
-        "tail -n $lines /var/log/syslog 2>/dev/null || "
-        "dmesg | tail -n $lines"
-      );
+      final client = await getClient(server: server);
+      String cmd;
+      if (logType == 'agent') {
+        cmd = "journalctl -u ai-agent.service -n $lines --no-pager 2>&1 || systemctl status ai-agent.service --no-pager 2>&1";
+      } else if (logType == 'syslog') {
+        cmd = "tail -n $lines /var/log/syslog 2>&1 || journalctl -n $lines --no-pager 2>&1";
+      } else if (logType == 'auth') {
+        cmd = "tail -n $lines /var/log/auth.log 2>&1 || journalctl -u ssh -n $lines --no-pager 2>&1 || journalctl -u sshd -n $lines --no-pager 2>&1";
+      } else if (logType == 'nginx') {
+        cmd = "tail -n $lines /var/log/nginx/error.log 2>&1 || tail -n $lines /var/log/httpd/error_log 2>&1 || tail -n $lines /var/log/apache2/error.log 2>&1 || echo 'Không tìm thấy file log web server nginx/apache.'";
+      } else if (logType == 'dmesg') {
+        cmd = "dmesg | tail -n $lines 2>&1";
+      } else {
+        cmd = "journalctl -u ai-agent.service -n $lines --no-pager 2>/dev/null || "
+            "tail -n $lines /var/log/syslog 2>/dev/null || "
+            "dmesg | tail -n $lines";
+      }
+
+      final res = await client.run(cmd);
       client.close();
       final logStr = utf8.decode(res).trim();
-      return logStr.isNotEmpty ? logStr : 'Không tìm thấy nhật ký hệ thống.';
+      return logStr.isNotEmpty ? logStr : 'Không tìm thấy nhật ký tương ứng trên máy chủ.';
     } catch (e) {
-      return 'Lỗi tải log SSH: $e';
+      return 'Lỗi kết nối máy chủ để lấy nhật ký: $e';
     }
   }
 

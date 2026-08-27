@@ -23,6 +23,7 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   String _activeTabKey = 'chat';
+  bool _isSidebarCollapsed = false;
 
   Future<void> _switchToLocal(ServerProvider serverProvider) async {
     final localSrv = ServerModel(
@@ -147,79 +148,114 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   // =========================================================================
-  // DESKTOP LAYOUT (EXACT 250px SIDEBAR)
+  // DESKTOP LAYOUT (ANIMATED COLLAPSIBLE SIDEBAR: 250px <-> 68px)
   // =========================================================================
   Widget _buildDesktopLayout() {
     final serverProvider = context.watch<ServerProvider>();
+    final isCollapsed = _isSidebarCollapsed;
+    final sidebarWidth = isCollapsed ? 68.0 : 250.0;
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
       body: Row(
         children: [
-          // 1. LEFT SIDEBAR (Width 250px, #0d121f)
-          Container(
-            width: 250,
+          // 1. LEFT SIDEBAR
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOut,
+            width: sidebarWidth,
             decoration: const BoxDecoration(
               color: AppColors.sidebarBg,
               border: Border(right: BorderSide(color: AppColors.borderDark, width: 1)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: ClipRect(
+              child: Column(
+                crossAxisAlignment: isCollapsed ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+                children: [
                 // 1.1 Brand Header (Height 66px)
                 Container(
                   height: 66,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: EdgeInsets.symmetric(horizontal: isCollapsed ? 8 : 14),
                   decoration: const BoxDecoration(
                     border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
                   ),
-                  child: Row(
-                    children: [
-                      const AppLogo(size: 36),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  child: isCollapsed
+                      ? Center(
+                          child: IconButton(
+                            icon: const Icon(Icons.menu_rounded, size: 22, color: AppColors.textWhite),
+                            tooltip: 'Mở rộng menu (Sidebar)',
+                            onPressed: () {
+                              setState(() {
+                                _isSidebarCollapsed = false;
+                              });
+                            },
+                          ),
+                        )
+                      : Row(
                           children: [
-                            Text(
-                              'AI Type',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textWhite,
-                                height: 1.2,
+                            const AppLogo(size: 32),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'AI Type',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textWhite,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                  Text(
+                                    'LOCAL AI AGENT',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            Text(
-                              'LOCAL AI AGENT',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                                color: AppColors.textMuted,
+                            Container(
+                              width: 7,
+                              height: 7,
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: const BoxDecoration(
+                                color: AppColors.accent,
+                                shape: BoxShape.circle,
                               ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.menu_open_rounded, size: 18, color: AppColors.textMuted),
+                              tooltip: 'Thu gọn menu (Sidebar)',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              onPressed: () {
+                                setState(() {
+                                  _isSidebarCollapsed = true;
+                                });
+                              },
                             ),
                           ],
                         ),
-                      ),
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: AppColors.accent,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
 
-                // 1.2 Active Target Environment Badge (Clickable dropdown to switch target / servers)
+                // 1.2 Active Target Environment Badge
                 Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(isCollapsed ? 8 : 12),
                   child: PopupMenuButton<ServerModel>(
-                    tooltip: 'Chuyển đổi Máy chủ / Local',
+                    tooltip: isCollapsed
+                        ? ((serverProvider.selectedServer != null &&
+                                serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                serverProvider.selectedServer!.serverIp != 'localhost')
+                            ? 'Máy chủ: ${serverProvider.selectedServer!.name}'
+                            : 'Môi trường: Local Machine')
+                        : 'Chuyển đổi Máy chủ / Local',
                     offset: const Offset(0, 52),
                     color: AppColors.cardBg,
                     constraints: const BoxConstraints(minWidth: 240, maxWidth: 280),
@@ -319,17 +355,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
                       return list;
                     },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.borderDark),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
+                    child: isCollapsed
+                        ? Container(
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: (serverProvider.selectedServer != null &&
                                       serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
@@ -337,6 +367,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                   ? AppColors.primary.withValues(alpha: 0.2)
                                   : AppColors.accent.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.borderDark),
                             ),
                             child: Icon(
                               (serverProvider.selectedServer != null &&
@@ -344,46 +375,79 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                       serverProvider.selectedServer!.serverIp != 'localhost')
                                   ? Icons.dns_rounded
                                   : Icons.laptop_chromebook_rounded,
-                              size: 16,
+                              size: 18,
                               color: (serverProvider.selectedServer != null &&
                                       serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
                                       serverProvider.selectedServer!.serverIp != 'localhost')
                                   ? AppColors.primaryLight
                                   : AppColors.accent,
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          )
+                        : Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.borderDark),
+                            ),
+                            child: Row(
                               children: [
-                                Text(
-                                  (serverProvider.selectedServer != null &&
-                                          serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
-                                          serverProvider.selectedServer!.serverIp != 'localhost')
-                                      ? serverProvider.selectedServer!.name
-                                      : 'Local Machine',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: (serverProvider.selectedServer != null &&
+                                            serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                            serverProvider.selectedServer!.serverIp != 'localhost')
+                                        ? AppColors.primary.withValues(alpha: 0.2)
+                                        : AppColors.accent.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Icon(
+                                    (serverProvider.selectedServer != null &&
+                                            serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                            serverProvider.selectedServer!.serverIp != 'localhost')
+                                        ? Icons.dns_rounded
+                                        : Icons.laptop_chromebook_rounded,
+                                    size: 16,
+                                    color: (serverProvider.selectedServer != null &&
+                                            serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                            serverProvider.selectedServer!.serverIp != 'localhost')
+                                        ? AppColors.primaryLight
+                                        : AppColors.accent,
+                                  ),
                                 ),
-                                Text(
-                                  (serverProvider.selectedServer != null &&
-                                          serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
-                                          serverProvider.selectedServer!.serverIp != 'localhost')
-                                      ? '${serverProvider.selectedServer!.serverIp} • ${serverProvider.currentAiModel}'
-                                      : '${Platform.operatingSystem.toUpperCase()} • ${serverProvider.currentAiModel}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        (serverProvider.selectedServer != null &&
+                                                serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                                serverProvider.selectedServer!.serverIp != 'localhost')
+                                            ? serverProvider.selectedServer!.name
+                                            : 'Local Machine',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                      ),
+                                      Text(
+                                        (serverProvider.selectedServer != null &&
+                                                serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                                serverProvider.selectedServer!.serverIp != 'localhost')
+                                            ? '${serverProvider.selectedServer!.serverIp} • ${serverProvider.currentAiModel}'
+                                            : '${Platform.operatingSystem.toUpperCase()} • ${serverProvider.currentAiModel}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                                const Icon(Icons.unfold_more_rounded, size: 14, color: AppColors.textDim),
                               ],
                             ),
                           ),
-                          const Icon(Icons.unfold_more_rounded, size: 14, color: AppColors.textDim),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
 
@@ -397,11 +461,44 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       final visibleTabs = _getVisibleTabs(isLocal);
 
                       return ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        padding: EdgeInsets.symmetric(horizontal: isCollapsed ? 6 : 10),
                         itemCount: visibleTabs.length,
                         itemBuilder: (context, idx) {
                           final item = visibleTabs[idx];
                           final isSelected = _activeTabKey == item['key'];
+
+                          if (isCollapsed) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Tooltip(
+                                message: '${item['title']}\n${item['subtitle']}',
+                                preferBelow: false,
+                                waitDuration: const Duration(milliseconds: 250),
+                                child: Material(
+                                  color: isSelected ? AppColors.primary : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(4),
+                                    onTap: () {
+                                      setState(() {
+                                        _activeTabKey = item['key'] as String;
+                                      });
+                                    },
+                                    hoverColor: isSelected ? AppColors.primaryHover : AppColors.cardBg,
+                                    child: Container(
+                                      height: 42,
+                                      alignment: Alignment.center,
+                                      child: Icon(
+                                        item['icon'] as IconData,
+                                        size: 18,
+                                        color: isSelected ? Colors.white : AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 4),
@@ -464,27 +561,35 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
                 // 1.4 Footer
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: EdgeInsets.symmetric(horizontal: isCollapsed ? 8 : 16, vertical: 12),
                   decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
                   ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.shield_rounded, size: 14, color: AppColors.accent),
-                          SizedBox(width: 6),
-                          Text('AI Type Desktop', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-                        ],
-                      ),
-                      Text('v1.3.0', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim)),
-                    ],
-                  ),
+                  child: isCollapsed
+                      ? const Center(
+                          child: Tooltip(
+                            message: 'AI Type Desktop v1.3.0',
+                            child: Icon(Icons.shield_rounded, size: 16, color: AppColors.accent),
+                          ),
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.shield_rounded, size: 14, color: AppColors.accent),
+                                SizedBox(width: 6),
+                                Text('AI Type Desktop', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                              ],
+                            ),
+                            Text('v1.3.0', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim)),
+                          ],
+                        ),
                 ),
               ],
             ),
           ),
+        ),
 
           // 2. MAIN ACTIVE VIEW AREA
           Expanded(
