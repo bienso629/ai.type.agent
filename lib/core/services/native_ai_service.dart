@@ -510,8 +510,33 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
     if (targetServerModel != null) {
       onStatus('Đang gửi lệnh tới $cliName trên máy chủ ${targetServerModel.name}...');
-      final escapedPrompt = prompt.replaceAll("'", "'\\''");
-      final cmd = '$exe -p \'$escapedPrompt\'';
+      final cleanPrompt = '$prompt\n\n(Yêu cầu: Tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng text thuần chuẩn kỹ thuật)';
+      final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
+
+      String remoteBinary = 'agy';
+      final m = cliName.toLowerCase();
+      if (m.contains('claude')) {
+        remoteBinary = 'claude';
+      } else if (m.contains('gemini')) {
+        remoteBinary = 'gemini';
+      }
+
+      final cmd = '''
+export PATH="\$HOME/.local/bin:\$HOME/bin:\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"
+if command -v $remoteBinary >/dev/null 2>&1; then
+  $remoteBinary -p '$escapedPrompt' --dangerously-skip-permissions
+elif [ -f "\$HOME/.local/bin/$remoteBinary" ]; then
+  "\$HOME/.local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions
+elif [ -f "/usr/local/bin/$remoteBinary" ]; then
+  "/usr/local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions
+else
+  echo "LỖI: Máy chủ ${targetServerModel.name} (${targetServerModel.serverIp}) chưa được cài đặt '$remoteBinary'."
+  echo ""
+  echo "Hướng dẫn:"
+  echo "1. Cài đặt $remoteBinary trên máy chủ VPS: ssh vào VPS và cài đặt $remoteBinary vào ~/.local/bin hoặc /usr/local/bin."
+  echo "2. Hoặc chọn 'Local Machine' ở danh sách máy chủ bên trái để chạy $remoteBinary trực tiếp từ máy tính của bạn."
+fi
+''';
       final result = await _executeCommand(cmd, workingDir: workingDir, server: targetServerModel);
       onToken(result);
       onDone(result);

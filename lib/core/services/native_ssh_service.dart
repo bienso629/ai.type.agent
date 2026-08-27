@@ -79,9 +79,10 @@ class NativeSshService {
   Future<String> executeCommand(String command, {String? workingDir, int timeoutSeconds = 60, ServerModel? server}) async {
     try {
       final client = await getClient(server: server);
-      String fullCmd = command;
+      const envPrefix = 'export PATH="\$HOME/.local/bin:\$HOME/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"; ';
+      String fullCmd = '$envPrefix$command';
       if (workingDir != null && workingDir.isNotEmpty) {
-        fullCmd = 'cd "$workingDir" 2>/dev/null; $command';
+        fullCmd = 'cd "$workingDir" 2>/dev/null; $envPrefix$command';
       }
       final result = await client.run(fullCmd).timeout(Duration(seconds: timeoutSeconds));
       client.close();
