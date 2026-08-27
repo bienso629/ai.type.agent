@@ -159,8 +159,41 @@ export interface User {
 export interface Product {
   id: number;
   name: string;
-  provider: string;
-  tag: 'chat' | 'image' | 'code' | 'token';
+  author:
+    | 'Anthropic'
+    | 'OpenAI'
+    | 'Google'
+    | 'DeepSeek'
+    | 'Midjourney'
+    | 'Black Forest Labs'
+    | 'ElevenLabs'
+    | 'ByteDance'
+    | 'Qwen'
+    | 'X.AI'
+    | 'Kuaishou'
+    | 'Suno'
+    | 'MiniMax'
+    | 'Moonshot AI'
+    | 'Zhipu AI'
+    | 'Baidu'
+    | 'BAAI'
+    | 'PixVerse'
+    | 'Vidu'
+    | 'Xiaomi'
+    | 'Multi-provider';
+  modalTypes: (
+    | 'Multimodal'
+    | 'Deep Thinking'
+    | 'Text Generation'
+    | 'Vision Understanding'
+    | 'Image Generation'
+    | 'Video Generation'
+    | 'Speech Synthesis'
+    | 'Speech Recognition'
+    | 'Text Vector'
+  )[];
+  capabilities?: ('Context Caching' | 'Batch Inference' | 'High Speed Inference' | 'Coding Composer')[] | null;
+  region?: ('Singapore' | 'USA' | 'Tokyo' | 'Hong Kong') | null;
   /**
    * Chi phí vốn bỏ ra (mua sỉ / nạp token gốc)
    */
@@ -173,7 +206,17 @@ export interface Product {
    * Tự động tính: Giá bán - Giá gốc
    */
   profitMargin?: number | null;
+  badge?: string | null;
   desc?: string | null;
+  features?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   stock?: number | null;
   isActive?: boolean | null;
   updatedAt: string;
@@ -325,12 +368,16 @@ export interface UsersSelect<T extends boolean = true> {
  */
 export interface ProductsSelect<T extends boolean = true> {
   name?: T;
-  provider?: T;
-  tag?: T;
+  author?: T;
+  modalTypes?: T;
+  capabilities?: T;
+  region?: T;
   costPrice?: T;
   salePrice?: T;
   profitMargin?: T;
+  badge?: T;
   desc?: T;
+  features?: T;
   stock?: T;
   isActive?: T;
   updatedAt?: T;
