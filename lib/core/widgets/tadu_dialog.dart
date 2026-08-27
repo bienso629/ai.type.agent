@@ -27,7 +27,7 @@ class TaduDialog extends StatelessWidget {
       backgroundColor: AppColors.cardBg,
       elevation: 20,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(4),
         side: const BorderSide(color: AppColors.borderDark, width: 1),
       ),
       clipBehavior: Clip.antiAlias,

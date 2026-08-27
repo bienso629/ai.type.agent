@@ -52,9 +52,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         if (ok) {
           context.read<ServerProvider>().setGlobalAiModel(_modelCtrl.text.trim());
-          AppToast.success(context, 'Đã lưu cấu hình AI thành công!');
+          AppToast.success(context, 'Đã lưu cấu hình AI Model & API thành công!');
         } else {
-          AppToast.error(context, 'Lưu cấu hình AI thất bại!');
+          AppToast.error(context, 'Lưu cấu hình thất bại!');
         }
       }
     } catch (e) {
@@ -100,11 +100,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Cấu Hình AI Agent & Hệ Thống Local',
+                          'Cấu Hình AI Agent & Hệ Thống',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                         ),
                         Text(
-                          'Thiết lập mô hình AI Model, API Key và môi trường thực thi cục bộ (${serverProvider.currentAiModel})',
+                          'Thiết lập mô hình AI Model, API Key và môi trường hoạt động (${serverProvider.currentAiModel})',
                           style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       ],
@@ -133,7 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: AppColors.borderDark),
                     ),
                     child: Column(
@@ -234,12 +234,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // GROUP 2: LOCAL ENVIRONMENT INFO
+                  // GROUP 2: SYSTEM ENVIRONMENT & STORAGE INFO
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: AppColors.borderDark),
                     ),
                     child: Column(
@@ -250,7 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(Icons.laptop_chromebook_rounded, size: 18, color: AppColors.accent),
                             SizedBox(width: 8),
                             Text(
-                              '2. Môi Trường Thực Thi Máy Cục Bộ (Local Machine)',
+                              '2. Môi Trường Thực Thi & Cơ Sở Dữ Liệu',
                               style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -259,7 +259,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: _buildInfoBox('Hệ Điều Hành', '${Platform.operatingSystem.toUpperCase()} (${Platform.operatingSystemVersion})'),
+                              child: _buildInfoBox('Hệ Điều Hành Local', '${Platform.operatingSystem.toUpperCase()} (${Platform.operatingSystemVersion})'),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -267,7 +267,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: _buildInfoBox('Cơ Chế Thực Thi', 'Local Process Execution (Chạy trực tiếp trên máy)'),
+                              child: _buildInfoBox('Chế Độ Hoạt Động', 'Local Machine & Quản trị Máy Chủ Đa VPS qua SSH'),
                             ),
                           ],
                         ),
@@ -275,11 +275,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: _buildInfoBox('Thư Mục Dữ Liệu', Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.'),
+                              child: _buildInfoBox('Thư Mục Dữ Liệu Local', Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.'),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: _buildInfoBox('Bảo Mật Cơ Sở Dữ Liệu', 'SQLite Local Encrypted Storage (~/.tadu_ai_agent/)'),
+                              child: _buildInfoBox('Bảo Mật Cơ Sở Dữ Liệu', 'SQLite Local Encrypted Storage (~/.ai_type_agent/)'),
                             ),
                           ],
                         ),
@@ -310,7 +310,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.inputBg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: AppColors.borderDark),
       ),
       child: Column(

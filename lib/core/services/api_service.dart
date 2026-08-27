@@ -134,11 +134,14 @@ class ApiService {
     return [];
   }
 
-  Future<bool> selectServer(String serverIp) async {
+  Future<bool> selectServer(String serverIp, [ServerModel? serverModel]) async {
     if (await _isNativeMode()) {
+      if (serverModel != null) {
+        return await _localConfig.selectServer(serverModel);
+      }
       final servers = await _localConfig.getServers();
       final target = servers.firstWhere(
-        (s) => s.serverIp == serverIp,
+        (s) => s.serverIp == serverIp || s.id == serverIp,
         orElse: () => ServerModel(id: serverIp, name: serverIp, serverIp: serverIp),
       );
       return await _localConfig.selectServer(target);
@@ -338,21 +341,31 @@ class ApiService {
     return [];
   }
 
-  Future<ChatSessionModel> createChatSession({String title = 'Cuộc hội thoại mới'}) async {
+  Future<ChatSessionModel> createChatSession({String title = 'Cuộc hội thoại mới', String? workingDir}) async {
     if (await _isNativeMode()) {
-      return await _db.createSession(title: title);
+      return await _db.createSession(title: title, workingDir: workingDir);
     }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
       Uri.parse('$baseUrl${ApiConstants.epChatSessions}'),
       headers: await _getHeaders(),
-      body: jsonEncode({'title': title}),
+      body: jsonEncode({
+        'title': title,
+        if (workingDir != null && workingDir.isNotEmpty) 'working_dir': workingDir,
+      }),
     );
     if (res.statusCode == 200) {
       final json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
       return ChatSessionModel.fromJson(json);
     }
     throw Exception('Failed to create session');
+  }
+
+  Future<bool> updateChatSessionScope(String sessionId, String? scope) async {
+    if (await _isNativeMode()) {
+      return await _db.updateSessionScope(sessionId, scope);
+    }
+    return true;
   }
 
   Future<bool> renameChatSession(String sessionId, String newTitle) async {
@@ -378,6 +391,13 @@ class ApiService {
       headers: await _getHeaders(),
     );
     return res.statusCode == 200;
+  }
+
+  Future<bool> deleteAllChatSessions() async {
+    if (await _isNativeMode()) {
+      return await _db.deleteAllSessions();
+    }
+    return true;
   }
 
   Future<bool> togglePinSession(String sessionId, {bool? isPinned}) async {
@@ -565,28 +585,62 @@ class ApiService {
     return controller.stream.listen((_) {});
   }
 
-  // 10. File System Browser APIs
+  // 10. File System Browser APIs (Local Filesystem & SSH Remote)
   Future<List<String>> listDirectories({String prefix = ''}) async {
-    if (await _isNativeMode()) {
-      return await _ssh.listRemoteDirs(prefix);
-    }
-    final baseUrl = await _getBaseUrl();
     try {
-      final res = await _client.get(
-        Uri.parse('$baseUrl${ApiConstants.epFsListDirs}?prefix=${Uri.encodeComponent(prefix)}'),
-        headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 8));
+      final cfg = await _localConfig.loadConfig();
+      final serverIp = cfg['server_ip']?.toString() ?? '127.0.0.1';
+      final isRemote = serverIp.isNotEmpty && serverIp != '127.0.0.1' && serverIp != 'localhost';
 
-      if (res.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(res.bodyBytes));
-        if (data is List) {
-          return data.map((e) => e.toString()).toList();
-        } else if (data is Map && data['directories'] is List) {
-          return (data['directories'] as List).map((e) => e.toString()).toList();
+      if (isRemote) {
+        return await _ssh.listRemoteDirs(prefix);
+      }
+
+      String searchPath = prefix.trim();
+      final homeDir = Platform.environment['HOME'] ??
+          Platform.environment['USERPROFILE'] ??
+          '/';
+
+      if (searchPath.isEmpty) {
+        searchPath = homeDir;
+      } else if (searchPath.startsWith('~')) {
+        searchPath = searchPath.replaceFirst('~', homeDir);
+      }
+
+      Directory targetDir;
+      String filter = '';
+
+      final checkDir = Directory(searchPath);
+      if (checkDir.existsSync()) {
+        targetDir = checkDir;
+      } else {
+        final parent = File(searchPath).parent;
+        if (parent.existsSync()) {
+          targetDir = parent;
+          filter = searchPath.split(Platform.pathSeparator).last.toLowerCase();
+        } else {
+          targetDir = Directory(homeDir);
         }
       }
-    } catch (_) {}
-    return [];
+
+      final results = <String>[];
+      final entities = targetDir.listSync(followLinks: false);
+      for (final entity in entities) {
+        if (entity is Directory) {
+          final dirName = entity.path.split(Platform.pathSeparator).last;
+          if (dirName.startsWith('.') && !filter.startsWith('.')) continue;
+          if (filter.isEmpty ||
+              dirName.toLowerCase().contains(filter) ||
+              entity.path.toLowerCase().contains(filter)) {
+            results.add(entity.path);
+          }
+        }
+      }
+      results.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      return results.take(35).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<String>> listRemoteDirectories({String prefix = ''}) =>

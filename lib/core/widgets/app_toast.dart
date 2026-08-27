@@ -142,7 +142,7 @@ class _ToastWidgetState extends State<_ToastWidget> with SingleTickerProviderSta
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: borderColor, width: 1.2),
                 boxShadow: [
                   BoxShadow(

@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "ai.type.agent.coder"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

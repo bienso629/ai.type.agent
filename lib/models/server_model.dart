@@ -44,12 +44,12 @@ class ServerModel {
 
     final ip = dec(json['server_ip']);
     final rawName = dec(json['name'] ?? json['server_name']);
-    final defaultName = ip.isNotEmpty ? 'Máy chủ chính ($ip)' : 'Máy chủ chính';
+    final defaultName = ip.isNotEmpty ? ip : 'Máy chủ VPS';
 
     final sshPortStr = dec(json['ssh_port']);
     final apiPortStr = dec(json['api_port']);
     return ServerModel(
-      id: dec(json['id']).isNotEmpty ? dec(json['id']) : (ip.isNotEmpty ? 'srv_$ip' : 'srv_default'),
+      id: dec(json['id']).isNotEmpty ? dec(json['id']) : (ip.isNotEmpty ? 'srv_$ip' : 'srv_${DateTime.now().millisecondsSinceEpoch}'),
       name: (rawName.isNotEmpty) ? rawName : defaultName,
       serverIp: ip,
       sshPort: int.tryParse(sshPortStr.isNotEmpty ? sshPortStr : '22') ?? 22,

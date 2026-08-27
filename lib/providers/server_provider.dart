@@ -50,24 +50,29 @@ class ServerProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadServers() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  Future<void> loadServers({bool silent = false}) async {
+    if (!silent) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    }
 
     try {
       final list = await _api.getServers();
       final savedId = await _storage.getActiveServerId();
       if (list.isNotEmpty) {
-        if (savedId != null && savedId.isNotEmpty) {
-          _selectedServer = list.firstWhere(
-            (s) => s.id == savedId || s.serverIp == savedId,
-            orElse: () => list.firstWhere((s) => s.isSelected, orElse: () => list.first),
-          );
+        if (savedId != null && savedId.isNotEmpty && savedId != 'local') {
+          final matches = list.where((s) => s.id == savedId || s.serverIp == savedId);
+          if (matches.isNotEmpty) {
+            _selectedServer = matches.first;
+          } else {
+            _selectedServer = null;
+            await _storage.setActiveServerId('local');
+          }
         } else {
-          _selectedServer = list.firstWhere((s) => s.isSelected, orElse: () => list.first);
+          _selectedServer = null;
         }
-        _servers = list.map((s) => s.copyWith(isSelected: s.id == _selectedServer!.id)).toList();
+        _servers = list.map((s) => s.copyWith(isSelected: _selectedServer != null && s.id == _selectedServer!.id)).toList();
       } else {
         _servers = [];
         _selectedServer = null;
@@ -82,18 +87,30 @@ class ServerProvider extends ChangeNotifier {
   }
 
   Future<bool> selectServer(ServerModel server) async {
-    _selectedServer = server;
-    await _storage.setActiveServerId(server.id);
-    notifyListeners();
-
-    try {
-      final ok = await _api.selectServer(server.serverIp);
-      if (ok) {
-        await loadServers();
+    final isLocal = (server.id == 'local' || server.serverIp == '127.0.0.1' || server.serverIp == 'localhost');
+    if (isLocal) {
+      _selectedServer = null;
+      await _storage.setActiveServerId('local');
+      _servers = _servers.map((s) => s.copyWith(isSelected: false)).toList();
+      notifyListeners();
+      try {
+        final ok = await _api.selectServer('127.0.0.1', server);
+        return ok;
+      } catch (_) {
+        return false;
       }
-      return ok;
-    } catch (_) {
-      return false;
+    } else {
+      _selectedServer = server;
+      await _storage.setActiveServerId(server.id);
+      _servers = _servers.map((s) => s.copyWith(isSelected: s.id == server.id)).toList();
+      notifyListeners();
+
+      try {
+        final ok = await _api.selectServer(server.serverIp, server);
+        return ok;
+      } catch (_) {
+        return false;
+      }
     }
   }
 
@@ -101,7 +118,7 @@ class ServerProvider extends ChangeNotifier {
     try {
       final ok = await _api.updateServer(server);
       if (ok) {
-        await loadServers();
+        await loadServers(silent: true);
       }
       return ok;
     } catch (_) {
@@ -109,11 +126,18 @@ class ServerProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> deleteServer(String serverIp) async {
+  Future<bool> deleteServer(String serverIdOrIp) async {
+    _servers = _servers.where((s) => s.id != serverIdOrIp && s.serverIp != serverIdOrIp).toList();
+    if (_selectedServer?.id == serverIdOrIp || _selectedServer?.serverIp == serverIdOrIp) {
+      _selectedServer = null;
+      await _storage.setActiveServerId('local');
+    }
+    notifyListeners();
+
     try {
-      final ok = await _api.deleteServer(serverIp);
+      final ok = await _api.deleteServer(serverIdOrIp);
       if (ok) {
-        await loadServers();
+        await loadServers(silent: true);
       }
       return ok;
     } catch (_) {

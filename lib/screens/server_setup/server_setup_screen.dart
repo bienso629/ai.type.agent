@@ -5,6 +5,7 @@ import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
+import '../../models/server_model.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 
@@ -64,7 +65,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: AppColors.terminalBg,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(4),
               border: Border.all(color: AppColors.borderDark),
             ),
             child: SingleChildScrollView(
@@ -176,6 +177,72 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                 ),
                 Row(
                   children: [
+                    if (serverProvider.servers.isNotEmpty) ...[
+                      PopupMenuButton<ServerModel>(
+                        tooltip: 'Chọn máy chủ VPS',
+                        offset: const Offset(0, 40),
+                        color: AppColors.cardBg,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                          side: const BorderSide(color: AppColors.borderDark),
+                        ),
+                        onSelected: (srv) async {
+                          await serverProvider.selectServer(srv);
+                          metricsProvider.fetchMetrics();
+                          if (!mounted) return;
+                          AppToast.success(this.context, 'Đang quản trị máy chủ: ${srv.name}');
+                        },
+                        itemBuilder: (ctx) => serverProvider.servers.map((srv) {
+                          final isSel = srv.id == serverProvider.selectedServer?.id || srv.serverIp == serverProvider.selectedServer?.serverIp;
+                          return PopupMenuItem<ServerModel>(
+                            value: srv,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.dns_rounded, size: 16, color: AppColors.primaryLight),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(srv.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                                      Text('${srv.sshUser}@${srv.serverIp}:${srv.sshPort}', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                                    ],
+                                  ),
+                                ),
+                                if (isSel) const Icon(Icons.check_rounded, size: 16, color: AppColors.primaryLight),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: AppColors.inputBg,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.dns_rounded, size: 14, color: AppColors.primaryLight),
+                              const SizedBox(width: 6),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 140),
+                                child: Text(
+                                  serverProvider.selectedServer?.name ?? 'Chọn Server',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppColors.primaryLight),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: AppColors.borderDark),
@@ -297,7 +364,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: AppColors.borderDark),
                     ),
                     child: Column(
@@ -354,7 +421,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: AppColors.borderDark),
                     ),
                     child: Column(
@@ -404,7 +471,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: AppColors.terminalBg,
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(4),
                               border: Border.all(color: AppColors.borderDark),
                             ),
                             child: ListView.builder(
@@ -534,7 +601,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: AppColors.borderDark),
       ),
       child: Column(
@@ -592,7 +659,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: AppColors.borderDark),
       ),
       child: Column(

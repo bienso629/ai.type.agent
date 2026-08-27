@@ -91,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
                   color: AppColors.cardBg,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(4),
                   border: Border.all(color: AppColors.borderDark, width: 1.2),
                 ),
                 child: Form(
@@ -112,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   width: 68,
                                   height: 68,
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(4),
                                     boxShadow: [
                                       // Inner vibrant glow
                                       BoxShadow(
@@ -163,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: AppColors.danger.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(4),
                             border: Border.all(
                               color: AppColors.danger.withValues(alpha: 0.4),
                               width: 1,
@@ -341,7 +341,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(4),
                             ),
                           ),
                           onPressed: auth.isLoading ? null : _handleLogin,
@@ -386,7 +386,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             foregroundColor: AppColors.primaryLight,
                             side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5), width: 1.2),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(4),
                             ),
                           ),
                           onPressed: () async {
