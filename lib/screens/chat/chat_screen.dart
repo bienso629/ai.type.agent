@@ -1066,8 +1066,17 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                           }).toList(),
                         ),
-                        if (msg.content.isNotEmpty) const SizedBox(height: 8),
+                        const SizedBox(height: 8),
                       ],
+
+                      // 1. Tool Executions (Terminal actions & commands) rendered first
+                      if (msg.toolExecutions.isNotEmpty) ...[
+                        ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
+                        if (msg.content.isNotEmpty || (msg.content.isEmpty && msg.isStreaming))
+                          const SizedBox(height: 10),
+                      ],
+
+                      // 2. Reply Answer Content rendered below tool executions
                       if (msg.content.isNotEmpty)
                         MarkdownBody(
                           data: msg.content,
@@ -1151,11 +1160,6 @@ class _ChatScreenState extends State<ChatScreen> {
                             Text('Đang xử lý...', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                           ],
                         ),
-
-                      if (msg.toolExecutions.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
-                      ],
                     ],
                   ),
                 ),
@@ -1297,30 +1301,61 @@ class _ChatScreenState extends State<ChatScreen> {
             if (chat.currentSessionScope != null && chat.currentSessionScope!.isNotEmpty) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.folder_open_rounded, size: 14, color: AppColors.primaryLight),
-                    const SizedBox(width: 6),
-                    const Text('Scope Hội Thoại: ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
-                    Text(
-                      chat.currentSessionScope!,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    hoverColor: AppColors.primary.withValues(alpha: 0.22),
+                    splashColor: Colors.transparent,
+                    highlightColor: Colors.transparent,
+                    onTap: _triggerScopePicker,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.folder_open_rounded, size: 14, color: AppColors.primaryLight),
+                          const SizedBox(width: 6),
+                          const Text('Scope Hội Thoại: ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                          Flexible(
+                            child: Text(
+                              chat.currentSessionScope!,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryLight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Tooltip(
+                            message: 'Xóa Scope',
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              hoverColor: AppColors.danger.withValues(alpha: 0.2),
+                              splashColor: Colors.transparent,
+                              highlightColor: Colors.transparent,
+                              onTap: () {
+                                chat.setScopeForCurrentSession(null);
+                                AppToast.info(context, 'Đã xóa giới hạn Scope của cuộc hội thoại');
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(2),
+                                child: Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: () {
-                        chat.setScopeForCurrentSession(null);
-                      },
-                      child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],

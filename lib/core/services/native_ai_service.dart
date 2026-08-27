@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
@@ -35,6 +36,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 3. BÁO CÁO KẾT QUẢ RÕ RÀNG, CHÍNH XÁC (ZERO FLUFF):
    - Khi hoàn tất, báo cáo rõ kết quả thực thi và kết luận ngắn gọn.
    - Không chào hỏi dài dòng, không văn mẫu xã giao.
+
+4. PHONG CÁCH TRÌNH BÀY (TUYỆT ĐỐI KHÔNG DÙNG ICON/EMOJI):
+   - TUYỆT ĐỐI KHÔNG sử dụng bất kỳ icon, emoji hay biểu tượng hình ảnh nào (như ✅, ❌, 🚀, 💡, 📌, 🎯, ✨, ⚡, 🔍, 🛠️, v.v.) trong câu trả lời.
+   - Trình bày câu trả lời bằng văn bản kỹ thuật thuần túy (clean text), chuyên nghiệp, trực diện, mạch lạc.
+   - Sử dụng định dạng Markdown chuẩn (tiêu đề, danh sách gạch đầu dòng, in đậm, codeblock) thay cho biểu tượng.
 ''';
 
   Future<String> _executeCommand(String command, {String? workingDir, int timeoutSeconds = 60, ServerModel? server}) async {
@@ -137,6 +143,33 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           createdAt: DateTime.now(),
         );
         await _dbService.insertMessage(userMsg);
+
+        // If user selected a CLI agent (e.g. antigravity-cli, claude-cli, gemini-cli)
+        if (_isCliModel(targetModel)) {
+          await _runCliAgent(
+            cliName: targetModel,
+            prompt: message,
+            workingDir: workingDir,
+            targetServerModel: targetServerModel,
+            onToken: onToken,
+            onStatus: onStatus,
+            onTool: onTool,
+            onDone: (reply) async {
+              final assistantMsg = ChatMessageModel(
+                sessionId: sessionId,
+                role: 'assistant',
+                content: reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.',
+                model: targetModel,
+                createdAt: DateTime.now(),
+              );
+              await _dbService.insertMessage(assistantMsg);
+              onDone(reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.');
+            },
+            onError: onError,
+            isCancelled: () => isCancelled,
+          );
+          return;
+        }
 
         // Build System Prompt
         String sysPrompt = systemPromptBase;
@@ -418,5 +451,228 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     return controller.stream.listen((_) {}, onDone: () {
       isCancelled = true;
     });
+  }
+
+  bool _isCliModel(String model) {
+    final m = model.toLowerCase();
+    return m.contains('cli') || m == 'agy' || m == 'claude' || m == 'gemini';
+  }
+
+  String _findCliExecutable(String cliName) {
+    final home = Platform.environment['HOME'] ?? '';
+    final m = cliName.toLowerCase();
+
+    if (m.contains('antigravity') || m == 'agy') {
+      final userBin = '$home/.local/bin/agy';
+      if (File(userBin).existsSync()) return userBin;
+      return 'agy';
+    }
+
+    if (m.contains('claude')) {
+      final nvmDir = '$home/.nvm/versions/node';
+      if (Directory(nvmDir).existsSync()) {
+        try {
+          final entries = Directory(nvmDir).listSync();
+          for (final e in entries) {
+            final claudePath = '${e.path}/bin/claude';
+            if (File(claudePath).existsSync()) return claudePath;
+          }
+        } catch (_) {}
+      }
+      final localBin = '$home/.local/bin/claude';
+      if (File(localBin).existsSync()) return localBin;
+      return 'claude';
+    }
+
+    if (m.contains('gemini')) {
+      final localBin = '$home/.local/bin/gemini';
+      if (File(localBin).existsSync()) return localBin;
+      return 'gemini';
+    }
+
+    return cliName;
+  }
+
+  Future<void> _runCliAgent({
+    required String cliName,
+    required String prompt,
+    String? workingDir,
+    ServerModel? targetServerModel,
+    required void Function(String token) onToken,
+    required void Function(String status) onStatus,
+    required void Function(ToolExecutionItem tool) onTool,
+    required void Function(String fullReply) onDone,
+    required void Function(dynamic error) onError,
+    required bool Function() isCancelled,
+  }) async {
+    final exe = _findCliExecutable(cliName);
+    onStatus('Đang khởi chạy $cliName agent...');
+
+    if (targetServerModel != null) {
+      onStatus('Đang gửi lệnh tới $cliName trên máy chủ ${targetServerModel.name}...');
+      final escapedPrompt = prompt.replaceAll("'", "'\\''");
+      final cmd = '$exe -p \'$escapedPrompt\'';
+      final result = await _executeCommand(cmd, workingDir: workingDir, server: targetServerModel);
+      onToken(result);
+      onDone(result);
+      return;
+    }
+
+    try {
+      final workDir = (workingDir != null && Directory(workingDir).existsSync())
+          ? workingDir
+          : (Platform.environment['HOME'] ?? Directory.current.path);
+
+      final cleanPrompt = '$prompt\n\n(Yêu cầu: Tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng text thuần chuẩn kỹ thuật)';
+      List<String> args;
+      final m = cliName.toLowerCase();
+      if (m.contains('claude')) {
+        args = ['-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+      } else if (m.contains('antigravity') || m == 'agy') {
+        args = ['--print', cleanPrompt, '--output-format', 'stream-json', '--dangerously-skip-permissions'];
+      } else if (m.contains('gemini')) {
+        args = ['-p', cleanPrompt];
+      } else {
+        args = ['-p', cleanPrompt, '--dangerously-skip-permissions'];
+      }
+
+      // Augmented PATH environment so subprocesses (node, git, etc.) are always found
+      final env = Map<String, String>.from(Platform.environment);
+      final home = Platform.environment['HOME'] ?? '';
+      final currentPath = env['PATH'] ?? '';
+      final extraPaths = <String>[
+        '$home/.local/bin',
+        '$home/bin',
+        '/usr/local/bin',
+        '/snap/bin',
+      ];
+      final nvmDir = Directory('$home/.nvm/versions/node');
+      if (nvmDir.existsSync()) {
+        try {
+          for (final dir in nvmDir.listSync()) {
+            final binPath = '${dir.path}/bin';
+            if (Directory(binPath).existsSync()) {
+              extraPaths.add(binPath);
+            }
+          }
+        } catch (_) {}
+      }
+      env['PATH'] = '${extraPaths.join(':')}:$currentPath';
+
+      onStatus('AI Agent $cliName đang phân tích và thực thi tác vụ...');
+      final process = await Process.start(
+        exe,
+        args,
+        workingDirectory: workDir,
+        environment: env,
+        runInShell: false,
+      );
+
+      // Close stdin immediately so the CLI tool doesn't wait for input
+      try {
+        await process.stdin.close();
+      } catch (_) {}
+
+      final fullOutput = StringBuffer();
+      final errOutput = StringBuffer();
+
+      process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        if (isCancelled()) return;
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return;
+
+        try {
+          final json = jsonDecode(trimmed);
+          if (json is Map<String, dynamic>) {
+            // 1. Antigravity CLI (agy) streaming protocol
+            if (json.containsKey('event')) {
+              final event = json['event'];
+              if (event == 'step_update') {
+                final step = json['step_update'] as Map<String, dynamic>?;
+                final stepType = step?['step_type']?.toString();
+                final textDelta = step?['text_delta']?.toString();
+
+                if (textDelta != null && textDelta.isNotEmpty) {
+                  fullOutput.write(textDelta);
+                  onToken(textDelta);
+                } else if (stepType == 'tool_call') {
+                  final toolName = step?['tool_name'] ?? 'công cụ';
+                  onStatus('Antigravity CLI đang gọi: $toolName...');
+                }
+              } else if (event == 'result') {
+                final res = json['result'] as Map<String, dynamic>?;
+                final resp = res?['response']?.toString();
+                if (resp != null && fullOutput.isEmpty) {
+                  fullOutput.write(resp);
+                  onToken(resp);
+                }
+              }
+              return;
+            }
+
+            // 2. Claude Code CLI streaming protocol
+            if (json.containsKey('type')) {
+              final type = json['type'];
+              if (type == 'content_block_delta') {
+                final delta = json['delta'] as Map<String, dynamic>?;
+                final text = delta?['text']?.toString();
+                if (text != null && text.isNotEmpty) {
+                  fullOutput.write(text);
+                  onToken(text);
+                }
+              } else if (type == 'result') {
+                final result = json['result']?.toString();
+                if (result != null && fullOutput.isEmpty) {
+                  fullOutput.write(result);
+                  onToken(result);
+                }
+              } else if (type == 'assistant') {
+                final msg = json['message'] as Map<String, dynamic>?;
+                final contents = msg?['content'] as List<dynamic>?;
+                if (contents != null) {
+                  for (final c in contents) {
+                    if (c is Map && c['type'] == 'text') {
+                      final t = c['text']?.toString();
+                      if (t != null && fullOutput.isEmpty) {
+                        fullOutput.write(t);
+                        onToken(t);
+                      }
+                    }
+                  }
+                }
+              }
+              return;
+            }
+          }
+        } catch (_) {
+          // Not JSON -> handle as plain text stream
+        }
+
+        // Plain text fallback line
+        fullOutput.writeln(line);
+        onToken('$line\n');
+      });
+
+      process.stderr.transform(utf8.decoder).listen((data) {
+        if (!isCancelled()) {
+          errOutput.write(data);
+          debugPrint('[$cliName stderr]: $data');
+        }
+      });
+
+      final exitCode = await process.exitCode;
+      if (exitCode == 0 || fullOutput.isNotEmpty) {
+        final result = fullOutput.toString().trim();
+        onDone(result.isNotEmpty ? result : 'Đã hoàn tất tác vụ với $cliName.');
+      } else {
+        final errStr = errOutput.toString().trim();
+        onError('Agent $cliName báo lỗi (mã $exitCode): ${errStr.isNotEmpty ? errStr : "Không có phản hồi"}');
+      }
+    } catch (e) {
+      onError('Không thể chạy CLI $cliName: $e. Hãy kiểm tra đường dẫn hoặc quyền thực thi.');
+    }
   }
 }

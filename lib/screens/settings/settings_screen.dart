@@ -36,7 +36,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadGlobalConfig() async {
     try {
       final cfg = await _api.getConfig();
-      if (cfg['ai_model'] != null) _modelCtrl.text = cfg['ai_model'].toString();
+      final m = cfg['ai_model']?.toString() ?? 'glm-5.3';
+      _modelCtrl.text = (m.contains('cli') || m == 'agy' || m == 'claude') ? 'glm-5.3' : m;
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
     } catch (_) {}
@@ -51,7 +52,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final ok = await _api.saveConfig(cfg);
       if (mounted) {
         if (ok) {
-          context.read<ServerProvider>().setGlobalAiModel(_modelCtrl.text.trim());
+          final serverProvider = context.read<ServerProvider>();
+          serverProvider.setCloudAiModel(_modelCtrl.text.trim());
+          serverProvider.fetchModels(
+            forceRefresh: true,
+            customBaseUrl: _baseUrlCtrl.text.trim(),
+            customApiKey: _apiKeyCtrl.text.trim(),
+          );
           AppToast.success(context, 'Đã lưu cấu hình AI Model & API thành công!');
         } else {
           AppToast.error(context, 'Lưu cấu hình thất bại!');
@@ -139,27 +146,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        const Row(
                           children: [
-                            const Row(
-                              children: [
-                                Icon(Icons.memory_rounded, size: 18, color: AppColors.primaryLight),
-                                SizedBox(width: 8),
-                                Text(
-                                  '1. Cấu Hình AI Model & Proxy API',
-                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.cardBg,
-                                side: const BorderSide(color: AppColors.primary),
-                              ),
-                              icon: const Icon(Icons.check_rounded, size: 16, color: AppColors.primaryLight),
-                              label: const Text('Lưu Cấu Hình AI', style: TextStyle(color: AppColors.primaryLight)),
-                              onPressed: _saveAISettings,
+                            Icon(Icons.memory_rounded, size: 18, color: AppColors.primaryLight),
+                            SizedBox(width: 8),
+                            Text(
+                              '1. Cấu Hình AI Model & Proxy API',
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
@@ -259,15 +252,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: _buildInfoBox('Hệ Điều Hành Local', '${Platform.operatingSystem.toUpperCase()} (${Platform.operatingSystemVersion})'),
+                              child: _buildInfoBox(
+                                'Hệ Điều Hành Local',
+                                '${Platform.operatingSystem.toUpperCase()} (Linux 64-bit)',
+                                tooltip: '${Platform.operatingSystem.toUpperCase()} (${Platform.operatingSystemVersion})',
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: _buildInfoBox('Trình Thực Thi Shell', Platform.environment['SHELL'] ?? (Platform.isWindows ? 'cmd.exe' : '/bin/bash')),
+                              child: _buildInfoBox(
+                                'Trình Thực Thi Shell',
+                                Platform.environment['SHELL'] ?? (Platform.isWindows ? 'cmd.exe' : '/bin/bash'),
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: _buildInfoBox('Chế Độ Hoạt Động', 'Local Machine & Quản trị Máy Chủ Đa VPS qua SSH'),
+                              child: _buildInfoBox(
+                                'Chế Độ Hoạt Động',
+                                'Local Machine & Quản trị Máy Chủ VPS',
+                                tooltip: 'Thực thi lệnh trên Local Shell và Máy chủ từ xa qua SSH',
+                              ),
                             ),
                           ],
                         ),
@@ -275,11 +279,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: _buildInfoBox('Thư Mục Dữ Liệu Local', Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.'),
+                              child: _buildInfoBox(
+                                'Thư Mục Dữ Liệu Local',
+                                Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.',
+                                tooltip: 'Đường dẫn thư mục Home người dùng hiện tại',
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: _buildInfoBox('Bảo Mật Cơ Sở Dữ Liệu', 'SQLite Local Encrypted Storage (~/.ai_type_agent/)'),
+                              child: _buildInfoBox(
+                                'Bảo Mật Cơ Sở Dữ Liệu',
+                                'SQLite Encrypted Storage (~/.ai_type_agent/)',
+                                tooltip: 'Cơ sở dữ liệu SQLite mã hóa AES an toàn',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildInfoBox(
+                                'Phiên Bản Ứng Dụng',
+                                'AI Type Desktop v1.3.0',
+                                tooltip: 'Phiên bản Flutter Desktop Native Client',
+                              ),
                             ),
                           ],
                         ),
@@ -305,9 +325,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildInfoBox(String title, String desc) {
+  Widget _buildInfoBox(String title, String desc, {String? tooltip}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.inputBg,
         borderRadius: BorderRadius.circular(4),
@@ -315,10 +336,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+          ),
           const SizedBox(height: 4),
-          Text(desc, style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+          Tooltip(
+            message: tooltip ?? desc,
+            waitDuration: const Duration(milliseconds: 400),
+            child: Text(
+              desc,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+            ),
+          ),
         ],
       ),
     );

@@ -337,20 +337,6 @@ class _ServersScreenState extends State<ServersScreen> {
     );
   }
 
-  void _duplicateServer(ServerModel server) async {
-    final dup = server.copyWith(
-      id: 'srv_${DateTime.now().millisecondsSinceEpoch}',
-      name: '${server.name} (Bản sao)',
-      isSelected: false,
-    );
-    await context.read<ServerProvider>().addOrUpdateServer(dup);
-    if (mounted) {
-      _searchCtrl.clear();
-      setState(() => _searchQuery = '');
-      AppToast.success(context, 'Đã nhân bản máy chủ "${server.name}"!');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
@@ -449,39 +435,48 @@ class _ServersScreenState extends State<ServersScreen> {
               color: AppColors.sidebarBg,
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: AppColors.inputBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: TextField(
-                      controller: _searchCtrl,
-                      onChanged: (val) => setState(() => _searchQuery = val.trim()),
-                      decoration: InputDecoration(
-                        hintText: 'Tìm kiếm nhanh máy chủ theo tên, IP, username...',
-                        hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded, size: 18, color: AppColors.textMuted),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear_rounded, size: 16),
-                                onPressed: () {
-                                  _searchCtrl.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : null,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
+            child: SizedBox(
+              height: 38,
+              child: TextField(
+                controller: _searchCtrl,
+                textAlignVertical: TextAlignVertical.center,
+                style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
+                onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Tìm kiếm nhanh máy chủ theo tên, IP, username...',
+                  hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textMuted),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          padding: EdgeInsets.zero,
+                          hoverColor: Colors.transparent,
+                          splashColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          icon: const Icon(Icons.clear_rounded, size: 16, color: AppColors.textDim),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: AppColors.inputBg,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: const BorderSide(color: AppColors.borderDark),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: const BorderSide(color: AppColors.borderDark),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: const BorderSide(color: AppColors.primaryLight, width: 1),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
 
@@ -695,64 +690,37 @@ class _ServersScreenState extends State<ServersScreen> {
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      // Test Connection Button
-                                      OutlinedButton.icon(
-                                        style: OutlinedButton.styleFrom(
-                                          side: BorderSide(
-                                            color: test == 'success'
-                                                ? AppColors.accent
-                                                : test == 'failed'
-                                                    ? AppColors.danger
-                                                    : AppColors.borderDark,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                        ),
+                                      // Test Connection Button (Icon only)
+                                      IconButton(
                                         icon: test == 'testing'
                                             ? const SizedBox(
-                                                width: 12,
-                                                height: 12,
+                                                width: 14,
+                                                height: 14,
                                                 child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
                                               )
                                             : Icon(
                                                 test == 'success'
-                                                    ? Icons.check_circle_rounded
+                                                    ? Icons.wifi_protected_setup_rounded
                                                     : test == 'failed'
                                                         ? Icons.error_outline_rounded
                                                         : Icons.wifi_protected_setup_rounded,
-                                                size: 14,
+                                                size: 16,
                                                 color: test == 'success'
                                                     ? AppColors.accent
                                                     : test == 'failed'
                                                         ? AppColors.danger
-                                                        : AppColors.textMuted,
+                                                        : AppColors.textDim,
                                               ),
-                                        label: Text(
-                                          test == 'testing'
-                                              ? 'Đang thử...'
-                                              : test == 'success'
-                                                  ? 'Online'
-                                                  : test == 'failed'
-                                                      ? 'Lỗi kết nối'
-                                                      : 'Thử kết nối',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: test == 'success'
-                                                ? AppColors.accent
+                                        tooltip: test == 'testing'
+                                            ? 'Đang thử kết nối...'
+                                            : test == 'success'
+                                                ? 'Kết nối thành công (Online) - Bấm để thử lại'
                                                 : test == 'failed'
-                                                    ? AppColors.danger
-                                                    : AppColors.textBody,
-                                          ),
-                                        ),
+                                                    ? 'Lỗi kết nối - Bấm để thử lại'
+                                                    : 'Thử kết nối máy chủ',
                                         onPressed: test == 'testing' ? null : () => _testServerConnection(s),
                                       ),
                                       const SizedBox(width: 8),
-
-                                      // Duplicate Button
-                                      IconButton(
-                                        icon: const Icon(Icons.copy_rounded, size: 16, color: AppColors.textDim),
-                                        tooltip: 'Nhân bản cấu hình máy chủ này',
-                                        onPressed: () => _duplicateServer(s),
-                                      ),
 
                                       // Edit Button
                                       IconButton(

@@ -4,7 +4,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../models/server_model.dart';
 import 'encryption_service.dart';
-import 'storage_service.dart';
 
 class LocalConfigService {
   static final LocalConfigService _instance = LocalConfigService._internal();
@@ -34,17 +33,13 @@ class LocalConfigService {
   };
 
   Future<void> switchUser(String userKey) async {
-    final sanitized = StorageService.sanitizeUserKey(userKey);
-    if (_currentUserKey == sanitized && _cachedConfig.isNotEmpty) return;
-    _currentUserKey = sanitized;
-    _resolvedConfigPath = null;
+    // Single config.json mode - no separate user config files
     _cachedConfig = {};
-    await loadConfig(userKey: _currentUserKey);
+    await loadConfig();
   }
 
-  Future<String> _resolveConfigPath({String? userKey}) async {
-    final key = userKey ?? _currentUserKey ?? await StorageService().getUserKey();
-    final configFileName = key.isNotEmpty ? 'config_$key.json' : 'config.json';
+  Future<String> _resolveConfigPath() async {
+    if (_resolvedConfigPath != null) return _resolvedConfigPath!;
 
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
       final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
@@ -54,24 +49,8 @@ class LocalConfigService {
           appDir.createSync(recursive: true);
         } catch (_) {}
       }
-
-      final userCfgPath = p.join(appDir.path, configFileName);
       final masterCfgPath = p.join(appDir.path, 'config.json');
-
-      if (File(userCfgPath).existsSync()) {
-        _resolvedConfigPath = p.normalize(userCfgPath);
-        return _resolvedConfigPath!;
-      }
-
-      if (key.isNotEmpty && File(masterCfgPath).existsSync()) {
-        try {
-          File(masterCfgPath).copySync(userCfgPath);
-          _resolvedConfigPath = p.normalize(userCfgPath);
-          return _resolvedConfigPath!;
-        } catch (_) {}
-      }
-
-      _resolvedConfigPath = p.normalize(userCfgPath);
+      _resolvedConfigPath = p.normalize(masterCfgPath);
       return _resolvedConfigPath!;
     }
 
@@ -79,30 +58,22 @@ class LocalConfigService {
       final appDocDir = await getApplicationDocumentsDirectory();
       final dir = Directory(appDocDir.path);
       if (!dir.existsSync()) dir.createSync(recursive: true);
-      final targetPath = p.join(appDocDir.path, configFileName);
-      if (key.isNotEmpty && !File(targetPath).existsSync()) {
-        final defaultCfg = p.join(appDocDir.path, 'config.json');
-        if (File(defaultCfg).existsSync()) {
-          try {
-            File(defaultCfg).copySync(targetPath);
-          } catch (_) {}
-        }
-      }
+      final targetPath = p.join(appDocDir.path, 'config.json');
       _resolvedConfigPath = targetPath;
       return _resolvedConfigPath!;
     } catch (_) {
-      _resolvedConfigPath = configFileName;
-      return configFileName;
+      _resolvedConfigPath = 'config.json';
+      return _resolvedConfigPath!;
     }
   }
 
-  Future<Map<String, dynamic>> loadConfig({String? userKey}) async {
-    final filePath = await _resolveConfigPath(userKey: userKey);
+  Future<Map<String, dynamic>> loadConfig() async {
+    final filePath = await _resolveConfigPath();
     final file = File(filePath);
 
     if (!file.existsSync()) {
       _cachedConfig = Map<String, dynamic>.from(defaultRawConfig);
-      await saveConfig(_cachedConfig, userKey: userKey);
+      await saveConfig(_cachedConfig);
       return _cachedConfig;
     }
 
@@ -201,7 +172,7 @@ class LocalConfigService {
 
       _cachedConfig = result;
       if (needsReSave) {
-        await saveConfig(result, userKey: userKey);
+        await saveConfig(result);
       }
       return result;
     } catch (e) {
@@ -210,13 +181,16 @@ class LocalConfigService {
     }
   }
 
-  Future<bool> saveConfig(Map<String, dynamic> newConfig, {String? userKey}) async {
+  Future<bool> saveConfig(Map<String, dynamic> newConfig) async {
     try {
-      final filePath = await _resolveConfigPath(userKey: userKey);
+      final current = _cachedConfig.isNotEmpty ? Map<String, dynamic>.from(_cachedConfig) : await loadConfig();
+      final merged = Map<String, dynamic>.from(current)..addAll(newConfig);
+
+      final filePath = await _resolveConfigPath();
       final file = File(filePath);
 
       final toSave = <String, dynamic>{};
-      for (final entry in newConfig.entries) {
+      for (final entry in merged.entries) {
         final k = entry.key;
         final v = entry.value;
 
@@ -232,11 +206,11 @@ class LocalConfigService {
       }
 
       // Also persist encrypted vault for backward compatibility
-      final rawJson = jsonEncode(newConfig);
+      final rawJson = jsonEncode(merged);
       toSave['_encrypted_vault'] = _enc.encryptValue(rawJson);
 
       await file.writeAsString(const JsonEncoder.withIndent('  ').convert(toSave));
-      _cachedConfig = Map<String, dynamic>.from(newConfig);
+      _cachedConfig = merged;
       return true;
     } catch (e) {
       return false;
@@ -284,17 +258,6 @@ class LocalConfigService {
       serversList.add(s);
     }
 
-    // Recovery check: If serversList is empty, but cfg has a remote server_ip, restore it!
-    if (serversList.isEmpty) {
-      final ip = cfg['server_ip']?.toString() ?? '';
-      if (ip.isNotEmpty && ip != '127.0.0.1' && ip != 'localhost') {
-        final restored = ServerModel.fromJson(cfg, isCurrent: activeId != 'local');
-        serversList.add(restored);
-        cfg['servers'] = [restored.toJson()];
-        await saveConfig(cfg, userKey: _currentUserKey);
-      }
-    }
-
     return serversList;
   }
 
@@ -337,7 +300,7 @@ class LocalConfigService {
     }
 
     cfg['servers'] = servers;
-    return await saveConfig(cfg, userKey: _currentUserKey);
+    return await saveConfig(cfg);
   }
 
   Future<bool> selectServer(ServerModel server) async {
@@ -370,7 +333,7 @@ class LocalConfigService {
       cfg['secret_token'] = server.secretToken;
     }
 
-    return await saveConfig(cfg, userKey: _currentUserKey);
+    return await saveConfig(cfg);
   }
 
   Future<bool> deleteServer(String serverIdOrIp) async {
@@ -390,6 +353,6 @@ class LocalConfigService {
       cfg['server_ip'] = '127.0.0.1';
     }
 
-    return await saveConfig(cfg, userKey: _currentUserKey);
+    return await saveConfig(cfg);
   }
 }
