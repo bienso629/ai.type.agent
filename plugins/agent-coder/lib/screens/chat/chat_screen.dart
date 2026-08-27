@@ -48,8 +48,14 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _dirDebounceTimer;
 
   String? _lastSessionId;
-  String _lastTrackedContent = '';
-  int _lastMessageCount = 0;
+  bool _isLoadingOlder = false;
+  bool _wasGenerating = false;
+  final Map<String, GlobalKey> _messageKeys = {};
+
+  String _getMessageKey(ChatMessageModel msg, int index) {
+    if (msg.id != null) return 'msg_id_${msg.id}';
+    return 'msg_${msg.createdAt.millisecondsSinceEpoch}_${msg.role}_$index';
+  }
 
   @override
   void initState() {
@@ -233,24 +239,22 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _handleLoadMore(ChatProvider chat) async {
+    if (_isLoadingOlder || !chat.hasMoreMessages || chat.isLoadingMore || chat.isLoading) return;
+    _isLoadingOlder = true;
+    try {
+      await chat.loadMoreMessages();
+    } finally {
+      _isLoadingOlder = false;
+    }
+  }
+
   void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    if (_scrollController.position.pixels <= 60) {
+    if (!_scrollController.hasClients || _isLoadingOlder) return;
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 80) {
       final chat = context.read<ChatProvider>();
       if (chat.hasMoreMessages && !chat.isLoadingMore && !chat.isLoading) {
-        final oldMaxScroll = _scrollController.position.maxScrollExtent;
-        final oldPixels = _scrollController.position.pixels;
-        chat.loadMoreMessages().then((_) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scrollController.hasClients) {
-              final newMaxScroll = _scrollController.position.maxScrollExtent;
-              final diff = newMaxScroll - oldMaxScroll;
-              if (diff > 0) {
-                _scrollController.jumpTo(oldPixels + diff);
-              }
-            }
-          });
-        });
+        _handleLoadMore(chat);
       }
     }
   }
@@ -258,12 +262,11 @@ class _ChatScreenState extends State<ChatScreen> {
   void _scrollToBottom({bool instant = false}) {
     if (!_scrollController.hasClients) return;
     try {
-      final target = _scrollController.position.maxScrollExtent + 200;
       if (instant) {
-        _scrollController.jumpTo(target);
+        _scrollController.jumpTo(0.0);
       } else {
         _scrollController.animateTo(
-          target,
+          0.0,
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOut,
         );
@@ -643,18 +646,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final chat = context.watch<ChatProvider>();
     final serverProvider = context.watch<ServerProvider>();
 
+    // 1. Chỉ cuộn xuống cuối khi lần đầu chọn/mở Hộp hội thoại
     if (_lastSessionId != chat.currentSession?.id) {
       _lastSessionId = chat.currentSession?.id;
-      _lastTrackedContent = '';
-      _lastMessageCount = chat.messages.length;
+      _wasGenerating = chat.isGenerating;
       _safeScrollToBottom(instant: true);
-    } else if (chat.isGenerating) {
+    }
+    // 2. Chỉ cuộn xuống cuối khi Agent trả lời xong câu hỏi (chuyển từ generating sang done)
+    else if (_wasGenerating && !chat.isGenerating) {
+      _wasGenerating = false;
       _safeScrollToBottom();
-    } else if (chat.messages.length != _lastMessageCount ||
-        (chat.messages.isNotEmpty && _lastTrackedContent != chat.messages.last.content)) {
-      _lastMessageCount = chat.messages.length;
-      _lastTrackedContent = chat.messages.isNotEmpty ? chat.messages.last.content : '';
-      _safeScrollToBottom();
+    } else {
+      _wasGenerating = chat.isGenerating;
     }
 
     return CallbackShortcuts(
@@ -798,47 +801,27 @@ class _ChatScreenState extends State<ChatScreen> {
                             ? const Center(child: CircularProgressIndicator())
                             : ListView.builder(
                                 controller: _scrollController,
+                                reverse: true,
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                                itemCount: chat.hasMoreMessages
-                                    ? chat.messages.length + 1
-                                    : (chat.messages.isEmpty ? 1 : chat.messages.length + 1),
+                                itemCount: chat.messages.isEmpty
+                                    ? 1
+                                    : chat.messages.length + (chat.hasMoreMessages ? 1 : 1),
                                 itemBuilder: (context, idx) {
-                                  if (idx == 0) {
+                                  if (chat.messages.isEmpty) {
+                                    return _buildGreetingBubble(chat, serverProvider);
+                                  }
+                                  if (idx == chat.messages.length) {
                                     if (chat.hasMoreMessages) {
                                       return _buildLoadMoreBanner(chat);
                                     }
                                     return _buildGreetingBubble(chat, serverProvider);
                                   }
-                                  final msg = chat.messages[idx - 1];
-                                  return _buildMessageItem(msg, chat);
+                                  final msgIndex = chat.messages.length - 1 - idx;
+                                  final msg = chat.messages[msgIndex];
+                                  return _buildMessageItem(msg, chat, msgIndex);
                                 },
                               ),
                       ),
-
-                      // Status Progress Indicator Bar
-                      if (chat.isGenerating)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          color: AppColors.sidebarBg,
-                          child: Row(
-                            children: [
-                              const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  chat.currentStatus.isNotEmpty ? chat.currentStatus : 'AI đang xử lý yêu cầu...',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
 
                       // Input Bar
                       _buildInputBar(chat, serverProvider),
@@ -887,7 +870,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             )
           : InkWell(
-              onTap: () => chat.loadMoreMessages(),
+              onTap: () => _handleLoadMore(chat),
               borderRadius: BorderRadius.circular(4),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -990,10 +973,12 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildMessageItem(ChatMessageModel msg, ChatProvider chat) {
+  Widget _buildMessageItem(ChatMessageModel msg, ChatProvider chat, int index) {
     final isUser = msg.role == 'user';
+    final keyStr = _getMessageKey(msg, index);
 
     return Padding(
+      key: _messageKeys.putIfAbsent(keyStr, () => GlobalKey()),
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1098,17 +1083,17 @@ class _ChatScreenState extends State<ChatScreen> {
                             h5Padding: const EdgeInsets.only(top: 4, bottom: 2),
                             h6: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600, color: AppColors.textMuted, height: 1.3),
                             h6Padding: const EdgeInsets.only(top: 4, bottom: 2),
-                            blockSpacing: 8.0,
-                            listBullet: const TextStyle(fontSize: 13.5, color: AppColors.primaryLight),
-                            listBulletPadding: const EdgeInsets.only(right: 6, top: 1),
-                            listIndent: 20.0,
+                            blockSpacing: 6.0,
+                            listBullet: const TextStyle(fontSize: 10.0, color: AppColors.textMuted),
+                            listBulletPadding: const EdgeInsets.only(right: 8, top: 4),
+                            listIndent: 16.0,
                             code: const TextStyle(
                               fontFamily: 'monospace',
                               backgroundColor: AppColors.codeBg,
                               color: AppColors.terminalGreen,
                               fontSize: 12,
                             ),
-                            codeblockPadding: const EdgeInsets.all(10),
+                            codeblockPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             codeblockDecoration: BoxDecoration(
                               color: AppColors.codeBg,
                               borderRadius: BorderRadius.circular(4),
@@ -1222,7 +1207,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         InkWell(
                           borderRadius: BorderRadius.circular(4),
                           onTap: () {
-                            chat.sendMessage(msg.content);
+                            final serverProvider = context.read<ServerProvider>();
+                            final activeServerName = serverProvider.selectedServer?.name ?? 'Local Machine';
+                            chat.sendMessage(
+                              msg.content,
+                              model: serverProvider.currentAiModel,
+                              workingDir: chat.currentSessionScope,
+                              targetServer: activeServerName,
+                            );
                             _safeScrollToBottom();
                           },
                           child: const Padding(
