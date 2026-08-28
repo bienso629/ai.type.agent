@@ -10,24 +10,43 @@ class ChatProvider extends ChangeNotifier {
 
   List<ChatSessionModel> _sessions = [];
   ChatSessionModel? _currentSession;
-  List<ChatMessageModel> _messages = [];
+
+  // Per-session message storage and streaming states
+  final Map<String, List<ChatMessageModel>> _sessionMessages = {};
+  final Map<String, bool> _sessionGenerating = {};
+  final Map<String, String> _sessionStatuses = {};
+  final Map<String, StreamSubscription> _sessionStreams = {};
+  final Map<String, bool> _sessionHasMore = {};
+  final Map<String, int> _sessionOldestId = {};
+
   bool _isLoading = false;
   bool _isLoadingMore = false;
-  bool _hasMoreMessages = false;
-  int _oldestMessageId = 0;
-  bool _isGenerating = false;
-  String _currentStatus = '';
-  StreamSubscription? _streamSub;
 
   List<ChatSessionModel> get sessions => _sessions;
   ChatSessionModel? get currentSession => _currentSession;
-  List<ChatMessageModel> get messages => _messages;
+
+  List<ChatMessageModel> get messages =>
+      _currentSession != null ? (_sessionMessages[_currentSession!.id] ?? []) : [];
+
   bool get isLoading => _isLoading;
   bool get isLoadingMore => _isLoadingMore;
-  bool get hasMoreMessages => _hasMoreMessages;
-  int get oldestMessageId => _oldestMessageId;
-  bool get isGenerating => _isGenerating;
-  String get currentStatus => _currentStatus;
+
+  bool get hasMoreMessages =>
+      _currentSession != null ? (_sessionHasMore[_currentSession!.id] ?? false) : false;
+
+  int get oldestMessageId =>
+      _currentSession != null ? (_sessionOldestId[_currentSession!.id] ?? 0) : 0;
+
+  bool get isGenerating => isSessionGenerating(_currentSession?.id);
+  bool isSessionGenerating(String? sessionId) =>
+      sessionId != null && (_sessionGenerating[sessionId] == true);
+
+  String get currentStatus =>
+      _currentSession != null ? (_sessionStatuses[_currentSession!.id] ?? '') : '';
+  String getSessionStatus(String? sessionId) =>
+      sessionId != null ? (_sessionStatuses[sessionId] ?? '') : '';
+
+  bool get anySessionGenerating => _sessionGenerating.values.any((v) => v == true);
 
   // Quick Action Chips
   final List<String> quickPrompts = [
@@ -97,6 +116,9 @@ class ChatProvider extends ChangeNotifier {
       _sessions.removeWhere((s) => s.id == newSess.id);
       _sessions.insert(0, newSess);
       _sortSessions();
+      _sessionMessages[newSess.id] = [];
+      _sessionHasMore[newSess.id] = false;
+      _sessionOldestId[newSess.id] = 0;
       await selectSession(newSess);
     } catch (_) {
       final fallbackSess = ChatSessionModel(
@@ -108,6 +130,9 @@ class ChatProvider extends ChangeNotifier {
       );
       _sessions.insert(0, fallbackSess);
       _sortSessions();
+      _sessionMessages[fallbackSess.id] = [];
+      _sessionHasMore[fallbackSess.id] = false;
+      _sessionOldestId[fallbackSess.id] = 0;
       await selectSession(fallbackSess);
     }
   }
@@ -159,60 +184,80 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> selectSession(ChatSessionModel session) async {
     _currentSession = session;
-    _messages = [];
-    _hasMoreMessages = false;
-    _isLoadingMore = false;
-    _oldestMessageId = 0;
+    final sId = session.id;
+
+    // If this session is already loaded in memory (or generating), maintain live state
+    if (_sessionMessages.containsKey(sId)) {
+      notifyListeners();
+      return;
+    }
+
     _isLoading = true;
     notifyListeners();
 
     try {
       final result = await _api.getChatHistory(
-        session.id,
+        sId,
         limitQuestions: 3,
         beforeId: 0,
       );
-      _messages = result.messages;
-      _hasMoreMessages = result.hasMore;
-      _oldestMessageId = result.oldestId;
-    } catch (_) {}
+      _sessionMessages[sId] = result.messages;
+      _sessionHasMore[sId] = result.hasMore;
+      _sessionOldestId[sId] = result.oldestId;
+    } catch (_) {
+      _sessionMessages[sId] = [];
+      _sessionHasMore[sId] = false;
+      _sessionOldestId[sId] = 0;
+    }
 
     _isLoading = false;
     notifyListeners();
   }
 
   Future<void> loadMoreMessages() async {
-    if (_currentSession == null || _isLoadingMore || !_hasMoreMessages) return;
+    final sId = _currentSession?.id;
+    if (sId == null || _isLoadingMore || !(_sessionHasMore[sId] ?? false)) return;
 
     _isLoadingMore = true;
     notifyListeners();
 
     try {
+      final oldestId = _sessionOldestId[sId] ?? 0;
       final result = await _api.getChatHistory(
-        _currentSession!.id,
+        sId,
         limitQuestions: 3,
-        beforeId: _oldestMessageId,
+        beforeId: oldestId,
       );
 
       if (result.messages.isNotEmpty) {
-        _messages.insertAll(0, result.messages);
-        _hasMoreMessages = result.hasMore;
+        _sessionMessages.putIfAbsent(sId, () => []);
+        _sessionMessages[sId]!.insertAll(0, result.messages);
+        _sessionHasMore[sId] = result.hasMore;
         if (result.oldestId > 0) {
-          _oldestMessageId = result.oldestId;
+          _sessionOldestId[sId] = result.oldestId;
         }
       } else {
-        _hasMoreMessages = false;
+        _sessionHasMore[sId] = false;
       }
     } catch (_) {
-      _hasMoreMessages = false;
+      _sessionHasMore[sId] = false;
     } finally {
       _isLoadingMore = false;
       notifyListeners();
     }
   }
 
-  Future<void> pinSession(ChatSessionModel session) async {
+  int get pinnedSessionsCount => _sessions.where((s) => s.isPinned).length;
+
+  Future<bool> pinSession(ChatSessionModel session) async {
     final newPinState = !session.isPinned;
+    if (newPinState) {
+      final currentPinnedCount = _sessions.where((s) => s.isPinned).length;
+      if (currentPinnedCount >= 3) {
+        return false;
+      }
+    }
+
     // 1. Optimistic local update
     final idx = _sessions.indexWhere((s) => s.id == session.id);
     if (idx != -1) {
@@ -230,6 +275,7 @@ class ChatProvider extends ChangeNotifier {
     // 2. Sync with SQLite
     await _api.pinChatSession(session.id, newPinState);
     await loadSessions(silent: true);
+    return true;
   }
 
   Future<void> updateSession(
@@ -274,6 +320,14 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> deleteSession(String sessionId) async {
+    _sessionStreams[sessionId]?.cancel();
+    _sessionStreams.remove(sessionId);
+    _sessionMessages.remove(sessionId);
+    _sessionGenerating.remove(sessionId);
+    _sessionStatuses.remove(sessionId);
+    _sessionHasMore.remove(sessionId);
+    _sessionOldestId.remove(sessionId);
+
     await _api.deleteChatSession(sessionId);
     _sessions.removeWhere((s) => s.id == sessionId);
     if (_currentSession?.id == sessionId) {
@@ -281,9 +335,6 @@ class ChatProvider extends ChangeNotifier {
         await selectSession(_sessions.first);
       } else {
         _currentSession = null;
-        _messages = [];
-        _hasMoreMessages = false;
-        _oldestMessageId = 0;
         notifyListeners();
       }
     } else {
@@ -293,22 +344,52 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> deleteAllSessions() async {
+    for (final sub in _sessionStreams.values) {
+      sub.cancel();
+    }
+    _sessionStreams.clear();
+    _sessionMessages.clear();
+    _sessionGenerating.clear();
+    _sessionStatuses.clear();
+    _sessionHasMore.clear();
+    _sessionOldestId.clear();
+
     await _api.deleteAllChatSessions();
     _sessions.clear();
     _currentSession = null;
-    _messages.clear();
-    _hasMoreMessages = false;
-    _oldestMessageId = 0;
     notifyListeners();
     await loadSessions(silent: true);
   }
 
   Future<void> clearHistory() async {
     if (_currentSession == null) return;
-    await _api.clearChatHistory(_currentSession!.id);
-    _messages.clear();
-    _hasMoreMessages = false;
-    _oldestMessageId = 0;
+    final sId = _currentSession!.id;
+    await _api.clearChatHistory(sId);
+    _sessionMessages[sId]?.clear();
+    _sessionHasMore[sId] = false;
+    _sessionOldestId[sId] = 0;
+    notifyListeners();
+  }
+
+  void stopGenerating({String? sessionId}) {
+    final targetId = sessionId ?? _currentSession?.id;
+    if (targetId == null) return;
+    _sessionStreams[targetId]?.cancel();
+    _sessionStreams.remove(targetId);
+    _sessionGenerating[targetId] = false;
+    _sessionStatuses.remove(targetId);
+    final msgs = _sessionMessages[targetId];
+    if (msgs != null && msgs.isNotEmpty) {
+      for (final m in msgs) {
+        if (m.isStreaming) {
+          m.isStreaming = false;
+          m.statusMessage = null;
+          if (m.content.isEmpty) {
+            m.content = 'Đã dừng phản hồi.';
+          }
+        }
+      }
+    }
     notifyListeners();
   }
 
@@ -320,7 +401,7 @@ class ChatProvider extends ChangeNotifier {
     String? targetServer,
   }) async {
     final query = text.trim();
-    if ((query.isEmpty && (attachments == null || attachments.isEmpty)) || _isGenerating) return;
+    if (query.isEmpty && (attachments == null || attachments.isEmpty)) return;
 
     if (_currentSession == null) {
       await createNewSession(targetServer: targetServer);
@@ -329,6 +410,7 @@ class ChatProvider extends ChangeNotifier {
     }
 
     final sessionId = _currentSession!.id;
+    if (isSessionGenerating(sessionId)) return;
 
     // Touch and update session timestamp so it moves to top
     final now = DateTime.now();
@@ -339,6 +421,8 @@ class ChatProvider extends ChangeNotifier {
       _sortSessions();
     }
 
+    _sessionMessages.putIfAbsent(sessionId, () => []);
+
     // 1. Add User Message
     final userMsg = ChatMessageModel(
       sessionId: sessionId,
@@ -347,7 +431,7 @@ class ChatProvider extends ChangeNotifier {
       model: model ?? 'glm-5.3',
       attachments: attachments,
     );
-    _messages.add(userMsg);
+    _sessionMessages[sessionId]!.add(userMsg);
 
     // 2. Add Placeholder Assistant Message
     final assistantMsg = ChatMessageModel(
@@ -358,20 +442,20 @@ class ChatProvider extends ChangeNotifier {
       isStreaming: true,
       statusMessage: 'Đang kết nối AI...',
     );
-    _messages.add(assistantMsg);
+    _sessionMessages[sessionId]!.add(assistantMsg);
 
-    _isGenerating = true;
-    _currentStatus = 'Đang suy nghĩ...';
+    _sessionGenerating[sessionId] = true;
+    _sessionStatuses[sessionId] = 'Đang suy nghĩ...';
     notifyListeners();
 
     // Prepare history snapshot
-    final historySnap = _messages
+    final historySnap = _sessionMessages[sessionId]!
         .where((m) => m.content.isNotEmpty && m != assistantMsg)
         .map((m) => {'role': m.role, 'content': m.content})
         .toList();
 
-    _streamSub?.cancel();
-    _streamSub = _api.streamChatMessage(
+    _sessionStreams[sessionId]?.cancel();
+    _sessionStreams[sessionId] = _api.streamChatMessage(
       sessionId: sessionId,
       message: query.isNotEmpty ? query : 'Vui lòng đọc và phân tích các tệp đính kèm.',
       model: model,
@@ -385,7 +469,7 @@ class ChatProvider extends ChangeNotifier {
         notifyListeners();
       },
       onStatus: (status) {
-        _currentStatus = status;
+        _sessionStatuses[sessionId] = status;
         assistantMsg.statusMessage = status;
         notifyListeners();
       },
@@ -400,8 +484,9 @@ class ChatProvider extends ChangeNotifier {
         if (fullReply.isNotEmpty && assistantMsg.content.isEmpty) {
           assistantMsg.content = fullReply;
         }
-        _isGenerating = false;
-        _currentStatus = '';
+        _sessionGenerating[sessionId] = false;
+        _sessionStatuses.remove(sessionId);
+        _sessionStreams.remove(sessionId);
         notifyListeners();
         loadSessions(silent: true); // Refresh session list & titles
       },
@@ -411,8 +496,9 @@ class ChatProvider extends ChangeNotifier {
         if (assistantMsg.content.isEmpty) {
           assistantMsg.content = '❌ Lỗi: $err';
         }
-        _isGenerating = false;
-        _currentStatus = '';
+        _sessionGenerating[sessionId] = false;
+        _sessionStatuses.remove(sessionId);
+        _sessionStreams.remove(sessionId);
         notifyListeners();
       },
     );
@@ -420,7 +506,10 @@ class ChatProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _streamSub?.cancel();
+    for (final sub in _sessionStreams.values) {
+      sub.cancel();
+    }
+    _sessionStreams.clear();
     super.dispose();
   }
 }

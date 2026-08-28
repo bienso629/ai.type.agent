@@ -72,6 +72,17 @@ class LocalConfigService {
     final file = File(filePath);
 
     if (!file.existsSync()) {
+      final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+      final legacyFile = File(p.join(home, '.tadu_ai_agent', 'config.json'));
+      if (legacyFile.existsSync()) {
+        try {
+          file.parent.createSync(recursive: true);
+          legacyFile.copySync(file.path);
+        } catch (_) {}
+      }
+    }
+
+    if (!file.existsSync()) {
       _cachedConfig = Map<String, dynamic>.from(defaultRawConfig);
       await saveConfig(_cachedConfig);
       return _cachedConfig;
@@ -354,5 +365,81 @@ class LocalConfigService {
     }
 
     return await saveConfig(cfg);
+  }
+
+  Future<String> exportServersJson({bool includeFullConfig = false}) async {
+    final cfg = await loadConfig();
+    final servers = _extractServersList(cfg);
+    final exportData = {
+      'version': '1.0.0',
+      'app': 'AI Type Agent',
+      'exported_at': DateTime.now().toIso8601String(),
+      'servers_count': servers.length,
+      'servers': servers,
+      if (includeFullConfig) ...{
+        'proxy_base_url': cfg['proxy_base_url'],
+        'ai_model': cfg['ai_model'],
+        'remote_work_dir': cfg['remote_work_dir'],
+        'api_port': cfg['api_port'],
+      }
+    };
+    return const JsonEncoder.withIndent('  ').convert(exportData);
+  }
+
+  Future<int> importServersJson(String jsonStr, {bool overwrite = false}) async {
+    final dynamic parsed = jsonDecode(jsonStr);
+    List<dynamic> incomingServers = [];
+
+    if (parsed is List) {
+      incomingServers = parsed;
+    } else if (parsed is Map) {
+      if (parsed['servers'] is List) {
+        incomingServers = parsed['servers'] as List;
+      } else if (parsed['server_ip'] != null) {
+        incomingServers = [parsed];
+      }
+    }
+
+    if (incomingServers.isEmpty) {
+      throw const FormatException('Không tìm thấy danh sách máy chủ hợp lệ trong dữ liệu JSON.');
+    }
+
+    final cfg = await loadConfig();
+    final currentServers = overwrite ? <Map<String, dynamic>>[] : _extractServersList(cfg);
+
+    int importedCount = 0;
+    for (final raw in incomingServers) {
+      if (raw is! Map) continue;
+      final item = Map<String, dynamic>.from(raw);
+
+      final cleaned = <String, dynamic>{};
+      for (final e in item.entries) {
+        final k = e.key.toString();
+        final v = e.value;
+        if (v is String && v.startsWith('enc:')) {
+          cleaned[k] = _enc.decryptValue(v);
+        } else {
+          cleaned[k] = v;
+        }
+      }
+
+      final s = ServerModel.fromJson(cleaned);
+      final idx = currentServers.indexWhere((existing) =>
+          (s.id.isNotEmpty && existing['id'] == s.id) ||
+          (s.serverIp.isNotEmpty &&
+              existing['server_ip'] == s.serverIp &&
+              existing['ssh_port']?.toString() == s.sshPort.toString()));
+
+      if (idx >= 0) {
+        currentServers[idx] = s.toJson();
+      } else {
+        currentServers.add(s.toJson());
+      }
+      importedCount++;
+    }
+
+    cfg['servers'] = currentServers;
+    await saveConfig(cfg);
+    return importedCount;
   }
 }

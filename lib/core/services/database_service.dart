@@ -83,6 +83,15 @@ class DatabaseService {
         } catch (_) {}
       }
       final targetPath = p.join(appDir.path, 'chat_history.db');
+      final targetFile = File(targetPath);
+      if (!targetFile.existsSync()) {
+        final legacyDb = File(p.join(home, '.tadu_ai_agent', 'chat_history.db'));
+        if (legacyDb.existsSync()) {
+          try {
+            legacyDb.copySync(targetPath);
+          } catch (_) {}
+        }
+      }
       return targetPath;
     }
 

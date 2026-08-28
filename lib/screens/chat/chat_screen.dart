@@ -965,11 +965,13 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
+      onPressed: chat.isGenerating
+          ? null
+          : () {
+              chat.sendMessage(prompt);
+              _safeScrollToBottom();
+            },
       child: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
-      onPressed: () {
-        chat.sendMessage(prompt);
-        _safeScrollToBottom();
-      },
     );
   }
 
@@ -1235,39 +1237,117 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildToolCard(ToolExecutionItem tool) {
+    IconData icon = Icons.terminal_rounded;
+    Color iconColor = AppColors.primaryLight;
+    final cleanTool = tool.tool.toLowerCase();
+    if (cleanTool.contains('file') || cleanTool.contains('read') || cleanTool.contains('view')) {
+      icon = Icons.description_outlined;
+      iconColor = AppColors.accentCyan;
+    } else if (cleanTool.contains('edit') || cleanTool.contains('write') || cleanTool.contains('replace')) {
+      icon = Icons.edit_note_rounded;
+      iconColor = Colors.amber;
+    } else if (cleanTool.contains('search') || cleanTool.contains('grep') || cleanTool.contains('find')) {
+      icon = Icons.search_rounded;
+      iconColor = Colors.purpleAccent;
+    }
+
     return Container(
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(top: 8, bottom: 4),
       decoration: BoxDecoration(
-        color: AppColors.terminalBg,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.borderDark),
+        color: const Color(0xFF0D1117),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF30363D)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            tool.command,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: AppColors.accent,
+          // Header Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: const BoxDecoration(
+              color: Color(0xFF161B22),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(5),
+                topRight: Radius.circular(5),
+              ),
+              border: Border(bottom: BorderSide(color: Color(0xFF30363D))),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 13, color: iconColor),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(
+                    tool.tool.isNotEmpty ? tool.tool : 'command',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: iconColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    tool.command,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textWhite,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          if (tool.output.isNotEmpty) ...[
-            const Divider(color: AppColors.borderDark, height: 10),
-            Text(
-              tool.output.trim(),
-              maxLines: 8,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: AppColors.textMuted,
-              ),
+          // Command body / Output
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  tool.command,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: AppColors.accentCyan,
+                    height: 1.4,
+                  ),
+                ),
+                if (tool.output.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF090D13),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF21262D)),
+                    ),
+                    child: SelectableText(
+                      tool.output.trim(),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10.5,
+                        color: AppColors.textMuted,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -1697,15 +1777,26 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                if (chat.isGenerating)
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.danger,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.stop_rounded, size: 14),
+                    label: const Text('Dừng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    onPressed: () => chat.stopGenerating(),
+                  )
+                else
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 14),
+                    label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    onPressed: () => _handleSend(chat, serverProvider),
                   ),
-                  icon: const Icon(Icons.send_rounded, size: 14),
-                  label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  onPressed: chat.isGenerating ? null : () => _handleSend(chat, serverProvider),
-                ),
               ],
             ),
           ],
@@ -1966,7 +2057,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                           ),
                                         ),
                                         tooltip: sess.isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu',
-                                        onPressed: () => chat.pinSession(sess),
+                                        onPressed: () async {
+                                          final success = await chat.pinSession(sess);
+                                          if (!success && context.mounted) {
+                                            AppToast.warning(context, 'Chỉ được ghim tối đa 3 hộp hội thoại lên đầu');
+                                          }
+                                        },
                                       ),
                                       const SizedBox(width: 4),
                                       // Session Details
@@ -1974,15 +2070,32 @@ class _ChatScreenState extends State<ChatScreen> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(
-                                              sess.title,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 11.5,
-                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                                color: isSelected ? AppColors.primaryLight : AppColors.textBody,
-                                              ),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    sess.title,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 11.5,
+                                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                      color: isSelected ? AppColors.primaryLight : AppColors.textBody,
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (chat.isSessionGenerating(sess.id)) ...[
+                                                  const SizedBox(width: 4),
+                                                  const SizedBox(
+                                                    width: 9,
+                                                    height: 9,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 1.5,
+                                                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                             const SizedBox(height: 2),
                                             Row(
