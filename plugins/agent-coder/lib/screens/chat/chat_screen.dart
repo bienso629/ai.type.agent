@@ -1,13 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/clipboard_service.dart';
+import '../../core/services/native_ssh_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_logo.dart';
@@ -1068,6 +1072,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         MarkdownBody(
                           data: msg.content,
                           selectable: true,
+                          builders: {
+                            'code': CodeElementBuilder(context),
+                          },
                           styleSheet: MarkdownStyleSheet(
                             p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.55),
                             pPadding: const EdgeInsets.only(bottom: 6),
@@ -2771,6 +2778,744 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
           child: const Text('Áp dụng Scope'),
         ),
       ],
+    );
+  }
+}
+
+class CodeElementBuilder extends MarkdownElementBuilder {
+  final BuildContext context;
+  CodeElementBuilder(this.context);
+
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    var language = '';
+    if (element.attributes['class'] != null) {
+      final lg = element.attributes['class'] as String;
+      if (lg.startsWith('language-')) {
+        language = lg.substring('language-'.length);
+      }
+    }
+
+    final code = element.textContent;
+    final isMultiLine = code.contains('\n') || language.isNotEmpty;
+
+    if (!isMultiLine) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+        decoration: BoxDecoration(
+          color: AppColors.codeBg,
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(color: AppColors.borderDark),
+        ),
+        child: Text(
+          code,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: AppColors.terminalGreen,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return _CodeBlockWidget(
+      code: code.trim(),
+      language: language.isNotEmpty ? language : 'sh',
+    );
+  }
+}
+
+class _CodeBlockWidget extends StatefulWidget {
+  final String code;
+  final String language;
+
+  const _CodeBlockWidget({required this.code, required this.language});
+
+  @override
+  State<_CodeBlockWidget> createState() => _CodeBlockWidgetState();
+}
+
+class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
+  bool _copied = false;
+
+  void _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    if (mounted) {
+      setState(() => _copied = true);
+      AppToast.success(context, 'Đã sao chép câu lệnh vào bộ nhớ tạm!');
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _copied = false);
+      });
+    }
+  }
+
+  void _runCommand() {
+    final chat = context.read<ChatProvider>();
+    final serverProvider = context.read<ServerProvider>();
+    final workingDir = chat.currentSession?.workingDirScope;
+    final server = serverProvider.selectedServer;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.12),
+      builder: (ctx) => _CommandRunnerModal(
+        command: widget.code,
+        workingDir: workingDir,
+        server: server,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanLg = widget.language.toLowerCase();
+    final isRunnable = cleanLg == 'bash' ||
+        cleanLg == 'sh' ||
+        cleanLg == 'shell' ||
+        cleanLg == 'zsh' ||
+        cleanLg == 'cmd' ||
+        cleanLg == 'terminal' ||
+        cleanLg == 'powershell' ||
+        cleanLg == '' ||
+        cleanLg == 'env';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF070B14),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF1E293B)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0F172A),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(5),
+                topRight: Radius.circular(5),
+              ),
+              border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.terminal_rounded, size: 13, color: AppColors.primaryLight),
+                const SizedBox(width: 6),
+                Text(
+                  widget.language.isNotEmpty ? widget.language.toUpperCase() : 'BASH',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primaryLight,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const Spacer(),
+                if (isRunnable) ...[
+                  InkWell(
+                    onTap: _runCommand,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: AppColors.accent.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            size: 13,
+                            color: AppColors.accent,
+                          ),
+                          SizedBox(width: 3),
+                          Text(
+                            'Chạy lệnh',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                InkWell(
+                  onTap: _copy,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _copied
+                          ? AppColors.primary.withValues(alpha: 0.25)
+                          : const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: _copied ? AppColors.primaryLight : const Color(0xFF334155),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _copied ? Icons.check_rounded : Icons.copy_rounded,
+                          size: 12,
+                          color: _copied ? AppColors.primaryLight : AppColors.textBody,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _copied ? 'Đã chép' : 'Sao chép',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _copied ? AppColors.primaryLight : AppColors.textBody,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SelectableText(
+              widget.code,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: Color(0xFF4ADE80),
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommandRunnerModal extends StatefulWidget {
+  final String command;
+  final String? workingDir;
+  final ServerModel? server;
+
+  const _CommandRunnerModal({
+    required this.command,
+    this.workingDir,
+    this.server,
+  });
+
+  @override
+  State<_CommandRunnerModal> createState() => _CommandRunnerModalState();
+}
+
+class _CommandRunnerModalState extends State<_CommandRunnerModal> {
+  final StringBuffer _logs = StringBuffer();
+  final ScrollController _scrollController = ScrollController();
+  Process? _localProcess;
+  SSHClient? _sshClient;
+  bool _isRunning = false;
+  bool _isMinimized = false;
+  bool _isMaximized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startExecution();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _startExecution() async {
+    setState(() {
+      _isRunning = true;
+      _logs.clear();
+    });
+
+    final isLocal = widget.server == null ||
+        widget.server!.name == 'Local Machine' ||
+        widget.server!.name == 'Local' ||
+        widget.server!.name == 'localhost' ||
+        widget.server!.serverIp == '127.0.0.1';
+
+    if (isLocal) {
+      try {
+        final home = Platform.environment['HOME'] ?? (Platform.isLinux ? '/home/yenai' : '');
+        final env = Map<String, String>.from(Platform.environment);
+        final extraPaths = <String>[
+          '$home/.gemini/antigravity-cli/bin',
+          '$home/.local/go/bin',
+          '$home/.local/bin',
+          '$home/bin',
+          '$home/.cargo/bin',
+          '$home/.bun/bin',
+          '/usr/local/sbin',
+          '/usr/local/bin',
+          '/usr/sbin',
+          '/usr/bin',
+          '/sbin',
+          '/bin',
+          '/snap/bin',
+        ];
+        final nvmDir = Directory('$home/.nvm/versions/node');
+        if (nvmDir.existsSync()) {
+          try {
+            for (final dir in nvmDir.listSync()) {
+              final binPath = '${dir.path}/bin';
+              if (Directory(binPath).existsSync()) {
+                extraPaths.add(binPath);
+              }
+            }
+          } catch (_) {}
+        }
+        final currentPath = env['PATH'] ?? '';
+        final fullPath = '${extraPaths.join(':')}:$currentPath';
+        env['PATH'] = fullPath;
+        if (home.isNotEmpty) env['HOME'] = home;
+
+        String effectiveDir = widget.workingDir ?? Directory.current.path;
+        if (!Directory(effectiveDir).existsSync()) {
+          effectiveDir = Directory.current.path;
+        }
+
+        _logs.writeln('⚡ [Local]: $effectiveDir');
+        _logs.writeln('\$ ${widget.command}\n');
+        setState(() {});
+
+        final fullCommand = 'export PATH="$fullPath"; [ -f "\$HOME/.nvm/nvm.sh" ] && . "\$HOME/.nvm/nvm.sh" 2>/dev/null; ${widget.command}';
+        final process = await Process.start(
+          'bash',
+          ['-c', fullCommand],
+          workingDirectory: effectiveDir,
+          environment: env,
+          runInShell: true,
+        );
+        _localProcess = process;
+
+        process.stdout.transform(utf8.decoder).listen((data) {
+          if (!mounted) return;
+          setState(() {
+            _logs.write(data);
+          });
+          _scrollToBottom();
+        });
+
+        process.stderr.transform(utf8.decoder).listen((data) {
+          if (!mounted) return;
+          setState(() {
+            _logs.write(data);
+          });
+          _scrollToBottom();
+        });
+
+        final code = await process.exitCode;
+        if (!mounted) return;
+        setState(() {
+          _isRunning = false;
+          _logs.writeln('\n[Hoàn tất]: Tiến trình kết thúc ($code)');
+        });
+        _scrollToBottom();
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isRunning = false;
+          _logs.writeln('\n[Lỗi thực thi]: $e');
+        });
+      }
+    } else {
+      // Remote SSH execution
+      try {
+        _logs.writeln('🖥️ [Máy chủ ${widget.server!.name}]: Khởi chạy SSH...');
+        _logs.writeln('\$ ${widget.command}\n');
+        setState(() {});
+
+        final sshService = NativeSshService();
+        final client = await sshService.getClient(server: widget.server!);
+        _sshClient = client;
+
+        String remoteCmd = widget.command;
+        if (widget.workingDir != null && widget.workingDir!.isNotEmpty) {
+          remoteCmd = 'cd ${widget.workingDir} && ${widget.command}';
+        }
+
+        final session = await client.execute(remoteCmd);
+
+        session.stdout.listen((data) {
+          if (!mounted) return;
+          setState(() {
+            _logs.write(utf8.decode(data, allowMalformed: true));
+          });
+          _scrollToBottom();
+        });
+
+        session.stderr.listen((data) {
+          if (!mounted) return;
+          setState(() {
+            _logs.write(utf8.decode(data, allowMalformed: true));
+          });
+          _scrollToBottom();
+        });
+
+        await session.done;
+        client.close();
+        if (!mounted) return;
+        setState(() {
+          _isRunning = false;
+          _logs.writeln('\n[Hoàn tất]: Lệnh SSH đã xong.');
+        });
+        _scrollToBottom();
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isRunning = false;
+          _logs.writeln('\n[Lỗi SSH]: $e');
+        });
+      }
+    }
+  }
+
+  void _stopExecution() {
+    try {
+      _localProcess?.kill(ProcessSignal.sigkill);
+      _localProcess = null;
+    } catch (_) {}
+    try {
+      _sshClient?.close();
+      _sshClient = null;
+    } catch (_) {}
+    setState(() {
+      _isRunning = false;
+      _logs.writeln('\n[Đã dừng bởi người dùng]');
+    });
+  }
+
+  void _copyLogs() async {
+    await Clipboard.setData(ClipboardData(text: _logs.toString()));
+    if (mounted) {
+      AppToast.success(context, 'Đã sao chép toàn bộ log!');
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    try {
+      _localProcess?.kill();
+    } catch (_) {}
+    try {
+      _sshClient?.close();
+    } catch (_) {}
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLocal = widget.server == null ||
+        widget.server!.name == 'Local Machine' ||
+        widget.server!.name == 'Local' ||
+        widget.server!.name == 'localhost' ||
+        widget.server!.serverIp == '127.0.0.1';
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    final double dialogWidth = _isMaximized
+        ? (screenWidth * 0.85).clamp(600.0, 900.0)
+        : (_isMinimized ? 380.0 : 500.0);
+    final double dialogHeight = _isMaximized
+        ? (screenHeight * 0.8).clamp(450.0, 650.0)
+        : (_isMinimized ? 44.0 : 310.0);
+
+    return Dialog(
+      alignment: _isMaximized ? Alignment.center : Alignment.bottomLeft,
+      insetPadding: _isMaximized
+          ? const EdgeInsets.all(24)
+          : const EdgeInsets.only(left: 20, bottom: 20),
+      backgroundColor: const Color(0xFF090D16),
+      elevation: 20,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: Color(0xFF30363D), width: 1.2),
+      ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeInOut,
+        width: dialogWidth,
+        height: dialogHeight,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: Column(
+            children: [
+              // Header Bar (always visible)
+              Container(
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF161B22),
+                  border: Border(bottom: BorderSide(color: Color(0xFF30363D))),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.terminal_rounded, size: 15, color: AppColors.accentCyan),
+                    const SizedBox(width: 7),
+                    Text(
+                      _isMinimized ? 'Console: ${widget.command}' : '⚡ Console Runner',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textWhite,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: (isLocal ? AppColors.accent : AppColors.primaryLight).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        isLocal ? 'Local' : (widget.server?.name ?? 'Server'),
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                          color: isLocal ? AppColors.accent : AppColors.primaryLight,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (_isRunning) ...[
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: AppColors.accentCyan,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Đang chạy',
+                        style: TextStyle(fontSize: 10, color: AppColors.accentCyan, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    // Minimize / Restore Toggle
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _isMinimized = !_isMinimized;
+                          if (_isMinimized) _isMaximized = false;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          _isMinimized ? Icons.open_in_full_rounded : Icons.remove_rounded,
+                          size: 14,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ),
+                    if (!_isMinimized) ...[
+                      const SizedBox(width: 4),
+                      // Maximize / Normalize Toggle
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isMaximized = !_isMaximized;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            _isMaximized ? Icons.close_fullscreen_rounded : Icons.crop_square_rounded,
+                            size: 14,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(width: 4),
+                    // Close Button
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(Icons.close_rounded, size: 16, color: AppColors.textMuted),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Body content (only rendered when NOT minimized)
+              if (!_isMinimized) ...[
+                // Command banner
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  color: const Color(0xFF0F172A),
+                  child: Text(
+                    '\$ ${widget.command.replaceAll('\n', ' && ')}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: Color(0xFF67E8F9),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+
+                // Console output stream
+                Expanded(
+                  child: Container(
+                    color: const Color(0xFF070A10),
+                    padding: const EdgeInsets.all(10),
+                    child: SelectionArea(
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        child: Text(
+                          _logs.toString().isNotEmpty ? _logs.toString() : 'Đang chuẩn bị...',
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: Color(0xFFE2E8F0),
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Footer Actions
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF161B22),
+                    border: Border(top: BorderSide(color: Color(0xFF30363D))),
+                  ),
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap: _logs.isNotEmpty ? _copyLogs : null,
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF21262D),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: const Color(0xFF30363D)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.copy_rounded, size: 11, color: AppColors.textBody),
+                              SizedBox(width: 4),
+                              Text('Chép Log', style: TextStyle(fontSize: 10.5, color: AppColors.textBody)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (_isRunning)
+                        InkWell(
+                          onTap: _stopExecution,
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.danger.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.danger.withValues(alpha: 0.6)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.stop_rounded, size: 12, color: AppColors.danger),
+                                SizedBox(width: 4),
+                                Text('Dừng', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppColors.danger)),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        InkWell(
+                          onTap: _startExecution,
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.refresh_rounded, size: 12, color: AppColors.primaryLight),
+                                SizedBox(width: 4),
+                                Text('Chạy lại', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const Spacer(),
+                      InkWell(
+                        onTap: () => Navigator.pop(context),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF21262D),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Đóng',
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
