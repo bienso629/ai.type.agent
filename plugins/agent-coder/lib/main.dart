@@ -53,7 +53,7 @@ class AiTypeAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LogsProvider()),
       ],
       child: MaterialApp(
-        title: 'AI Type Agent Control Server',
+        title: 'AI Type Agent',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
         home: const MainNavigationScreen(),

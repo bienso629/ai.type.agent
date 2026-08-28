@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/native_ssh_service.dart';
@@ -337,6 +340,234 @@ class _ServersScreenState extends State<ServersScreen> {
     );
   }
 
+  Future<void> _handleExportServers(ServerProvider serverProvider) async {
+    final serversCount = serverProvider.servers.length;
+    if (serversCount == 0) {
+      AppToast.warning(context, 'Danh sách máy chủ hiện đang trống, không có dữ liệu để sao lưu.');
+      return;
+    }
+
+    try {
+      final jsonStr = await serverProvider.exportServers(includeFullConfig: true);
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => TaduDialog(
+          minWidth: 540,
+          maxWidth: 680,
+          title: const Row(
+            children: [
+              Icon(Icons.download_rounded, color: AppColors.primaryLight, size: 22),
+              SizedBox(width: 8),
+              Text('Sao Lưu Danh Sách Máy Chủ (Export)'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Đã tạo bản sao lưu cho $serversCount máy chủ. Bạn có thể lưu vào file .json hoặc sao chép mã cấu hình.',
+                style: const TextStyle(fontSize: 12, color: AppColors.textDim),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                height: 200,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.terminalBg,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.borderDark),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    jsonStr,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.terminalGreen, height: 1.35),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text('Sao Chép JSON'),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: jsonStr));
+                if (ctx.mounted) {
+                  AppToast.success(ctx, 'Đã sao chép cấu hình JSON vào Clipboard!');
+                  Navigator.pop(ctx);
+                }
+              },
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              icon: const Icon(Icons.save_alt_rounded, size: 16),
+              label: const Text('Lưu Thành File .JSON'),
+              onPressed: () async {
+                try {
+                  String? outputPath;
+                  try {
+                    outputPath = await FilePicker.platform.saveFile(
+                      dialogTitle: 'Lưu file sao lưu danh sách Server',
+                      fileName: 'servers_backup_${DateTime.now().millisecondsSinceEpoch}.json',
+                      type: FileType.custom,
+                      allowedExtensions: ['json'],
+                    );
+                  } catch (_) {}
+
+                  if (outputPath == null) {
+                    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+                    final downloadsDir = Directory('$home/Downloads');
+                    final targetDir = downloadsDir.existsSync() ? downloadsDir.path : home;
+                    outputPath = '$targetDir/servers_backup_${DateTime.now().millisecondsSinceEpoch}.json';
+                  }
+
+                  final file = File(outputPath);
+                  await file.writeAsString(jsonStr);
+
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    AppToast.success(ctx, 'Đã lưu file sao lưu: $outputPath');
+                  }
+                } catch (e) {
+                  if (ctx.mounted) {
+                    AppToast.error(ctx, 'Lỗi khi lưu file: $e');
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      AppToast.error(context, 'Lỗi khi xuất danh sách máy chủ: $e');
+    }
+  }
+
+  Future<void> _handleImportServers(ServerProvider serverProvider) async {
+    final jsonCtrl = TextEditingController();
+    bool overwrite = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => TaduDialog(
+          minWidth: 540,
+          maxWidth: 680,
+          title: const Row(
+            children: [
+              Icon(Icons.upload_file_rounded, color: AppColors.primaryLight, size: 22),
+              SizedBox(width: 8),
+              Text('Khôi Phục / Nhập Danh Sách Máy Chủ (Import)'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Chọn file sao lưu (.json) từ máy tính hoặc dán trực tiếp nội dung JSON cấu hình máy chủ vào ô bên dưới:',
+                style: TextStyle(fontSize: 12, color: AppColors.textDim),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  side: const BorderSide(color: AppColors.primaryLight),
+                ),
+                icon: const Icon(Icons.folder_open_rounded, size: 16, color: AppColors.primaryLight),
+                label: const Text('Chọn File .JSON Từ Máy Tính', style: TextStyle(fontSize: 12, color: AppColors.primaryLight)),
+                onPressed: () async {
+                  try {
+                    final result = await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: ['json'],
+                      dialogTitle: 'Chọn file sao lưu cấu hình Server (.json)',
+                    );
+                    if (result != null && result.files.single.path != null) {
+                      final file = File(result.files.single.path!);
+                      final content = await file.readAsString();
+                      setDlgState(() {
+                        jsonCtrl.text = content;
+                      });
+                      if (ctx.mounted) {
+                        AppToast.info(ctx, 'Đã nạp nội dung từ: ${result.files.single.name}');
+                      }
+                    }
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      AppToast.error(ctx, 'Không thể đọc file: $e');
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: jsonCtrl,
+                maxLines: 7,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textWhite),
+                decoration: const InputDecoration(
+                  hintText: 'Dán mã JSON chứa danh sách máy chủ tại đây...\n{\n  "servers": [ ... ]\n}',
+                  hintStyle: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Checkbox(
+                    value: overwrite,
+                    activeColor: AppColors.warning,
+                    onChanged: (val) => setDlgState(() => overwrite = val ?? false),
+                  ),
+                  const SizedBox(width: 4),
+                  const Expanded(
+                    child: Text(
+                      'Ghi đè toàn bộ danh sách hiện tại (Nếu không chọn, hệ thống sẽ gộp và cập nhật thêm máy chủ)',
+                      style: TextStyle(fontSize: 11.5, color: AppColors.textBody),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              icon: const Icon(Icons.check_rounded, size: 16),
+              label: const Text('Thực Hiện Import'),
+              onPressed: () async {
+                final text = jsonCtrl.text.trim();
+                if (text.isEmpty) {
+                  AppToast.warning(ctx, 'Vui lòng chọn file JSON hoặc dán dữ liệu vào ô nhập.');
+                  return;
+                }
+
+                try {
+                  final count = await serverProvider.importServers(text, overwrite: overwrite);
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    AppToast.success(ctx, 'Đã nhập thành công $count máy chủ vào hệ thống!');
+                  }
+                } catch (e) {
+                  if (ctx.mounted) {
+                    AppToast.error(ctx, 'Lỗi định dạng JSON: $e');
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
@@ -411,6 +642,26 @@ class _ServersScreenState extends State<ServersScreen> {
                       icon: const Icon(Icons.refresh_rounded, size: 18),
                       tooltip: 'Tải lại danh sách máy chủ',
                       onPressed: () => serverProvider.loadServers(),
+                    ),
+                    const SizedBox(width: 4),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.borderDark),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      icon: const Icon(Icons.download_rounded, size: 15, color: AppColors.textDim),
+                      label: const Text('Sao Lưu (Export)', style: TextStyle(fontSize: 11.5, color: AppColors.textBody)),
+                      onPressed: () => _handleExportServers(serverProvider),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.borderDark),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      icon: const Icon(Icons.upload_file_rounded, size: 15, color: AppColors.textDim),
+                      label: const Text('Khôi Phục (Import)', style: TextStyle(fontSize: 11.5, color: AppColors.textBody)),
+                      onPressed: () => _handleImportServers(serverProvider),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton.icon(

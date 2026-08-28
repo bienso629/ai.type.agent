@@ -45,7 +45,7 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "AI Type Agent Control Server");
+    gtk_header_bar_set_title(header_bar, "AI Type Agent");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
 
     GtkCssProvider* provider = gtk_css_provider_new();
@@ -78,21 +78,30 @@ static void my_application_activate(GApplication* application) {
     g_object_unref(provider);
 
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
-  } else {
-    gtk_window_set_title(window, "AI Type Agent Control Server");
   }
 
+  gtk_window_set_title(window, "AI Type Agent");
   gtk_window_set_default_size(window, 1280, 720);
 
   g_autoptr(GError) icon_error = nullptr;
   g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
   if (exe_path != nullptr) {
     g_autofree gchar* dir = g_path_get_dirname(exe_path);
-    g_autofree gchar* icon_path = g_build_filename(dir, "data", "flutter_assets", "assets", "logo.png", nullptr);
-    if (g_file_test(icon_path, G_FILE_TEST_EXISTS)) {
-      gtk_window_set_icon_from_file(window, icon_path, &icon_error);
+    g_autofree gchar* icon_path1 = g_build_filename(dir, "data", "flutter_assets", "assets", "logo.png", nullptr);
+    g_autofree gchar* icon_path2 = g_build_filename(dir, "data", "flutter_assets", "assets", "app_icon.png", nullptr);
+    const gchar* chosen_icon = nullptr;
+    if (g_file_test(icon_path1, G_FILE_TEST_EXISTS)) {
+      chosen_icon = icon_path1;
+    } else if (g_file_test(icon_path2, G_FILE_TEST_EXISTS)) {
+      chosen_icon = icon_path2;
+    }
+    if (chosen_icon != nullptr) {
+      gtk_window_set_icon_from_file(window, chosen_icon, &icon_error);
+      gtk_window_set_default_icon_from_file(chosen_icon, nullptr);
     }
   }
+  gtk_window_set_default_icon_name("ai-type-agent");
+  gtk_window_set_icon_name(window, "ai-type-agent");
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
@@ -181,6 +190,7 @@ MyApplication* my_application_new() {
   // corresponding .desktop file. This ensures better integration by allowing
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
+  g_set_application_name("AI Type Agent");
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",

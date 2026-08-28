@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
 import '../core/services/cli_scanner_service.dart';
+import '../core/services/native_ai_service.dart';
 import '../core/services/storage_service.dart';
 import '../models/server_model.dart';
 
@@ -60,6 +61,16 @@ class ServerProvider extends ChangeNotifier {
     return n.contains('cli') || n == 'agy' || n == 'claude' || n == 'gemini';
   }
 
+  void _checkPreloadState() {
+    if (_selectedServer == null && _isCli(_activeAgent)) {
+      if (_activeAgent.contains('antigravity') || _activeAgent == 'agy') {
+        NativeAiService.preloadAgyWorker();
+      }
+    } else {
+      NativeAiService.disposeAgyWorkers();
+    }
+  }
+
   Future<void> scanCliAgents({bool forceRefresh = false}) async {
     if (_installedCliAgents.isNotEmpty && !forceRefresh) return;
     _isScanningCliAgents = true;
@@ -113,6 +124,7 @@ class ServerProvider extends ChangeNotifier {
       } else {
         _activeAgent = _cloudAiModel;
       }
+      _checkPreloadState();
       notifyListeners();
     } catch (_) {}
   }
@@ -123,6 +135,7 @@ class ServerProvider extends ChangeNotifier {
       if (!_isCli(agent)) {
         _cloudAiModel = agent;
       }
+      _checkPreloadState();
       notifyListeners();
       try {
         await _storage.setDefaultModel(agent);
@@ -195,6 +208,7 @@ class ServerProvider extends ChangeNotifier {
       _selectedServer = null;
       await _storage.setActiveServerId('local');
       _servers = _servers.map((s) => s.copyWith(isSelected: false)).toList();
+      _checkPreloadState();
       notifyListeners();
       try {
         final ok = await _api.selectServer('127.0.0.1', server);
@@ -206,6 +220,7 @@ class ServerProvider extends ChangeNotifier {
       _selectedServer = server;
       await _storage.setActiveServerId(server.id);
       _servers = _servers.map((s) => s.copyWith(isSelected: s.id == server.id)).toList();
+      _checkPreloadState();
       notifyListeners();
 
       try {
@@ -246,5 +261,15 @@ class ServerProvider extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<String> exportServers({bool includeFullConfig = false}) async {
+    return await _api.exportServers(includeFullConfig: includeFullConfig);
+  }
+
+  Future<int> importServers(String jsonStr, {bool overwrite = false}) async {
+    final count = await _api.importServers(jsonStr, overwrite: overwrite);
+    await loadServers(silent: true);
+    return count;
   }
 }

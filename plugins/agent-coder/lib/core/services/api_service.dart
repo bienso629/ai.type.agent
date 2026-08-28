@@ -245,6 +245,42 @@ class ApiService {
     return res.statusCode == 200;
   }
 
+  Future<String> exportServers({bool includeFullConfig = false}) async {
+    if (await _isNativeMode()) {
+      return await _localConfig.exportServersJson(includeFullConfig: includeFullConfig);
+    }
+    final servers = await getServers();
+    final exportData = {
+      'version': '1.0.0',
+      'app': 'AI Type Agent',
+      'exported_at': DateTime.now().toIso8601String(),
+      'servers_count': servers.length,
+      'servers': servers.map((s) => s.toJson()).toList(),
+    };
+    return const JsonEncoder.withIndent('  ').convert(exportData);
+  }
+
+  Future<int> importServers(String jsonStr, {bool overwrite = false}) async {
+    if (await _isNativeMode()) {
+      return await _localConfig.importServersJson(jsonStr, overwrite: overwrite);
+    }
+    final dynamic parsed = jsonDecode(jsonStr);
+    List<dynamic> incoming = [];
+    if (parsed is List) {
+      incoming = parsed;
+    } else if (parsed is Map && parsed['servers'] is List) {
+      incoming = parsed['servers'] as List;
+    }
+    int count = 0;
+    for (final item in incoming) {
+      if (item is Map<String, dynamic>) {
+        final s = ServerModel.fromJson(item);
+        if (await updateServer(s)) count++;
+      }
+    }
+    return count;
+  }
+
   // 4. System Metrics & Info
   Future<SystemMetricsModel> getSystemMetrics() async {
     if (await _isNativeMode()) {
