@@ -429,16 +429,17 @@ journalctl -u $service.service -n 15 --no-pager 2>/dev/null || tail -n 15 $remot
     required String fileName,
     required Uint8List bytes,
     String? targetDir,
+    ServerModel? server,
     void Function(int sentBytes, int totalBytes, double progress)? onProgress,
   }) async {
     try {
       final cfg = await _configService.loadConfig();
-      final sshUser = cfg['ssh_user']?.toString() ?? 'root';
+      final sshUser = server?.sshUser ?? cfg['ssh_user']?.toString() ?? 'root';
       var baseDir = targetDir ?? cfg['remote_work_dir']?.toString() ?? '/opt/ai_agent';
       if (baseDir.isEmpty) baseDir = '/opt/ai_agent';
       final uploadDir = '$baseDir/uploads';
 
-      final client = await getClient();
+      final client = await getClient(server: server);
       await client.run('sudo mkdir -p "$uploadDir" && sudo chown -R $sshUser "$uploadDir" 2>/dev/null || mkdir -p "$uploadDir"');
 
       final cleanFileName = fileName.replaceAll(RegExp(r'[^\w\.\-\_]'), '_');

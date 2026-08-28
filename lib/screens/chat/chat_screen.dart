@@ -369,10 +369,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (!mounted) return;
       final currentScope = context.read<ChatProvider>().currentSessionScope;
+      final currentServer = context.read<ServerProvider>().selectedServer;
       final res = await _api.uploadFile(
         fileName: item.name,
         bytes: fileBytes,
         targetDir: currentScope,
+        server: currentServer,
         onProgress: (sent, total, prog) {
           if (!mounted) return;
           final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
@@ -1955,19 +1957,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                   });
                                 });
                               },
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-                              hoverColor: Colors.transparent,
-                              splashColor: Colors.transparent,
-                              highlightColor: Colors.transparent,
-                              icon: const Icon(Icons.add_rounded, size: 18, color: AppColors.primaryLight),
-                              tooltip: 'Tạo hội thoại mới',
-                              onPressed: () => chat.createNewSession(
-                                targetServer: serverProvider.selectedServer?.name ?? 'Local Machine',
-                              ),
                             ),
                           ],
                         ),

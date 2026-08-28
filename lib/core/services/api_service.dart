@@ -766,13 +766,49 @@ class ApiService {
     required String fileName,
     required Uint8List bytes,
     String? targetDir,
+    ServerModel? server,
     void Function(int sentBytes, int totalBytes, double progress)? onProgress,
   }) async {
+    final isLocal = server == null ||
+        server.name == 'Local Machine' ||
+        server.name == 'Local' ||
+        server.name == 'localhost' ||
+        server.serverIp == '127.0.0.1';
+
+    // 1. If on Local Machine, save directly to local disk without SSH
+    if (isLocal) {
+      try {
+        final cleanFileName = fileName.replaceAll(RegExp(r'[^\w\.\-\_]'), '_');
+        String destDir = targetDir ?? Directory.current.path;
+        if (!Directory(destDir).existsSync()) {
+          destDir = Directory.current.path;
+        }
+        final uploadDir = Directory('$destDir/uploads');
+        if (!uploadDir.existsSync()) {
+          uploadDir.createSync(recursive: true);
+        }
+        final destFile = File('${uploadDir.path}/$cleanFileName');
+        await destFile.writeAsBytes(bytes);
+        if (onProgress != null) onProgress(bytes.length, bytes.length, 1.0);
+        return {
+          'status': 'success',
+          'remote_path': destFile.path,
+          'local_path': destFile.path,
+          'size': bytes.length,
+          'name': fileName,
+        };
+      } catch (e) {
+        return {'status': 'error', 'message': 'Lỗi lưu tệp cục bộ: $e'};
+      }
+    }
+
+    // 2. If Remote VPS in Native SSH Mode
     if (await _isNativeMode()) {
       return await _ssh.uploadFile(
         fileName: fileName,
         bytes: bytes,
         targetDir: targetDir,
+        server: server,
         onProgress: onProgress,
       );
     }
