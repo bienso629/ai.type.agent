@@ -511,68 +511,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     return cliName;
   }
 
-  static final Map<String, _AgyWorker> _activeAgyWorkers = {};
+  /// Preloads Antigravity CLI in the background on app startup (noop stub)
+  static Future<void> preloadAgyWorker({String? workingDir}) async {}
 
-  /// Preloads Antigravity CLI in the background on app startup
-  static Future<void> preloadAgyWorker({String? workingDir}) async {
-    try {
-      final exe = NativeAiService()._findCliExecutable('antigravity');
-      final workDir = (workingDir != null && Directory(workingDir).existsSync())
-          ? workingDir
-          : (Platform.environment['HOME'] ?? Directory.current.path);
-
-      final env = Map<String, String>.from(Platform.environment);
-      final home = Platform.environment['HOME'] ?? '';
-      final currentPath = env['PATH'] ?? '';
-      final extraPaths = <String>[
-        '$home/.local/bin',
-        '$home/bin',
-        '/usr/local/bin',
-        '/snap/bin',
-      ];
-      final nvmDir = Directory('$home/.nvm/versions/node');
-      if (nvmDir.existsSync()) {
-        try {
-          for (final dir in nvmDir.listSync()) {
-            final binPath = '${dir.path}/bin';
-            if (Directory(binPath).existsSync()) {
-              extraPaths.add(binPath);
-            }
-          }
-        } catch (_) {}
-      }
-      env['PATH'] = '${extraPaths.join(':')}:$currentPath';
-      if (home.isNotEmpty) env['HOME'] = home;
-
-      if (!_activeAgyWorkers.containsKey('prewarm')) {
-        final proc = await Process.start(
-          exe,
-          [
-            '--input-format',
-            'stream-json',
-            '--output-format',
-            'stream-json',
-            '--dangerously-skip-permissions',
-            '--effort',
-            'low',
-          ],
-          workingDirectory: workDir,
-          environment: env,
-          runInShell: false,
-        );
-        final worker = _AgyWorker(process: proc, workingDir: workDir);
-        _activeAgyWorkers['prewarm'] = worker;
-      }
-    } catch (_) {}
-  }
-
-  /// Disposes all prewarmed/active CLI workers from RAM.
-  static void disposeAgyWorkers() {
-    for (final w in _activeAgyWorkers.values) {
-      w.dispose();
-    }
-    _activeAgyWorkers.clear();
-  }
+  /// Disposes all prewarmed/active CLI workers from RAM (noop stub)
+  static void disposeAgyWorkers() {}
 
   Future<void> _runCliAgent({
     required String sessionId,
@@ -638,7 +581,7 @@ fi
 - TUYỆT ĐỐI KHÔNG TỰ CHẠY LỆNH SERVER CHẠY NỀN VÔ TẬN (như `npm run dev`, `npm run start`, `node server.js`, `python manage.py runserver`, `flask run`). Hãy biên dịch kiểm tra lỗi bằng `npm run build` hoặc lệnh test tương tự, sau đó in rõ câu lệnh và hướng dẫn người dùng chạy server ở Terminal hoặc ngoài hệ thống.
 - Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn.
 - Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
-- Tuyệt đối KHÔNG đẩy tác vụ cài đặt ra chạy nền rồi kết thúc sớm khi chưa có kết quả. Hãy đợi cài đặt hoàn tất, xác nhận cấu trúc thư mục đã tạo và báo cáo đầy đủ cho người dùng kèm hướng dẫn lệnh chạy server.''';
+- Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''';
 
       final m = cliName.toLowerCase();
 
@@ -665,156 +608,6 @@ fi
       }
       env['PATH'] = '${extraPaths.join(':')}:$currentPath';
       if (home.isNotEmpty) env['HOME'] = home;
-
-      // 1. Persistent Warm Interactive Worker for Antigravity CLI
-      if ((m.contains('antigravity') || m == 'agy')) {
-        try {
-          _AgyWorker? worker = _activeAgyWorkers[sessionId];
-          // Check if there is a prewarmed worker available
-          if (worker == null && _activeAgyWorkers.containsKey('prewarm') && _activeAgyWorkers['prewarm']!.workingDir == workDir) {
-            worker = _activeAgyWorkers.remove('prewarm');
-            if (worker != null) {
-              _activeAgyWorkers[sessionId] = worker;
-            }
-          }
-
-          if (worker == null || worker.workingDir != workDir) {
-            worker?.dispose();
-            onStatus('Đang nạp sẵn môi trường Antigravity CLI...');
-            final proc = await Process.start(
-              exe,
-              [
-                '--input-format',
-                'stream-json',
-                '--output-format',
-                'stream-json',
-                '--dangerously-skip-permissions',
-                '--effort',
-                'low',
-              ],
-              workingDirectory: workDir,
-              environment: env,
-              runInShell: false,
-            );
-            worker = _AgyWorker(process: proc, workingDir: workDir);
-            _activeAgyWorkers[sessionId] = worker;
-          }
-
-          onStatus('AI Agent $cliName đang phản hồi...');
-          final fullOutput = StringBuffer();
-          final completer = Completer<void>();
-
-          late StreamSubscription sub;
-          sub = worker.stream.listen((json) {
-            if (isCancelled()) {
-              sub.cancel();
-              if (!completer.isCompleted) completer.complete();
-              return;
-            }
-
-            final event = json['event'];
-            if (event == 'step_update') {
-              final step = json['step_update'] as Map<String, dynamic>?;
-              final stepType = step?['step_type']?.toString();
-              final textDelta = step?['text_delta']?.toString() ?? step?['content']?.toString() ?? step?['text']?.toString();
-              final errorMsg = step?['error']?.toString();
-
-              if (textDelta != null && textDelta.isNotEmpty) {
-                fullOutput.write(textDelta);
-                onToken(textDelta);
-              } else if (errorMsg != null && errorMsg.isNotEmpty) {
-                fullOutput.write('\n[Lỗi]: $errorMsg\n');
-                onToken('\n[Lỗi]: $errorMsg\n');
-              } else if (stepType == 'tool' || stepType == 'tool_call') {
-                final state = step?['state']?.toString();
-                final toolInfo = step?['tool_info'] as Map<String, dynamic>?;
-                final toolParams = toolInfo?['parameters'] as Map<String, dynamic>? ??
-                    step?['tool_args'] as Map<String, dynamic>? ??
-                    step?['parameters'] as Map<String, dynamic>? ??
-                    step?['args'] as Map<String, dynamic>?;
-                final toolName = step?['tool_name']?.toString() ?? toolInfo?['name']?.toString() ?? 'công cụ';
-
-                String cmdDesc = '';
-                if (toolParams != null) {
-                  if (toolParams['CommandLine'] != null) {
-                    cmdDesc = toolParams['CommandLine'].toString();
-                  } else if (toolParams['TargetFile'] != null) {
-                    cmdDesc = '${toolParams['Instruction'] ?? 'Sửa file'}: ${toolParams['TargetFile']}';
-                  } else if (toolParams['AbsolutePath'] != null) {
-                    cmdDesc = 'Đọc file: ${toolParams['AbsolutePath']}';
-                  } else if (toolParams['Query'] != null) {
-                    cmdDesc = 'Tìm "${toolParams['Query']}" trong ${toolParams['SearchPath'] ?? ''}';
-                  } else if (toolParams['DirectoryPath'] != null) {
-                    cmdDesc = 'Xem thư mục: ${toolParams['DirectoryPath']}';
-                  } else if (toolParams['toolAction'] != null) {
-                    cmdDesc = toolParams['toolAction'].toString();
-                  } else if (toolParams['command'] != null) {
-                    cmdDesc = toolParams['command'].toString();
-                  }
-                }
-                if (cmdDesc.isEmpty) {
-                  cmdDesc = toolName;
-                }
-
-                // If state is ACTIVE, only update status; when DONE, emit the full tool card with output
-                if (state == 'ACTIVE') {
-                  onStatus('Đang thực thi $toolName: $cmdDesc...');
-                } else {
-                  final output = toolInfo?['output']?.toString() ?? step?['output']?.toString() ?? step?['tool_result']?.toString() ?? '';
-                  onTool(ToolExecutionItem(
-                    tool: toolName,
-                    command: cmdDesc,
-                    output: output,
-                  ));
-                }
-              } else if (stepType == 'thought' || stepType == 'thinking') {
-                onStatus('AI đang suy nghĩ và lập kế hoạch...');
-              }
-            } else if (event == 'result') {
-              final res = json['result'] as Map<String, dynamic>?;
-              final resp = res?['response']?.toString();
-              final status = res?['status']?.toString();
-              final errorMsg = res?['error']?.toString();
-              if (resp != null && resp.isNotEmpty && fullOutput.isEmpty) {
-                fullOutput.write(resp);
-                onToken(resp);
-              } else if (status == 'ERROR' && errorMsg != null && errorMsg.isNotEmpty) {
-                fullOutput.write('\n[Lỗi Antigravity]: $errorMsg\n');
-                onToken('\n[Lỗi Antigravity]: $errorMsg\n');
-                _activeAgyWorkers.remove(sessionId)?.dispose();
-              }
-              sub.cancel();
-              if (!completer.isCompleted) completer.complete();
-            } else if (event == 'error') {
-              final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
-              if (err.isNotEmpty) {
-                fullOutput.write('\n[Lỗi Antigravity]: $err\n');
-                onToken('\n[Lỗi Antigravity]: $err\n');
-              }
-              _activeAgyWorkers.remove(sessionId)?.dispose();
-              sub.cancel();
-              if (!completer.isCompleted) completer.complete();
-            }
-          }, onDone: () {
-            if (!completer.isCompleted) completer.complete();
-          });
-
-          await worker.sendPrompt(cleanPrompt);
-          await completer.future.timeout(const Duration(minutes: 15), onTimeout: () {
-            _activeAgyWorkers.remove(sessionId)?.dispose();
-            if (!completer.isCompleted) completer.complete();
-          });
-
-          sub.cancel();
-
-          final resStr = fullOutput.toString().trim();
-          onDone(resStr.isNotEmpty ? resStr : 'Đã hoàn tất tác vụ với $cliName.');
-          return;
-        } catch (e) {
-          _activeAgyWorkers.remove(sessionId)?.dispose();
-          // Fallback to one-shot CLI execution below
-        }
-      }
 
       List<String> args;
       if (m.contains('claude')) {
@@ -937,16 +730,13 @@ fi
                   fullOutput.write('\n[Lỗi Antigravity]: $errorMsg\n');
                   onToken('\n[Lỗi Antigravity]: $errorMsg\n');
                 }
-                finishSession();
-                return;
+                // Do not finishSession() here - wait for full process exitCode!
               } else if (event == 'error') {
                 final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
                 if (err.isNotEmpty) {
                   fullOutput.write('\n[Lỗi Antigravity]: $err\n');
                   onToken('\n[Lỗi Antigravity]: $err\n');
                 }
-                finishSession();
-                return;
               }
               return;
             }
@@ -967,16 +757,12 @@ fi
                   fullOutput.write(result);
                   onToken(result);
                 }
-                finishSession();
-                return;
               } else if (type == 'error') {
                 final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
                 if (err.isNotEmpty) {
                   fullOutput.write('\n[Lỗi Claude]: $err\n');
                   onToken('\n[Lỗi Claude]: $err\n');
                 }
-                finishSession();
-                return;
               } else if (type == 'assistant') {
                 final msg = json['message'] as Map<String, dynamic>?;
                 final contents = msg?['content'] as List<dynamic>?;
@@ -1027,63 +813,5 @@ fi
     } catch (e) {
       onError('Không thể chạy CLI $cliName: $e. Hãy kiểm tra đường dẫn hoặc quyền thực thi.');
     }
-  }
-}
-
-class _AgyWorker {
-  final Process process;
-  final String workingDir;
-  final StreamController<Map<String, dynamic>> _controller = StreamController<Map<String, dynamic>>.broadcast();
-  final Completer<void> _initCompleter = Completer<void>();
-  bool _isDisposed = false;
-  DateTime lastActive = DateTime.now();
-
-  Stream<Map<String, dynamic>> get stream => _controller.stream;
-  Future<void> get onInit => _initCompleter.future;
-
-  _AgyWorker({required this.process, required this.workingDir}) {
-    process.stdout
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .listen((line) {
-      if (_isDisposed) return;
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) return;
-      try {
-        final json = jsonDecode(trimmed);
-        if (json is Map<String, dynamic>) {
-          if (json['event'] == 'init' && !_initCompleter.isCompleted) {
-            _initCompleter.complete();
-          }
-          _controller.add(json);
-        }
-      } catch (_) {}
-    }, onDone: () {
-      if (!_initCompleter.isCompleted) _initCompleter.complete();
-      _controller.close();
-    });
-
-    process.stderr.transform(utf8.decoder).listen((_) {});
-  }
-
-  Future<void> sendPrompt(String prompt) async {
-    try {
-      await onInit.timeout(const Duration(seconds: 10));
-    } catch (_) {}
-    lastActive = DateTime.now();
-    final turnMsg = jsonEncode({
-      'event': 'user',
-      'message': {'content': prompt}
-    });
-    process.stdin.writeln(turnMsg);
-    await process.stdin.flush();
-  }
-
-  void dispose() {
-    _isDisposed = true;
-    try {
-      process.kill();
-    } catch (_) {}
-    _controller.close();
   }
 }

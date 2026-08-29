@@ -131,6 +131,11 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  name?: string | null;
+  avatar?: string | null;
+  googleId?: string | null;
+  balance?: number | null;
+  role?: ('admin' | 'user') | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -352,6 +357,11 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  name?: T;
+  avatar?: T;
+  googleId?: T;
+  balance?: T;
+  role?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
