@@ -1003,7 +1003,7 @@ class _ChatScreenState extends State<ChatScreen> {
               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: isUser
                         ? AppColors.primary.withValues(alpha: 0.12)
@@ -2812,7 +2812,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
 
     return _CodeBlockWidget(
       code: code.trim(),
-      language: language.isNotEmpty ? language : 'sh',
+      language: language.trim(),
     );
   }
 }
@@ -2834,7 +2834,7 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
     await Clipboard.setData(ClipboardData(text: widget.code));
     if (mounted) {
       setState(() => _copied = true);
-      AppToast.success(context, 'Đã sao chép câu lệnh vào bộ nhớ tạm!');
+      AppToast.success(context, 'Đã sao chép vào bộ nhớ tạm!');
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _copied = false);
       });
@@ -2861,16 +2861,48 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final cleanLg = widget.language.toLowerCase();
-    final isRunnable = cleanLg == 'bash' ||
-        cleanLg == 'sh' ||
-        cleanLg == 'shell' ||
-        cleanLg == 'zsh' ||
-        cleanLg == 'cmd' ||
-        cleanLg == 'terminal' ||
-        cleanLg == 'powershell' ||
-        cleanLg == '' ||
-        cleanLg == 'env';
+    final cleanLg = widget.language.toLowerCase().trim();
+    
+    // Danh sách ngôn ngữ thuần mã nguồn / cấu hình không phải lệnh thực thi terminal
+    const nonExecutableLangs = {
+      'dart', 'flutter', 'javascript', 'js', 'typescript', 'ts', 'jsx', 'tsx',
+      'python', 'py', 'java', 'c', 'cpp', 'csharp', 'cs', 'go', 'golang', 'rust', 'rs',
+      'html', 'css', 'scss', 'sass', 'json', 'yaml', 'yml', 'xml', 'sql', 'php',
+      'kotlin', 'kt', 'swift', 'ruby', 'rb', 'scala', 'r', 'markdown', 'md', 'text', 'txt'
+    };
+
+    const shellLangs = {
+      'bash', 'sh', 'shell', 'zsh', 'cmd', 'terminal', 'powershell', 'ps1', 'env'
+    };
+
+    bool isRunnable = false;
+    if (shellLangs.contains(cleanLg)) {
+      isRunnable = true;
+    } else if (nonExecutableLangs.contains(cleanLg)) {
+      isRunnable = false;
+    } else if (cleanLg.isEmpty) {
+      // Trường hợp không khai báo language: kiểm tra cú pháp dòng lệnh phổ biến
+      final trimmed = widget.code.trim();
+      if (trimmed.startsWith('\$ ') ||
+          trimmed.startsWith('# ') ||
+          trimmed.startsWith('sudo ') ||
+          trimmed.startsWith('npm ') ||
+          trimmed.startsWith('npx ') ||
+          trimmed.startsWith('pnpm ') ||
+          trimmed.startsWith('yarn ') ||
+          trimmed.startsWith('docker ') ||
+          trimmed.startsWith('git ') ||
+          trimmed.startsWith('systemctl ') ||
+          trimmed.startsWith('apt ') ||
+          trimmed.startsWith('apt-get ') ||
+          trimmed.startsWith('curl ') ||
+          trimmed.startsWith('wget ') ||
+          trimmed.startsWith('pip ') ||
+          trimmed.startsWith('python3 ') ||
+          trimmed.startsWith('flutter ')) {
+        isRunnable = true;
+      }
+    }
 
     final IconData langIcon;
     if (isRunnable) {
@@ -2881,7 +2913,7 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
       langIcon = Icons.code_rounded;
     }
 
-    final langLabel = widget.language.isNotEmpty ? widget.language.toUpperCase() : 'BASH';
+    final langLabel = widget.language.isNotEmpty ? widget.language.toUpperCase() : (isRunnable ? 'BASH' : 'CODE');
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -2956,7 +2988,7 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: SelectableText(
               widget.code,
               style: TextStyle(

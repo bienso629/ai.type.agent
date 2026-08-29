@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_pty/flutter_pty.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 import '../../core/services/native_ssh_service.dart';
@@ -22,8 +23,10 @@ class TerminalPaneItem {
   bool isRemoteSsh;
   ServerModel? server;
   late final Terminal terminal;
+  late final TerminalController controller;
   late final FocusNode focusNode;
-  Process? process;
+  Pty? pty;
+  Process? fallbackProcess;
   SSHClient? sshClient;
   SSHSession? sshSession;
   bool isConnected = false;
@@ -36,13 +39,20 @@ class TerminalPaneItem {
     this.server,
   }) {
     focusNode = FocusNode();
-    terminal = Terminal(maxLines: 3000);
+    terminal = Terminal(
+      maxLines: 10000,
+    );
+    controller = TerminalController();
   }
 
   void cleanup() {
     try {
-      process?.kill();
-      process = null;
+      pty?.kill();
+      pty = null;
+    } catch (_) {}
+    try {
+      fallbackProcess?.kill();
+      fallbackProcess = null;
     } catch (_) {}
     try {
       sshSession?.close();
@@ -55,6 +65,7 @@ class TerminalPaneItem {
   }
 
   void dispose() {
+    controller.dispose();
     focusNode.dispose();
     cleanup();
   }
@@ -73,29 +84,30 @@ class _TerminalScreenState extends State<TerminalScreen> {
   TerminalSplitMode _splitMode = TerminalSplitMode.single;
   bool _showVirtualKeyboard = false;
 
+  // Chuẩn bảng màu và thuộc tính Ubuntu GNOME Terminal (Canonical Ubuntu palette)
   static final _terminalTheme = TerminalTheme(
-    cursor: AppColors.accentCyan,
-    selection: AppColors.primary.withValues(alpha: 0.35),
-    foreground: AppColors.textWhite,
-    background: AppColors.bgDark,
-    black: AppColors.bgDark,
-    red: AppColors.danger,
-    green: AppColors.accent,
-    yellow: AppColors.warning,
-    blue: AppColors.accentCyan,
-    magenta: const Color(0xFFC084FC),
-    cyan: AppColors.accentCyan,
-    white: AppColors.textWhite,
-    brightBlack: AppColors.borderLight,
-    brightRed: AppColors.primaryLight,
-    brightGreen: const Color(0xFF4ADE80),
-    brightYellow: const Color(0xFFFDE047),
-    brightBlue: const Color(0xFF38BDF8),
-    brightMagenta: const Color(0xFFE879F9),
-    brightCyan: const Color(0xFF67E8F9),
-    brightWhite: Colors.white,
-    searchHitBackground: AppColors.warning,
-    searchHitBackgroundCurrent: AppColors.accent,
+    cursor: const Color(0xFFFFFFFF),
+    selection: const Color(0xFFE95420).withValues(alpha: 0.40),
+    foreground: const Color(0xFFFFFFFF),
+    background: const Color(0xFF300A24), // Màu tím đậm Dark Aubergine đặc trưng của Ubuntu Terminal
+    black: const Color(0xFF2E3436),
+    red: const Color(0xFFCC0000),
+    green: const Color(0xFF4E9A06),
+    yellow: const Color(0xFFC4A000),
+    blue: const Color(0xFF3465A4),
+    magenta: const Color(0xFF75507B),
+    cyan: const Color(0xFF06989A),
+    white: const Color(0xFFD3D7CF),
+    brightBlack: const Color(0xFF555753),
+    brightRed: const Color(0xFFEF2929),
+    brightGreen: const Color(0xFF8AE234),
+    brightYellow: const Color(0xFFFCE94F),
+    brightBlue: const Color(0xFF729FCF),
+    brightMagenta: const Color(0xFFAD7FA8),
+    brightCyan: const Color(0xFF34E2E2),
+    brightWhite: const Color(0xFFEEEEEC),
+    searchHitBackground: const Color(0xFFFCE94F),
+    searchHitBackgroundCurrent: const Color(0xFFE95420),
     searchHitForeground: Colors.black,
   );
 
@@ -129,10 +141,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
     return _panes.first;
   }
 
-  String _normalizeNewlines(String text) {
-    return text.replaceAll(RegExp(r'(?<!\r)\n'), '\r\n');
-  }
-
   Future<void> _connectPane(TerminalPaneItem pane) async {
     pane.cleanup();
     if (mounted) {
@@ -150,27 +158,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   Future<void> _connectLocalPane(TerminalPaneItem pane) async {
-    pane.terminal.write('\r\n\x1b[36m⚡ Đang mở Local Interactive Terminal...\x1b[0m\r\n');
-
     try {
       final isWin = Platform.isWindows;
       final shell = Platform.environment['SHELL'] ??
           (isWin ? 'cmd.exe' : (File('/bin/bash').existsSync() ? '/bin/bash' : '/bin/sh'));
-      final args = isWin ? <String>[] : <String>['-i'];
+      final homeDir = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? (isWin ? 'C:\\' : '/');
 
-      pane.process = await Process.start(
+      final initialCols = pane.terminal.viewWidth > 0 ? pane.terminal.viewWidth : 80;
+      final initialRows = pane.terminal.viewHeight > 0 ? pane.terminal.viewHeight : 24;
+
+      // Khởi tạo tiến trình Pseudo-Terminal (PTY) với cấu hình môi trường chuẩn Ubuntu Linux
+      pane.pty = Pty.start(
         shell,
-        args,
-        workingDirectory: isWin ? 'C:\\' : '/',
+        arguments: isWin ? [] : ['-l'],
+        workingDirectory: homeDir,
         environment: {
           ...Platform.environment,
           'TERM': 'xterm-256color',
           'COLORTERM': 'truecolor',
+          'LANG': Platform.environment['LANG'] ?? 'en_US.UTF-8',
+          'LC_ALL': Platform.environment['LC_ALL'] ?? 'en_US.UTF-8',
+          'VTE_VERSION': '6800',
         },
-        mode: ProcessStartMode.normal,
+        columns: initialCols,
+        rows: initialRows,
       );
-
-      pane.terminal.write('\x1b[32m✔ Đã sẵn sàng Terminal Local: $shell (${Platform.operatingSystem})\x1b[0m\r\n\r\n');
 
       if (mounted) {
         setState(() {
@@ -179,10 +191,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
         });
       }
 
-      pane.process!.stdout.listen(
+      pane.pty!.output.listen(
         (data) {
           final decoded = utf8.decode(data, allowMalformed: true);
-          pane.terminal.write(_normalizeNewlines(decoded));
+          pane.terminal.write(decoded);
         },
         onDone: () {
           if (mounted) setState(() => pane.isConnected = false);
@@ -194,15 +206,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
         },
       );
 
-      pane.process!.stderr.listen((data) {
-        final decoded = utf8.decode(data, allowMalformed: true);
-        pane.terminal.write(_normalizeNewlines(decoded));
-      });
-
       pane.terminal.onOutput = (data) {
-        if (pane.process != null) {
+        if (pane.pty != null) {
           try {
-            pane.process!.stdin.add(utf8.encode(data));
+            pane.pty!.write(utf8.encode(data));
+          } catch (_) {}
+        }
+      };
+
+      pane.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
+        if (width > 0 && height > 0) {
+          try {
+            pane.pty?.resize(height, width);
           } catch (_) {}
         }
       };
@@ -220,27 +235,23 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Future<void> _connectSshPane(TerminalPaneItem pane) async {
     final serverProvider = context.read<ServerProvider>();
     final server = pane.server ?? (serverProvider.selectedServer?.serverIp != '127.0.0.1' ? serverProvider.selectedServer : null) ?? (serverProvider.servers.isNotEmpty ? serverProvider.servers.first : null);
-    final serverName = server?.name ?? 'Remote Server';
-    final serverIp = server?.serverIp ?? '127.0.0.1';
-    final serverPort = server?.sshPort ?? 22;
 
     pane.server = server;
     if (server != null) {
       pane.title = server.name;
     }
 
-    pane.terminal.write('\r\n\x1b[36m⚡ Đang kết nối SSH Interactive Terminal tới $serverName ($serverIp:$serverPort)...\x1b[0m\r\n');
-
     try {
+      final cols = pane.terminal.viewWidth > 0 ? pane.terminal.viewWidth : 80;
+      final rows = pane.terminal.viewHeight > 0 ? pane.terminal.viewHeight : 24;
+
       pane.sshClient = await NativeSshService().getClient(server: server);
       pane.sshSession = await pane.sshClient!.shell(
-        pty: const SSHPtyConfig(
-          width: 100,
-          height: 30,
+        pty: SSHPtyConfig(
+          width: cols,
+          height: rows,
         ),
       );
-
-      pane.terminal.write('\x1b[32m✔ Đã kết nối SSH thành công tới $serverName ($serverIp:$serverPort)!\x1b[0m\r\n\r\n');
 
       if (mounted) {
         setState(() {
@@ -252,7 +263,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       pane.sshSession!.stdout.listen(
         (data) {
           final decoded = utf8.decode(data, allowMalformed: true);
-          pane.terminal.write(_normalizeNewlines(decoded));
+          pane.terminal.write(decoded);
         },
         onDone: () {
           if (mounted) setState(() => pane.isConnected = false);
@@ -266,11 +277,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
       pane.sshSession!.stderr.listen((data) {
         final decoded = utf8.decode(data, allowMalformed: true);
-        pane.terminal.write(_normalizeNewlines(decoded));
+        pane.terminal.write(decoded);
       });
 
       pane.terminal.onOutput = (data) {
         pane.sshSession?.stdin.add(utf8.encode(data));
+      };
+
+      pane.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
+        if (width > 0 && height > 0) {
+          try {
+            pane.sshSession?.resizeTerminal(width, height, pixelWidth, pixelHeight);
+          } catch (_) {}
+        }
       };
     } catch (e) {
       if (mounted) {
@@ -333,9 +352,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (pane != null && pane.isConnected) {
       if (pane.isRemoteSsh && pane.sshSession != null) {
         pane.sshSession!.stdin.add(utf8.encode('$cmd\n'));
-      } else if (pane.process != null) {
+      } else if (pane.pty != null) {
         try {
-          pane.process!.stdin.add(utf8.encode('$cmd\n'));
+          pane.pty!.write(utf8.encode('$cmd\n'));
         } catch (_) {}
       }
     }
@@ -346,9 +365,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (pane != null && pane.isConnected) {
       if (pane.isRemoteSsh && pane.sshSession != null) {
         pane.sshSession!.stdin.add(utf8.encode(code));
-      } else if (pane.process != null) {
+      } else if (pane.pty != null) {
         try {
-          pane.process!.stdin.add(utf8.encode(code));
+          pane.pty!.write(utf8.encode(code));
         } catch (_) {}
       }
     }
@@ -992,17 +1011,22 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 ),
               ),
 
-              // Terminal View
+              // Terminal View (Chuẩn cấu hình hiển thị và con trỏ Ubuntu Terminal)
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                   child: TerminalView(
                     pane.terminal,
+                    controller: pane.controller,
                     focusNode: pane.focusNode,
                     theme: _terminalTheme,
+                    cursorType: TerminalCursorType.block,
+                    padding: const EdgeInsets.all(6),
                     textStyle: const TerminalStyle(
-                      fontSize: 13,
-                      fontFamily: 'monospace',
+                      fontSize: 13.5,
+                      fontFamily: 'Ubuntu Mono',
+                      fontFamilyFallback: ['UbuntuMono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', 'monospace'],
+                      height: 1.2,
                     ),
                     autofocus: isActive,
                   ),

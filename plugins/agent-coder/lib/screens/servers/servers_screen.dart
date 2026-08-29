@@ -340,20 +340,14 @@ class _ServersScreenState extends State<ServersScreen> {
   }
 
   Future<void> _handleExportServers(ServerProvider serverProvider) async {
-    final serversCount = serverProvider.servers.length;
-    if (serversCount == 0) {
-      AppToast.warning(context, 'Danh sách máy chủ hiện đang trống, không có dữ liệu để sao lưu.');
-      return;
-    }
-
     try {
       final jsonStr = await serverProvider.exportServers(includeFullConfig: true);
 
       String? outputPath;
       try {
         outputPath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Lưu file sao lưu danh sách Server',
-          fileName: 'servers_backup_${DateTime.now().millisecondsSinceEpoch}.json',
+          dialogTitle: 'Lưu file sao lưu cấu hình config.json',
+          fileName: 'config.json',
           type: FileType.custom,
           allowedExtensions: ['json'],
         );
@@ -369,10 +363,10 @@ class _ServersScreenState extends State<ServersScreen> {
       await file.writeAsString(jsonStr);
 
       if (!mounted) return;
-      AppToast.success(context, 'Đã lưu file sao lưu $serversCount máy chủ: $outputPath');
+      AppToast.success(context, 'Đã lưu file sao lưu cấu hình: $outputPath');
     } catch (e) {
       if (!mounted) return;
-      AppToast.error(context, 'Lỗi khi xuất danh sách máy chủ: $e');
+      AppToast.error(context, 'Lỗi khi xuất cấu hình: $e');
     }
   }
 
@@ -572,25 +566,62 @@ class _ServersScreenState extends State<ServersScreen> {
                       tooltip: 'Tải lại danh sách máy chủ',
                       onPressed: () => serverProvider.loadServers(),
                     ),
-                    const SizedBox(width: 4),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
+                    PopupMenuButton<String>(
+                      tooltip: 'Sao lưu & Khôi phục dữ liệu',
+                      color: AppColors.surfaceDark,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
                         side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
-                      icon: const Icon(Icons.download_rounded, size: 15, color: AppColors.textDim),
-                      label: const Text('Sao Lưu (Export)', style: TextStyle(fontSize: 11.5, color: AppColors.textBody)),
-                      onPressed: () => _handleExportServers(serverProvider),
-                    ),
-                    const SizedBox(width: 6),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      onSelected: (value) {
+                        if (value == 'export') {
+                          _handleExportServers(serverProvider);
+                        } else if (value == 'import') {
+                          _handleImportServers(serverProvider);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'export',
+                          height: 36,
+                          child: Row(
+                            children: [
+                              Icon(Icons.file_download_outlined, size: 15, color: AppColors.accentCyan),
+                              SizedBox(width: 8),
+                              Text('Sao lưu (Export)', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'import',
+                          height: 36,
+                          child: Row(
+                            children: [
+                              Icon(Icons.file_upload_outlined, size: 15, color: AppColors.accent),
+                              SizedBox(width: 8),
+                              Text('Khôi phục (Import)', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBg,
+                          border: Border.all(color: AppColors.borderDark),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.sync_alt_rounded, size: 15, color: AppColors.textDim),
+                            SizedBox(width: 6),
+                            Text('Sao Lưu & Khôi Phục', style: TextStyle(fontSize: 12, color: AppColors.textBody, fontWeight: FontWeight.w500)),
+                            SizedBox(width: 2),
+                            Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppColors.textDim),
+                          ],
+                        ),
                       ),
-                      icon: const Icon(Icons.upload_file_rounded, size: 15, color: AppColors.textDim),
-                      label: const Text('Khôi Phục (Import)', style: TextStyle(fontSize: 11.5, color: AppColors.textBody)),
-                      onPressed: () => _handleImportServers(serverProvider),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton.icon(

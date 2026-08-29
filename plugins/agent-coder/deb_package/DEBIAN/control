@@ -1,0 +1,8 @@
+Package: ai-type-agent
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: YenAI <support@yenai.vn>
+Description: AI Type Agent & VPS Management Tool
+ AI Type Agent - Assistant & Cloud Management Desktop Client for Ubuntu.

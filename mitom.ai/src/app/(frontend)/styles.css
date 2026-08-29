@@ -1,0 +1,267 @@
+@import url('https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+@import 'tailwindcss';
+
+:root {
+  --background: #08090c;
+  --foreground: #eef0f3;
+  --card: #101319;
+  --card-foreground: #eef0f3;
+  --primary: #ef4444;
+  --primary-foreground: #ffffff;
+  --secondary: #171b23;
+  --secondary-foreground: #c7ccd6;
+  --muted: #13161d;
+  --muted-foreground: #8a92a1;
+  --accent: #ef4444;
+  --accent-foreground: #ffffff;
+  --border: #23282f;
+  --ring: #ef4444;
+  --radius: 14px;
+
+  --emerald: #34d399;
+  --grid-line: rgba(255, 255, 255, 0.04);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-emerald: var(--emerald);
+
+  --font-display: 'Prompt', sans-serif;
+  --font-sans: 'Prompt', sans-serif;
+  --font-mono: 'Prompt', sans-serif;
+
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 3px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 8px);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Prompt', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Subtle glowing background orbs */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 34rem at 30% -12%, rgba(239, 68, 68, 0.06), transparent 60%),
+    radial-gradient(50rem 30rem at 85% 20%, rgba(239, 68, 68, 0.04), transparent 58%);
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Hide scrollbars until scrolling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
+/* Custom glow utility */
+.glow-primary {
+  box-shadow: 0 0 40px -10px rgba(239, 68, 68, 0.35);
+}
+
+.glow-subtle {
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+/* Glass panel */
+.glass-panel {
+  background: rgba(16, 19, 25, 0.75);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+}
+
+@keyframes tokenpulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.75;
+  }
+}
+
+/* Card hover glow */
+.card-glow {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.card-glow:hover {
+  transform: translateY(-2px);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 12px 30px -10px rgba(239, 68, 68, 0.12);
+}
+
+/* Divider line */
+.divider {
+  height: 1px;
+  background: var(--border);
+}
+
+/* ===== Liquid Glass Buttons ===== */
+.lg-btn {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  overflow: hidden;
+  cursor: pointer;
+  border: none;
+  border-radius: calc(var(--radius) - 6px);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
+  transition:
+    transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 0.2s ease,
+    color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Hiệu ứng specular highlight phản chiếu kính */
+.lg-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 65%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Ánh sáng quét qua bề mặt kính khi hover */
+.lg-btn::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transform: translateX(-150%) skewX(-20deg);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+}
+
+.lg-btn:hover::after,
+.lg-btn:focus-visible::after {
+  opacity: 1;
+  transform: translateX(250%) skewX(-20deg);
+  transition: transform 0.6s ease, opacity 0.2s ease;
+}
+
+.lg-btn:hover {
+  transform: translateY(-1.5px);
+}
+
+.lg-btn:active {
+  transform: translateY(0.5px) scale(0.98);
+  transition-duration: 0.1s;
+}
+
+.lg-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Liquid Glass Primary: Thủy tinh đỏ ruby sang trọng (không viền) */
+.lg-btn--primary {
+  color: #ffffff;
+  font-weight: 700;
+  background-color: #ef4444;
+  border: none;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
+    0 4px 14px -2px rgba(239, 68, 68, 0.45),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.lg-btn--primary:hover {
+  background-color: #dc2626;
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.7),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
+    0 6px 20px -2px rgba(239, 68, 68, 0.65),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Liquid Glass Secondary: Kính mờ trong suốt (không viền) */
+.lg-btn--glass {
+  color: var(--foreground);
+  font-weight: 600;
+  background-color: rgba(23, 27, 35, 0.65);
+  border: none;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.15),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.3),
+    0 4px 12px -2px rgba(0, 0, 0, 0.3);
+}
+
+.lg-btn--glass:hover {
+  color: #ffffff;
+  background-color: rgba(30, 36, 46, 0.85);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.25),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.3),
+    0 6px 16px -2px rgba(239, 68, 68, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-btn,
+  .lg-btn::before,
+  .lg-btn::after {
+    transition: none;
+  }
+  .lg-btn:hover {
+    transform: none;
+  }
+}
