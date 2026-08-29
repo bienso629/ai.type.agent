@@ -45,11 +45,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveAISettings() async {
     try {
-      final cfg = await _api.getConfig();
-      cfg['ai_model'] = _modelCtrl.text.trim();
-      cfg['proxy_base_url'] = _baseUrlCtrl.text.trim();
-      cfg['proxy_api_key'] = _apiKeyCtrl.text.trim();
-      final ok = await _api.saveConfig(cfg);
+      final ok = await _api.saveConfig({
+        'ai_model': _modelCtrl.text.trim(),
+        'proxy_base_url': _baseUrlCtrl.text.trim(),
+        'proxy_api_key': _apiKeyCtrl.text.trim(),
+      });
       if (mounted) {
         if (ok) {
           final serverProvider = context.read<ServerProvider>();

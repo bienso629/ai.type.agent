@@ -77,6 +77,11 @@ echo "=== [4/4] Creating portable .tar.gz bundle ==="
 cd "$PROJECT_DIR/build/linux/x64/release/bundle"
 tar -czf "$DIST_DIR/ai-type-agent-linux-x64.tar.gz" .
 
+if [ -d "$HOME/.local/share/ai-type-agent" ]; then
+  echo "=== [5/5] Syncing to local user install (~/.local/share/ai-type-agent) ==="
+  cp -r "$PROJECT_DIR/build/linux/x64/release/bundle/"* "$HOME/.local/share/ai-type-agent/"
+fi
+
 echo "=== Done! Files generated in $DIST_DIR ==="
 ls -lh "$DIST_DIR"
 

@@ -174,6 +174,26 @@ class LocalConfigService {
         result['servers'] = cleanServers;
       }
 
+      // If servers list is empty, check legacy configs (.tadu_ai_agent) to auto-migrate servers
+      if (result['servers'] == null || (result['servers'] is List && (result['servers'] as List).isEmpty)) {
+        final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+        for (final legacyName in ['config_lophocvinhxuan.json', 'config.json']) {
+          final legacyFile = File(p.join(home, '.tadu_ai_agent', legacyName));
+          if (legacyFile.existsSync()) {
+            try {
+              final legacyContent = legacyFile.readAsStringSync();
+              final legacyRaw = jsonDecode(legacyContent) as Map<String, dynamic>;
+              final legacyList = _extractServersList(legacyRaw);
+              if (legacyList.isNotEmpty) {
+                result['servers'] = legacyList;
+                needsReSave = true;
+                break;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
       // Fill in defaults for missing keys
       for (final entry in defaultRawConfig.entries) {
         if (!result.containsKey(entry.key)) {
@@ -195,7 +215,15 @@ class LocalConfigService {
   Future<bool> saveConfig(Map<String, dynamic> newConfig) async {
     try {
       final current = _cachedConfig.isNotEmpty ? Map<String, dynamic>.from(_cachedConfig) : await loadConfig();
-      final merged = Map<String, dynamic>.from(current)..addAll(newConfig);
+      final merged = Map<String, dynamic>.from(current);
+
+      for (final e in newConfig.entries) {
+        if (e.key == 'servers' && e.value is List && (e.value as List).isEmpty && current['servers'] is List && (current['servers'] as List).isNotEmpty) {
+          // Keep current servers if newConfig mistakenly passed empty servers
+          continue;
+        }
+        merged[e.key] = e.value;
+      }
 
       final filePath = await _resolveConfigPath();
       final file = File(filePath);
@@ -230,6 +258,7 @@ class LocalConfigService {
 
   List<Map<String, dynamic>> _extractServersList(Map<String, dynamic> cfg) {
     dynamic raw = cfg['servers'];
+    if (raw == null) return [];
     if (raw is String) {
       if (raw.startsWith('enc:')) {
         raw = _enc.decryptValue(raw);
@@ -246,7 +275,9 @@ class LocalConfigService {
           list.add(Map<String, dynamic>.from(item));
         } else if (item is String) {
           try {
-            final m = jsonDecode(item);
+            var s = item;
+            if (s.startsWith('enc:')) s = _enc.decryptValue(s);
+            final m = jsonDecode(s);
             if (m is Map) list.add(Map<String, dynamic>.from(m));
           } catch (_) {}
         }
@@ -348,14 +379,17 @@ class LocalConfigService {
   }
 
   Future<bool> deleteServer(String serverIdOrIp) async {
-    if (serverIdOrIp.trim().isEmpty) return false;
+    final cleanId = serverIdOrIp.trim();
+    if (cleanId.isEmpty || cleanId == 'local' || cleanId == '127.0.0.1' || cleanId == 'localhost') {
+      return false;
+    }
     final cfg = await loadConfig();
     final servers = _extractServersList(cfg);
 
     servers.removeWhere((item) {
       final id = item['id']?.toString() ?? '';
       final ip = item['server_ip']?.toString() ?? '';
-      return (id.isNotEmpty && id == serverIdOrIp) || (ip.isNotEmpty && ip == serverIdOrIp);
+      return (id.isNotEmpty && id == cleanId) || (ip.isNotEmpty && ip == cleanId);
     });
 
     cfg['servers'] = servers;
