@@ -402,26 +402,40 @@ class LocalConfigService {
   }
 
   Future<String> exportServersJson({bool includeFullConfig = false}) async {
-    final cfg = await loadConfig();
-    final servers = _extractServersList(cfg);
-    final exportData = {
-      'version': '1.0.0',
-      'app': 'AI Type Agent',
-      'exported_at': DateTime.now().toIso8601String(),
-      'servers_count': servers.length,
-      'servers': servers,
-      if (includeFullConfig) ...{
-        'proxy_base_url': cfg['proxy_base_url'],
-        'ai_model': cfg['ai_model'],
-        'remote_work_dir': cfg['remote_work_dir'],
-        'api_port': cfg['api_port'],
-      }
-    };
-    return const JsonEncoder.withIndent('  ').convert(exportData);
+    final filePath = await _resolveConfigPath();
+    final file = File(filePath);
+    if (file.existsSync()) {
+      return await file.readAsString();
+    }
+    await loadConfig();
+    if (file.existsSync()) {
+      return await file.readAsString();
+    }
+    return '{}';
   }
 
   Future<int> importServersJson(String jsonStr, {bool overwrite = false}) async {
     final dynamic parsed = jsonDecode(jsonStr);
+
+    // Neu import nguyen file config.json (chua _encrypted_vault hoac cac key enc:)
+    if (parsed is Map<String, dynamic> || parsed is Map) {
+      final map = Map<String, dynamic>.from(parsed as Map);
+      if (map.containsKey('_encrypted_vault') ||
+          (map.containsKey('servers') && map['servers'] is String && (map['servers'] as String).startsWith('enc:')) ||
+          (map.containsKey('server_ip') && map['server_ip'] is String && (map['server_ip'] as String).startsWith('enc:'))) {
+        final filePath = await _resolveConfigPath();
+        final file = File(filePath);
+        if (!file.parent.existsSync()) {
+          file.parent.createSync(recursive: true);
+        }
+        await file.writeAsString(const JsonEncoder.withIndent('  ').convert(map));
+        _cachedConfig = {};
+        final reloaded = await loadConfig();
+        final servers = _extractServersList(reloaded);
+        return servers.length;
+      }
+    }
+
     List<dynamic> incomingServers = [];
 
     if (parsed is List) {

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=AI Type Agent
+Comment=AI Type Agent & VPS Management Tool
+Exec=/usr/bin/ai-type-agent
+Icon=ai-type-agent
+Terminal=false
+Type=Application
+Categories=Utility;Development;

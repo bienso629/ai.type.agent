@@ -71,7 +71,7 @@ CONTROL_EOF
 
 echo "=== [3/4] Packaging .deb installer ==="
 mkdir -p "$DIST_DIR"
-dpkg-deb --build "$PKG_DIR" "$DIST_DIR/$PKG_NAME.deb"
+dpkg-deb --root-owner-group --build "$PKG_DIR" "$DIST_DIR/$PKG_NAME.deb"
 
 echo "=== [4/4] Creating portable .tar.gz bundle ==="
 cd "$PROJECT_DIR/build/linux/x64/release/bundle"
@@ -79,7 +79,7 @@ tar -czf "$DIST_DIR/ai-type-agent-linux-x64.tar.gz" .
 
 if [ -d "$HOME/.local/share/ai-type-agent" ]; then
   echo "=== [5/5] Syncing to local user install (~/.local/share/ai-type-agent) ==="
-  cp -r "$PROJECT_DIR/build/linux/x64/release/bundle/"* "$HOME/.local/share/ai-type-agent/"
+  cp -r "$PROJECT_DIR/build/linux/x64/release/bundle/"* "$HOME/.local/share/ai-type-agent/" 2>/dev/null || true
 fi
 
 echo "=== Done! Files generated in $DIST_DIR ==="
