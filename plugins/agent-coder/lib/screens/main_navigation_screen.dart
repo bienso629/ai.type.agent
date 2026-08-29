@@ -929,7 +929,7 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
                           const Icon(Icons.terminal_rounded, size: 13, color: AppColors.primaryLight),
                           const SizedBox(width: 6),
                           const Text(
-                            '⚡ LOCAL CLI AGENTS (CÀI TRÊN MÁY LOCAL)',
+                            'LOCAL CLI AGENTS (CÀI TRÊN MÁY LOCAL)',
                             style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight, letterSpacing: 0.5),
                           ),
                           const Spacer(),
@@ -982,7 +982,7 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
                         const Icon(Icons.cloud_queue_rounded, size: 13, color: AppColors.accentCyan),
                         const SizedBox(width: 6),
                         const Text(
-                          '🌐 CLOUD LLM MODELS (API BASE URL)',
+                          'CLOUD LLM MODELS (API BASE URL)',
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentCyan, letterSpacing: 0.5),
                         ),
                         const Spacer(),
@@ -1010,7 +1010,7 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
                       final isSel = currentModel == m;
                       IconData icon = Icons.memory_rounded;
                       if (m.contains('glm')) {
-                        icon = Icons.bolt_rounded;
+                        icon = Icons.auto_awesome_rounded;
                       } else if (m.contains('gpt')) {
                         icon = Icons.psychology_rounded;
                       } else if (m.contains('claude')) {

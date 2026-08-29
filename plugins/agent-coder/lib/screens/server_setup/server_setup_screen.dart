@@ -183,7 +183,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                       Expanded(
                         child: _buildStatusCard(
                           title: 'Địa chỉ Máy Chủ',
-                          icon: Icons.public_rounded,
+                          icon: Icons.dns_rounded,
                           iconColor: AppColors.accentCyan,
                           value: s?.serverIp ?? '127.0.0.1',
                           valueColor: AppColors.textWhite,

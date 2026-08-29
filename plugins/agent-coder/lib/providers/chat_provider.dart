@@ -52,7 +52,7 @@ class ChatProvider extends ChangeNotifier {
   final List<String> quickPrompts = [
     '📊 Kiểm tra tài nguyên CPU/RAM',
     '🔄 Khởi động lại Nginx Web Server',
-    '⚡ Top 5 tiến trình ngốn CPU nhất',
+    'Top 5 tiến trình ngốn CPU nhất',
     '🛡️ Kiểm tra trạng thái tường lửa UFW',
     '🧹 Dọn dẹp RAM Cache & Disk Log',
     '🔍 Xem 20 dòng log lỗi mới nhất',

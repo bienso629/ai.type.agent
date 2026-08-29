@@ -345,11 +345,11 @@ class _LogsScreenState extends State<LogsScreen> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _buildFilterChip('🤖 AI Agent Service', 'agent', logsProvider),
-                          _buildFilterChip('📄 Syslog (/var/log)', 'syslog', logsProvider),
-                          _buildFilterChip('🔒 SSH / Auth', 'auth', logsProvider),
-                          _buildFilterChip('🌐 Nginx / Web', 'nginx', logsProvider),
-                          _buildFilterChip('🚀 Dmesg / Kernel', 'dmesg', logsProvider),
+                          _buildFilterChip('AI Agent Service', 'agent', logsProvider),
+                          _buildFilterChip('Syslog (/var/log)', 'syslog', logsProvider),
+                          _buildFilterChip('SSH / Auth', 'auth', logsProvider),
+                          _buildFilterChip('Nginx / Web', 'nginx', logsProvider),
+                          _buildFilterChip('Dmesg / Kernel', 'dmesg', logsProvider),
                         ],
                       ),
                     ),
