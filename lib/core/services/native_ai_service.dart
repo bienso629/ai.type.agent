@@ -703,21 +703,10 @@ fi
           onStatus('AI Agent $cliName đang phản hồi...');
           final fullOutput = StringBuffer();
           final completer = Completer<void>();
-          Timer? idleTimer;
-
-          void resetIdleTimer() {
-            idleTimer?.cancel();
-            if (fullOutput.isNotEmpty) {
-              idleTimer = Timer(const Duration(milliseconds: 3000), () {
-                if (!completer.isCompleted) completer.complete();
-              });
-            }
-          }
 
           late StreamSubscription sub;
           sub = worker.stream.listen((json) {
             if (isCancelled()) {
-              idleTimer?.cancel();
               sub.cancel();
               if (!completer.isCompleted) completer.complete();
               return;
@@ -733,13 +722,10 @@ fi
               if (textDelta != null && textDelta.isNotEmpty) {
                 fullOutput.write(textDelta);
                 onToken(textDelta);
-                resetIdleTimer();
               } else if (errorMsg != null && errorMsg.isNotEmpty) {
                 fullOutput.write('\n[Lỗi]: $errorMsg\n');
                 onToken('\n[Lỗi]: $errorMsg\n');
-                resetIdleTimer();
               } else if (stepType == 'tool' || stepType == 'tool_call') {
-                idleTimer?.cancel();
                 final state = step?['state']?.toString();
                 final toolInfo = step?['tool_info'] as Map<String, dynamic>?;
                 final toolParams = toolInfo?['parameters'] as Map<String, dynamic>? ??
@@ -785,7 +771,6 @@ fi
                 onStatus('AI đang suy nghĩ và lập kế hoạch...');
               }
             } else if (event == 'result') {
-              idleTimer?.cancel();
               final res = json['result'] as Map<String, dynamic>?;
               final resp = res?['response']?.toString();
               final status = res?['status']?.toString();
@@ -801,7 +786,6 @@ fi
               sub.cancel();
               if (!completer.isCompleted) completer.complete();
             } else if (event == 'error') {
-              idleTimer?.cancel();
               final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
               if (err.isNotEmpty) {
                 fullOutput.write('\n[Lỗi Antigravity]: $err\n');
@@ -811,15 +795,16 @@ fi
               sub.cancel();
               if (!completer.isCompleted) completer.complete();
             }
+          }, onDone: () {
+            if (!completer.isCompleted) completer.complete();
           });
 
           await worker.sendPrompt(cleanPrompt);
-          await completer.future.timeout(const Duration(minutes: 3), onTimeout: () {
+          await completer.future.timeout(const Duration(minutes: 15), onTimeout: () {
             _activeAgyWorkers.remove(sessionId)?.dispose();
             if (!completer.isCompleted) completer.complete();
           });
 
-          idleTimer?.cancel();
           sub.cancel();
 
           final resStr = fullOutput.toString().trim();

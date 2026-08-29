@@ -746,12 +746,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
                             if (isLocal) {
                               return Text(
-                                '💻 Gắn với: Local Machine (${Platform.operatingSystem}) • Thực thi an toàn trên shell cục bộ',
+                                'Gắn với: Local Machine (${Platform.operatingSystem}) • Thực thi an toàn trên shell cục bộ',
                                 style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                               );
                             } else {
                               return Text(
-                                '🖥️ Gắn với Máy chủ: $currentServerName • Mọi lệnh terminal được gửi qua SSH tới máy chủ này',
+                                'Gắn với Máy chủ: $currentServerName • Mọi lệnh terminal được gửi qua SSH tới máy chủ này',
                                 style: const TextStyle(fontSize: 11, color: AppColors.primaryLight),
                               );
                             }
@@ -1587,15 +1587,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.flash_on_rounded, size: 14, color: AppColors.warning),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Gợi ý thư mục VPS (${_currentSlashWord.isNotEmpty ? _currentSlashWord : '/'}):',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                            ),
-                          ],
+                        Text(
+                          'Gợi ý thư mục (${_currentSlashWord.isNotEmpty ? _currentSlashWord : '/'}):',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
                         ),
                         if (_isInlineDirLoading)
                           const SizedBox(
@@ -3099,7 +3093,7 @@ class _CommandRunnerModalState extends State<_CommandRunnerModal> {
           effectiveDir = Directory.current.path;
         }
 
-        _logs.writeln('⚡ [Local]: $effectiveDir');
+        _logs.writeln('[Local]: $effectiveDir');
         _logs.writeln('\$ ${widget.command}\n');
         setState(() {});
 
@@ -3280,7 +3274,7 @@ class _CommandRunnerModalState extends State<_CommandRunnerModal> {
                     const Icon(Icons.terminal_rounded, size: 15, color: AppColors.accentCyan),
                     const SizedBox(width: 7),
                     Text(
-                      _isMinimized ? 'Console: ${widget.command}' : '⚡ Console Runner',
+                      _isMinimized ? 'Console: ${widget.command}' : 'Console Runner',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(

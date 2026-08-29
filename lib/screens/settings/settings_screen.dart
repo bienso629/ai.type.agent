@@ -320,7 +320,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: AppColors.inputBg,
       side: const BorderSide(color: AppColors.borderDark),
       label: Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textWhite)),
-      avatar: const Icon(Icons.flash_on_rounded, size: 14, color: AppColors.warning),
       onPressed: () => _applyPreset(label, url, model),
     );
   }

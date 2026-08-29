@@ -42,7 +42,7 @@ cp "$ICON_SRC" "$PKG_DIR/usr/share/pixmaps/ai-type-agent.png"
 cp "$ICON_SRC" "$PKG_DIR/usr/share/pixmaps/ai.type.agent.png"
 
 # Desktop Launcher
-cat << 'DESKTOP_EOF' > "$PKG_DIR/usr/share/applications/ai.type.agent.desktop"
+cat << 'DESKTOP_EOF' > "$PKG_DIR/usr/share/applications/ai-type-agent.desktop"
 [Desktop Entry]
 Name=AI Type Agent
 GenericName=AI Developer & Server Assistant
@@ -53,21 +53,46 @@ Terminal=false
 Type=Application
 Categories=Development;Utility;
 StartupNotify=true
-StartupWMClass=ai.type.agent
+StartupWMClass=ai-type-agent
 Keywords=AI;Agent;Coder;Server;Type;
 DESKTOP_EOF
 
 # Control file
-cat << 'CONTROL_EOF' > "$PKG_DIR/DEBIAN/control"
+INSTALLED_SIZE=$(du -sk "$PKG_DIR" | cut -f1)
+cat << CONTROL_EOF > "$PKG_DIR/DEBIAN/control"
 Package: ai-type-agent
 Version: 1.0.0
 Section: devel
 Priority: optional
 Architecture: amd64
+Installed-Size: $INSTALLED_SIZE
 Maintainer: AI Type Team <support@type.ai>
 Description: AI Type Agent Native Flutter Desktop Application
  High performance, lightweight native Linux desktop client for AI Type Agent.
 CONTROL_EOF
+
+# Postinst & Postrm hooks
+cat << 'POSTINST_EOF' > "$PKG_DIR/DEBIAN/postinst"
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+    update-desktop-database -q /usr/share/applications 2>/dev/null || true
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+fi
+exit 0
+POSTINST_EOF
+chmod 755 "$PKG_DIR/DEBIAN/postinst"
+
+cat << 'POSTRM_EOF' > "$PKG_DIR/DEBIAN/postrm"
+#!/bin/sh
+set -e
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    update-desktop-database -q /usr/share/applications 2>/dev/null || true
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+fi
+exit 0
+POSTRM_EOF
+chmod 755 "$PKG_DIR/DEBIAN/postrm"
 
 echo "=== [3/4] Packaging .deb installer ==="
 mkdir -p "$DIST_DIR"
