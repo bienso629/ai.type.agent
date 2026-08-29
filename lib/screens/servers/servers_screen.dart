@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/native_ssh_service.dart';
@@ -350,99 +349,29 @@ class _ServersScreenState extends State<ServersScreen> {
     try {
       final jsonStr = await serverProvider.exportServers(includeFullConfig: true);
 
+      String? outputPath;
+      try {
+        outputPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Lưu file sao lưu danh sách Server',
+          fileName: 'servers_backup_${DateTime.now().millisecondsSinceEpoch}.json',
+          type: FileType.custom,
+          allowedExtensions: ['json'],
+        );
+      } catch (_) {}
+
+      if (outputPath == null) {
+        if (!mounted) return;
+        AppToast.info(context, 'Đã huỷ thao tác sao lưu.');
+        return;
+      }
+
+      final file = File(outputPath);
+      await file.writeAsString(jsonStr);
+
       if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => TaduDialog(
-          minWidth: 540,
-          maxWidth: 680,
-          title: const Row(
-            children: [
-              Icon(Icons.download_rounded, color: AppColors.primaryLight, size: 22),
-              SizedBox(width: 8),
-              Text('Sao Lưu Danh Sách Máy Chủ (Export)'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Đã tạo bản sao lưu cho $serversCount máy chủ. Bạn có thể lưu vào file .json hoặc sao chép mã cấu hình.',
-                style: const TextStyle(fontSize: 12, color: AppColors.textDim),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                height: 200,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.terminalBg,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: AppColors.borderDark),
-                ),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    jsonStr,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.terminalGreen, height: 1.35),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            OutlinedButton.icon(
-              icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Sao Chép JSON'),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: jsonStr));
-                if (ctx.mounted) {
-                  AppToast.success(ctx, 'Đã sao chép cấu hình JSON vào Clipboard!');
-                  Navigator.pop(ctx);
-                }
-              },
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-              icon: const Icon(Icons.save_alt_rounded, size: 16),
-              label: const Text('Lưu Thành File .JSON'),
-              onPressed: () async {
-                try {
-                  String? outputPath;
-                  try {
-                    outputPath = await FilePicker.platform.saveFile(
-                      dialogTitle: 'Lưu file sao lưu danh sách Server',
-                      fileName: 'servers_backup_${DateTime.now().millisecondsSinceEpoch}.json',
-                      type: FileType.custom,
-                      allowedExtensions: ['json'],
-                    );
-                  } catch (_) {}
-
-                  if (outputPath == null) {
-                    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
-                    final downloadsDir = Directory('$home/Downloads');
-                    final targetDir = downloadsDir.existsSync() ? downloadsDir.path : home;
-                    outputPath = '$targetDir/servers_backup_${DateTime.now().millisecondsSinceEpoch}.json';
-                  }
-
-                  final file = File(outputPath);
-                  await file.writeAsString(jsonStr);
-
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                    AppToast.success(ctx, 'Đã lưu file sao lưu: $outputPath');
-                  }
-                } catch (e) {
-                  if (ctx.mounted) {
-                    AppToast.error(ctx, 'Lỗi khi lưu file: $e');
-                  }
-                }
-              },
-            ),
-          ],
-        ),
-      );
+      AppToast.success(context, 'Đã lưu file sao lưu $serversCount máy chủ: $outputPath');
     } catch (e) {
+      if (!mounted) return;
       AppToast.error(context, 'Lỗi khi xuất danh sách máy chủ: $e');
     }
   }

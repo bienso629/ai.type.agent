@@ -17,6 +17,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_logo.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
+import '../../core/widgets/chat_avatar.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
@@ -992,6 +993,11 @@ class _ChatScreenState extends State<ChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
+          if (!isUser)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 10),
+              child: ChatAvatar(isUser: false, size: 30),
+            ),
           Flexible(
             child: Column(
               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -1104,12 +1110,8 @@ class _ChatScreenState extends State<ChatScreen> {
                               color: AppColors.terminalGreen,
                               fontSize: 12,
                             ),
-                            codeblockPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            codeblockDecoration: BoxDecoration(
-                              color: AppColors.codeBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.borderDark),
-                            ),
+                            codeblockPadding: EdgeInsets.zero,
+                            codeblockDecoration: const BoxDecoration(),
                             blockquote: const TextStyle(fontSize: 13, color: AppColors.textBody, fontStyle: FontStyle.italic),
                             blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             blockquoteDecoration: BoxDecoration(
@@ -2870,8 +2872,19 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
         cleanLg == '' ||
         cleanLg == 'env';
 
+    final IconData langIcon;
+    if (isRunnable) {
+      langIcon = Icons.terminal_rounded;
+    } else if (cleanLg == 'json' || cleanLg == 'yaml' || cleanLg == 'yml' || cleanLg == 'xml') {
+      langIcon = Icons.data_object_rounded;
+    } else {
+      langIcon = Icons.code_rounded;
+    }
+
+    final langLabel = widget.language.isNotEmpty ? widget.language.toUpperCase() : 'BASH';
+
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
+      margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF070B14),
         borderRadius: BorderRadius.circular(6),
@@ -2882,7 +2895,7 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: const BoxDecoration(
               color: Color(0xFF0F172A),
               borderRadius: BorderRadius.only(
@@ -2893,10 +2906,10 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.terminal_rounded, size: 13, color: AppColors.primaryLight),
+                Icon(langIcon, size: 13, color: AppColors.primaryLight),
                 const SizedBox(width: 6),
                 Text(
-                  widget.language.isNotEmpty ? widget.language.toUpperCase() : 'BASH',
+                  langLabel,
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 10.5,
@@ -2907,73 +2920,35 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                 ),
                 const Spacer(),
                 if (isRunnable) ...[
-                  InkWell(
-                    onTap: _runCommand,
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: AppColors.accent.withValues(alpha: 0.4),
+                  Tooltip(
+                    message: 'Chạy lệnh',
+                    child: InkWell(
+                      onTap: _runCommand,
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          size: 16,
+                          color: AppColors.accent,
                         ),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.play_arrow_rounded,
-                            size: 13,
-                            color: AppColors.accent,
-                          ),
-                          SizedBox(width: 3),
-                          Text(
-                            'Chạy lệnh',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.accent,
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ),
+                  const SizedBox(width: 2),
                 ],
-                InkWell(
-                  onTap: _copy,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _copied
-                          ? AppColors.primary.withValues(alpha: 0.25)
-                          : const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: _copied ? AppColors.primaryLight : const Color(0xFF334155),
+                Tooltip(
+                  message: _copied ? 'Đã sao chép' : 'Sao chép',
+                  child: InkWell(
+                    onTap: _copy,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        _copied ? Icons.check_rounded : Icons.copy_rounded,
+                        size: 15,
+                        color: _copied ? AppColors.accent : AppColors.textMuted,
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _copied ? Icons.check_rounded : Icons.copy_rounded,
-                          size: 12,
-                          color: _copied ? AppColors.primaryLight : AppColors.textBody,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _copied ? 'Đã chép' : 'Sao chép',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: _copied ? AppColors.primaryLight : AppColors.textBody,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -2981,13 +2956,13 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: SelectableText(
               widget.code,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 12,
-                color: Color(0xFF4ADE80),
+                color: isRunnable ? const Color(0xFF4ADE80) : AppColors.textBody,
                 height: 1.45,
               ),
             ),
