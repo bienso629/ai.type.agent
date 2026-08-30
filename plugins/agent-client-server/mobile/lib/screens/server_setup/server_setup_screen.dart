@@ -303,15 +303,9 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.power_settings_new_rounded, size: 16, color: AppColors.primaryLight),
-                            SizedBox(width: 8),
-                            Text(
-                              'Điều Khiển Dịch Vụ AI Agent (Systemd)',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                            ),
-                          ],
+                        const Text(
+                          'Điều Khiển Dịch Vụ AI Agent (Systemd)',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
                         Wrap(

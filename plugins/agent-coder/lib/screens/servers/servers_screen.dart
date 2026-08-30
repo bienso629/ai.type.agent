@@ -73,65 +73,88 @@ class _ServersScreenState extends State<ServersScreen> {
     AppToast.success(context, 'Đã kích hoạt máy chủ "${server.name}" (${server.serverIp})');
   }
 
-  void _handleServiceAction(ServerModel server, String action) async {
-    final actionLabel = action == 'start'
-        ? 'khởi động'
-        : action == 'restart'
-            ? 'khởi động lại'
-            : action == 'stop'
-                ? 'tắt'
-                : 'kiểm tra chi tiết';
-    AppToast.info(context, 'Đang gửi lệnh $actionLabel dịch vụ trên ${server.name}...');
-
-    final res = await _api.executeServiceAction('ai-agent', action, server: server);
-    final output = res['output']?.toString() ?? res['message']?.toString() ?? 'Không có phản hồi từ máy chủ';
-    final msg = res['message']?.toString() ?? output;
-
-    if (action == 'status') {
+  Future<void> _executeSystemdAction(ServerModel server, String action, String actionName) async {
+    try {
+      final res = await _api.executeServiceAction('ai-agent', action, server: server);
       if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => TaduDialog(
-          minWidth: 640,
-          maxWidth: 820,
-          maxHeight: 520,
-          title: Row(
-            children: [
-              const Icon(Icons.info_outline_rounded, color: AppColors.primaryLight, size: 22),
-              const SizedBox(width: 8),
-              Text('Chi Tiết Trạng Thái Service - ${server.name} (${server.serverIp})'),
-            ],
-          ),
-          content: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.terminalBg,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppColors.borderDark),
+      if (res['status'] == 'success' || res['status'] == 'ok') {
+        AppToast.success(context, 'Đã gửi lệnh $actionName ai-agent.service trên máy chủ ${server.name}');
+      } else {
+        AppToast.error(context, 'Lỗi $actionName trên máy chủ ${server.name}: ${res['error'] ?? 'Không thành công'}');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.error(context, 'Lỗi $actionName: $e');
+    }
+  }
+
+  Future<void> _showSystemdStatusModal(ServerModel server) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primaryLight),
+      ),
+    );
+
+    try {
+      final res = await _api.executeServiceAction('ai-agent', 'status', server: server);
+      final statusOutput = (res['output'] ?? res['message'] ?? 'Không nhận được thông tin trạng thái.').toString();
+
+      if (mounted) {
+        Navigator.pop(context); // close loading
+        showDialog(
+          context: context,
+          builder: (ctx) => TaduDialog(
+            minWidth: 560,
+            maxWidth: 760,
+            title: Row(
+              children: [
+                const Icon(Icons.terminal_rounded, color: AppColors.primaryLight, size: 20),
+                const SizedBox(width: 8),
+                Text('Trạng Thái Systemd: ${server.name} (ai-agent.service)'),
+              ],
             ),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                output,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.terminalGreen, height: 1.4),
+            content: Container(
+              width: double.infinity,
+              height: 320,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.terminalBg,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.borderDark),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  statusOutput,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: AppColors.terminalGreen,
+                    height: 1.35,
+                  ),
+                ),
               ),
             ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Đóng'),
+              ),
+            ],
           ),
-          actions: [
-            ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Đóng')),
-          ],
-        ),
-      );
-    } else {
+        );
+      }
+    } catch (e) {
       if (mounted) {
-        if (res['status'] == 'error') {
-          AppToast.error(context, msg);
-        } else {
-          AppToast.success(context, msg);
-        }
+        Navigator.pop(context);
+        AppToast.error(context, 'Lỗi kiểm tra trạng thái: $e');
       }
     }
   }
+
+
 
   void _startDeploy(ServerModel server) {
     if (_deployingServerId != null) return;
@@ -178,70 +201,497 @@ class _ServersScreenState extends State<ServersScreen> {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final ipCtrl = TextEditingController(text: existing?.serverIp ?? '');
     final portCtrl = TextEditingController(text: existing?.sshPort.toString() ?? '22');
+    final apiPortCtrl = TextEditingController(text: existing?.apiPort.toString() ?? '8000');
     final userCtrl = TextEditingController(text: existing?.sshUser ?? 'root');
     final passCtrl = TextEditingController(text: existing?.sshPass ?? '');
     final remoteDirCtrl = TextEditingController(text: existing?.remoteWorkDir ?? '/opt/ai_agent');
+    String selectedAgentMode = existing?.agentMode ?? 'systemd';
+    String selectedCliBinary = existing?.cliBinary ?? 'agy';
 
     showDialog(
       context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 520,
-        maxWidth: 640,
-        title: Row(
-          children: [
-            const Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 22),
-            const SizedBox(width: 8),
-            Text(existing != null ? 'Chỉnh Sửa Máy Chủ' : 'Thêm Máy Chủ VPS Mới'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Tên gợi nhớ (Ví dụ: Web Production, Staging VPS):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Tên máy chủ',
-                  prefixIcon: Icon(Icons.label_outline_rounded, size: 18),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final isDeployingThis = existing != null && _deployingServerId == existing.id;
+          final deployLogs = existing != null ? _deployLogs[existing.id] : null;
+          final scrollCtrl = existing != null ? _deployScrollCtrls[existing.id] : null;
+
+          return TaduDialog(
+            minWidth: 580,
+            maxWidth: 720,
+            title: Row(
+              children: [
+                const Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 22),
+                const SizedBox(width: 8),
+                Text(existing != null ? 'Chỉnh Sửa Thông Tin Máy Chủ' : 'Thêm Máy Chủ VPS Mới'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Địa Chỉ IP / Hostname:', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: ipCtrl,
-                          decoration: const InputDecoration(
-                            hintText: '103.x.x.x hoặc domain.com',
-                            prefixIcon: Icon(Icons.router_rounded, size: 18),
-                          ),
-                        ),
-                      ],
+                  const Text('Tên gợi nhớ (Ví dụ: Web Production, Staging VPS):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'Tên máy chủ',
+                      prefixIcon: Icon(Icons.label_outline_rounded, size: 18),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 1,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Địa Chỉ IP / Hostname:', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: ipCtrl,
+                              decoration: const InputDecoration(
+                                hintText: '103.x.x.x hoặc domain.com',
+                                prefixIcon: Icon(Icons.router_rounded, size: 18),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 1,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('SSH Port:', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: portCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                hintText: '22',
+                                prefixIcon: Icon(Icons.tag_rounded, size: 18),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('SSH User:', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: userCtrl,
+                              decoration: const InputDecoration(
+                                hintText: 'root / ubuntu',
+                                prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Mật khẩu SSH (hoặc sudo pass):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: passCtrl,
+                              obscureText: true,
+                              decoration: const InputDecoration(
+                                hintText: 'Mật khẩu SSH',
+                                prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Thư mục làm việc trên Server (Remote Work Dir):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: remoteDirCtrl,
+                    decoration: const InputDecoration(
+                      hintText: '/opt/ai_agent hoặc /var/www',
+                      prefixIcon: Icon(Icons.folder_special_outlined, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // PHẦN LỰA CHỌN CHẾ ĐỘ THỰC THI (CHẾ ĐỘ 1 HOẶC CHẾ ĐỘ 2)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('SSH Port:', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: portCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            hintText: '22',
-                            prefixIcon: Icon(Icons.tag_rounded, size: 18),
+                        const Row(
+                          children: [
+                            Icon(Icons.tune_rounded, size: 16, color: AppColors.primaryLight),
+                            SizedBox(width: 6),
+                            Text(
+                              'Chế Độ Hoạt Động Của AI Agent Trên Máy Chủ:',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Tùy chọn 1: Chế độ Dịch vụ Systemd
+                        InkWell(
+                          onTap: () => setDialogState(() => selectedAgentMode = 'systemd'),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            margin: const EdgeInsets.only(bottom: 6),
+                            decoration: BoxDecoration(
+                              color: selectedAgentMode == 'systemd'
+                                  ? AppColors.primary.withValues(alpha: 0.15)
+                                  : AppColors.inputBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: selectedAgentMode == 'systemd' ? AppColors.primaryLight : AppColors.borderDark,
+                                width: selectedAgentMode == 'systemd' ? 1.2 : 1.0,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Radio<String>(
+                                      value: 'systemd',
+                                      groupValue: selectedAgentMode,
+                                      activeColor: AppColors.primaryLight,
+                                      onChanged: (val) => setDialogState(() => selectedAgentMode = val ?? 'systemd'),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Chế độ 1: Chạy bằng AI Agent Service (Systemd Daemon)',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Máy chủ chạy dịch vụ nền ai-agent.service qua cổng API HTTP (mặc định port ${apiPortCtrl.text.isNotEmpty ? apiPortCtrl.text : '8000'})',
+                                            style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (selectedAgentMode == 'systemd') ...[
+                                  const SizedBox(height: 10),
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 36, right: 6),
+                                    child: Row(
+                                      children: [
+                                        const Text('Cổng Dịch Vụ (Agent Port):', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                                        const SizedBox(width: 10),
+                                        SizedBox(
+                                          width: 110,
+                                          height: 32,
+                                          child: TextField(
+                                            controller: apiPortCtrl,
+                                            keyboardType: TextInputType.number,
+                                            style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.textWhite),
+                                            decoration: const InputDecoration(
+                                              isDense: true,
+                                              hintText: '8000',
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                              prefixIcon: Icon(Icons.numbers_rounded, size: 14, color: AppColors.primaryLight),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Text('(Port lắng nghe của ai-agent.service)', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                if (selectedAgentMode == 'systemd' && existing != null) ...[
+                                  const SizedBox(height: 12),
+                                  const Divider(color: AppColors.borderDark, height: 1),
+                                  const SizedBox(height: 10),
+
+                                  // 1. Quản lý Dịch vụ Systemd trực tiếp (Start / Restart / Stop / Status)
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.cardBg,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: AppColors.borderDark),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Row(
+                                          children: [
+                                            Icon(Icons.shield_rounded, size: 15, color: AppColors.primaryLight),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              'Điều Khiển Dịch Vụ Systemd (ai-agent.service)',
+                                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Text(
+                                          'Thao tác quản trị dịch vụ Systemd trực tiếp trên máy chủ qua SSH:',
+                                          style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [
+                                            // Start
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppColors.accent.withValues(alpha: 0.15),
+                                                foregroundColor: AppColors.accent,
+                                                side: const BorderSide(color: AppColors.accent),
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              ),
+                                              icon: const Icon(Icons.play_arrow_rounded, size: 14),
+                                              label: const Text('Bật (Start)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                              onPressed: () => _executeSystemdAction(existing, 'start', 'khởi động'),
+                                            ),
+                                            // Restart
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppColors.warning.withValues(alpha: 0.15),
+                                                foregroundColor: AppColors.warning,
+                                                side: const BorderSide(color: AppColors.warning),
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              ),
+                                              icon: const Icon(Icons.restart_alt_rounded, size: 14),
+                                              label: const Text('Khởi Động Lại (Restart)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                              onPressed: () => _executeSystemdAction(existing, 'restart', 'khởi động lại'),
+                                            ),
+                                            // Stop
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppColors.danger.withValues(alpha: 0.15),
+                                                foregroundColor: AppColors.danger,
+                                                side: const BorderSide(color: AppColors.danger),
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              ),
+                                              icon: const Icon(Icons.stop_rounded, size: 14),
+                                              label: const Text('Dừng (Stop)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                              onPressed: () => _executeSystemdAction(existing, 'stop', 'dừng'),
+                                            ),
+                                            // Status
+                                            OutlinedButton.icon(
+                                              style: OutlinedButton.styleFrom(
+                                                side: const BorderSide(color: AppColors.primaryLight),
+                                                foregroundColor: AppColors.primaryLight,
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              ),
+                                              icon: const Icon(Icons.terminal_rounded, size: 14),
+                                              label: const Text('Kiểm Tra Trạng Thái (Status)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                              onPressed: () => _showSystemdStatusModal(existing),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // 2. 1-Click Deploy & Tự Động Thiết Lập Trọn Gói
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.cardBg,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: AppColors.borderDark),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Icon(Icons.cloud_upload_rounded, size: 15, color: AppColors.accentCyan),
+                                                      SizedBox(width: 6),
+                                                      Text(
+                                                        '1-Click Deploy & Tự Động Thiết Lập',
+                                                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  SizedBox(height: 4),
+                                                  Text(
+                                                    'Tự động cài đặt nhị phân, cấu hình Systemd service trên VPS',
+                                                    style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppColors.primary,
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              ),
+                                              icon: isDeployingThis
+                                                  ? const SizedBox(
+                                                      width: 12,
+                                                      height: 12,
+                                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                                    )
+                                                  : const Icon(Icons.rocket_launch_rounded, size: 13),
+                                              label: Text(
+                                                isDeployingThis ? 'Đang thiết lập...' : 'Thiết lập ngay',
+                                                style: const TextStyle(fontSize: 10.5),
+                                              ),
+                                              onPressed: isDeployingThis
+                                                  ? null
+                                                  : () {
+                                                      _startDeploy(existing);
+                                                      setDialogState(() {});
+                                                    },
+                                            ),
+                                          ],
+                                        ),
+                                        if (deployLogs != null && deployLogs.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Container(
+                                            height: 110,
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.terminalBg,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: AppColors.borderDark),
+                                            ),
+                                            child: ListView.builder(
+                                              controller: scrollCtrl,
+                                              itemCount: deployLogs.length,
+                                              itemBuilder: (context, idx) {
+                                                return Text(
+                                                  deployLogs[idx],
+                                                  style: const TextStyle(
+                                                    fontFamily: 'monospace',
+                                                    fontSize: 10,
+                                                    color: AppColors.terminalGreen,
+                                                    height: 1.35,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Tùy chọn 2: Chế độ CLI Agent (agy, claude, gemini)
+                        InkWell(
+                          onTap: () => setDialogState(() => selectedAgentMode = 'cli'),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: selectedAgentMode == 'cli'
+                                  ? AppColors.accent.withValues(alpha: 0.15)
+                                  : AppColors.inputBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: selectedAgentMode == 'cli' ? AppColors.accent : AppColors.borderDark,
+                                width: selectedAgentMode == 'cli' ? 1.2 : 1.0,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Radio<String>(
+                                      value: 'cli',
+                                      groupValue: selectedAgentMode,
+                                      activeColor: AppColors.accent,
+                                      onChanged: (val) => setDialogState(() => selectedAgentMode = val ?? 'cli'),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Chế độ 2: Chạy bằng CLI Agent cài sẵn (agy, claude, gemini...)',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            'Máy chủ đã được cài sẵn CLI như Google Antigravity (agy), Claude Code hoặc Gemini CLI',
+                                            style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (selectedAgentMode == 'cli') ...[
+                                  const SizedBox(height: 8),
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 36, right: 6),
+                                    child: Row(
+                                      children: [
+                                        const Text('Lệnh CLI thực thi:', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                                        const SizedBox(width: 8),
+                                        DropdownButton<String>(
+                                          value: selectedCliBinary,
+                                          dropdownColor: AppColors.cardBg,
+                                          style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontFamily: 'monospace'),
+                                          underline: Container(height: 1, color: AppColors.accent),
+                                          items: const [
+                                            DropdownMenuItem(value: 'agy', child: Text('agy (Google Antigravity CLI)')),
+                                            DropdownMenuItem(value: 'claude', child: Text('claude (Claude Code CLI)')),
+                                            DropdownMenuItem(value: 'gemini', child: Text('gemini (Google Gemini CLI)')),
+                                            DropdownMenuItem(value: 'ollama', child: Text('ollama (Local LLM CLI)')),
+                                          ],
+                                          onChanged: (val) {
+                                            if (val != null) setDialogState(() => selectedCliBinary = val);
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -249,92 +699,46 @@ class _ServersScreenState extends State<ServersScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('SSH User:', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: userCtrl,
-                          decoration: const InputDecoration(
-                            hintText: 'root / ubuntu',
-                            prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Mật khẩu SSH (hoặc sudo pass):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: passCtrl,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            hintText: 'Mật khẩu SSH',
-                            prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
               ),
-              const SizedBox(height: 12),
-              const Text('Thư mục làm việc trên Server (Remote Work Dir):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: remoteDirCtrl,
-                decoration: const InputDecoration(
-                  hintText: '/opt/ai_agent hoặc /var/www',
-                  prefixIcon: Icon(Icons.folder_special_outlined, size: 18),
-                ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                icon: const Icon(Icons.save_rounded, size: 16),
+                label: Text(existing != null ? 'Cập Nhật' : 'Thêm Máy Chủ'),
+                onPressed: () async {
+                  if (ipCtrl.text.trim().isEmpty) {
+                    AppToast.error(context, 'Vui lòng nhập địa chỉ IP hoặc Hostname!');
+                    return;
+                  }
+                  final newServer = ServerModel(
+                    id: existing?.id ?? 'srv_${DateTime.now().millisecondsSinceEpoch}',
+                    name: nameCtrl.text.trim().isEmpty ? ipCtrl.text.trim() : nameCtrl.text.trim(),
+                    serverIp: ipCtrl.text.trim(),
+                    sshPort: int.tryParse(portCtrl.text.trim()) ?? 22,
+                    apiPort: int.tryParse(apiPortCtrl.text.trim()) ?? 8000,
+                    sshUser: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
+                    sshPass: passCtrl.text.trim(),
+                    remoteWorkDir: remoteDirCtrl.text.trim().isEmpty ? '/opt/ai_agent' : remoteDirCtrl.text.trim(),
+                    agentMode: selectedAgentMode,
+                    cliBinary: selectedCliBinary,
+                    isSelected: existing?.isSelected ?? false,
+                  );
+                  Navigator.pop(ctx);
+                  await context.read<ServerProvider>().addOrUpdateServer(newServer);
+                  if (mounted) {
+                    _searchCtrl.clear();
+                    setState(() => _searchQuery = '');
+                    AppToast.success(this.context, 'Đã lưu thông tin máy chủ "${newServer.name}" (${newServer.isCliMode ? 'Chế độ 2: CLI ${newServer.cliBinary}' : 'Chế độ 1: Systemd'})!');
+                  }
+                },
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            icon: const Icon(Icons.save_rounded, size: 16),
-            label: Text(existing != null ? 'Cập Nhật' : 'Thêm Máy Chủ'),
-            onPressed: () async {
-              if (ipCtrl.text.trim().isEmpty) {
-                AppToast.error(context, 'Vui lòng nhập địa chỉ IP hoặc Hostname!');
-                return;
-              }
-              final newServer = ServerModel(
-                id: existing?.id ?? 'srv_${DateTime.now().millisecondsSinceEpoch}',
-                name: nameCtrl.text.trim().isEmpty ? ipCtrl.text.trim() : nameCtrl.text.trim(),
-                serverIp: ipCtrl.text.trim(),
-                sshPort: int.tryParse(portCtrl.text.trim()) ?? 22,
-                sshUser: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
-                sshPass: passCtrl.text.trim(),
-                remoteWorkDir: remoteDirCtrl.text.trim().isEmpty ? '/opt/ai_agent' : remoteDirCtrl.text.trim(),
-                isSelected: existing?.isSelected ?? false,
-              );
-              Navigator.pop(ctx);
-              await context.read<ServerProvider>().addOrUpdateServer(newServer);
-              if (mounted) {
-                _searchCtrl.clear();
-                setState(() => _searchQuery = '');
-                AppToast.success(this.context, 'Đã lưu thông tin máy chủ "${newServer.name}"!');
-              }
-            },
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -570,7 +974,7 @@ class _ServersScreenState extends State<ServersScreen> {
                       tooltip: 'Sao lưu & Khôi phục dữ liệu',
                       color: AppColors.surfaceDark,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(4),
                         side: const BorderSide(color: AppColors.borderDark),
                       ),
                       onSelected: (value) {
@@ -609,7 +1013,7 @@ class _ServersScreenState extends State<ServersScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.cardBg,
                           border: Border.all(color: AppColors.borderDark),
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -763,10 +1167,6 @@ class _ServersScreenState extends State<ServersScreen> {
                               serverProvider.selectedServer != null &&
                               (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
                           final test = _testStatus[s.id];
-                          final isDeployingThis = _deployingServerId == s.id;
-                          final isExpanded = _expandedServerIds.contains(s.id) || isDeployingThis;
-                          final deployLogs = _deployLogs[s.id];
-                          final scrollCtrl = _deployScrollCtrls[s.id];
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -780,45 +1180,41 @@ class _ServersScreenState extends State<ServersScreen> {
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Row(
                                 children: [
-                                  // Top Row: Icon, Server Info, Action Buttons
-                                  Row(
-                                    children: [
-                                      // Server Icon & Active Indicator
-                                      Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? AppColors.primary.withValues(alpha: 0.15)
-                                              : AppColors.inputBg,
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: isSelected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.borderDark,
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          Icons.dns_rounded,
-                                          size: 24,
-                                          color: isSelected ? AppColors.primaryLight : AppColors.textDim,
-                                        ),
+                                  // Server Icon & Active Indicator
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? AppColors.primary.withValues(alpha: 0.15)
+                                          : AppColors.inputBg,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: isSelected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.borderDark,
                                       ),
-                                      const SizedBox(width: 16),
+                                    ),
+                                    child: Icon(
+                                      Icons.dns_rounded,
+                                      size: 24,
+                                      color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
 
-                                      // Server Information
-                                      Expanded(
-                                        child: InkWell(
-                                          hoverColor: Colors.transparent,
-                                          splashColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          mouseCursor: SystemMouseCursors.click,
-                                          onTap: () {
-                                            if (!isSelected) _switchToServer(serverProvider, s);
-                                          },
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
+                                  // Server Information
+                                  Expanded(
+                                    child: InkWell(
+                                      hoverColor: Colors.transparent,
+                                      splashColor: Colors.transparent,
+                                      highlightColor: Colors.transparent,
+                                      mouseCursor: SystemMouseCursors.click,
+                                      onTap: () {
+                                        if (!isSelected) _switchToServer(serverProvider, s);
+                                      },
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
                                           Row(
                                             children: [
                                               Text(
@@ -886,6 +1282,40 @@ class _ServersScreenState extends State<ServersScreen> {
                                                     Text(
                                                       s.remoteWorkDir.isNotEmpty ? s.remoteWorkDir : '/opt/ai_agent',
                                                       style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: s.isCliMode
+                                                      ? AppColors.accent.withValues(alpha: 0.15)
+                                                      : AppColors.primary.withValues(alpha: 0.15),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(
+                                                    color: s.isCliMode
+                                                        ? AppColors.accent.withValues(alpha: 0.4)
+                                                        : AppColors.primaryLight.withValues(alpha: 0.4),
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      s.isCliMode ? Icons.terminal_rounded : Icons.shield_rounded,
+                                                      size: 11,
+                                                      color: s.isCliMode ? AppColors.accent : AppColors.primaryLight,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      s.isCliMode ? 'Chế độ 2: CLI (${s.cliBinary})' : 'Chế độ 1: Systemd (Port ${s.apiPort})',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: s.isCliMode ? AppColors.accent : AppColors.primaryLight,
+                                                      ),
                                                     ),
                                                   ],
                                                 ),
@@ -981,204 +1411,14 @@ class _ServersScreenState extends State<ServersScreen> {
                                           );
                                         },
                                       ),
-
-                                      const SizedBox(width: 4),
-
-                                      // Expand / Collapse Chevron Button
-                                      IconButton(
-                                        icon: Icon(
-                                          isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                                          size: 20,
-                                          color: isExpanded ? AppColors.primaryLight : AppColors.textDim,
-                                        ),
-                                        tooltip: isExpanded ? 'Thu gọn thiết lập' : 'Mở rộng điều khiển Systemd & 1-Click Deploy',
-                                        onPressed: () {
-                                          setState(() {
-                                            if (_expandedServerIds.contains(s.id)) {
-                                              _expandedServerIds.remove(s.id);
-                                            } else {
-                                              _expandedServerIds.add(s.id);
-                                            }
-                                          });
-                                        },
-                                      ),
                                     ],
                                   ),
                                 ],
                               ),
-
-                              // Collapsible Content (Systemd Control & 1-Click Deploy)
-                              if (isExpanded) ...[
-                                // Divider
-                                const SizedBox(height: 14),
-                                const Divider(color: AppColors.borderDark, height: 1),
-                                const SizedBox(height: 14),
-
-                                // Block 1: Điều Khiển Dịch Vụ AI Agent (Systemd)
-                                Container(
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.inputBg,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: AppColors.borderDark),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Row(
-                                        children: [
-                                          Icon(Icons.power_settings_new_rounded, size: 16, color: AppColors.primaryLight),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            'Điều Khiển Dịch Vụ AI Agent (Systemd)',
-                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Wrap(
-                                        spacing: 10,
-                                        runSpacing: 8,
-                                        children: [
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(0xFF16A34A),
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            ),
-                                            icon: const Icon(Icons.play_arrow_rounded, size: 15),
-                                            label: const Text('Khởi Động', style: TextStyle(fontSize: 11.5)),
-                                            onPressed: () => _handleServiceAction(s, 'start'),
-                                          ),
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.warning,
-                                              foregroundColor: Colors.black,
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            ),
-                                            icon: const Icon(Icons.rotate_right_rounded, size: 15),
-                                            label: const Text('Khởi Động Lại', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-                                            onPressed: () => _handleServiceAction(s, 'restart'),
-                                          ),
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.danger,
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            ),
-                                            icon: const Icon(Icons.stop_rounded, size: 15),
-                                            label: const Text('Tắt', style: TextStyle(fontSize: 11.5)),
-                                            onPressed: () => _handleServiceAction(s, 'stop'),
-                                          ),
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.cardBg,
-                                              side: const BorderSide(color: AppColors.borderDark),
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            ),
-                                            icon: const Icon(Icons.info_outline_rounded, size: 15),
-                                            label: const Text('Chi Tiết Status', style: TextStyle(fontSize: 11.5)),
-                                            onPressed: () => _handleServiceAction(s, 'status'),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                // Block 2: 1-Click Deploy & Tự Động Thiết Lập Trọn Gói
-                                Container(
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.inputBg,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: AppColors.borderDark),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Icon(Icons.cloud_upload_rounded, size: 16, color: AppColors.accentCyan),
-                                                    SizedBox(width: 8),
-                                                    Text(
-                                                      '1-Click Deploy & Tự Động Thiết Lập Trọn Gói',
-                                                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                                    ),
-                                                  ],
-                                                ),
-                                                SizedBox(height: 4),
-                                                Text(
-                                                  'Tự động cài đặt nhị phân, cấu hình Systemd service và kết nối Agent trên VPS',
-                                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.primary,
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                            ),
-                                            icon: isDeployingThis
-                                                ? const SizedBox(
-                                                    width: 14,
-                                                    height: 14,
-                                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                                  )
-                                                : const Icon(Icons.rocket_launch_rounded, size: 15),
-                                            label: Text(
-                                              isDeployingThis ? 'Đang thiết lập...' : 'Bắt đầu thiết lập',
-                                              style: const TextStyle(fontSize: 11.5),
-                                            ),
-                                            onPressed: isDeployingThis ? null : () => _startDeploy(s),
-                                          ),
-                                        ],
-                                      ),
-                                      if (deployLogs != null && deployLogs.isNotEmpty) ...[
-                                        const SizedBox(height: 12),
-                                        Container(
-                                          height: 140,
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.terminalBg,
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: AppColors.borderDark),
-                                          ),
-                                          child: ListView.builder(
-                                            controller: scrollCtrl,
-                                            itemCount: deployLogs.length,
-                                            itemBuilder: (context, idx) {
-                                              return Text(
-                                                deployLogs[idx],
-                                                style: const TextStyle(
-                                                  fontFamily: 'monospace',
-                                                  fontSize: 11,
-                                                  color: AppColors.terminalGreen,
-                                                  height: 1.35,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

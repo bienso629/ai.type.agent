@@ -5,8 +5,69 @@ import '../../core/theme/app_theme.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 
+import '../../core/widgets/tadu_dialog.dart';
+import '../../core/widgets/app_toast.dart';
+
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
+
+  void _showStatusDialog(BuildContext context, String name, String serviceKey, MetricsProvider provider) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primaryLight),
+      ),
+    );
+
+    final statusOutput = await provider.getServiceStatus(serviceKey);
+
+    if (context.mounted) {
+      Navigator.pop(context); // close loading
+      showDialog(
+        context: context,
+        builder: (ctx) => TaduDialog(
+          minWidth: 540,
+          maxWidth: 720,
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: AppColors.primaryLight, size: 20),
+              const SizedBox(width: 8),
+              Text('Trạng Thái Dịch Vụ: $name'),
+            ],
+          ),
+          content: Container(
+            width: double.infinity,
+            height: 280,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.terminalBg,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: AppColors.borderDark),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                statusOutput,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: AppColors.terminalGreen,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Đóng'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -391,21 +452,58 @@ class DashboardScreen extends StatelessWidget {
           ],
         ),
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // Start
+            IconButton(
+              icon: const Icon(Icons.play_arrow_rounded, size: 18, color: AppColors.accent),
+              tooltip: 'Khởi động (Start)',
+              onPressed: () async {
+                final ok = await provider.startService(serviceKey);
+                if (context.mounted) {
+                  if (ok) {
+                    AppToast.success(context, 'Đã gửi lệnh khởi động $name');
+                  } else {
+                    AppToast.error(context, 'Lỗi khi khởi động $name');
+                  }
+                }
+              },
+            ),
+            // Restart
             IconButton(
               icon: const Icon(Icons.restart_alt_rounded, size: 18, color: AppColors.warning),
-              tooltip: 'Khởi động lại',
+              tooltip: 'Khởi động lại (Restart)',
               onPressed: () async {
                 final ok = await provider.restartService(serviceKey);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(ok ? 'Đã gửi lệnh khởi động lại $name' : 'Lỗi khởi động lại'),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
+                  if (ok) {
+                    AppToast.success(context, 'Đã gửi lệnh khởi động lại $name');
+                  } else {
+                    AppToast.error(context, 'Lỗi khi khởi động lại $name');
+                  }
                 }
               },
+            ),
+            // Stop
+            IconButton(
+              icon: const Icon(Icons.stop_rounded, size: 18, color: AppColors.danger),
+              tooltip: 'Dừng (Stop)',
+              onPressed: () async {
+                final ok = await provider.stopService(serviceKey);
+                if (context.mounted) {
+                  if (ok) {
+                    AppToast.success(context, 'Đã gửi lệnh dừng $name');
+                  } else {
+                    AppToast.error(context, 'Lỗi khi dừng $name');
+                  }
+                }
+              },
+            ),
+            // Status
+            IconButton(
+              icon: const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.accentCyan),
+              tooltip: 'Xem trạng thái chi tiết (Status)',
+              onPressed: () => _showStatusDialog(context, name, serviceKey, provider),
             ),
           ],
         ),

@@ -67,18 +67,38 @@ class MetricsProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> restartService(String service) async {
+  Future<Map<String, dynamic>> executeServiceAction(String service, String action) async {
     try {
-      final res = await _api.executeServiceAction(service, 'restart');
+      final res = await _api.executeServiceAction(service, action);
       final ok = res['status'] == 'success' || res['status'] == 'ok';
       if (ok) {
         await Future.delayed(const Duration(seconds: 1));
         await fetchMetrics(silent: true);
       }
-      return ok;
-    } catch (_) {
-      return false;
+      return res;
+    } catch (e) {
+      return {'status': 'error', 'error': e.toString(), 'output': e.toString()};
     }
+  }
+
+  Future<bool> startService(String service) async {
+    final res = await executeServiceAction(service, 'start');
+    return res['status'] == 'success' || res['status'] == 'ok';
+  }
+
+  Future<bool> restartService(String service) async {
+    final res = await executeServiceAction(service, 'restart');
+    return res['status'] == 'success' || res['status'] == 'ok';
+  }
+
+  Future<bool> stopService(String service) async {
+    final res = await executeServiceAction(service, 'stop');
+    return res['status'] == 'success' || res['status'] == 'ok';
+  }
+
+  Future<String> getServiceStatus(String service) async {
+    final res = await executeServiceAction(service, 'status');
+    return (res['output'] ?? res['message'] ?? 'Không lấy được thông tin trạng thái.').toString();
   }
 
   @override

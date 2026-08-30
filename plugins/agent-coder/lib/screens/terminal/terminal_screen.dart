@@ -390,7 +390,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       ),
       color: AppColors.cardBg,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         side: const BorderSide(color: AppColors.borderDark),
       ),
       elevation: 10,
@@ -845,7 +845,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
                   color: isActive ? AppColors.accent.withValues(alpha: 0.12) : AppColors.cardBg,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                   border: Border(
                     bottom: BorderSide(
                       color: isActive ? AppColors.accent.withValues(alpha: 0.35) : AppColors.borderDark,

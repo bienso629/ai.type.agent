@@ -14,6 +14,10 @@ class NativeSshService {
 
   final LocalConfigService _configService = LocalConfigService();
 
+  int? _lastRxBytes;
+  int? _lastTxBytes;
+  DateTime? _lastNetCheckTime;
+
   Future<SSHClient> getClient({Map<String, dynamic>? overrideConfig, ServerModel? server}) async {
     String host;
     int port;
@@ -187,7 +191,60 @@ class NativeSshService {
         }
       }
 
+      // Parse Network (/proc/net/dev)
+      int totalRxBytes = 0;
+      int totalTxBytes = 0;
+      final netRaw = parts.length > 7 ? parts[7].trim() : '';
+      if (netRaw.isNotEmpty) {
+        final netLines = netRaw.split('\n');
+        for (final line in netLines) {
+          final trimmed = line.trim();
+          if (trimmed.contains(':')) {
+            final colonParts = trimmed.split(':');
+            final iface = colonParts[0].trim();
+            if (iface == 'lo') continue; // Bỏ qua localhost loopback
+
+            final dataParts = colonParts[1].trim().split(RegExp(r'\s+'));
+            if (dataParts.length >= 9) {
+              final rx = int.tryParse(dataParts[0]) ?? 0;
+              final tx = int.tryParse(dataParts[8]) ?? 0;
+              totalRxBytes += rx;
+              totalTxBytes += tx;
+            }
+          }
+        }
+      }
+
       final now = DateTime.now();
+      String netRxSpeed = '0 KB/s';
+      String netTxSpeed = '0 KB/s';
+      double netPercent = 0.0;
+
+      if (_lastNetCheckTime != null && _lastRxBytes != null && _lastTxBytes != null) {
+        final elapsedSec = now.difference(_lastNetCheckTime!).inMilliseconds / 1000.0;
+        if (elapsedSec > 0.3) {
+          final rxDiff = (totalRxBytes >= _lastRxBytes!) ? (totalRxBytes - _lastRxBytes!) : 0;
+          final txDiff = (totalTxBytes >= _lastTxBytes!) ? (totalTxBytes - _lastTxBytes!) : 0;
+
+          final rxBps = rxDiff / elapsedSec;
+          final txBps = txDiff / elapsedSec;
+
+          netRxSpeed = _formatSpeed(rxBps);
+          netTxSpeed = _formatSpeed(txBps);
+
+          // Giả định băng thông danh định chuẩn 100Mbps (~12.5 MB/s) để tính % hiển thị thanh đo
+          final totalBps = rxBps + txBps;
+          netPercent = ((totalBps / (100 * 1024 * 1024 / 8)) * 100.0).clamp(0.0, 100.0);
+        }
+      }
+
+      _lastRxBytes = totalRxBytes;
+      _lastTxBytes = totalTxBytes;
+      _lastNetCheckTime = now;
+
+      final netRxTotal = _formatBytes(totalRxBytes);
+      final netTxTotal = _formatBytes(totalTxBytes);
+
       final lastSync = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
 
       double calcCpu = 0.0;
@@ -217,11 +274,11 @@ class NativeSshService {
         diskUsed: diskUsed,
         diskAvail: diskAvail,
         diskPercent: diskPercent,
-        netRxSpeed: '0 KB/s',
-        netTxSpeed: '0 KB/s',
-        netRxTotal: '0 MB',
-        netTxTotal: '0 MB',
-        netPercent: 10.0,
+        netRxSpeed: netRxSpeed,
+        netTxSpeed: netTxSpeed,
+        netRxTotal: netRxTotal,
+        netTxTotal: netTxTotal,
+        netPercent: netPercent > 0.0 ? netPercent : (totalRxBytes > 0 ? 5.0 : 0.0),
         lastSync: lastSync,
       );
     } catch (e) {
@@ -252,6 +309,30 @@ class NativeSshService {
         netPercent: 0.0,
         lastSync: 'N/A',
       );
+    }
+  }
+
+  static String _formatSpeed(double bytesPerSec) {
+    if (bytesPerSec < 1024) {
+      return '${bytesPerSec.toStringAsFixed(0)} B/s';
+    } else if (bytesPerSec < 1024 * 1024) {
+      return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    } else if (bytesPerSec < 1024 * 1024 * 1024) {
+      return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(2)} MB/s';
+    } else {
+      return '${(bytesPerSec / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB/s';
+    }
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    } else if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    } else if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } else {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
     }
   }
 

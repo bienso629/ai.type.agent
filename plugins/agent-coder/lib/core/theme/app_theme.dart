@@ -112,8 +112,17 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          shape: AppRadius.shape,
           textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textBody,
+          elevation: 0,
+          side: const BorderSide(color: AppColors.borderDark),
+          shape: AppRadius.shape,
+          textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500),
         ),
       ),
       dialogTheme: DialogThemeData(
@@ -138,11 +147,13 @@ class AppTheme {
         style: TextButton.styleFrom(
           foregroundColor: AppColors.textMuted,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
-            side: BorderSide.none,
-          ),
+          shape: AppRadius.shape,
           textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          shape: AppRadius.shape,
         ),
       ),
       switchTheme: SwitchThemeData(

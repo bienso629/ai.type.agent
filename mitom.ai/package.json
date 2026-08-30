@@ -15,29 +15,21 @@
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start -p 30000",
     "test": "pnpm run test:int && pnpm run test:e2e",
     "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
-    "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts",
-    "pm2:start": "pm2 start ecosystem.config.cjs",
-    "pm2:restart": "pm2 restart ecosystem.config.cjs",
-    "pm2:stop": "pm2 stop ecosystem.config.cjs",
-    "pm2:logs": "pm2 logs mitom.ai"
+    "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
   },
   "dependencies": {
-    "@payloadcms/db-sqlite": "3.88.0",
     "@payloadcms/next": "3.88.0",
     "@payloadcms/richtext-lexical": "3.88.0",
     "@payloadcms/ui": "3.88.0",
-    "@tailwindcss/postcss": "^4.3.3",
     "cross-env": "^7.0.3",
     "dotenv": "16.4.7",
-    "google-auth-library": "^11.0.2",
     "graphql": "^16.8.1",
     "next": "16.3.3",
     "payload": "3.88.0",
-    "postcss": "^8.5.26",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "sharp": "0.34.2",
-    "tailwindcss": "^4.3.3"
+    "@payloadcms/db-sqlite": "3.88.0"
   },
   "devDependencies": {
     "@playwright/test": "1.58.2",

@@ -386,6 +386,27 @@ class DatabaseService {
     }
   }
 
+  Future<List<String>> getRecentUserQuestions(String sessionId, {int limit = 5}) async {
+    try {
+      final db = await _getDb();
+      final rows = await db.rawQuery(
+        "SELECT content FROM chat_messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT ?",
+        [sessionId, limit],
+      );
+      final questions = <String>[];
+      for (final r in rows) {
+        final raw = r['content']?.toString() ?? '';
+        final dec = _enc.decryptValue(raw).trim();
+        if (dec.isNotEmpty && !questions.contains(dec)) {
+          questions.add(dec);
+        }
+      }
+      return questions;
+    } catch (e) {
+      return [];
+    }
+  }
+
   Future<int> insertMessage(ChatMessageModel msg) async {
     try {
       final db = await _getDb();
