@@ -11,8 +11,8 @@ import '../../core/theme/app_theme.dart';
 import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
 
-enum TerminalSplitMode {
-  single,
+enum TerminalSplitDirection {
+  none,
   horizontal,
   vertical,
 }
@@ -31,6 +31,10 @@ class TerminalPaneItem {
   SSHSession? sshSession;
   bool isConnected = false;
   bool isConnecting = false;
+
+  // Split state specifically for this window/pane
+  TerminalSplitDirection splitDirection = TerminalSplitDirection.none;
+  TerminalPaneItem? childPane;
 
   TerminalPaneItem({
     required this.id,
@@ -62,12 +66,15 @@ class TerminalPaneItem {
       sshClient?.close();
       sshClient = null;
     } catch (_) {}
+
+    childPane?.cleanup();
   }
 
   void dispose() {
     controller.dispose();
     focusNode.dispose();
     cleanup();
+    childPane?.dispose();
   }
 }
 
@@ -81,7 +88,7 @@ class TerminalScreen extends StatefulWidget {
 class _TerminalScreenState extends State<TerminalScreen> {
   final List<TerminalPaneItem> _panes = [];
   int _activePaneIndex = 0;
-  TerminalSplitMode _splitMode = TerminalSplitMode.single;
+  String? _activeSubPaneId;
   bool _showVirtualKeyboard = false;
 
   // Chuẩn bảng màu và thuộc tính Ubuntu GNOME Terminal (Canonical Ubuntu palette)
@@ -133,12 +140,21 @@ class _TerminalScreenState extends State<TerminalScreen> {
     super.dispose();
   }
 
-  TerminalPaneItem? get _activePane {
+  TerminalPaneItem? get _activeRootPane {
     if (_panes.isEmpty) return null;
     if (_activePaneIndex >= 0 && _activePaneIndex < _panes.length) {
       return _panes[_activePaneIndex];
     }
     return _panes.first;
+  }
+
+  TerminalPaneItem? get _activePane {
+    final root = _activeRootPane;
+    if (root == null) return null;
+    if (_activeSubPaneId != null && root.childPane != null && root.childPane!.id == _activeSubPaneId) {
+      return root.childPane;
+    }
+    return root;
   }
 
   Future<void> _connectPane(TerminalPaneItem pane) async {
@@ -302,8 +318,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
-  void _addPane({bool isSsh = false, ServerModel? srv}) {
-    if (_panes.length >= 4) return;
+  void _addWindow({bool isSsh = false, ServerModel? srv}) {
+    if (_panes.length >= 6) return;
     final id = 'pane_${DateTime.now().millisecondsSinceEpoch}';
     final newPane = TerminalPaneItem(
       id: id,
@@ -314,14 +330,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
     setState(() {
       _panes.add(newPane);
       _activePaneIndex = _panes.length - 1;
-      if (_splitMode == TerminalSplitMode.single) {
-        _splitMode = TerminalSplitMode.horizontal;
-      }
+      _activeSubPaneId = null;
     });
     _connectPane(newPane);
   }
 
-  void _removePane(int index) {
+  void _removeWindow(int index) {
     if (_panes.length <= 1) return;
     final removed = _panes.removeAt(index);
     removed.dispose();
@@ -329,22 +343,59 @@ class _TerminalScreenState extends State<TerminalScreen> {
       if (_activePaneIndex >= _panes.length) {
         _activePaneIndex = _panes.length - 1;
       }
-      if (_panes.length == 1) {
-        _splitMode = TerminalSplitMode.single;
-      }
+      _activeSubPaneId = null;
     });
   }
 
-  void _setSplitMode(TerminalSplitMode mode) {
-    if (mode != TerminalSplitMode.single && _panes.length < 2) {
-      final srvProvider = context.read<ServerProvider>();
-      final srv = srvProvider.selectedServer;
-      final shouldBeSsh = srv != null && srv.serverIp != '127.0.0.1' && srv.serverIp != 'localhost';
-      _addPane(isSsh: shouldBeSsh, srv: shouldBeSsh ? srv : null);
+  void _splitActiveWindow(TerminalSplitDirection direction, int windowIndex, TerminalPaneItem targetPane) {
+    if (windowIndex < 0 || windowIndex >= _panes.length) return;
+    final windowPane = _panes[windowIndex];
+
+    if (direction == TerminalSplitDirection.none) {
+      // Huỷ split của window này
+      if (windowPane.childPane != null) {
+        windowPane.childPane!.dispose();
+        windowPane.childPane = null;
+      }
+      setState(() {
+        windowPane.splitDirection = TerminalSplitDirection.none;
+        _activePaneIndex = windowIndex;
+        _activeSubPaneId = null;
+      });
+      return;
     }
+
+    // Split window này
+    if (windowPane.childPane == null) {
+      final id = 'subpane_${DateTime.now().millisecondsSinceEpoch}';
+      final newSubPane = TerminalPaneItem(
+        id: id,
+        title: targetPane.isRemoteSsh ? (targetPane.server?.name ?? 'SSH Server') : 'Local Machine',
+        isRemoteSsh: targetPane.isRemoteSsh,
+        server: targetPane.server,
+      );
+      windowPane.childPane = newSubPane;
+      _connectPane(newSubPane);
+    }
+
     setState(() {
-      _splitMode = mode;
+      windowPane.splitDirection = direction;
+      _activePaneIndex = windowIndex;
+      _activeSubPaneId = windowPane.childPane?.id;
     });
+  }
+
+  void _closeChildPane(int windowIndex) {
+    if (windowIndex < 0 || windowIndex >= _panes.length) return;
+    final windowPane = _panes[windowIndex];
+    if (windowPane.childPane != null) {
+      windowPane.childPane!.dispose();
+      windowPane.childPane = null;
+      setState(() {
+        windowPane.splitDirection = TerminalSplitDirection.none;
+        _activeSubPaneId = null;
+      });
+    }
   }
 
   void _sendCmdToActive(String cmd) {
@@ -373,12 +424,22 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
-  Future<void> _showContextMenu(BuildContext context, Offset position, int paneIndex, ServerProvider serverProvider) async {
-    final pane = _panes[paneIndex];
+  Future<void> _showContextMenu(
+    BuildContext context,
+    Offset position,
+    int windowIndex,
+    TerminalPaneItem pane,
+    ServerProvider serverProvider, {
+    bool isChild = false,
+  }) async {
+    final windowPane = _panes[windowIndex];
     setState(() {
-      _activePaneIndex = paneIndex;
+      _activePaneIndex = windowIndex;
+      _activeSubPaneId = isChild ? pane.id : null;
     });
     pane.focusNode.requestFocus();
+
+    final isCurrentlySplit = windowPane.splitDirection != TerminalSplitDirection.none && windowPane.childPane != null;
 
     final result = await showMenu<String>(
       context: context,
@@ -395,21 +456,21 @@ class _TerminalScreenState extends State<TerminalScreen> {
       ),
       elevation: 10,
       items: [
-        // 1. SPLIT LAYOUT
+        // 1. SPLIT CHO CHÍNH CỬA SỔ HIỆN TẠI (WINDOW SPECIFIC)
         const PopupMenuItem<String>(
           enabled: false,
           height: 26,
-          child: Text('BỐ CỤC MÀN HÌNH (SPLIT)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted)),
+          child: Text('CHIA KHUNG CỬA SỔ NÀY (SPLIT)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted)),
         ),
         PopupMenuItem<String>(
-          value: 'split_single',
+          value: 'split_none',
           height: 34,
           child: Row(
             children: [
               const Icon(Icons.crop_square_rounded, size: 15, color: AppColors.textBody),
               const SizedBox(width: 8),
-              const Text('Toàn màn hình (Đơn)', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
-              if (_splitMode == TerminalSplitMode.single) ...[
+              const Text('Khung đơn (Không chia)', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
+              if (!isCurrentlySplit) ...[
                 const Spacer(),
                 const Icon(Icons.check_rounded, size: 14, color: AppColors.accent),
               ],
@@ -424,7 +485,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               const Icon(Icons.view_column_outlined, size: 15, color: AppColors.textBody),
               const SizedBox(width: 8),
               const Text('Chia đôi: Trái / Phải', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
-              if (_splitMode == TerminalSplitMode.horizontal) ...[
+              if (isCurrentlySplit && windowPane.splitDirection == TerminalSplitDirection.horizontal) ...[
                 const Spacer(),
                 const Icon(Icons.check_rounded, size: 14, color: AppColors.accent),
               ],
@@ -439,7 +500,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               const Icon(Icons.view_agenda_outlined, size: 15, color: AppColors.textBody),
               const SizedBox(width: 8),
               const Text('Chia đôi: Trên / Dưới', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
-              if (_splitMode == TerminalSplitMode.vertical) ...[
+              if (isCurrentlySplit && windowPane.splitDirection == TerminalSplitDirection.vertical) ...[
                 const Spacer(),
                 const Icon(Icons.check_rounded, size: 14, color: AppColors.accent),
               ],
@@ -448,40 +509,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         ),
         const PopupMenuDivider(height: 10),
 
-        // 2. ADD PANE
-        if (_panes.length < 4) ...[
-          const PopupMenuItem<String>(
-            enabled: false,
-            height: 26,
-            child: Text('THÊM PANEL MỚI', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted)),
-          ),
-          const PopupMenuItem<String>(
-            value: 'add_local',
-            height: 34,
-            child: Row(
-              children: [
-                Icon(Icons.laptop_chromebook_rounded, size: 15, color: AppColors.accent),
-                SizedBox(width: 8),
-                Text('Thêm Local Terminal', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
-              ],
-            ),
-          ),
-          for (final s in serverProvider.servers)
-            PopupMenuItem<String>(
-              value: 'add_ssh_${s.id}',
-              height: 34,
-              child: Row(
-                children: [
-                  const Icon(Icons.dns_rounded, size: 15, color: AppColors.primaryLight),
-                  const SizedBox(width: 8),
-                  Text('Thêm SSH: ${s.name}', style: const TextStyle(fontSize: 12, color: AppColors.textWhite)),
-                ],
-              ),
-            ),
-          const PopupMenuDivider(height: 10),
-        ],
-
-        // 3. ACTION FOR THIS PANE
+        // 2. THAO TÁC TERMINAL
         PopupMenuItem<String>(
           value: 'restart_pane',
           height: 34,
@@ -505,17 +533,30 @@ class _TerminalScreenState extends State<TerminalScreen> {
           ),
         ),
 
-        // 4. CLOSE PANE (if > 1)
-        if (_panes.length > 1) ...[
+        // 3. ĐÓNG PANEL / WINDOW
+        if (isChild) ...[
           const PopupMenuDivider(height: 10),
-          PopupMenuItem<String>(
-            value: 'close_pane',
+          const PopupMenuItem<String>(
+            value: 'close_subpane',
             height: 34,
-            child: const Row(
+            child: Row(
+              children: [
+                Icon(Icons.close_fullscreen_rounded, size: 15, color: AppColors.warning),
+                SizedBox(width: 8),
+                Text('Đóng khung phụ (Huỷ Split)', style: TextStyle(fontSize: 12, color: AppColors.warning)),
+              ],
+            ),
+          ),
+        ] else if (_panes.length > 1) ...[
+          const PopupMenuDivider(height: 10),
+          const PopupMenuItem<String>(
+            value: 'close_window',
+            height: 34,
+            child: Row(
               children: [
                 Icon(Icons.close_rounded, size: 15, color: AppColors.danger),
                 SizedBox(width: 8),
-                Text('Đóng Panel này', style: TextStyle(fontSize: 12, color: AppColors.danger)),
+                Text('Đóng Tab cửa sổ này', style: TextStyle(fontSize: 12, color: AppColors.danger)),
               ],
             ),
           ),
@@ -525,25 +566,21 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
     if (result == null) return;
 
-    if (result == 'split_single') {
-      _setSplitMode(TerminalSplitMode.single);
+    if (result == 'split_none') {
+      _splitActiveWindow(TerminalSplitDirection.none, windowIndex, pane);
     } else if (result == 'split_horizontal') {
-      _setSplitMode(TerminalSplitMode.horizontal);
+      _splitActiveWindow(TerminalSplitDirection.horizontal, windowIndex, pane);
     } else if (result == 'split_vertical') {
-      _setSplitMode(TerminalSplitMode.vertical);
-    } else if (result == 'add_local') {
-      _addPane(isSsh: false);
-    } else if (result.startsWith('add_ssh_')) {
-      final srvId = result.replaceFirst('add_ssh_', '');
-      final srv = serverProvider.servers.firstWhere((s) => s.id == srvId, orElse: () => serverProvider.servers.first);
-      _addPane(isSsh: true, srv: srv);
+      _splitActiveWindow(TerminalSplitDirection.vertical, windowIndex, pane);
     } else if (result == 'restart_pane') {
       _connectPane(pane);
     } else if (result == 'clear_pane') {
       pane.terminal.eraseDisplay();
       pane.terminal.setCursor(0, 0);
-    } else if (result == 'close_pane') {
-      _removePane(paneIndex);
+    } else if (result == 'close_subpane') {
+      _closeChildPane(windowIndex);
+    } else if (result == 'close_window') {
+      _removeWindow(windowIndex);
     }
   }
 
@@ -551,6 +588,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
     final activePane = _activePane;
+    final activeRoot = _activeRootPane;
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
@@ -623,11 +661,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
                               ],
                             ),
                             Text(
-                              _panes.length > 1
-                                  ? 'Split Panel: ${_panes.length} cửa sổ song song (${_splitMode == TerminalSplitMode.horizontal ? 'Trái / Phải' : 'Trên / Dưới'}) • Nhấn chuột phải để tuỳ chỉnh'
+                              activeRoot?.splitDirection != TerminalSplitDirection.none
+                                  ? 'Cửa sổ [${activeRoot?.title}] đang chia đôi (${activeRoot?.splitDirection == TerminalSplitDirection.horizontal ? 'Trái / Phải' : 'Trên / Dưới'}) • Nhấp chuột phải để đổi bố cục'
                                   : (activePane?.isRemoteSsh == true
-                                      ? 'Phiên SSH với ${activePane?.server?.name ?? serverProvider.selectedServer?.name ?? 'Server'} • Nhấn chuột phải để chia màn hình'
-                                      : 'Thực thi toàn bộ lệnh shell cục bộ (${Platform.operatingSystem}) • Nhấn chuột phải để chia màn hình'),
+                                      ? 'Phiên SSH với ${activePane?.server?.name ?? serverProvider.selectedServer?.name ?? 'Server'} • Nhấp chuột phải để chia màn hình'
+                                      : 'Thực thi toàn bộ lệnh shell cục bộ (${Platform.operatingSystem}) • Nhấp chuột phải để chia màn hình'),
                               overflow: TextOverflow.ellipsis,
                               maxLines: 1,
                               style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
@@ -689,6 +727,173 @@ class _TerminalScreenState extends State<TerminalScreen> {
               ],
             ),
           ),
+
+          // Window Tabs Bar (Khi có nhiều cửa sổ hoặc để tạo thêm cửa sổ)
+          if (_panes.length > 1 || true)
+            Container(
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: const BoxDecoration(
+                color: AppColors.cardBg,
+                border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _panes.length,
+                      itemBuilder: (ctx, index) {
+                        final window = _panes[index];
+                        final isWinActive = _activePaneIndex == index;
+                        final isSplit = window.splitDirection != TerminalSplitDirection.none && window.childPane != null;
+
+                        return Container(
+                          margin: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
+                          child: Material(
+                            color: isWinActive ? AppColors.bgDark : AppColors.sidebarBg,
+                            borderRadius: BorderRadius.circular(4),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () {
+                                setState(() {
+                                  _activePaneIndex = index;
+                                  _activeSubPaneId = null;
+                                });
+                                window.focusNode.requestFocus();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: isWinActive ? AppColors.accent : AppColors.borderDark,
+                                    width: isWinActive ? 1.2 : 0.8,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: window.isConnected ? AppColors.accent : (window.isConnecting ? AppColors.warning : AppColors.danger),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      window.isRemoteSsh ? Icons.dns_rounded : Icons.laptop_chromebook_rounded,
+                                      size: 13,
+                                      color: window.isRemoteSsh ? AppColors.primaryLight : AppColors.accent,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Tab ${index + 1}: ${window.title}',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: isWinActive ? FontWeight.bold : FontWeight.normal,
+                                        color: isWinActive ? AppColors.textWhite : AppColors.textDim,
+                                      ),
+                                    ),
+                                    if (isSplit) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accentCyan.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: Text(
+                                          window.splitDirection == TerminalSplitDirection.horizontal ? 'SPLIT H' : 'SPLIT V',
+                                          style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
+                                        ),
+                                      ),
+                                    ],
+                                    if (_panes.length > 1) ...[
+                                      const SizedBox(width: 6),
+                                      InkWell(
+                                        onTap: () => _removeWindow(index),
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(2),
+                                          child: Icon(Icons.close_rounded, size: 12, color: AppColors.textDim),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  // Nút tạo Tab Cửa Sổ Mới
+                  if (_panes.length < 6)
+                    PopupMenuButton<String>(
+                      tooltip: 'Mở thêm Tab Cửa Sổ Terminal mới',
+                      offset: const Offset(0, 30),
+                      color: AppColors.cardBg,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        side: const BorderSide(color: AppColors.borderDark),
+                      ),
+                      onSelected: (val) {
+                        if (val == 'new_local') {
+                          _addWindow(isSsh: false);
+                        } else if (val.startsWith('new_ssh_')) {
+                          final srvId = val.replaceFirst('new_ssh_', '');
+                          final srv = serverProvider.servers.firstWhere((s) => s.id == srvId, orElse: () => serverProvider.servers.first);
+                          _addWindow(isSsh: true, srv: srv);
+                        }
+                      },
+                      itemBuilder: (ctx) => [
+                        const PopupMenuItem<String>(
+                          value: 'new_local',
+                          child: Row(
+                            children: [
+                              Icon(Icons.laptop_chromebook_rounded, size: 14, color: AppColors.accent),
+                              SizedBox(width: 8),
+                              Text('Thêm Tab Local Machine', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
+                            ],
+                          ),
+                        ),
+                        for (final s in serverProvider.servers)
+                          PopupMenuItem<String>(
+                            value: 'new_ssh_${s.id}',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.dns_rounded, size: 14, color: AppColors.primaryLight),
+                                const SizedBox(width: 8),
+                                Text('Thêm Tab SSH: ${s.name}', style: const TextStyle(fontSize: 12, color: AppColors.textWhite)),
+                              ],
+                            ),
+                          ),
+                      ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.add_rounded, size: 14, color: AppColors.primaryLight),
+                            SizedBox(width: 4),
+                            Text('Tab mới', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
 
           // 2. Quick Command Bar (Applies to active pane)
           Container(
@@ -771,46 +976,61 @@ class _TerminalScreenState extends State<TerminalScreen> {
       return const Center(child: Text('Không có Terminal nào', style: TextStyle(color: AppColors.textMuted)));
     }
 
-    if (_splitMode == TerminalSplitMode.single || _panes.length == 1) {
-      final pane = (_activePaneIndex >= 0 && _activePaneIndex < _panes.length)
-          ? _panes[_activePaneIndex]
-          : _panes.first;
-      return _buildPaneCard(pane, 0, serverProvider, isOnlyOne: true);
+    final activeIndex = (_activePaneIndex >= 0 && _activePaneIndex < _panes.length) ? _activePaneIndex : 0;
+    final activeWindow = _panes[activeIndex];
+
+    // Nếu active window không split
+    if (activeWindow.splitDirection == TerminalSplitDirection.none || activeWindow.childPane == null) {
+      return _buildPaneCard(
+        activeWindow,
+        activeIndex,
+        serverProvider,
+        isChild: false,
+        isOnlyOne: true,
+      );
     }
 
-    if (_splitMode == TerminalSplitMode.horizontal) {
+    // Nếu active window được split
+    final mainCard = _buildPaneCard(activeWindow, activeIndex, serverProvider, isChild: false);
+    final childCard = _buildPaneCard(activeWindow.childPane!, activeIndex, serverProvider, isChild: true);
+
+    if (activeWindow.splitDirection == TerminalSplitDirection.horizontal) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (int i = 0; i < _panes.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(child: _buildPaneCard(_panes[i], i, serverProvider)),
-          ],
+          Expanded(child: mainCard),
+          const SizedBox(width: 8),
+          Expanded(child: childCard),
         ],
       );
     }
 
-    // Vertical Split
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (int i = 0; i < _panes.length; i++) ...[
-          if (i > 0) const SizedBox(height: 8),
-          Expanded(child: _buildPaneCard(_panes[i], i, serverProvider)),
-        ],
+        Expanded(child: mainCard),
+        const SizedBox(height: 8),
+        Expanded(child: childCard),
       ],
     );
   }
 
-  Widget _buildPaneCard(TerminalPaneItem pane, int index, ServerProvider serverProvider, {bool isOnlyOne = false}) {
-    final isActive = _activePaneIndex == index;
+  Widget _buildPaneCard(
+    TerminalPaneItem pane,
+    int windowIndex,
+    ServerProvider serverProvider, {
+    bool isChild = false,
+    bool isOnlyOne = false,
+  }) {
+    final isThisPaneActive = isChild ? (_activeSubPaneId == pane.id) : (_activeSubPaneId == null);
 
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) {
-        if (_activePaneIndex != index) {
+        if (_activePaneIndex != windowIndex || (isChild ? _activeSubPaneId != pane.id : _activeSubPaneId != null)) {
           setState(() {
-            _activePaneIndex = index;
+            _activePaneIndex = windowIndex;
+            _activeSubPaneId = isChild ? pane.id : null;
           });
         }
         if (!pane.focusNode.hasFocus) {
@@ -820,21 +1040,29 @@ class _TerminalScreenState extends State<TerminalScreen> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          if (_activePaneIndex != index) {
+          if (_activePaneIndex != windowIndex || (isChild ? _activeSubPaneId != pane.id : _activeSubPaneId != null)) {
             setState(() {
-              _activePaneIndex = index;
+              _activePaneIndex = windowIndex;
+              _activeSubPaneId = isChild ? pane.id : null;
             });
           }
           pane.focusNode.requestFocus();
         },
-        onSecondaryTapDown: (details) => _showContextMenu(context, details.globalPosition, index, serverProvider),
+        onSecondaryTapDown: (details) => _showContextMenu(
+          context,
+          details.globalPosition,
+          windowIndex,
+          pane,
+          serverProvider,
+          isChild: isChild,
+        ),
         child: Container(
           decoration: BoxDecoration(
             color: AppColors.bgDark,
             borderRadius: BorderRadius.circular(4),
             border: Border.all(
-              color: isActive ? AppColors.accent : AppColors.borderDark,
-              width: isActive ? 1.5 : 1,
+              color: isThisPaneActive ? AppColors.accent : AppColors.borderDark,
+              width: isThisPaneActive ? 1.5 : 1,
             ),
           ),
           child: Column(
@@ -844,11 +1072,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 height: 38,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
-                  color: isActive ? AppColors.accent.withValues(alpha: 0.12) : AppColors.cardBg,
+                  color: isThisPaneActive ? AppColors.accent.withValues(alpha: 0.12) : AppColors.cardBg,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                   border: Border(
                     bottom: BorderSide(
-                      color: isActive ? AppColors.accent.withValues(alpha: 0.35) : AppColors.borderDark,
+                      color: isThisPaneActive ? AppColors.accent.withValues(alpha: 0.35) : AppColors.borderDark,
                       width: 1,
                     ),
                   ),
@@ -878,7 +1106,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
                           ),
                           onSelected: (val) {
                             setState(() {
-                              _activePaneIndex = index;
+                              _activePaneIndex = windowIndex;
+                              _activeSubPaneId = isChild ? pane.id : null;
                               if (val == 'local') {
                                 pane.isRemoteSsh = false;
                                 pane.server = null;
@@ -968,7 +1197,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
                     Row(
                       children: [
-                        if (isActive)
+                        if (isThisPaneActive)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
@@ -987,7 +1216,14 @@ class _TerminalScreenState extends State<TerminalScreen> {
                           onPressed: () {
                             final RenderBox box = context.findRenderObject() as RenderBox;
                             final pos = box.localToGlobal(Offset.zero);
-                            _showContextMenu(context, Offset(pos.dx + box.size.width - 200, pos.dy + 100), index, serverProvider);
+                            _showContextMenu(
+                              context,
+                              Offset(pos.dx + box.size.width - 200, pos.dy + 100),
+                              windowIndex,
+                              pane,
+                              serverProvider,
+                              isChild: isChild,
+                            );
                           },
                         ),
                         IconButton(
@@ -997,13 +1233,21 @@ class _TerminalScreenState extends State<TerminalScreen> {
                           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                           onPressed: () => _connectPane(pane),
                         ),
-                        if (!isOnlyOne && _panes.length > 1)
+                        if (isChild)
                           IconButton(
                             icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
-                            tooltip: 'Đóng panel này',
+                            tooltip: 'Đóng khung phụ này (Huỷ split)',
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                            onPressed: () => _removePane(index),
+                            onPressed: () => _closeChildPane(windowIndex),
+                          )
+                        else if (!isOnlyOne && _panes.length > 1)
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
+                            tooltip: 'Đóng Tab cửa sổ này',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                            onPressed: () => _removeWindow(windowIndex),
                           ),
                       ],
                     ),
@@ -1028,7 +1272,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       fontFamilyFallback: ['UbuntuMono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', 'monospace'],
                       height: 1.2,
                     ),
-                    autofocus: isActive,
+                    autofocus: isThisPaneActive,
                   ),
                 ),
               ),

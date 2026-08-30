@@ -1,59 +1,52 @@
-import { headers as getHeaders } from 'next/headers.js'
-import Image from 'next/image'
-import { getPayload } from 'payload'
 import React from 'react'
-import { fileURLToPath } from 'url'
-
-import config from '@/payload.config'
-import './styles.css'
+import { getPayload } from 'payload'
+import configPromise from '@payload-config'
+import { FrontendApp, DEFAULT_PRODUCTS, Product, Category } from '@/components/frontend/FrontendApp'
 
 export default async function HomePage() {
-  const headers = await getHeaders()
-  const payloadConfig = await config
-  const payload = await getPayload({ config: payloadConfig })
-  const { user } = await payload.auth({ headers })
+  let products: Product[] = DEFAULT_PRODUCTS
 
-  const fileURL = `vscode://file/${fileURLToPath(import.meta.url)}`
+  try {
+    const payload = await getPayload({ config: configPromise })
+    const prodDocs = await payload.find({
+      collection: 'products',
+      where: {
+        status: {
+          equals: 'active',
+        },
+      },
+      limit: 50,
+    })
 
-  return (
-    <div className="home">
-      <div className="content">
-        <picture>
-          <source srcSet="https://raw.githubusercontent.com/payloadcms/payload/3.x/packages/ui/src/assets/payload-favicon.svg" />
-          <Image
-            alt="Payload Logo"
-            height={65}
-            src="https://raw.githubusercontent.com/payloadcms/payload/3.x/packages/ui/src/assets/payload-favicon.svg"
-            width={65}
-          />
-        </picture>
-        {!user && <h1>Welcome to your new project.</h1>}
-        {user && <h1>Welcome back, {user.email}</h1>}
-        <div className="links">
-          <a
-            className="admin"
-            href={payloadConfig.routes.admin}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Go to admin panel
-          </a>
-          <a
-            className="docs"
-            href="https://payloadcms.com/docs"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Documentation
-          </a>
-        </div>
-      </div>
-      <div className="footer">
-        <p>Update this page by editing</p>
-        <a className="codeLink" href={fileURL}>
-          <code>app/(frontend)/page.tsx</code>
-        </a>
-      </div>
-    </div>
-  )
+    if (prodDocs.docs && prodDocs.docs.length > 0) {
+      products = prodDocs.docs.map((doc: any) => {
+        let tag: Category = 'chat'
+        const rawSlug = (doc.slug || '').toLowerCase()
+        const rawName = (doc.name || '').toLowerCase()
+        if (rawSlug.includes('token') || rawName.includes('token')) tag = 'token'
+        else if (rawSlug.includes('image') || rawSlug.includes('midjourney') || rawName.includes('ảnh')) tag = 'image'
+        else if (rawSlug.includes('cursor') || rawSlug.includes('code') || rawName.includes('lập trình')) tag = 'code'
+
+        return {
+          id: String(doc.id),
+          name: doc.name,
+          provider: doc.provider || 'Mì Tôm AI',
+          tag,
+          badge: doc.badge || undefined,
+          desc: doc.desc || 'Tài khoản chính chủ kích hoạt tự động.',
+          features: (doc.features || []).map((f: any) => (typeof f === 'string' ? f : f.item)),
+          accent: doc.accentColor || '#34d399',
+          initials: (doc.name || 'AI').substring(0, 2).toUpperCase(),
+          eta: doc.eta || 'Kích hoạt ~5 phút',
+        }
+      })
+    }
+  } catch (e) {
+    console.error('Lỗi khi tải products từ Payload CMS:', e)
+    products = DEFAULT_PRODUCTS
+  }
+
+  const adminRoute = (await configPromise).routes?.admin || '/admin'
+
+  return <FrontendApp products={products} adminRoute={adminRoute} />
 }
