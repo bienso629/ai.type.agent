@@ -534,32 +534,37 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     onStatus('Đang khởi chạy $cliName agent...');
 
     if (targetServerModel != null) {
-      onStatus('Đang gửi lệnh tới $cliName trên máy chủ ${targetServerModel.name}...');
-      final cleanPrompt = '$prompt\n\n(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
-      final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
-
-      String remoteBinary = 'agy';
+      final configuredBinary = targetServerModel.cliBinary.isNotEmpty ? targetServerModel.cliBinary : 'agy';
+      
+      String remoteBinary = configuredBinary;
       final m = cliName.toLowerCase();
       if (m.contains('claude')) {
         remoteBinary = 'claude';
       } else if (m.contains('gemini')) {
         remoteBinary = 'gemini';
+      } else if (m.contains('antigravity') || m == 'agy') {
+        remoteBinary = 'agy';
       }
+
+      onStatus('Đang gửi lệnh tới $remoteBinary CLI trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp})...');
+      final cleanPrompt = '$prompt\n\n(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
+      final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
 
       final cmd = '''
 export PATH="\$HOME/.local/bin:\$HOME/bin:\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"
 if command -v $remoteBinary >/dev/null 2>&1; then
-  $remoteBinary -p '$escapedPrompt' --dangerously-skip-permissions
+  $remoteBinary -p '$escapedPrompt' --dangerously-skip-permissions 2>&1
 elif [ -f "\$HOME/.local/bin/$remoteBinary" ]; then
-  "\$HOME/.local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions
+  "\$HOME/.local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions 2>&1
 elif [ -f "/usr/local/bin/$remoteBinary" ]; then
-  "/usr/local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions
+  "/usr/local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions 2>&1
 else
   echo "LỖI: Máy chủ ${targetServerModel.name} (${targetServerModel.serverIp}) chưa được cài đặt '$remoteBinary'."
   echo ""
-  echo "Hướng dẫn:"
-  echo "1. Cài đặt $remoteBinary trên máy chủ VPS: ssh vào VPS và cài đặt $remoteBinary vào ~/.local/bin hoặc /usr/local/bin."
-  echo "2. Hoặc chọn 'Local Machine' ở danh sách máy chủ bên trái để chạy $remoteBinary trực tiếp từ máy tính của bạn."
+  echo "Thông tin chế độ server:"
+  echo "- Chế độ đã chọn: Chế độ 2 (CLI Agent: $remoteBinary)"
+  echo "- Hướng dẫn cài đặt $remoteBinary trên máy chủ VPS: ssh vào VPS và cài đặt $remoteBinary vào ~/.local/bin hoặc /usr/local/bin."
+  echo "- Hoặc nếu máy chủ chạy dịch vụ systemd (ai-agent.service), hãy chuyển cấu hình máy chủ sang 'Chế độ 1: Dịch vụ AI Agent (Systemd)'."
 fi
 ''';
       final result = await _executeCommand(cmd, workingDir: workingDir, server: targetServerModel);

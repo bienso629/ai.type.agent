@@ -9,12 +9,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/clipboard_service.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/app_logo.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../core/widgets/chat_avatar.dart';
@@ -45,6 +45,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<AttachmentItem> _attachedFiles = [];
   String _sessionSearchQuery = '';
 
+  // Active session recent questions state
+  final Map<String, List<String>> _sessionRecentQuestions = {};
+  final Set<String> _loadingSessionQuestions = {};
+
   // Inline slash autocomplete state
   List<String> _inlineDirSuggestions = [];
   bool _isInlineDirLoading = false;
@@ -56,10 +60,104 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoadingOlder = false;
   bool _wasGenerating = false;
   final Map<String, GlobalKey> _messageKeys = {};
+  String? _highlightedMessageKey;
+  Timer? _highlightTimer;
 
-  String _getMessageKey(ChatMessageModel msg, int index) {
+  String _getMessageKey(ChatMessageModel msg, [int? index]) {
     if (msg.id != null) return 'msg_id_${msg.id}';
-    return 'msg_${msg.createdAt.millisecondsSinceEpoch}_${msg.role}_$index';
+    return 'msg_${msg.createdAt.millisecondsSinceEpoch}_${msg.role}';
+  }
+
+  Future<void> _scrollToQuestion(String questionText, ChatSessionModel sess) async {
+    final chat = context.read<ChatProvider>();
+    final serverProvider = context.read<ServerProvider>();
+
+    if (sess.id != chat.currentSession?.id) {
+      await chat.selectSession(sess);
+      if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
+        if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
+          serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+        } else {
+          final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
+          if (matches.isNotEmpty) {
+            serverProvider.selectServer(matches.first);
+          }
+        }
+      }
+    }
+
+    final trimmedTarget = questionText.trim();
+    int findIndex() {
+      return chat.messages.lastIndexWhere((m) => m.role == 'user' && m.content.trim() == trimmedTarget);
+    }
+
+    int targetIndex = findIndex();
+    int attempts = 0;
+    while (targetIndex == -1 && chat.hasMoreMessages && attempts < 15) {
+      attempts++;
+      await chat.loadMoreMessages();
+      targetIndex = findIndex();
+    }
+
+    if (targetIndex != -1) {
+      final msg = chat.messages[targetIndex];
+      final keyStr = _getMessageKey(msg, targetIndex);
+
+      setState(() {
+        _highlightedMessageKey = keyStr;
+      });
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
+        if (mounted) {
+          setState(() {
+            _highlightedMessageKey = null;
+          });
+        }
+      });
+
+      // Bắt đầu nhảy tới mỏ neo (Anchor)
+      if (!_scrollController.hasClients) return;
+
+      final key = _messageKeys[keyStr];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          alignment: 0.25,
+        );
+        return;
+      }
+
+      // Nếu widget chưa được render trong viewport, tính toán vị trí ước lượng và cuộn lặp tới khi context xuất hiện
+      final reverseIndex = chat.messages.length - 1 - targetIndex;
+      final maxOffset = _scrollController.position.maxScrollExtent;
+      final totalItems = chat.messages.length + (chat.hasMoreMessages ? 1 : 1);
+      final estimatedItemHeight = totalItems > 0 ? (maxOffset / totalItems) : 160.0;
+      final initialOffset = (reverseIndex * (estimatedItemHeight > 0 ? estimatedItemHeight : 160.0)).clamp(0.0, maxOffset);
+
+      _scrollController.jumpTo(initialOffset);
+
+      // Đợi frame tiếp theo để context được mount vào widget tree rồi căn chỉnh chính xác
+      for (int step = 0; step < 5; step++) {
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) return;
+        final currentKey = _messageKeys[keyStr];
+        if (currentKey?.currentContext != null) {
+          Scrollable.ensureVisible(
+            currentKey!.currentContext!,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: 0.25,
+          );
+          break;
+        }
+      }
+    } else {
+      if (mounted) {
+        AppToast.info(context, 'Không tìm thấy vị trí câu hỏi trong danh sách hiện tại');
+      }
+    }
   }
 
   @override
@@ -88,6 +186,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
     _dirDebounceTimer?.cancel();
     _sessionSearchFocusNode.dispose();
     _sessionSearchCtrl.dispose();
@@ -244,6 +343,30 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _loadRecentQuestionsForSession(String sessionId, {bool forceReload = false}) async {
+    if (!forceReload && (_sessionRecentQuestions.containsKey(sessionId) || _loadingSessionQuestions.contains(sessionId))) {
+      return;
+    }
+    setState(() {
+      _loadingSessionQuestions.add(sessionId);
+    });
+    try {
+      final questions = await _apiService.getRecentUserQuestions(sessionId, limit: 6);
+      if (mounted) {
+        setState(() {
+          _sessionRecentQuestions[sessionId] = questions;
+          _loadingSessionQuestions.remove(sessionId);
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingSessionQuestions.remove(sessionId);
+        });
+      }
+    }
+  }
+
   Future<void> _handleLoadMore(ChatProvider chat) async {
     if (_isLoadingOlder || !chat.hasMoreMessages || chat.isLoadingMore || chat.isLoading) return;
     _isLoadingOlder = true;
@@ -291,6 +414,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
   }
+
 
   Future<void> _pickFiles() async {
     try {
@@ -627,6 +751,9 @@ class _ChatScreenState extends State<ChatScreen> {
       workingDir: chat.currentSessionScope,
       targetServer: activeServerName,
     );
+    if (chat.currentSession?.id != null) {
+      _loadRecentQuestionsForSession(chat.currentSession!.id, forceReload: true);
+    }
     _safeScrollToBottom();
   }
 
@@ -653,10 +780,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final chat = context.watch<ChatProvider>();
     final serverProvider = context.watch<ServerProvider>();
 
-    // 1. Chỉ cuộn xuống cuối khi lần đầu chọn/mở Hộp hội thoại
+    // 1. Chỉ cuộn xuống cuối và nạp lịch sử câu hỏi gần đây khi lần đầu chọn/mở Hộp hội thoại
     if (_lastSessionId != chat.currentSession?.id) {
       _lastSessionId = chat.currentSession?.id;
       _wasGenerating = chat.isGenerating;
+      if (chat.currentSession?.id != null) {
+        _loadRecentQuestionsForSession(chat.currentSession!.id);
+      }
       _safeScrollToBottom(instant: true);
     }
     // 2. Chỉ cuộn xuống cuối khi Agent trả lời xong câu hỏi (chuyển từ generating sang done)
@@ -689,79 +819,108 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Stack(
-                      children: [
-                        const AppLogo(size: 32),
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: AppColors.accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.bgDark, width: 1.5),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                // Left: Session & Server Info
+                Expanded(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Builder(
+                        builder: (context) {
+                          final currentServerName = (chat.currentSession?.targetServer != null && chat.currentSession!.targetServer!.isNotEmpty)
+                              ? chat.currentSession!.targetServer!
+                              : (serverProvider.selectedServer?.name ?? 'Local Machine');
+                          return Stack(
+                            children: [
+                              ChatAvatar(
+                                serverName: currentServerName,
+                                server: serverProvider.selectedServer,
+                                size: 34,
+                              ),
+                              Positioned(
+                                top: 0,
+                                right: 0,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accent,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: AppColors.bgDark, width: 1.5),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              chat.currentSession?.title ?? 'AI Type Agent',
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    chat.currentSession?.title ?? 'AI Type Agent',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    serverProvider.currentAiModel,
+                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                serverProvider.currentAiModel,
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                              ),
+                            Builder(
+                              builder: (context) {
+                                final currentServerName = (chat.currentSession?.targetServer != null && chat.currentSession!.targetServer!.isNotEmpty)
+                                    ? chat.currentSession!.targetServer!
+                                    : (serverProvider.selectedServer?.name ?? 'Local Machine');
+                                final isLocal = currentServerName == 'Local Machine' ||
+                                    currentServerName == 'Local' ||
+                                    currentServerName == 'localhost' ||
+                                    currentServerName == '127.0.0.1';
+
+                                if (isLocal) {
+                                  return Text(
+                                    'Gắn với: Local Machine (${Platform.operatingSystem}) • Thực thi an toàn trên shell cục bộ',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                  );
+                                } else {
+                                  return Text(
+                                    'Gắn với Máy chủ: $currentServerName • Mọi lệnh terminal được gửi qua SSH tới máy chủ này',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11, color: AppColors.primaryLight),
+                                  );
+                                }
+                              },
                             ),
                           ],
                         ),
-                        Builder(
-                          builder: (context) {
-                            final currentServerName = (chat.currentSession?.targetServer != null && chat.currentSession!.targetServer!.isNotEmpty)
-                                ? chat.currentSession!.targetServer!
-                                : (serverProvider.selectedServer?.name ?? 'Local Machine');
-                            final isLocal = currentServerName == 'Local Machine' ||
-                                currentServerName == 'Local' ||
-                                currentServerName == 'localhost' ||
-                                currentServerName == '127.0.0.1';
-
-                            if (isLocal) {
-                              return Text(
-                                'Gắn với: Local Machine (${Platform.operatingSystem}) • Thực thi an toàn trên shell cục bộ',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                              );
-                            } else {
-                              return Text(
-                                'Gắn với Máy chủ: $currentServerName • Mọi lệnh terminal được gửi qua SSH tới máy chủ này',
-                                style: const TextStyle(fontSize: 11, color: AppColors.primaryLight),
-                              );
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
+
+                // Right: Sidebar Toggle & New Session
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
                       icon: Icon(
@@ -798,42 +957,42 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: Row(
               children: [
-                // 2.1 Chat Center Feed
+                // 2.1 Center View (Chat Feed)
                 Expanded(
                   child: Column(
                     children: [
-                      // Message Stream
-                      Expanded(
-                        child: chat.isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : ListView.builder(
-                                controller: _scrollController,
-                                reverse: true,
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                                itemCount: chat.messages.isEmpty
-                                    ? 1
-                                    : chat.messages.length + (chat.hasMoreMessages ? 1 : 1),
-                                itemBuilder: (context, idx) {
-                                  if (chat.messages.isEmpty) {
-                                    return _buildGreetingBubble(chat, serverProvider);
-                                  }
-                                  if (idx == chat.messages.length) {
-                                    if (chat.hasMoreMessages) {
-                                      return _buildLoadMoreBanner(chat);
-                                    }
-                                    return _buildGreetingBubble(chat, serverProvider);
-                                  }
-                                  final msgIndex = chat.messages.length - 1 - idx;
-                                  final msg = chat.messages[msgIndex];
-                                  return _buildMessageItem(msg, chat, msgIndex);
-                                },
-                              ),
-                      ),
+                            // Message Stream
+                            Expanded(
+                              child: chat.isLoading
+                                  ? const Center(child: CircularProgressIndicator())
+                                  : ListView.builder(
+                                      controller: _scrollController,
+                                      reverse: true,
+                                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                      itemCount: chat.messages.isEmpty
+                                          ? 1
+                                          : chat.messages.length + (chat.hasMoreMessages ? 1 : 1),
+                                      itemBuilder: (context, idx) {
+                                        if (chat.messages.isEmpty) {
+                                          return _buildGreetingBubble(chat, serverProvider);
+                                        }
+                                        if (idx == chat.messages.length) {
+                                          if (chat.hasMoreMessages) {
+                                            return _buildLoadMoreBanner(chat);
+                                          }
+                                          return _buildGreetingBubble(chat, serverProvider);
+                                        }
+                                        final msgIndex = chat.messages.length - 1 - idx;
+                                        final msg = chat.messages[msgIndex];
+                                        return _buildMessageItem(msg, chat, msgIndex);
+                                      },
+                                    ),
+                            ),
 
-                      // Input Bar
-                      _buildInputBar(chat, serverProvider),
-                    ],
-                  ),
+                            // Input Bar
+                            _buildInputBar(chat, serverProvider),
+                          ],
+                        ),
                 ),
 
                 // 2.2 Right Sidebar: Sessions List
@@ -985,6 +1144,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildMessageItem(ChatMessageModel msg, ChatProvider chat, int index) {
     final isUser = msg.role == 'user';
     final keyStr = _getMessageKey(msg, index);
+    final isTargetHighlighted = _highlightedMessageKey == keyStr;
 
     return Padding(
       key: _messageKeys.putIfAbsent(keyStr, () => GlobalKey()),
@@ -996,25 +1156,43 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!isUser)
             Padding(
               padding: const EdgeInsets.only(top: 2, right: 10),
-              child: ChatAvatar(isUser: false, size: 30),
+              child: ChatAvatar(
+                isUser: false,
+                serverName: chat.currentSession?.targetServer,
+                size: 30,
+              ),
             ),
           Flexible(
             child: Column(
               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                Container(
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: isUser
-                        ? AppColors.primary.withValues(alpha: 0.12)
-                        : AppColors.cardBg,
+                    color: isTargetHighlighted
+                        ? AppColors.primary.withValues(alpha: 0.35)
+                        : (isUser
+                            ? AppColors.primary.withValues(alpha: 0.12)
+                            : AppColors.cardBg),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: isUser
-                          ? AppColors.primary.withValues(alpha: 0.4)
-                          : AppColors.borderDark,
-                      width: 1,
+                      color: isTargetHighlighted
+                          ? AppColors.accentCyan
+                          : (isUser
+                              ? AppColors.primary.withValues(alpha: 0.4)
+                              : AppColors.borderDark),
+                      width: isTargetHighlighted ? 1.8 : 1,
                     ),
+                    boxShadow: isTargetHighlighted
+                        ? [
+                            BoxShadow(
+                              color: AppColors.accentCyan.withValues(alpha: 0.3),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1080,6 +1258,47 @@ class _ChatScreenState extends State<ChatScreen> {
                         MarkdownBody(
                           data: msg.content,
                           selectable: true,
+                          onTapLink: (text, href, title) async {
+                            if (href != null && href.trim().isNotEmpty) {
+                              var rawUrl = href.trim();
+                              // Tự động bổ sung scheme https:// nếu người dùng/mô hình viết url dạng www. hoặc domain thông thường
+                              if (!rawUrl.startsWith(RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'))) {
+                                rawUrl = 'https://$rawUrl';
+                              }
+                              final uri = Uri.tryParse(rawUrl);
+                              bool launched = false;
+                              if (uri != null) {
+                                try {
+                                  launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                } catch (_) {
+                                  try {
+                                    launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+                                  } catch (_) {}
+                                }
+                              }
+                              // Fallback hệ thống trên Linux/Desktop nếu url_launcher không kích hoạt được trình duyệt
+                              if (!launched) {
+                                try {
+                                  if (Platform.isLinux) {
+                                    final res = await Process.run('xdg-open', [rawUrl]);
+                                    if (res.exitCode == 0) launched = true;
+                                  } else if (Platform.isMacOS) {
+                                    final res = await Process.run('open', [rawUrl]);
+                                    if (res.exitCode == 0) launched = true;
+                                  } else if (Platform.isWindows) {
+                                    final res = await Process.run('cmd', ['/c', 'start', '', rawUrl]);
+                                    if (res.exitCode == 0) launched = true;
+                                  }
+                                } catch (_) {}
+                              }
+                              if (!launched) {
+                                await Clipboard.setData(ClipboardData(text: rawUrl));
+                                if (mounted) {
+                                  AppToast.info(context, 'Đã sao chép liên kết vào bộ nhớ tạm: $rawUrl');
+                                }
+                              }
+                            }
+                          },
                           builders: {
                             'code': CodeElementBuilder(context),
                           },
@@ -1266,7 +1485,7 @@ class _ChatScreenState extends State<ChatScreen> {
       margin: const EdgeInsets.only(top: 8, bottom: 4),
       decoration: BoxDecoration(
         color: const Color(0xFF0D1117),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: const Color(0xFF30363D)),
       ),
       child: Column(
@@ -1278,8 +1497,8 @@ class _ChatScreenState extends State<ChatScreen> {
             decoration: const BoxDecoration(
               color: Color(0xFF161B22),
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(5),
-                topRight: Radius.circular(5),
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(4),
               ),
               border: Border(bottom: BorderSide(color: Color(0xFF30363D))),
             ),
@@ -1291,7 +1510,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                   decoration: BoxDecoration(
                     color: iconColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(3),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     tool.tool.isNotEmpty ? tool.tool : 'command',
@@ -1421,7 +1640,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           Tooltip(
                             message: 'Xóa Scope',
                             child: InkWell(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(4),
                               hoverColor: AppColors.danger.withValues(alpha: 0.2),
                               splashColor: Colors.transparent,
                               highlightColor: Colors.transparent,
@@ -1891,7 +2110,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   hoverColor: Colors.transparent,
                                   splashColor: Colors.transparent,
                                   highlightColor: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(4),
                                   onTap: () {
                                     setState(() {
                                       _sessionSearchCtrl.clear();
@@ -1991,6 +2210,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         itemBuilder: (context, idx) {
                           final sess = displaySessions[idx];
                           final isSelected = sess.id == chat.currentSession?.id;
+                          final recentQuestions = _sessionRecentQuestions[sess.id] ?? [];
+                          final isLoadingQuestions = _loadingSessionQuestions.contains(sess.id);
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 4),
@@ -2002,191 +2223,334 @@ class _ChatScreenState extends State<ChatScreen> {
                               border: Border.all(
                                 color: isSelected
                                     ? AppColors.primary.withValues(alpha: 0.5)
-                                    : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.25) : Colors.transparent),
+                                    : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.25) : AppColors.borderDark.withValues(alpha: 0.3)),
                               ),
                             ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(4),
-                                hoverColor: isSelected
-                                    ? AppColors.primary.withValues(alpha: 0.2)
-                                    : Colors.white.withValues(alpha: 0.05),
-                                splashColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                onTap: () {
-                                  chat.selectSession(sess).then((_) {
-                                    _scrollToBottom(instant: true);
-                                  });
-                                  if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                    if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                      serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                    } else {
-                                      final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                      if (matches.isNotEmpty) {
-                                        serverProvider.selectServer(matches.first);
-                                      }
-                                    }
-                                  }
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                                  child: Row(
-                                    children: [
-                                      // Left Pin Button
-                                      IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-                                        hoverColor: Colors.transparent,
-                                        splashColor: Colors.transparent,
-                                        highlightColor: Colors.transparent,
-                                        icon: Transform.rotate(
-                                          angle: sess.isPinned ? -0.5 : 0,
-                                          child: Icon(
-                                            sess.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                                            size: 13,
-                                            color: sess.isPinned ? AppColors.warning : AppColors.textDim,
-                                          ),
-                                        ),
-                                        tooltip: sess.isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu',
-                                        onPressed: () async {
-                                          final success = await chat.pinSession(sess);
-                                          if (!success && context.mounted) {
-                                            AppToast.warning(context, 'Chỉ được ghim tối đa 3 hộp hội thoại lên đầu');
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(4),
+                                    hoverColor: Colors.transparent,
+                                    splashColor: Colors.transparent,
+                                    highlightColor: Colors.transparent,
+                                    onTap: () {
+                                      chat.selectSession(sess).then((_) {
+                                        _scrollToBottom(instant: true);
+                                      });
+                                      _loadRecentQuestionsForSession(sess.id);
+                                      if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
+                                        if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
+                                          serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+                                        } else {
+                                          final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
+                                          if (matches.isNotEmpty) {
+                                            serverProvider.selectServer(matches.first);
                                           }
-                                        },
-                                      ),
-                                      const SizedBox(width: 4),
-                                      // Session Details
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    sess.title,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      fontSize: 11.5,
-                                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                                      color: isSelected ? AppColors.primaryLight : AppColors.textBody,
-                                                    ),
-                                                  ),
-                                                ),
-                                                if (chat.isSessionGenerating(sess.id)) ...[
-                                                  const SizedBox(width: 4),
-                                                  const SizedBox(
-                                                    width: 9,
-                                                    height: 9,
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: 1.5,
-                                                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ],
+                                        }
+                                      }
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                      child: Row(
+                                        children: [
+                                          // Left Pin Button
+                                          IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                                            hoverColor: Colors.transparent,
+                                            splashColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            icon: Transform.rotate(
+                                              angle: sess.isPinned ? -0.5 : 0,
+                                              child: Icon(
+                                                sess.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                                                size: 12.5,
+                                                color: sess.isPinned ? AppColors.warning : AppColors.textDim,
+                                              ),
                                             ),
-                                            const SizedBox(height: 2),
-                                            Row(
+                                            tooltip: sess.isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu',
+                                            onPressed: () async {
+                                              final success = await chat.pinSession(sess);
+                                              if (!success && context.mounted) {
+                                                AppToast.warning(context, 'Chỉ được ghim tối đa 3 hộp hội thoại lên đầu');
+                                              }
+                                            },
+                                          ),
+                                          const SizedBox(width: 4),
+                                          // Session Details
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                if (sess.isPinned)
-                                                  Container(
-                                                    margin: const EdgeInsets.only(right: 6),
-                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
-                                                    decoration: BoxDecoration(
-                                                      color: AppColors.warning.withValues(alpha: 0.15),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                                                    ),
-                                                    child: const Text(
-                                                      'Ghim',
-                                                      style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.warning),
-                                                    ),
-                                                  ),
-                                                // Target Server Badge (Static to this conversation)
-                                                Builder(
-                                                  builder: (context) {
-                                                    final serverName = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
-                                                        ? sess.targetServer!
-                                                        : 'Local Machine';
-                                                    final isLocal = serverName == 'Local Machine' ||
-                                                        serverName == 'Local' ||
-                                                        serverName == 'localhost' ||
-                                                        serverName == '127.0.0.1';
-                                                    final badgeColor = isLocal ? AppColors.accent : const Color(0xFF38BDF8);
-
-                                                    return Container(
-                                                      margin: const EdgeInsets.only(right: 6),
-                                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
-                                                      decoration: BoxDecoration(
-                                                        color: badgeColor.withValues(alpha: 0.12),
-                                                        borderRadius: BorderRadius.circular(4),
-                                                        border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        sess.title,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: TextStyle(
+                                                          fontSize: 11.5,
+                                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                          color: isSelected ? AppColors.primaryLight : AppColors.textBody,
+                                                        ),
                                                       ),
-                                                      child: Row(
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                            isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
-                                                            size: 9.5,
-                                                            color: badgeColor,
+                                                    ),
+                                                    if (chat.isSessionGenerating(sess.id)) ...[
+                                                      const SizedBox(width: 4),
+                                                      const SizedBox(
+                                                        width: 9,
+                                                        height: 9,
+                                                        child: CircularProgressIndicator(
+                                                          strokeWidth: 1.5,
+                                                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Row(
+                                                  children: [
+                                                    if (sess.isPinned)
+                                                      Container(
+                                                        margin: const EdgeInsets.only(right: 6),
+                                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+                                                        decoration: BoxDecoration(
+                                                          color: AppColors.warning.withValues(alpha: 0.15),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                          border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                                                        ),
+                                                        child: const Text(
+                                                          'Ghim',
+                                                          style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.warning),
+                                                        ),
+                                                      ),
+                                                    // Target Server Badge
+                                                    Builder(
+                                                      builder: (context) {
+                                                        final serverName = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
+                                                            ? sess.targetServer!
+                                                            : 'Local Machine';
+                                                        final isLocal = serverName == 'Local Machine' ||
+                                                            serverName == 'Local' ||
+                                                            serverName == 'localhost' ||
+                                                            serverName == '127.0.0.1';
+                                                        final badgeColor = isLocal ? AppColors.accent : const Color(0xFF38BDF8);
+
+                                                        return Container(
+                                                          margin: const EdgeInsets.only(right: 6),
+                                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+                                                          decoration: BoxDecoration(
+                                                            color: badgeColor.withValues(alpha: 0.12),
+                                                            borderRadius: BorderRadius.circular(4),
+                                                            border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
                                                           ),
-                                                          const SizedBox(width: 3),
-                                                          ConstrainedBox(
-                                                            constraints: const BoxConstraints(maxWidth: 90),
-                                                            child: Text(
-                                                              serverName,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: TextStyle(
-                                                                fontSize: 8.5,
-                                                                fontWeight: FontWeight.bold,
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              Icon(
+                                                                isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
+                                                                size: 9.5,
                                                                 color: badgeColor,
                                                               ),
-                                                            ),
+                                                              const SizedBox(width: 3),
+                                                              ConstrainedBox(
+                                                                constraints: const BoxConstraints(maxWidth: 80),
+                                                                child: Text(
+                                                                  serverName,
+                                                                  overflow: TextOverflow.ellipsis,
+                                                                  style: TextStyle(
+                                                                    fontSize: 8.5,
+                                                                    fontWeight: FontWeight.bold,
+                                                                    color: badgeColor,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ],
                                                           ),
-                                                        ],
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                                Text(
-                                                  _formatSessionTime(sess.updatedAt),
-                                                  style: const TextStyle(fontSize: 10, color: AppColors.textDim),
+                                                        );
+                                                      },
+                                                    ),
+                                                    Text(
+                                                      _formatSessionTime(sess.updatedAt),
+                                                      style: const TextStyle(fontSize: 10, color: AppColors.textDim),
+                                                    ),
+                                                  ],
                                                 ),
                                               ],
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                          // Edit Button
+                                          IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                                            hoverColor: Colors.transparent,
+                                            splashColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            icon: const Icon(Icons.edit_outlined, size: 13, color: AppColors.textDim),
+                                            tooltip: 'Chỉnh sửa hội thoại (Tên & Máy chủ)',
+                                            onPressed: () => _showEditSessionDialog(chat, sess),
+                                          ),
+                                          // Delete Button
+                                          IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                                            hoverColor: Colors.transparent,
+                                            splashColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            icon: const Icon(Icons.delete_outline_rounded, size: 13, color: AppColors.textDim),
+                                            tooltip: 'Xóa hộp hội thoại này',
+                                            onPressed: () => _showDeleteDialog(chat, sess),
+                                          ),
+                                        ],
                                       ),
-                                      // Edit Button (Rename & Server Select)
-                                      IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                        hoverColor: Colors.transparent,
-                                        splashColor: Colors.transparent,
-                                        highlightColor: Colors.transparent,
-                                        icon: const Icon(Icons.edit_outlined, size: 13, color: AppColors.textDim),
-                                        tooltip: 'Chỉnh sửa hội thoại (Tên & Máy chủ)',
-                                        onPressed: () => _showEditSessionDialog(chat, sess),
-                                      ),
-                                      // Delete Button
-                                      IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                        hoverColor: Colors.transparent,
-                                        splashColor: Colors.transparent,
-                                        highlightColor: Colors.transparent,
-                                        icon: const Icon(Icons.delete_outline_rounded, size: 13, color: AppColors.textDim),
-                                        tooltip: 'Xóa hộp hội thoại này',
-                                        onPressed: () => _showDeleteDialog(chat, sess),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
+
+                                // Expanded Section: Recent Questions List
+                                if (isSelected) ...[
+                                  Container(
+                                    width: double.infinity,
+                                    margin: const EdgeInsets.only(left: 10, right: 6, bottom: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.bgDark.withValues(alpha: 0.7),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.6)),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Row(
+                                              children: [
+                                                Icon(Icons.history_rounded, size: 11, color: AppColors.accentCyan),
+                                                SizedBox(width: 4),
+                                                Text(
+                                                  'Câu hỏi gần đây',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: AppColors.accentCyan,
+                                                    letterSpacing: 0.3,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            if (isLoadingQuestions)
+                                              const SizedBox(
+                                                width: 9,
+                                                height: 9,
+                                                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accentCyan),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        if (isLoadingQuestions && recentQuestions.isEmpty)
+                                          const Padding(
+                                            padding: EdgeInsets.symmetric(vertical: 4),
+                                            child: Text('Đang tải câu hỏi...', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+                                          )
+                                        else if (recentQuestions.isEmpty)
+                                          const Padding(
+                                            padding: EdgeInsets.symmetric(vertical: 4),
+                                            child: Text('Chưa có câu hỏi nào trong hộp này.', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+                                          )
+                                        else
+                                          ...recentQuestions.map((q) {
+                                            return Container(
+                                              margin: const EdgeInsets.only(top: 4),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.inputBg.withValues(alpha: 0.8),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.4)),
+                                              ),
+                                              child: Material(
+                                                color: Colors.transparent,
+                                                child: InkWell(
+                                                  onTap: () => _scrollToQuestion(q, sess),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  hoverColor: AppColors.primary.withValues(alpha: 0.15),
+                                                  splashColor: Colors.transparent,
+                                                  highlightColor: Colors.transparent,
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Tooltip(
+                                                            message: 'Cuộn tới câu hỏi này',
+                                                            waitDuration: const Duration(milliseconds: 400),
+                                                            child: Text(
+                                                              q,
+                                                              maxLines: 2,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: const TextStyle(fontSize: 10.5, color: AppColors.textBody, height: 1.25),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        // Copy Button
+                                                        IconButton(
+                                                          padding: EdgeInsets.zero,
+                                                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                                                          hoverColor: Colors.transparent,
+                                                          splashColor: Colors.transparent,
+                                                          highlightColor: Colors.transparent,
+                                                          icon: const Icon(Icons.copy_rounded, size: 11.5, color: AppColors.textDim),
+                                                          tooltip: 'Sao chép câu hỏi',
+                                                          onPressed: () {
+                                                            Clipboard.setData(ClipboardData(text: q));
+                                                            AppToast.success(context, 'Đã sao chép câu hỏi vào bộ nhớ tạm!');
+                                                          },
+                                                        ),
+                                                        const SizedBox(width: 2),
+                                                        // Re-ask Button
+                                                        IconButton(
+                                                          padding: EdgeInsets.zero,
+                                                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                                                          hoverColor: Colors.transparent,
+                                                          splashColor: Colors.transparent,
+                                                          highlightColor: Colors.transparent,
+                                                          icon: const Icon(Icons.replay_rounded, size: 12, color: AppColors.primaryLight),
+                                                          tooltip: 'Hỏi lại câu này ngay',
+                                                          onPressed: () async {
+                                                            if (sess.id != chat.currentSession?.id) {
+                                                              await chat.selectSession(sess);
+                                                            }
+                                                            if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
+                                                              if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
+                                                                serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+                                                              } else {
+                                                                final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
+                                                                if (matches.isNotEmpty) {
+                                                                  serverProvider.selectServer(matches.first);
+                                                                }
+                                                              }
+                                                            }
+                                                            _textController.text = q;
+                                                            _handleSend(chat, serverProvider);
+                                                          },
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           );
                         },
@@ -2789,7 +3153,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
         decoration: BoxDecoration(
           color: AppColors.codeBg,
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: BorderRadius.circular(4),
           border: Border.all(color: AppColors.borderDark),
         ),
         child: Text(
@@ -2913,7 +3277,7 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF070B14),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: const Color(0xFF1E293B)),
       ),
       child: Column(
@@ -2925,8 +3289,8 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
             decoration: const BoxDecoration(
               color: Color(0xFF0F172A),
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(5),
-                topRight: Radius.circular(5),
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(4),
               ),
               border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
             ),
@@ -3249,7 +3613,7 @@ class _CommandRunnerModalState extends State<_CommandRunnerModal> {
       backgroundColor: const Color(0xFF090D16),
       elevation: 20,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(4),
         side: const BorderSide(color: Color(0xFF30363D), width: 1.2),
       ),
       child: AnimatedContainer(
@@ -3258,7 +3622,7 @@ class _CommandRunnerModalState extends State<_CommandRunnerModal> {
         width: dialogWidth,
         height: dialogHeight,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(4),
           child: Column(
             children: [
               // Header Bar (always visible)
@@ -3288,7 +3652,7 @@ class _CommandRunnerModalState extends State<_CommandRunnerModal> {
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                       decoration: BoxDecoration(
                         color: (isLocal ? AppColors.accent : AppColors.primaryLight).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         isLocal ? 'Local' : (widget.server?.name ?? 'Server'),

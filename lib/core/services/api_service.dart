@@ -574,6 +574,24 @@ class ApiService {
     return ChatHistoryResult(messages: [], hasMore: false, oldestId: 0);
   }
 
+  Future<List<String>> getRecentUserQuestions(String sessionId, {int limit = 5}) async {
+    if (await _isNativeMode()) {
+      return await _db.getRecentUserQuestions(sessionId, limit: limit);
+    }
+    final history = await getChatHistory(sessionId, limit: 30);
+    final questions = <String>[];
+    for (final m in history.messages.reversed) {
+      if (m.role == 'user') {
+        final text = m.content.trim();
+        if (text.isNotEmpty && !questions.contains(text)) {
+          questions.add(text);
+          if (questions.length >= limit) break;
+        }
+      }
+    }
+    return questions;
+  }
+
   Future<bool> clearChatHistory(String sessionId) async {
     if (await _isNativeMode()) {
       return await _db.clearChat(sessionId);

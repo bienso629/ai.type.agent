@@ -676,7 +676,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: AppColors.primary.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(4),
             border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 0.8),
           ),
           child: Row(
@@ -1160,7 +1160,7 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppColors.accent.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: AppColors.accent, width: 0.8),
                     ),
                     child: const Row(

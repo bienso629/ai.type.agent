@@ -11,6 +11,8 @@ class ServerModel {
   final String aiModel;
   final String remoteWorkDir;
   final int apiPort;
+  final String agentMode; // 'systemd' (Chế độ 1) hoặc 'cli' (Chế độ 2)
+  final String cliBinary; // 'agy', 'claude', 'gemini', ... (khi ở chế độ cli)
   final String secretToken;
   final bool isSelected;
   final String status;
@@ -26,10 +28,15 @@ class ServerModel {
     this.aiModel = 'glm-5.3',
     this.remoteWorkDir = '/root',
     this.apiPort = 8000,
+    this.agentMode = 'systemd',
+    this.cliBinary = 'agy',
     this.secretToken = '',
     this.isSelected = false,
     this.status = 'unknown',
   });
+
+  bool get isCliMode => agentMode == 'cli';
+  bool get isSystemdMode => agentMode != 'cli';
 
   factory ServerModel.fromJson(Map<String, dynamic> json, {bool isCurrent = false}) {
     final enc = EncryptionService();
@@ -48,6 +55,9 @@ class ServerModel {
 
     final sshPortStr = dec(json['ssh_port']);
     final apiPortStr = dec(json['api_port']);
+    final modeStr = dec(json['agent_mode']);
+    final binStr = dec(json['cli_binary']);
+
     return ServerModel(
       id: dec(json['id']).isNotEmpty ? dec(json['id']) : (ip.isNotEmpty ? 'srv_$ip' : 'srv_${DateTime.now().millisecondsSinceEpoch}'),
       name: (rawName.isNotEmpty) ? rawName : defaultName,
@@ -59,6 +69,8 @@ class ServerModel {
       aiModel: dec(json['ai_model']).isNotEmpty ? dec(json['ai_model']) : 'glm-5.3',
       remoteWorkDir: dec(json['remote_work_dir']).isNotEmpty ? dec(json['remote_work_dir']) : '/root',
       apiPort: int.tryParse(apiPortStr.isNotEmpty ? apiPortStr : '8000') ?? 8000,
+      agentMode: modeStr.isNotEmpty ? modeStr : 'systemd',
+      cliBinary: binStr.isNotEmpty ? binStr : 'agy',
       secretToken: dec(json['secret_token']),
       isSelected: isCurrent,
       status: dec(json['status']).isNotEmpty ? dec(json['status']) : 'online',
@@ -77,6 +89,8 @@ class ServerModel {
       'ai_model': aiModel,
       'remote_work_dir': remoteWorkDir,
       'api_port': apiPort.toString(),
+      'agent_mode': agentMode,
+      'cli_binary': cliBinary,
       'secret_token': secretToken,
       'is_selected': isSelected,
     };
@@ -93,6 +107,8 @@ class ServerModel {
     String? aiModel,
     String? remoteWorkDir,
     int? apiPort,
+    String? agentMode,
+    String? cliBinary,
     String? secretToken,
     bool? isSelected,
     String? status,
@@ -108,6 +124,8 @@ class ServerModel {
       aiModel: aiModel ?? this.aiModel,
       remoteWorkDir: remoteWorkDir ?? this.remoteWorkDir,
       apiPort: apiPort ?? this.apiPort,
+      agentMode: agentMode ?? this.agentMode,
+      cliBinary: cliBinary ?? this.cliBinary,
       secretToken: secretToken ?? this.secretToken,
       isSelected: isSelected ?? this.isSelected,
       status: status ?? this.status,
