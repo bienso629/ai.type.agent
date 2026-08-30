@@ -153,10 +153,10 @@ export function Logo({ onClick }: { onClick?: () => void }) {
       }}
       className="flex items-center gap-2.5 group"
     >
-      <span className="relative grid h-9 w-9 place-items-center rounded-none bg-primary text-primary-foreground font-display font-black text-lg">
+      <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground font-display font-black text-lg">
         M
         <span
-          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-none bg-emerald"
+          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald"
           style={{ animation: 'tokenpulse 2s ease-in-out infinite' }}
         />
       </span>
@@ -169,15 +169,15 @@ export function Logo({ onClick }: { onClick?: () => void }) {
 
 export function ProductCard({ p, onSelect }: { p: Product; onSelect?: () => void }) {
   return (
-    <article className="group relative flex flex-col overflow-hidden rounded-none border border-border bg-card p-5 transition-all duration-300 hover:border-primary/50 hover:-translate-y-1">
+    <article className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card p-5 transition-all duration-300 hover:border-primary/50 hover:-translate-y-1">
       <div
-        className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-none opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-20"
+        className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-xl opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-20"
         style={{ background: p.accent }}
       />
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <span
-            className="grid h-11 w-11 place-items-center rounded-none font-mono text-sm font-bold"
+            className="grid h-11 w-11 place-items-center rounded-xl font-mono text-sm font-bold"
             style={{ background: `${p.accent}1a`, color: p.accent }}
           >
             {p.initials}
@@ -188,7 +188,7 @@ export function ProductCard({ p, onSelect }: { p: Product; onSelect?: () => void
           </div>
         </div>
         {p.badge && (
-          <span className="rounded-none bg-primary px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
+          <span className="rounded-sm bg-primary px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
             {p.badge}
           </span>
         )}
@@ -209,7 +209,7 @@ export function ProductCard({ p, onSelect }: { p: Product; onSelect?: () => void
 
       <div className="mt-5 flex items-center justify-between border-t border-border pt-4">
         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald">
-          <span className="h-1.5 w-1.5 rounded-none bg-emerald" style={{ animation: 'tokenpulse 2s ease-in-out infinite' }} /> Đang có sẵn
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald" style={{ animation: 'tokenpulse 2s ease-in-out infinite' }} /> Đang có sẵn
         </span>
         <span className="font-mono text-[11px] text-muted-foreground">{p.eta}</span>
       </div>
@@ -218,7 +218,7 @@ export function ProductCard({ p, onSelect }: { p: Product; onSelect?: () => void
         href={ZALO}
         target="_blank"
         rel="noreferrer"
-        className="mt-4 w-full rounded-none bg-secondary py-2.5 text-center text-sm font-semibold text-secondary-foreground transition-colors hover:bg-primary hover:text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="glow-button-secondary mt-4 w-full rounded-sm bg-secondary py-2.5 text-center text-sm font-semibold text-secondary-foreground transition-all hover:bg-primary hover:text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         Nhắn Zalo để chọn
       </a>
@@ -237,7 +237,7 @@ export function QrMock({ amount }: { amount?: number }) {
 
   if (qrUrl) {
     return (
-      <div className="h-28 w-28 shrink-0 overflow-hidden rounded-none bg-white p-1 shadow-md">
+      <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl bg-white p-1 shadow-md">
         <img
           src={qrUrl}
           alt="Mã VietQR nạp tiền"
@@ -248,10 +248,10 @@ export function QrMock({ amount }: { amount?: number }) {
   }
 
   return (
-    <div className="grid h-24 w-24 shrink-0 place-items-center rounded-none bg-white p-2">
+    <div className="grid h-24 w-24 shrink-0 place-items-center rounded-xl bg-white p-2">
       <div className="grid h-full w-full grid-cols-5 grid-rows-5 gap-0.5">
         {Array.from({ length: 25 }).map((_, i) => (
-          <span key={i} className="rounded-none" style={{ background: (i * 7 + 3) % 3 ? '#0b0c0f' : 'transparent' }} />
+          <span key={i} className="rounded-xs" style={{ background: (i * 7 + 3) % 3 ? '#0b0c0f' : 'transparent' }} />
         ))}
       </div>
     </div>
@@ -324,14 +324,14 @@ export function TopUpPage({
       <h1 className="font-display text-3xl font-extrabold tracking-tight">Nạp {formatVnd(topup.amount)} vào số dư</h1>
 
       {errorMsg && (
-        <div className="mt-4 rounded-none border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
+        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
           {errorMsg}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="mt-8 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <div className="space-y-6">
-          <fieldset className="rounded-none border border-border bg-card p-6">
+          <fieldset className="rounded-xl border border-border bg-card p-6">
             <legend className="px-2 font-display text-lg font-bold">Thông tin tài khoản</legend>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
@@ -344,7 +344,7 @@ export function TopUpPage({
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Nguyễn Văn A"
                   required
-                  className="w-full rounded-none border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </label>
 
@@ -358,7 +358,7 @@ export function TopUpPage({
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="0908 123 456"
                   required
-                  className="w-full rounded-none border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </label>
 
@@ -374,20 +374,20 @@ export function TopUpPage({
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="ban@email.com"
                     required
-                    className="w-full rounded-none border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="w-full rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </label>
               </div>
             </div>
           </fieldset>
 
-          <fieldset className="rounded-none border border-border bg-card p-6">
+          <fieldset className="rounded-xl border border-border bg-card p-6">
             <legend className="px-2 font-display text-lg font-bold">Phương thức nạp tiền</legend>
             <div className="space-y-3">
               {PAY_METHODS.map((m) => (
                 <label
                   key={m.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-none border p-4 transition-colors ${
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors ${
                     pay === m.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
                   }`}
                 >
@@ -399,11 +399,11 @@ export function TopUpPage({
                     className="sr-only"
                   />
                   <span
-                    className={`grid h-5 w-5 place-items-center rounded-none border-2 ${
+                    className={`grid h-5 w-5 place-items-center rounded-sm border-2 ${
                       pay === m.id ? 'border-primary' : 'border-border'
                     }`}
                   >
-                    {pay === m.id && <span className="h-2.5 w-2.5 rounded-none bg-primary" />}
+                    {pay === m.id && <span className="h-2.5 w-2.5 rounded-xs bg-primary" />}
                   </span>
                   <div className="flex-1">
                     <div className="text-sm font-semibold">{m.label}</div>
@@ -413,7 +413,7 @@ export function TopUpPage({
               ))}
             </div>
             {pay === 'vietqr' && (
-              <div className="mt-4 flex items-center gap-4 rounded-none border border-dashed border-border bg-secondary/40 p-4">
+              <div className="mt-4 flex items-center gap-4 rounded-xl border border-dashed border-border bg-secondary/40 p-4">
                 <QrMock amount={topup.amount} />
                 <div className="text-sm">
                   <div className="font-semibold">Quét mã, số dư cộng tự động</div>
@@ -428,7 +428,7 @@ export function TopUpPage({
           </fieldset>
         </div>
 
-        <aside className="h-fit rounded-none border border-border bg-card p-6">
+        <aside className="h-fit rounded-xl border border-border bg-card p-6">
           <h2 className="font-display text-lg font-bold">Tóm tắt đơn nạp</h2>
           <dl className="mt-5 space-y-3 text-sm">
             <div className="flex justify-between">
@@ -451,7 +451,7 @@ export function TopUpPage({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="mt-5 w-full rounded-none bg-primary py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50"
+            className="glow-button mt-5 w-full rounded-sm bg-primary py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50"
           >
             {isSubmitting ? 'Đang khởi tạo...' : 'Xác nhận đã chuyển'}
           </button>
@@ -478,9 +478,9 @@ export function SuccessPage({
 
   return (
     <section className="mx-auto max-w-2xl px-5 py-20 md:px-8">
-      <div className="rounded-none border border-emerald/30 bg-card p-10 text-center md:p-14">
+      <div className="rounded-xl border border-emerald/30 bg-card p-10 text-center md:p-14">
         <div
-          className="mx-auto grid h-16 w-16 place-items-center rounded-none bg-emerald/15"
+          className="mx-auto grid h-16 w-16 place-items-center rounded-xl bg-emerald/15"
           style={{ animation: 'tokenpulse 2.4s ease-in-out infinite' }}
         >
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-emerald">
@@ -492,11 +492,11 @@ export function SuccessPage({
           Đơn nạp đã được ghi nhận. Giờ chỉ cần nhắn Zalo cho shop công cụ AI bạn muốn dùng — shop sẽ kích hoạt và trừ vào số dư.
         </p>
         <div className="mx-auto mt-8 max-w-xs space-y-3">
-          <div className="flex items-center justify-between rounded-none border border-border bg-secondary/40 px-5 py-4">
+          <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-5 py-4">
             <span className="text-sm text-muted-foreground">Số dư nhận được</span>
             <span className="font-mono text-lg font-bold text-primary">{formatVnd(balance)}</span>
           </div>
-          <div className="flex items-center justify-between rounded-none border border-border bg-secondary/40 px-5 py-4">
+          <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-5 py-4">
             <span className="text-sm text-muted-foreground">Mã giao dịch</span>
             <span className="font-mono font-bold">#{ref}</span>
           </div>
@@ -506,13 +506,13 @@ export function SuccessPage({
             href={ZALO}
             target="_blank"
             rel="noreferrer"
-            className="rounded-none bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
+            className="glow-button rounded-sm bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
           >
             Nhắn Zalo chọn công cụ
           </a>
           <button
             onClick={() => onNavigate('home')}
-            className="rounded-none border border-border px-6 py-3.5 text-sm font-semibold text-secondary-foreground transition-colors hover:border-primary/60"
+            className="glow-button-secondary rounded-sm border border-border px-6 py-3.5 text-sm font-semibold text-secondary-foreground transition-colors hover:border-primary/60"
           >
             Về trang chủ
           </button>
@@ -563,12 +563,12 @@ export function OrderLookupModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative w-full max-w-lg rounded-none border border-border bg-card p-6 shadow-2xl"
+        className="relative w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border pb-4">
           <h3 className="font-display text-xl font-bold">Tra Cứu Đơn Hàng & Số Dư</h3>
-          <button onClick={onClose} className="rounded-none p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <button onClick={onClose} className="rounded-sm p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </button>
         </div>
@@ -579,20 +579,20 @@ export function OrderLookupModal({
             placeholder="Nhập mã đơn hàng (MT-...) hoặc Email"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 rounded-none border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+            className="flex-1 rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             required
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="rounded-none bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            className="glow-button rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             {isLoading ? 'Đang tìm...' : 'Tra cứu'}
           </button>
         </form>
 
         {errorMsg && (
-          <div className="mt-4 rounded-none border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
             {errorMsg}
           </div>
         )}
@@ -600,14 +600,14 @@ export function OrderLookupModal({
         {result && result.length > 0 && (
           <div className="mt-4 max-h-60 space-y-3 overflow-y-auto pr-1">
             {result.map((o) => (
-              <div key={o.id} className="rounded-none border border-border bg-secondary/30 p-3 text-sm">
+              <div key={o.id} className="rounded-xl border border-border bg-secondary/30 p-3 text-sm">
                 <div className="flex items-center justify-between font-mono font-bold">
                   <span className="text-primary">#{o.orderCode}</span>
                   <span>{formatVnd(o.totalAmount)}</span>
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">{o.planName}</div>
                 <div className="mt-2 flex items-center justify-between text-xs">
-                  <span className={`rounded-none px-2 py-0.5 font-medium ${o.paymentStatus === 'paid' ? 'bg-emerald/15 text-emerald' : 'bg-amber-500/15 text-amber-400'}`}>
+                  <span className={`rounded-sm px-2 py-0.5 font-medium ${o.paymentStatus === 'paid' ? 'bg-emerald/15 text-emerald' : 'bg-amber-500/15 text-amber-400'}`}>
                     {o.paymentStatus === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}
                   </span>
                   <span className="text-muted-foreground">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</span>
@@ -719,7 +719,7 @@ export function FrontendApp({
               href={adminRoute}
               target="_blank"
               rel="noreferrer"
-              className="rounded-none border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              className="rounded-sm border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
             >
               Admin
             </a>
@@ -727,13 +727,13 @@ export function FrontendApp({
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsLookupOpen(true)}
-              className="rounded-none border border-border bg-secondary px-3 py-2 text-xs font-semibold text-secondary-foreground hover:border-primary/50 lg:hidden"
+              className="glow-button-secondary rounded-sm border border-border bg-secondary px-3 py-2 text-xs font-semibold text-secondary-foreground hover:border-primary/50 lg:hidden"
             >
               Tra cứu
             </button>
             <button
               onClick={goPricing}
-              className="rounded-none bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
+              className="glow-button rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
             >
               Nạp tiền ngay
             </button>
@@ -813,11 +813,11 @@ function HomePage({
           backgroundSize: '56px 56px',
         }}
       >
-        <div className="pointer-events-none absolute -top-40 left-1/2 h-96 w-[46rem] -translate-x-1/2 rounded-none bg-primary/10 blur-[120px]" />
+        <div className="pointer-events-none absolute -top-40 left-1/2 h-96 w-[46rem] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
         <div className="mx-auto grid max-w-7xl gap-12 px-5 py-20 md:px-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-28">
           <div className="flex flex-col justify-center">
-            <span className="mb-5 inline-flex w-fit items-center gap-2 rounded-none border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-none bg-emerald" /> Nạp một lần · Dùng dần · Không hết hạn
+            <span className="mb-5 inline-flex w-fit items-center gap-2 rounded-sm border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> Nạp một lần · Dùng dần · Không hết hạn
             </span>
             <h1 className="font-display text-4xl font-black leading-[1.05] tracking-tight md:text-6xl">
               Một số dư,
@@ -830,13 +830,13 @@ function HomePage({
             <div className="mt-8 flex flex-wrap gap-3">
               <button
                 onClick={goPricing}
-                className="rounded-none bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
+                className="glow-button rounded-sm bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
               >
                 Nạp tiền ngay
               </button>
               <button
                 onClick={goProducts}
-                className="rounded-none border border-border bg-card px-6 py-3.5 text-sm font-semibold text-secondary-foreground transition-colors hover:border-primary/60"
+                className="glow-button-secondary rounded-sm border border-border bg-card px-6 py-3.5 text-sm font-semibold text-secondary-foreground transition-colors hover:border-primary/60"
               >
                 Xem công cụ có sẵn
               </button>
@@ -857,10 +857,10 @@ function HomePage({
 
           {/* Wallet balance mockup */}
           <div className="flex items-center justify-center">
-            <div className="w-full max-w-sm rounded-none border border-border bg-card p-6 shadow-2xl shadow-black/40">
+            <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl shadow-black/40">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">Số dư Mì Tôm AI</span>
-                <span className="rounded-none bg-emerald/15 px-2.5 py-1 font-mono text-[11px] font-bold text-emerald">
+                <span className="rounded-sm bg-emerald/15 px-2.5 py-1 font-mono text-[11px] font-bold text-emerald">
                   Đang hoạt động
                 </span>
               </div>
@@ -876,7 +876,7 @@ function HomePage({
                   <div key={name} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span
-                        className="grid h-9 w-9 place-items-center rounded-none font-mono text-xs font-bold"
+                        className="grid h-9 w-9 place-items-center rounded-xl font-mono text-xs font-bold"
                         style={{ background: `${c}1a`, color: c }}
                       >
                         {ini}
@@ -891,7 +891,7 @@ function HomePage({
               </div>
               <button
                 onClick={goPricing}
-                className="mt-5 w-full rounded-none bg-primary py-3 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02]"
+                className="glow-button mt-5 w-full rounded-sm bg-primary py-3 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02]"
               >
                 Nạp thêm số dư
               </button>
@@ -926,7 +926,7 @@ function HomePage({
               <button
                 key={c.id}
                 onClick={() => setActive(c.id)}
-                className={`rounded-none border px-4 py-2 text-sm font-medium transition-colors ${
+                className={`glow-button-secondary rounded-sm border px-4 py-2 text-sm font-medium transition-colors ${
                   active === c.id
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border bg-card text-secondary-foreground hover:border-primary/50'
@@ -964,19 +964,19 @@ function HomePage({
               return (
                 <div
                   key={t.amount}
-                  className={`relative flex flex-col rounded-none border p-6 transition-transform hover:-translate-y-1 ${
+                  className={`relative flex flex-col rounded-xl border p-6 transition-transform hover:-translate-y-1 ${
                     t.highlight ? 'border-primary bg-card shadow-2xl shadow-primary/10' : 'border-border bg-card'
                   }`}
                 >
                   {t.highlight && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-none bg-primary px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-sm bg-primary px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
                       Chọn nhiều nhất
                     </span>
                   )}
                   <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">{t.label}</span>
                   <div className="mt-3 font-display text-3xl font-black">{formatVnd(t.amount)}</div>
                   {t.bonusPct > 0 ? (
-                    <div className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-none bg-emerald/15 px-2.5 py-1 text-xs font-bold text-emerald">
+                    <div className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-sm bg-emerald/15 px-2.5 py-1 text-xs font-bold text-emerald">
                       +{t.bonusPct}% tặng {formatVnd(bonus)}
                     </div>
                   ) : (
@@ -986,7 +986,7 @@ function HomePage({
                   <div className="font-mono text-lg font-bold text-primary">{formatVnd(t.amount + bonus)}</div>
                   <button
                     onClick={() => onTopup(t)}
-                    className={`mt-6 rounded-none py-3 text-sm font-bold transition-transform hover:scale-[1.02] ${
+                    className={`glow-button mt-6 rounded-sm py-3 text-sm font-bold transition-transform hover:scale-[1.02] ${
                       t.highlight
                         ? 'bg-primary text-primary-foreground'
                         : 'border border-border bg-secondary text-secondary-foreground hover:border-primary/60'
@@ -1005,8 +1005,8 @@ function HomePage({
               ['Trả theo mức dùng', 'Mỗi lần kích hoạt tài khoản hoặc mua token sẽ trừ trực tiếp vào số dư.'],
               ['Nạp thêm bất cứ lúc nào', 'Gần hết? Nạp thêm chỉ trong 30 giây qua VietQR, Momo hay ZaloPay.'],
             ].map(([t, d]) => (
-              <div key={t} className="flex gap-3 rounded-none border border-border bg-card p-5">
-                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-none bg-primary/15 text-primary">
+              <div key={t} className="flex gap-3 rounded-xl border border-border bg-card p-5">
+                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-sm bg-primary/15 text-primary">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -1034,7 +1034,7 @@ function HomePage({
             ['03', 'Trừ số dư & kích hoạt', 'Shop kích hoạt tài khoản và trừ đúng số tiền vào số dư của bạn.'],
             ['04', 'Dùng & bảo hành', 'Dùng ngay, có lỗi được đổi mới 1-1 trọn đời. Gần hết thì nạp thêm.'],
           ].map(([n, t, d]) => (
-            <div key={n} className="relative rounded-none border border-border bg-card p-6">
+            <div key={n} className="relative rounded-xl border border-border bg-card p-6">
               <span className="font-mono text-3xl font-bold text-primary/30">{n}</span>
               <h3 className="mt-3 font-display text-lg font-bold">{t}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{d}</p>
@@ -1053,7 +1053,7 @@ function HomePage({
               Chưa tìm thấy câu trả lời? Nhắn Zalo <span className="font-mono text-primary">0908.888.888</span> để được hỗ trợ ngay.
             </p>
           </div>
-          <div className="divide-y divide-border rounded-none border border-border bg-card">
+          <div className="divide-y divide-border rounded-xl border border-border bg-card">
             {FAQS.map((item, i) => (
               <button
                 key={item.q}
@@ -1083,9 +1083,9 @@ function HomePage({
 
       {/* CTA */}
       <section className="mx-auto max-w-7xl px-5 py-20 md:px-8">
-        <div className="relative overflow-hidden rounded-none border border-primary/30 bg-card px-8 py-14 text-center md:py-20">
+        <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-card px-8 py-14 text-center md:py-20">
           <div className="pointer-events-none absolute inset-0 bg-primary/5" />
-          <div className="pointer-events-none absolute -bottom-24 left-1/2 h-64 w-[40rem] -translate-x-1/2 rounded-none bg-primary/10 blur-[100px]" />
+          <div className="pointer-events-none absolute -bottom-24 left-1/2 h-64 w-[40rem] -translate-x-1/2 rounded-full bg-primary/10 blur-[100px]" />
           <div className="relative">
             <h2 className="font-display text-3xl font-black tracking-tight md:text-5xl">Sẵn sàng tăng tốc với AI?</h2>
             <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
@@ -1093,7 +1093,7 @@ function HomePage({
             </p>
             <button
               onClick={goPricing}
-              className="mt-8 inline-block rounded-none bg-primary px-8 py-4 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
+              className="glow-button mt-8 inline-block rounded-sm bg-primary px-8 py-4 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
             >
               Nạp tiền ngay
             </button>
