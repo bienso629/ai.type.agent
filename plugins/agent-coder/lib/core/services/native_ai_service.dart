@@ -174,7 +174,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         }
 
         // Build System Prompt
-        String sysPrompt = systemPromptBase;
+        final customPrompt = cfg['custom_prompt']?.toString();
+        String sysPrompt = (customPrompt != null && customPrompt.trim().isNotEmpty)
+            ? customPrompt.trim()
+            : systemPromptBase;
+
         if (targetServerModel != null) {
           sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Mọi lệnh terminal của bạn sẽ được gửi trực tiếp qua SSH tới máy chủ này.';
         } else {
@@ -182,6 +186,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         }
         if (workingDir != null && workingDir.isNotEmpty) {
           sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
+          sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
         }
 
         final messages = <Map<String, dynamic>>[
@@ -533,6 +538,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     final exe = _findCliExecutable(cliName);
     onStatus('Đang khởi chạy $cliName agent...');
 
+    final cfg = await _configService.loadConfig();
+    final customPromptTemplate = cfg['custom_prompt']?.toString();
+
     if (targetServerModel != null) {
       final configuredBinary = targetServerModel.cliBinary.isNotEmpty ? targetServerModel.cliBinary : 'agy';
       
@@ -547,7 +555,10 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       }
 
       onStatus('Đang gửi lệnh tới $remoteBinary CLI trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp})...');
-      final cleanPrompt = '$prompt\n\n(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
+      final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
+          ? customPromptTemplate.trim()
+          : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
+      final cleanPrompt = '$prompt\n\n$promptSuffix';
       final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
 
       final cmd = '''
@@ -578,15 +589,23 @@ fi
           ? workingDir
           : (Platform.environment['HOME'] ?? Directory.current.path);
 
-      final cleanPrompt = '''$prompt
-
-(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
+      String promptSuffix;
+      if (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty) {
+        promptSuffix = customPromptTemplate
+            .replaceAll('{workDir}', workDir)
+            .replaceAll('\$workDir', workDir)
+            .trim();
+      } else {
+        promptSuffix = '''(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
 - THƯ MỤC LÀM VIỆC MỤC TIÊU (SCOPE BẮT BUỘC): `$workDir`
 - Mọi lệnh terminal, tạo file, cấu hình mã nguồn, cài đặt gói BẮT BUỘC thực hiện trực tiếp tại thư mục `$workDir` (hoặc tạo thư mục con ngay trong `$workDir`). Tuyệt đối KHÔNG tạo ở scratch/ hay bất kỳ thư mục nào khác ngoài `$workDir`.
 - TUYỆT ĐỐI KHÔNG TỰ CHẠY LỆNH SERVER CHẠY NỀN VÔ TẬN (như `npm run dev`, `npm run start`, `node server.js`, `python manage.py runserver`, `flask run`). Hãy biên dịch kiểm tra lỗi bằng `npm run build` hoặc lệnh test tương tự, sau đó in rõ câu lệnh và hướng dẫn người dùng chạy server ở Terminal hoặc ngoài hệ thống.
 - Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn.
 - Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
 - Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''';
+      }
+
+      final cleanPrompt = '$prompt\n\n$promptSuffix';
 
       final m = cliName.toLowerCase();
 

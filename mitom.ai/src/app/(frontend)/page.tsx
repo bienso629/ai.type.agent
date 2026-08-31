@@ -1,52 +1,27 @@
 import React from 'react'
-import { getPayload } from 'payload'
 import configPromise from '@payload-config'
-import { FrontendApp, DEFAULT_PRODUCTS, Product, Category } from '@/components/frontend/FrontendApp'
+import { FrontendApp } from '@/components/frontend/FrontendApp'
+import { ALL_MODELS, parseRawModels, ApiModel } from '@/data/models-parser'
 
 export default async function HomePage() {
-  let products: Product[] = DEFAULT_PRODUCTS
+  let models: ApiModel[] = ALL_MODELS
 
   try {
-    const payload = await getPayload({ config: configPromise })
-    const prodDocs = await payload.find({
-      collection: 'products',
-      where: {
-        status: {
-          equals: 'active',
-        },
-      },
-      limit: 50,
+    const res = await fetch('https://api-us-ca.umodelverse.ai/v1/models', {
+      next: { revalidate: 300 },
     })
-
-    if (prodDocs.docs && prodDocs.docs.length > 0) {
-      products = prodDocs.docs.map((doc: any) => {
-        let tag: Category = 'chat'
-        const rawSlug = (doc.slug || '').toLowerCase()
-        const rawName = (doc.name || '').toLowerCase()
-        if (rawSlug.includes('token') || rawName.includes('token')) tag = 'token'
-        else if (rawSlug.includes('image') || rawSlug.includes('midjourney') || rawName.includes('ảnh')) tag = 'image'
-        else if (rawSlug.includes('cursor') || rawSlug.includes('code') || rawName.includes('lập trình')) tag = 'code'
-
-        return {
-          id: String(doc.id),
-          name: doc.name,
-          provider: doc.provider || 'Mì Tôm AI',
-          tag,
-          badge: doc.badge || undefined,
-          desc: doc.desc || 'Tài khoản chính chủ kích hoạt tự động.',
-          features: (doc.features || []).map((f: any) => (typeof f === 'string' ? f : f.item)),
-          accent: doc.accentColor || '#34d399',
-          initials: (doc.name || 'AI').substring(0, 2).toUpperCase(),
-          eta: doc.eta || 'Kích hoạt ~5 phút',
-        }
-      })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+        models = parseRawModels(data.data)
+      }
     }
   } catch (e) {
-    console.error('Lỗi khi tải products từ Payload CMS:', e)
-    products = DEFAULT_PRODUCTS
+    console.error('Lỗi khi fetch models từ API:', e)
+    models = ALL_MODELS
   }
 
   const adminRoute = (await configPromise).routes?.admin || '/admin'
 
-  return <FrontendApp products={products} adminRoute={adminRoute} />
+  return <FrontendApp models={models} adminRoute={adminRoute} />
 }

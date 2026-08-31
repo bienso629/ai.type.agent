@@ -16,6 +16,7 @@ import '../../core/services/native_ssh_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/attachment_hover_preview.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../core/widgets/chat_avatar.dart';
 import '../../models/attachment_item.dart';
@@ -1202,41 +1203,44 @@ class _ChatScreenState extends State<ChatScreen> {
                           spacing: 8,
                           runSpacing: 8,
                           children: msg.attachments.map((att) {
-                            return Material(
-                              color: AppColors.bgDark,
-                              borderRadius: BorderRadius.circular(4),
-                              child: InkWell(
+                            return AttachmentHoverPreview(
+                              item: att,
+                              child: Material(
+                                color: AppColors.bgDark,
                                 borderRadius: BorderRadius.circular(4),
-                                onTap: () => _downloadAttachment(att),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ConstrainedBox(
-                                        constraints: const BoxConstraints(maxWidth: 160),
-                                        child: Text(
-                                          att.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(4),
+                                  onTap: () => _downloadAttachment(att),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(maxWidth: 160),
+                                          child: Text(
+                                            att.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '(${att.formattedSize})',
-                                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Text(
-                                        'Tải xuống',
-                                        style: TextStyle(fontSize: 10, color: AppColors.accentCyan, fontWeight: FontWeight.w500),
-                                      ),
-                                    ],
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '(${att.formattedSize})',
+                                          style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Text(
+                                          'Tải xuống',
+                                          style: TextStyle(fontSize: 10, color: AppColors.accentCyan, fontWeight: FontWeight.w500),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1681,101 +1685,104 @@ class _ChatScreenState extends State<ChatScreen> {
                               ? AppColors.accent.withValues(alpha: 0.12)
                               : AppColors.accentCyan.withValues(alpha: 0.12));
 
-                      return Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: chipBgColor,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: chipBorderColor),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                                  size: 14,
-                                  color: att.isImage ? AppColors.accentCyan : AppColors.warning,
-                                ),
-                                const SizedBox(width: 6),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 160),
-                                  child: Text(
-                                    att.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textWhite),
+                      return AttachmentHoverPreview(
+                        item: att,
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: chipBgColor,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: chipBorderColor),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                                    size: 14,
+                                    color: att.isImage ? AppColors.accentCyan : AppColors.warning,
                                   ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '(${att.formattedSize})',
-                                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                ),
-                                const SizedBox(width: 6),
-                                if (att.isUploading) ...[
-                                  SizedBox(
-                                    width: 10,
-                                    height: 10,
-                                    child: CircularProgressIndicator(
-                                      value: att.uploadProgress > 0 ? att.uploadProgress : null,
-                                      strokeWidth: 1.5,
-                                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                                  const SizedBox(width: 6),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 160),
+                                    child: Text(
+                                      att.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textWhite),
                                     ),
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${(att.uploadProgress * 100).toInt()}%',
-                                    style: const TextStyle(
-                                      fontSize: 9.5,
-                                      color: AppColors.accentCyan,
-                                      fontWeight: FontWeight.bold,
+                                    '(${att.formattedSize})',
+                                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  if (att.isUploading) ...[
+                                    SizedBox(
+                                      width: 10,
+                                      height: 10,
+                                      child: CircularProgressIndicator(
+                                        value: att.uploadProgress > 0 ? att.uploadProgress : null,
+                                        strokeWidth: 1.5,
+                                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${(att.uploadProgress * 100).toInt()}%',
+                                      style: const TextStyle(
+                                        fontSize: 9.5,
+                                        color: AppColors.accentCyan,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                  ] else if (att.isUploaded) ...[
+                                    const Tooltip(
+                                      message: 'Đã lưu trên VPS',
+                                      child: Icon(Icons.check_circle_rounded, size: 14, color: AppColors.accent),
+                                    ),
+                                    const SizedBox(width: 6),
+                                  ] else if (att.error != null) ...[
+                                    Tooltip(
+                                      message: att.error!,
+                                      child: const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.danger),
+                                    ),
+                                    const SizedBox(width: 6),
+                                  ],
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _attachedFiles.removeAt(idx);
+                                      });
+                                    },
+                                    child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
+                                  ),
+                                ],
+                              ),
+                              if (att.isUploading) ...[
+                                const SizedBox(height: 4),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: SizedBox(
+                                    width: 160,
+                                    child: LinearProgressIndicator(
+                                      value: att.uploadProgress > 0 ? att.uploadProgress : null,
+                                      minHeight: 2.5,
+                                      backgroundColor: AppColors.bgDark,
+                                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                ] else if (att.isUploaded) ...[
-                                  const Tooltip(
-                                    message: 'Đã lưu trên VPS',
-                                    child: Icon(Icons.check_circle_rounded, size: 14, color: AppColors.accent),
-                                  ),
-                                  const SizedBox(width: 6),
-                                ] else if (att.error != null) ...[
-                                  Tooltip(
-                                    message: att.error!,
-                                    child: const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.danger),
-                                  ),
-                                  const SizedBox(width: 6),
-                                ],
-                                GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _attachedFiles.removeAt(idx);
-                                    });
-                                  },
-                                  child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
                                 ),
                               ],
-                            ),
-                            if (att.isUploading) ...[
-                              const SizedBox(height: 4),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: SizedBox(
-                                  width: 160,
-                                  child: LinearProgressIndicator(
-                                    value: att.uploadProgress > 0 ? att.uploadProgress : null,
-                                    minHeight: 2.5,
-                                    backgroundColor: AppColors.bgDark,
-                                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
-                                  ),
-                                ),
-                              ),
                             ],
-                          ],
+                          ),
                         ),
                       );
                     }).toList(),

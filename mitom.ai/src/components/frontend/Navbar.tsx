@@ -80,15 +80,6 @@ export const Navbar: React.FC<NavbarProps> = ({ adminRoute = '/admin', onOpenLoo
             <Search size={15} />
             <span>Tra cứu đơn</span>
           </button>
-          <a
-            href={adminRoute}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-admin"
-          >
-            <span>Quản trị</span>
-            <ExternalLink size={14} />
-          </a>
         </nav>
 
         {/* Mobile menu toggle */}
@@ -135,14 +126,6 @@ export const Navbar: React.FC<NavbarProps> = ({ adminRoute = '/admin', onOpenLoo
             }}
           >
             Tra Cứu Đơn Hàng
-          </a>
-          <a
-            href={adminRoute}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mobile-admin-btn"
-          >
-            Trang Quản Trị Admin
           </a>
         </div>
       )}

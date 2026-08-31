@@ -26,7 +26,7 @@ class LogsProvider extends ChangeNotifier {
   String get logType => _logType;
 
   LogsProvider() {
-    fetchLogs();
+    // Không tự động chạy lệnh Process hoặc SSH ngay khi khởi tạo để tiết kiệm tài nguyên
   }
 
   void setServer(ServerModel? srv) {

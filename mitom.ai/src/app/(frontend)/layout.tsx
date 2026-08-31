@@ -3,8 +3,8 @@ import type { Metadata } from 'next'
 import './styles.css'
 
 export const metadata: Metadata = {
-  title: 'Mì Tôm AI - Nạp Token & Kích Hoạt Công Cụ AI Tự Động 24/7',
-  description: 'Một số dư, dùng mọi công cụ AI: ChatGPT Plus, Claude Pro, Midjourney, Cursor, Token API. Nạp một lần, dùng dần, không hết hạn.',
+  title: 'Mì Tôm AI - Cổng API & Danh Mục 130+ Mô Hình AI Sẵn Sàng 24/7',
+  description: 'Một số dư, gọi mọi model AI: DeepSeek, GLM-5.3, Qwen, Doubao, Kling Video, Vidu, Wan-AI. Chuẩn định dạng OpenAI API qua endpoint tốc độ cao.',
   icons: {
     icon: '/logo.png',
   },

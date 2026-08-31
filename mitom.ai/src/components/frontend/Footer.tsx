@@ -64,10 +64,7 @@ export const Footer: React.FC<FooterProps> = ({ adminRoute = '/admin' }) => {
                 <a href="#tra-cuu">Kiểm tra trạng thái nạp</a>
               </li>
               <li>
-                <a href={adminRoute} target="_blank" rel="noopener noreferrer" className="inline-flex-center">
-                  <span>Trang Quản Trị Hệ Thống</span>
-                  <ExternalLink size={12} className="ml-1" />
-                </a>
+                <a href="#huong-dan">Hướng dẫn & Giải đáp</a>
               </li>
               <li>
                 <span className="text-muted">Thời gian phục vụ: 24/7/365</span>
@@ -102,8 +99,6 @@ export const Footer: React.FC<FooterProps> = ({ adminRoute = '/admin' }) => {
           </div>
           <div className="footer-sub-links">
             <a href="#tra-cuu">Tra cứu đơn</a>
-            <span>•</span>
-            <a href={adminRoute}>Admin Panel</a>
           </div>
         </div>
       </div>
