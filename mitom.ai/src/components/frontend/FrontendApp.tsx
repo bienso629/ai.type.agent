@@ -4,6 +4,8 @@ import React, { useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import { ApiModel, ALL_MODELS } from '@/data/models-parser'
 import { ModelsSection } from './ModelsSection'
+import { useAuth } from '@/context/AuthContext'
+import { UserProfileModal } from './UserProfileModal'
 
 export type Page = 'home' | 'topup' | 'success'
 
@@ -576,11 +578,13 @@ export function FrontendApp({
   models?: ApiModel[]
   adminRoute?: string
 }) {
+  const { user, openLoginModal } = useAuth()
   const [page, setPage] = useState<Page>('home')
   const [topup, setTopup] = useState<TopUp | null>(null)
   const [orderInfo, setOrderInfo] = useState<any>(null)
   const [openFaq, setOpenFaq] = useState<number | null>(0)
   const [isLookupOpen, setIsLookupOpen] = useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
 
   const navigate = (p: Page) => {
     setPage(p)
@@ -666,12 +670,31 @@ export function FrontendApp({
             >
               Tra cứu
             </button>
-            <a
-              href={adminRoute}
-              className="glow-button rounded-md bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
-            >
-              Tài khoản
-            </a>
+            {user ? (
+              <button
+                onClick={() => setIsProfileOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-border bg-secondary/60 px-3.5 py-2 text-xs font-bold text-foreground transition-all hover:border-primary/50"
+              >
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[11px] text-primary overflow-hidden font-mono font-bold">
+                  {user.avatar ? (
+                    <img src={user.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    (user.name || user.email).charAt(0).toUpperCase()
+                  )}
+                </div>
+                <span className="max-w-[120px] truncate">{user.name || user.email.split('@')[0]}</span>
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                  {user.balance.toLocaleString('vi-VN')}đ
+                </span>
+              </button>
+            ) : (
+              <button
+                onClick={openLoginModal}
+                className="glow-button rounded-md bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
+              >
+                Đăng nhập
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -714,6 +737,7 @@ export function FrontendApp({
       </footer>
 
       <OrderLookupModal isOpen={isLookupOpen} onClose={() => setIsLookupOpen(false)} />
+      <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
     </div>
   )
 }

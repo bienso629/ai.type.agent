@@ -131,6 +131,14 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  name?: string | null;
+  avatar?: string | null;
+  authProvider?: ('local' | 'google' | 'tadu') | null;
+  taduUserId?: string | null;
+  googleId?: string | null;
+  balance?: number | null;
+  apiKey?: string | null;
+  role?: ('admin' | 'user') | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -352,6 +360,14 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  name?: T;
+  avatar?: T;
+  authProvider?: T;
+  taduUserId?: T;
+  googleId?: T;
+  balance?: T;
+  apiKey?: T;
+  role?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;

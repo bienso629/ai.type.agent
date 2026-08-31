@@ -1,6 +1,7 @@
 import React from 'react'
 import type { Metadata } from 'next'
 import './styles.css'
+import { ClientProviders } from '@/components/frontend/ClientProviders'
 
 export const metadata: Metadata = {
   title: 'Mì Tôm AI - Cổng API & Danh Mục 130+ Mô Hình AI Sẵn Sàng 24/7',
@@ -16,7 +17,7 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
   return (
     <html lang="vi">
       <body className="min-h-screen w-full bg-background text-foreground font-sans antialiased">
-        {children}
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   )
