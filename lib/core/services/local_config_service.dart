@@ -26,6 +26,13 @@ class LocalConfigService {
     'proxy_api_key': '',
     'proxy_base_url': 'https://openrouter.ai/api/v1',
     'ai_model': 'glm-5.3',
+    'custom_prompt': '''(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
+- THƯ MỤC LÀM VIỆC MỤC TIÊU (SCOPE BẮT BUỘC): {workDir}
+- Mọi lệnh terminal, tạo file, cấu hình mã nguồn, cài đặt gói BẮT BUỘC thực hiện trực tiếp tại thư mục {workDir} (hoặc tạo thư mục con ngay trong {workDir}). Tuyệt đối KHÔNG tạo ở scratch/ hay bất kỳ thư mục nào khác ngoài {workDir}.
+- TUYỆT ĐỐI KHÔNG TỰ CHẠY LỆNH SERVER CHẠY NỀN VÔ TẬN (như `npm run dev`, `npm run start`, `node server.js`, `python manage.py runserver`, `flask run`). Hãy biên dịch kiểm tra lỗi bằng `npm run build` hoặc lệnh test tương tự, sau đó in rõ câu lệnh và hướng dẫn người dùng chạy server ở Terminal hoặc ngoài hệ thống.
+- Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn.
+- Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
+- Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''',
     'remote_work_dir': '/root',
     'api_port': 8000,
     'secret_token': 'super_secret_token_123',

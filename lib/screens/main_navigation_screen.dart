@@ -12,7 +12,6 @@ import 'chat/chat_screen.dart';
 import 'servers/servers_screen.dart';
 import 'server_setup/server_setup_screen.dart';
 import 'terminal/terminal_screen.dart';
-import 'logs/logs_screen.dart';
 import 'settings/settings_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -57,8 +56,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ServersScreen(), // 1: servers
     ServerSetupScreen(), // 2: setup
     TerminalScreen(), // 3: terminal
-    LogsScreen(), // 4: logs
-    SettingsScreen(), // 5: settings
+    SettingsScreen(), // 4: settings
   ];
 
   int get _stackIndex {
@@ -71,10 +69,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         return 2;
       case 'terminal':
         return 3;
-      case 'logs':
-        return 4;
       case 'settings':
-        return 5;
+        return 4;
       default:
         return 0;
     }
@@ -114,14 +110,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         'icon': Icons.terminal_rounded,
         'mobileIcon': Icons.terminal_rounded,
         'shortLabel': 'Terminal',
-      },
-      {
-        'key': 'logs',
-        'title': 'Logs',
-        'subtitle': 'Nhật ký thực thi câu lệnh và hoạt động',
-        'icon': Icons.description_outlined,
-        'mobileIcon': Icons.description_rounded,
-        'shortLabel': 'Logs',
       },
       {
         'key': 'settings',

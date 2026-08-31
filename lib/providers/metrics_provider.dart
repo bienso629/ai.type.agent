@@ -24,13 +24,13 @@ class MetricsProvider extends ChangeNotifier {
   List<FlSpot> get ramHistory => _ramHistory;
 
   MetricsProvider() {
-    fetchMetrics();
-    startPolling();
+    // Không tự động polling chạy ngầm liên tục để tránh chiếm dụng tài nguyên hệ thống và làm lag máy.
+    // Chỉ kích hoạt lấy thông số khi người dùng chủ động yêu cầu hoặc mở màn hình giám sát.
   }
 
   void startPolling() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
       fetchMetrics(silent: true);
     });
   }

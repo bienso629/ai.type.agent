@@ -5,6 +5,7 @@ import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../providers/server_provider.dart';
+import '../logs/logs_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,6 +19,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _modelCtrl = TextEditingController(text: 'glm-5.3');
   final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://openrouter.ai/api/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
+  final TextEditingController _promptCtrl = TextEditingController();
+
+  static const String defaultPrompt = '''(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
+- THƯ MỤC LÀM VIỆC MỤC TIÊU (SCOPE BẮT BUỘC): {workDir}
+- Mọi lệnh terminal, tạo file, cấu hình mã nguồn, cài đặt gói BẮT BUỘC thực hiện trực tiếp tại thư mục {workDir} (hoặc tạo thư mục con ngay trong {workDir}). Tuyệt đối KHÔNG tạo ở scratch/ hay bất kỳ thư mục nào khác ngoài {workDir}.
+- TUYỆT ĐỐI KHÔNG TỰ CHẠY LỆNH SERVER CHẠY NỀN VÔ TẬN (như `npm run dev`, `npm run start`, `node server.js`, `python manage.py runserver`, `flask run`). Hãy biên dịch kiểm tra lỗi bằng `npm run build` hoặc lệnh test tương tự, sau đó in rõ câu lệnh và hướng dẫn người dùng chạy server ở Terminal hoặc ngoài hệ thống.
+- Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn.
+- Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
+- Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''';
 
   @override
   void initState() {
@@ -30,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _modelCtrl.dispose();
     _baseUrlCtrl.dispose();
     _apiKeyCtrl.dispose();
+    _promptCtrl.dispose();
     super.dispose();
   }
 
@@ -40,6 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _modelCtrl.text = (m.contains('cli') || m == 'agy' || m == 'claude') ? 'glm-5.3' : m;
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
+      _promptCtrl.text = cfg['custom_prompt']?.toString() ?? defaultPrompt;
     } catch (_) {}
   }
 
@@ -49,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'ai_model': _modelCtrl.text.trim(),
         'proxy_base_url': _baseUrlCtrl.text.trim(),
         'proxy_api_key': _apiKeyCtrl.text.trim(),
+        'custom_prompt': _promptCtrl.text.trim(),
       });
       if (mounted) {
         if (ok) {
@@ -59,7 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             customBaseUrl: _baseUrlCtrl.text.trim(),
             customApiKey: _apiKeyCtrl.text.trim(),
           );
-          AppToast.success(context, 'Đã lưu cấu hình AI Model & API thành công!');
+          AppToast.success(context, 'Đã lưu cấu hình AI Model, API & Custom Prompt thành công!');
         } else {
           AppToast.error(context, 'Lưu cấu hình thất bại!');
         }
@@ -77,6 +90,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _modelCtrl.text = defaultModel;
     });
     AppToast.info(context, 'Đã áp dụng mẫu cấu hình: $name');
+  }
+
+  void _resetCustomPrompt() {
+    setState(() {
+      _promptCtrl.text = defaultPrompt;
+    });
+    AppToast.info(context, 'Đã khôi phục Prompt mẫu mặc định');
   }
 
   @override
@@ -119,7 +139,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ),
                   icon: const Icon(Icons.save_rounded, size: 16),
                   label: const Text('Lưu Cấu Hình', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   onPressed: _saveAISettings,
@@ -222,6 +245,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             prefixIcon: Icon(Icons.key_rounded, size: 18),
                           ),
                         ),
+                        const Divider(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Custom Prompt & Yêu Cầu Thực Thi AI Model / CLI Agent',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            ),
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              icon: const Icon(Icons.restore_rounded, size: 14, color: AppColors.accentCyan),
+                              label: const Text('Mặc Định', style: TextStyle(fontSize: 11, color: AppColors.accentCyan)),
+                              onPressed: _resetCustomPrompt,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Toàn bộ yêu cầu chỉ thị và quy tắc thực thi (Scope làm việc {workDir}, quy chuẩn tiếng Việt, không chạy server nền, hoàn tất đồng bộ...). Có thể tùy chỉnh theo ý muốn.',
+                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _promptCtrl,
+                          maxLines: 8,
+                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace', height: 1.45, color: AppColors.textWhite),
+                          decoration: const InputDecoration(
+                            hintText: 'Nhập custom prompt & yêu cầu dành cho AI Model...',
+                            contentPadding: EdgeInsets.all(12),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -300,6 +358,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 'AI Type Desktop v1.3.0',
                                 tooltip: 'Phiên bản Flutter Desktop Native Client',
                               ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        const Divider(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Nhật Ký Hoạt Động & Lịch Sử Lệnh',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Theo dõi chi tiết logs thực thi của AI Agent và hệ thống (Local & Máy chủ từ xa)',
+                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.inputBg,
+                                foregroundColor: AppColors.textWhite,
+                                side: const BorderSide(color: AppColors.borderDark),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              ),
+                              icon: const Icon(Icons.receipt_long_rounded, size: 16, color: AppColors.accent),
+                              label: const Text('Mở Hộp Thoại Nhật Ký (Logs)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                              onPressed: () => LogsDialog.show(context),
                             ),
                           ],
                         ),
