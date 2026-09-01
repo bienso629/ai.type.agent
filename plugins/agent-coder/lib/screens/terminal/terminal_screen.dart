@@ -1210,7 +1210,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
           Expanded(
             child: Container(
               color: AppColors.bgDark,
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.zero,
               child: _buildSplitWorkspace(serverProvider),
             ),
           ),
@@ -1542,7 +1542,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               // Terminal View (Chuẩn cấu hình hiển thị và con trỏ Ubuntu Terminal)
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  padding: EdgeInsets.zero,
                   child: TerminalView(
                     pane.terminal,
                     controller: pane.controller,
