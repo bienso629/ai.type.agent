@@ -29,6 +29,13 @@ static void my_application_activate(GApplication* application) {
   // with rounded corners and window_manager integration.
   gtk_window_set_decorated(window, FALSE);
 
+  // Enable RGBA visual on GTK window for true transparent rounded corners without OS background
+  GdkScreen* screen = gtk_window_get_screen(window);
+  GdkVisual* visual = gdk_screen_get_rgba_visual(screen);
+  if (visual != nullptr && gdk_screen_is_composited(screen)) {
+    gtk_widget_set_visual(GTK_WIDGET(window), visual);
+  }
+
   gtk_window_set_title(window, "AI Type Agent");
   gtk_window_set_default_size(window, 1280, 720);
 

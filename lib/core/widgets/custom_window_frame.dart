@@ -71,27 +71,19 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> with WindowListen
 
     return Material(
       type: MaterialType.transparency,
+      color: Colors.transparent,
       child: Container(
         color: Colors.transparent,
         child: Container(
           decoration: BoxDecoration(
+            color: Colors.transparent,
             borderRadius: borderRadius,
             border: _isMaximized
                 ? null
                 : Border.all(
-                    color: AppColors.borderDark,
+                    color: const Color(0xFF000000), // Border màu đen hoàn toàn
                     width: 1.2,
                   ),
-            boxShadow: _isMaximized
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 16,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
           ),
           child: ClipRRect(
             borderRadius: borderRadius,
@@ -106,7 +98,7 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> with WindowListen
                     decoration: const BoxDecoration(
                       color: AppColors.sidebarBg,
                       border: Border(
-                        bottom: BorderSide(color: AppColors.borderDark, width: 0.8),
+                        bottom: BorderSide(color: Color(0xFF000000), width: 0.8), // Viền ngăn cách màu đen
                       ),
                     ),
                     child: Row(
