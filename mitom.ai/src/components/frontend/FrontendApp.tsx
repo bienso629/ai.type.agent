@@ -71,7 +71,7 @@ export function Logo({ onClick }: { onClick?: () => void }) {
       }}
       className="flex items-center gap-3 group"
     >
-      <div className="relative h-9 w-9 overflow-hidden rounded-xl bg-primary/10 flex items-center justify-center p-1">
+      <div className="relative h-9 w-9 flex items-center justify-center">
         <Image
           src="/logo.png"
           alt="Mì Tôm AI Logo"

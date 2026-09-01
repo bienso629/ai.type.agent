@@ -9,14 +9,20 @@ export const metadata: Metadata = {
   icons: {
     icon: '/logo.png',
   },
+  other: {
+    'cf-rocket-loader': 'off',
+  },
 }
 
 export default async function RootLayout(props: { children: React.ReactNode }) {
   const { children } = props
 
   return (
-    <html lang="vi">
-      <body className="min-h-screen w-full bg-background text-foreground font-sans antialiased">
+    <html lang="vi" data-cfasync="false">
+      <head>
+        <meta data-cfasync="false" />
+      </head>
+      <body data-cfasync="false" className="min-h-screen w-full bg-background text-foreground font-sans antialiased">
         <ClientProviders>{children}</ClientProviders>
       </body>
     </html>

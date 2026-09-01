@@ -142,14 +142,14 @@ export function UserProfileModal({
               logout()
               onClose()
             }}
-            className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-colors"
+            className="flex items-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-colors"
           >
             <LogOut size={14} />
             Đăng xuất
           </button>
           <button
             onClick={onClose}
-            className="rounded-lg bg-secondary px-5 py-2 text-xs font-semibold text-foreground hover:bg-secondary/80 transition-colors"
+            className="rounded-md bg-secondary px-5 py-2 text-xs font-semibold text-foreground hover:bg-secondary/80 transition-colors"
           >
             Đóng
           </button>
