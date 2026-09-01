@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
+import '../core/services/storage_service.dart';
 import '../models/attachment_item.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
@@ -180,6 +181,9 @@ class ChatProvider extends ChangeNotifier {
     }
     notifyListeners();
     await _api.updateChatSessionScope(updated.id, cleanScope);
+    if (cleanScope != null && cleanScope.isNotEmpty) {
+      await StorageService().addRecentScope(cleanScope);
+    }
   }
 
   Future<void> selectSession(ChatSessionModel session) async {

@@ -14,6 +14,7 @@ import '../../core/services/api_service.dart';
 import '../../core/services/clipboard_service.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/services/pdf_export_service.dart';
+import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/attachment_hover_preview.dart';
@@ -49,6 +50,10 @@ class _ChatScreenState extends State<ChatScreen> {
   // Active session recent questions state
   final Map<String, List<String>> _sessionRecentQuestions = {};
   final Set<String> _loadingSessionQuestions = {};
+
+  // Prompt history navigation state
+  int _promptHistoryIndex = -1;
+  String _draftPrompt = '';
 
   // Inline slash autocomplete state
   List<String> _inlineDirSuggestions = [];
@@ -267,6 +272,59 @@ class _ChatScreenState extends State<ChatScreen> {
             _currentSlashWord = '';
           });
           return KeyEventResult.handled;
+        }
+      } else {
+        // Lấy danh sách lịch sử câu hỏi của session hiện tại từ provider
+        final chat = context.read<ChatProvider>();
+        final currentMessages = chat.messages;
+        final history = <String>[];
+        for (final m in currentMessages) {
+          if (m.role == 'user' && m.content.trim().isNotEmpty) {
+            final trimmed = m.content.trim();
+            if (history.isEmpty || history.last != trimmed) {
+              history.add(trimmed);
+            }
+          }
+        }
+
+        if (history.isNotEmpty) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            final selection = _textController.selection;
+            final isCursorAtStart = selection.baseOffset <= 0 || _textController.text.isEmpty || !_textController.text.contains('\n');
+            if (isCursorAtStart || _promptHistoryIndex != -1) {
+              if (_promptHistoryIndex == -1) {
+                _draftPrompt = _textController.text;
+                _promptHistoryIndex = history.length - 1;
+              } else if (_promptHistoryIndex > 0) {
+                _promptHistoryIndex--;
+              }
+
+              final targetText = history[_promptHistoryIndex];
+              _textController.value = TextEditingValue(
+                text: targetText,
+                selection: TextSelection.collapsed(offset: targetText.length),
+              );
+              return KeyEventResult.handled;
+            }
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            if (_promptHistoryIndex != -1) {
+              if (_promptHistoryIndex < history.length - 1) {
+                _promptHistoryIndex++;
+                final targetText = history[_promptHistoryIndex];
+                _textController.value = TextEditingValue(
+                  text: targetText,
+                  selection: TextSelection.collapsed(offset: targetText.length),
+                );
+              } else {
+                _promptHistoryIndex = -1;
+                _textController.value = TextEditingValue(
+                  text: _draftPrompt,
+                  selection: TextSelection.collapsed(offset: _draftPrompt.length),
+                );
+              }
+              return KeyEventResult.handled;
+            }
+          }
         }
       }
     }
@@ -740,6 +798,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final attachmentsToSend = _attachedFiles.isNotEmpty ? List<AttachmentItem>.from(_attachedFiles) : null;
     _textController.clear();
+    _promptHistoryIndex = -1;
+    _draftPrompt = '';
     setState(() {
       _attachedFiles.clear();
     });
@@ -784,6 +844,8 @@ class _ChatScreenState extends State<ChatScreen> {
     // 1. Chỉ cuộn xuống cuối và nạp lịch sử câu hỏi gần đây khi lần đầu chọn/mở Hộp hội thoại
     if (_lastSessionId != chat.currentSession?.id) {
       _lastSessionId = chat.currentSession?.id;
+      _promptHistoryIndex = -1;
+      _draftPrompt = '';
       _wasGenerating = chat.isGenerating;
       if (chat.currentSession?.id != null) {
         _loadRecentQuestionsForSession(chat.currentSession!.id);
@@ -2811,9 +2873,11 @@ class _ScopePickerDialog extends StatefulWidget {
 
 class _ScopePickerDialogState extends State<_ScopePickerDialog> {
   final ApiService _api = ApiService();
+  final StorageService _storage = StorageService();
   late final TextEditingController _controller;
   final FocusNode _dialogFocusNode = FocusNode();
   List<String> _suggestions = [];
+  List<String> _recentScopes = [];
   bool _isLoading = false;
   int _selectedIndex = 0;
   Timer? _debounce;
@@ -2838,7 +2902,22 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
     super.initState();
     _controller = TextEditingController(text: widget.currentScope ?? '');
     _dialogFocusNode.onKeyEvent = _handleDialogKeyEvent;
+    _loadRecentScopes();
     _loadSuggestions(_controller.text);
+  }
+
+  Future<void> _loadRecentScopes() async {
+    final list = await _storage.getRecentScopes();
+    if (mounted) {
+      setState(() {
+        _recentScopes = list;
+      });
+    }
+  }
+
+  Future<void> _removeRecentScope(String path) async {
+    await _storage.removeRecentScope(path);
+    await _loadRecentScopes();
   }
 
   @override
@@ -2954,6 +3033,110 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
               ],
             ),
             const SizedBox(height: 10),
+
+            // Recent Scopes History Section
+            if (_recentScopes.isNotEmpty) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 12, color: AppColors.accentCyan),
+                      SizedBox(width: 4),
+                      Text(
+                        'Lịch sử thư mục đã làm việc:',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.accentCyan,
+                        ),
+                      ),
+                    ],
+                  ),
+                  InkWell(
+                    onTap: () async {
+                      await _storage.clearRecentScopes();
+                      await _loadRecentScopes();
+                    },
+                    borderRadius: BorderRadius.circular(3),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Text(
+                        'Xóa lịch sử',
+                        style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _recentScopes.map((scopePath) {
+                  final isSelected = _controller.text.trim() == scopePath;
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.22)
+                          : AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primaryLight : AppColors.borderDark,
+                        width: 1,
+                      ),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          _controller.text = scopePath;
+                          _loadSuggestions(scopePath);
+                        },
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.folder_special_rounded,
+                                size: 12,
+                                color: isSelected ? AppColors.primaryLight : AppColors.accentCyan,
+                              ),
+                              const SizedBox(width: 4),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 320),
+                                child: Text(
+                                  scopePath,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 11,
+                                    color: isSelected ? AppColors.primaryLight : AppColors.textBody,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => _removeRecentScope(scopePath),
+                                borderRadius: BorderRadius.circular(3),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(1),
+                                  child: Icon(Icons.close_rounded, size: 12, color: AppColors.textMuted),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 10),
+            ],
 
             // Quick preset chips
             Wrap(
