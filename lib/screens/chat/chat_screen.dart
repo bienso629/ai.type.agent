@@ -2484,47 +2484,47 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ),
                                 ),
 
-                                // Expanded Section: Recent Questions List
-                                if (isSelected) ...[
-                                  Container(
-                                    width: double.infinity,
-                                    margin: const EdgeInsets.only(left: 10, right: 6, bottom: 6),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.bgDark.withValues(alpha: 0.7),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.6)),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            const Row(
-                                              children: [
-                                                Icon(Icons.history_rounded, size: 11, color: AppColors.accentCyan),
-                                                SizedBox(width: 4),
-                                                Text(
-                                                  'Câu hỏi gần đây',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: AppColors.accentCyan,
-                                                    letterSpacing: 0.3,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            if (isLoadingQuestions)
-                                              const SizedBox(
-                                                width: 9,
-                                                height: 9,
-                                                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accentCyan),
-                                              ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
+                                 // Expanded Section: Recent Questions List
+                                 if (isSelected) ...[
+                                   Container(
+                                     width: double.infinity,
+                                     margin: const EdgeInsets.only(left: 10, right: 8, top: 4, bottom: 8),
+                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                     decoration: BoxDecoration(
+                                       color: AppColors.bgDark.withValues(alpha: 0.7),
+                                       borderRadius: BorderRadius.circular(4),
+                                       border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.6)),
+                                     ),
+                                     child: Column(
+                                       crossAxisAlignment: CrossAxisAlignment.start,
+                                       children: [
+                                         Row(
+                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                           children: [
+                                             const Row(
+                                               children: [
+                                                 Icon(Icons.history_rounded, size: 12, color: AppColors.accentCyan),
+                                                 SizedBox(width: 5),
+                                                 Text(
+                                                   'Câu hỏi gần đây',
+                                                   style: TextStyle(
+                                                     fontSize: 10.5,
+                                                     fontWeight: FontWeight.bold,
+                                                     color: AppColors.accentCyan,
+                                                     letterSpacing: 0.3,
+                                                   ),
+                                                 ),
+                                               ],
+                                             ),
+                                             if (isLoadingQuestions)
+                                               const SizedBox(
+                                                 width: 9,
+                                                 height: 9,
+                                                 child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accentCyan),
+                                               ),
+                                           ],
+                                         ),
+                                         const SizedBox(height: 6),
                                         if (isLoadingQuestions && recentQuestions.isEmpty)
                                           const Padding(
                                             padding: EdgeInsets.symmetric(vertical: 4),
@@ -2537,85 +2537,31 @@ class _ChatScreenState extends State<ChatScreen> {
                                           )
                                         else
                                           ...recentQuestions.map((q) {
-                                            return Container(
-                                              margin: const EdgeInsets.only(top: 4),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.inputBg.withValues(alpha: 0.8),
-                                                borderRadius: BorderRadius.circular(4),
-                                                border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.4)),
-                                              ),
-                                              child: Material(
-                                                color: Colors.transparent,
-                                                child: InkWell(
-                                                  onTap: () => _scrollToQuestion(q, sess),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  hoverColor: AppColors.primary.withValues(alpha: 0.15),
-                                                  splashColor: Colors.transparent,
-                                                  highlightColor: Colors.transparent,
-                                                  child: Padding(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                                    child: Row(
-                                                      children: [
-                                                        Expanded(
-                                                          child: Tooltip(
-                                                            message: 'Cuộn tới câu hỏi này',
-                                                            waitDuration: const Duration(milliseconds: 400),
-                                                            child: Text(
-                                                              q,
-                                                              maxLines: 2,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: const TextStyle(fontSize: 10.5, color: AppColors.textBody, height: 1.25),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(width: 4),
-                                                        // Copy Button
-                                                        IconButton(
-                                                          padding: EdgeInsets.zero,
-                                                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                                                          hoverColor: Colors.transparent,
-                                                          splashColor: Colors.transparent,
-                                                          highlightColor: Colors.transparent,
-                                                          icon: const Icon(Icons.copy_rounded, size: 11.5, color: AppColors.textDim),
-                                                          tooltip: 'Sao chép câu hỏi',
-                                                          onPressed: () {
-                                                            Clipboard.setData(ClipboardData(text: q));
-                                                            AppToast.success(context, 'Đã sao chép câu hỏi vào bộ nhớ tạm!');
-                                                          },
-                                                        ),
-                                                        const SizedBox(width: 2),
-                                                        // Re-ask Button
-                                                        IconButton(
-                                                          padding: EdgeInsets.zero,
-                                                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                                                          hoverColor: Colors.transparent,
-                                                          splashColor: Colors.transparent,
-                                                          highlightColor: Colors.transparent,
-                                                          icon: const Icon(Icons.replay_rounded, size: 12, color: AppColors.primaryLight),
-                                                          tooltip: 'Hỏi lại câu này ngay',
-                                                          onPressed: () async {
-                                                            if (sess.id != chat.currentSession?.id) {
-                                                              await chat.selectSession(sess);
-                                                            }
-                                                            if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                                              if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                                                serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                                              } else {
-                                                                final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                                                if (matches.isNotEmpty) {
-                                                                  serverProvider.selectServer(matches.first);
-                                                                }
-                                                              }
-                                                            }
-                                                            _textController.text = q;
-                                                            _handleSend(chat, serverProvider);
-                                                          },
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
+                                            return _RecentQuestionItem(
+                                              question: q,
+                                              session: sess,
+                                              onTap: () => _scrollToQuestion(q, sess),
+                                              onCopy: () {
+                                                Clipboard.setData(ClipboardData(text: q));
+                                                AppToast.success(context, 'Đã sao chép câu hỏi vào bộ nhớ tạm!');
+                                              },
+                                              onReAsk: () async {
+                                                if (sess.id != chat.currentSession?.id) {
+                                                  await chat.selectSession(sess);
+                                                }
+                                                if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
+                                                  if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
+                                                    serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+                                                  } else {
+                                                    final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
+                                                    if (matches.isNotEmpty) {
+                                                      serverProvider.selectServer(matches.first);
+                                                    }
+                                                  }
+                                                }
+                                                _textController.text = q;
+                                                _handleSend(chat, serverProvider);
+                                              },
                                             );
                                           }),
                                       ],
@@ -4059,6 +4005,101 @@ class _CommandRunnerModalState extends State<_CommandRunnerModal> {
                   ),
                 ),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentQuestionItem extends StatefulWidget {
+  final String question;
+  final ChatSessionModel session;
+  final VoidCallback onTap;
+  final VoidCallback onCopy;
+  final VoidCallback onReAsk;
+
+  const _RecentQuestionItem({
+    required this.question,
+    required this.session,
+    required this.onTap,
+    required this.onCopy,
+    required this.onReAsk,
+  });
+
+  @override
+  State<_RecentQuestionItem> createState() => _RecentQuestionItemState();
+}
+
+class _RecentQuestionItemState extends State<_RecentQuestionItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = _isHovered ? AppColors.accentCyan : AppColors.textBody;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          margin: const EdgeInsets.only(top: 4, bottom: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Tooltip(
+                  message: 'Cuộn tới câu hỏi này',
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: Text(
+                    widget.question,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: textColor,
+                      height: 1.35,
+                      fontWeight: _isHovered ? FontWeight.w500 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // Copy Button
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                hoverColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                icon: Icon(
+                  Icons.copy_rounded,
+                  size: 11.5,
+                  color: _isHovered ? AppColors.textWhite : AppColors.textDim,
+                ),
+                tooltip: 'Sao chép câu hỏi',
+                onPressed: widget.onCopy,
+              ),
+              const SizedBox(width: 2),
+              // Re-ask Button
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                hoverColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                icon: const Icon(
+                  Icons.replay_rounded,
+                  size: 12,
+                  color: AppColors.primaryLight,
+                ),
+                tooltip: 'Hỏi lại câu này ngay',
+                onPressed: widget.onReAsk,
+              ),
             ],
           ),
         ),

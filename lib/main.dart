@@ -1,10 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 import 'core/services/database_service.dart';
 import 'core/services/local_config_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/custom_window_frame.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/gateway_provider.dart';
@@ -15,6 +18,25 @@ import 'screens/main_navigation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Window Manager on Desktop (Linux, Windows, macOS)
+  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    try {
+      await windowManager.ensureInitialized();
+      WindowOptions windowOptions = const WindowOptions(
+        size: Size(1280, 800),
+        minimumSize: Size(900, 600),
+        center: true,
+        backgroundColor: Colors.transparent,
+        skipTaskbar: false,
+        titleBarStyle: TitleBarStyle.hidden,
+      );
+      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.show();
+        await windowManager.focus();
+      });
+    } catch (_) {}
+  }
 
   // Initialize Storage Service
   await StorageService().init();
@@ -56,8 +78,12 @@ class AiTypeAgentApp extends StatelessWidget {
         title: 'AI Type Agent',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
-        home: const MainNavigationScreen(),
+        home: const CustomWindowFrame(
+          title: 'AI Type Agent - Coding & Infrastructure Management',
+          child: MainNavigationScreen(),
+        ),
       ),
     );
   }
 }
+
