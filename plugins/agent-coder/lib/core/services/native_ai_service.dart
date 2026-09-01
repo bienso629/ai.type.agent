@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models/attachment_item.dart';
@@ -19,6 +20,27 @@ class NativeAiService {
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
   final NativeSshService _sshService = NativeSshService();
+
+  static String _formatToUuid(String sessionId) {
+    if (RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(sessionId)) {
+      return sessionId.toLowerCase();
+    }
+    // DNS Namespace UUID bytes: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+    final nsBytes = [
+      0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
+      0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
+    ];
+    final inputBytes = utf8.encode(sessionId);
+    final hash = sha1.convert([...nsBytes, ...inputBytes]).bytes;
+    final bytes = List<int>.from(hash.sublist(0, 16));
+    // Set version 5 (bits 4-7 of byte 6 = 0101)
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    // Set variant RFC 4122 (bits 6-7 of byte 8 = 10)
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    String hex(int start, int end) => bytes.sublist(start, end).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
+  }
 
   static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
 Bạn có quyền thực thi lệnh bash/shell/terminal thực tế qua công cụ `execute_terminal_command`.
@@ -541,6 +563,8 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     final cfg = await _configService.loadConfig();
     final customPromptTemplate = cfg['custom_prompt']?.toString();
 
+    final convUuid = _formatToUuid(sessionId);
+
     if (targetServerModel != null) {
       final configuredBinary = targetServerModel.cliBinary.isNotEmpty ? targetServerModel.cliBinary : 'agy';
       
@@ -561,14 +585,21 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       final cleanPrompt = '$prompt\n\n$promptSuffix';
       final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
 
+      String remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
+      if (remoteBinary == 'agy' || remoteBinary.contains('antigravity')) {
+        remoteCliArgs = "--conversation '$convUuid' -p '$escapedPrompt' --dangerously-skip-permissions";
+      } else if (remoteBinary == 'claude' || remoteBinary.contains('claude')) {
+        remoteCliArgs = "--session-id '$convUuid' -p '$escapedPrompt' --dangerously-skip-permissions";
+      }
+
       final cmd = '''
 export PATH="\$HOME/.local/bin:\$HOME/bin:\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"
 if command -v $remoteBinary >/dev/null 2>&1; then
-  $remoteBinary -p '$escapedPrompt' --dangerously-skip-permissions 2>&1
+  $remoteBinary $remoteCliArgs 2>&1
 elif [ -f "\$HOME/.local/bin/$remoteBinary" ]; then
-  "\$HOME/.local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions 2>&1
+  "\$HOME/.local/bin/$remoteBinary" $remoteCliArgs 2>&1
 elif [ -f "/usr/local/bin/$remoteBinary" ]; then
-  "/usr/local/bin/$remoteBinary" -p '$escapedPrompt' --dangerously-skip-permissions 2>&1
+  "/usr/local/bin/$remoteBinary" $remoteCliArgs 2>&1
 else
   echo "LỖI: Máy chủ ${targetServerModel.name} (${targetServerModel.serverIp}) chưa được cài đặt '$remoteBinary'."
   echo ""
@@ -635,9 +666,9 @@ fi
 
       List<String> args;
       if (m.contains('claude')) {
-        args = ['-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+        args = ['--session-id', convUuid, '-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
       } else if (m.contains('antigravity') || m == 'agy') {
-        args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+        args = ['--conversation', convUuid, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
       } else if (m.contains('gemini')) {
         args = ['-p', cleanPrompt];
       } else {

@@ -29,13 +29,11 @@ export interface ApiModel {
 }
 
 export const MODEL_CATEGORIES: { id: ModelCategory; label: string; count?: number }[] = [
-  { id: 'all', label: 'Tất cả model' },
-  { id: 'chat', label: 'LLM Chat & Trí tuệ' },
-  { id: 'code', label: 'Lập trình (Code)' },
+  { id: 'all', label: 'Tất cả' },
+  { id: 'code', label: 'Lập trình' },
   { id: 'image', label: 'Tạo & Chỉnh sửa ảnh' },
   { id: 'video', label: 'Tạo Video & Lip-sync' },
   { id: 'audio', label: 'Giọng nói & TTS' },
-  { id: 'embedding', label: 'Embedding & Rerank' },
   { id: 'doc', label: 'Tài liệu & OCR' },
 ]
 

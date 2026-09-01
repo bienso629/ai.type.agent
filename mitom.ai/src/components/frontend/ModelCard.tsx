@@ -64,41 +64,54 @@ export function ModelCard({
         {/* Pricing snippet */}
         {model.pricing.length > 0 && (
           <div className="mt-4 rounded-lg border border-border/80 bg-secondary/30 p-3">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-mono text-[11px] text-muted-foreground">Bảng giá API:</span>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="shrink-0 font-mono text-[11px] font-medium text-muted-foreground whitespace-nowrap">Bảng giá API:</span>
               <button
                 type="button"
                 onClick={() => setShowPricingDetails(!showPricingDetails)}
-                className="font-mono text-[11px] text-primary hover:underline"
+                className="shrink-0 font-mono text-[11px] font-semibold text-primary hover:underline whitespace-nowrap"
               >
-                {showPricingDetails ? 'Thu gọn' : 'Xem chi tiết'}
+                {showPricingDetails ? 'Thu gọn ▲' : 'Xem chi tiết ▼'}
               </button>
             </div>
 
             {/* Concise preview */}
             {!showPricingDetails && model.highlightPrice && (
-              <div className="mt-1.5 font-mono text-xs font-semibold text-emerald">
-                {model.highlightPrice}
+              <div className="mt-2 flex items-center justify-between rounded border border-border/40 bg-background/50 font-mono text-xs">
+                <span className="text-muted-foreground">Giá cơ bản:</span>
+                <span className="font-bold text-emerald">{model.highlightPrice}</span>
               </div>
             )}
 
-            {/* Expanded Pricing */}
+            {/* Expanded Pricing Table */}
             {showPricingDetails && (
-              <div className="mt-2.5 space-y-2 border-t border-border/50 pt-2 text-[11px]">
+              <div className="mt-2.5 space-y-3 border-t border-border/50 pt-2.5 text-[11px]">
                 {model.pricing.map((p, idx) => (
-                  <div key={idx} className="space-y-1">
+                  <div key={idx} className="space-y-1.5">
                     {model.pricing.length > 1 && (
-                      <div className="font-medium text-foreground/80">{p.condition}</div>
+                      <div className="rounded bg-background/60 px-2 py-0.5 font-mono text-[10px] font-semibold text-foreground/90">
+                        {p.condition}
+                      </div>
                     )}
-                    <div className="space-y-0.5 font-mono text-muted-foreground">
-                      {p.rates.map((r, rIdx) => (
-                        <div key={rIdx} className="flex justify-between">
-                          <span>{r.item}:</span>
-                          <span className="font-semibold text-foreground">
-                            {r.price} {r.currency}/{r.unit}
-                          </span>
-                        </div>
-                      ))}
+                    <div className="overflow-hidden rounded border border-border/50 bg-background/40">
+                      <table className="w-full text-left font-mono">
+                        <thead>
+                          <tr className="border-b border-border/50 bg-secondary/50 text-[10px] uppercase text-muted-foreground">
+                            <th className="font-semibold">Mục tính phí</th>
+                            <th className="text-right font-semibold">Đơn giá</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/30 text-muted-foreground">
+                          {p.rates.map((r, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-secondary/30 transition-colors">
+                              <td className="text-foreground/80 font-medium">{r.item}</td>
+                              <td className="text-right font-bold text-foreground whitespace-nowrap">
+                                {r.price} {r.currency}/{r.unit}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 ))}
@@ -116,7 +129,7 @@ export function ModelCard({
               className="h-1.5 w-1.5 rounded-full bg-emerald"
               style={{ animation: 'tokenpulse 2s ease-in-out infinite' }}
             />{' '}
-            Sẵn sàng trên Endpoint
+            Sẵn sàng
           </span>
 
           <button

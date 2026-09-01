@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pty/flutter_pty.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 import '../../core/services/native_ssh_service.dart';
+import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
@@ -32,6 +34,8 @@ class TerminalPaneItem {
   bool isConnected = false;
   bool isConnecting = false;
 
+  String? workingDirectory;
+
   // Split state specifically for this window/pane
   TerminalSplitDirection splitDirection = TerminalSplitDirection.none;
   TerminalPaneItem? childPane;
@@ -41,12 +45,58 @@ class TerminalPaneItem {
     required this.title,
     this.isRemoteSsh = false,
     this.server,
+    this.workingDirectory,
   }) {
     focusNode = FocusNode();
     terminal = Terminal(
       maxLines: 10000,
     );
     controller = TerminalController();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'isRemoteSsh': isRemoteSsh,
+      'server': server?.toJson(),
+      'workingDirectory': workingDirectory,
+      'splitDirection': splitDirection.name,
+      'childPane': childPane?.toJson(),
+    };
+  }
+
+  static TerminalPaneItem fromJson(Map<String, dynamic> json) {
+    ServerModel? srv;
+    if (json['server'] != null) {
+      try {
+        srv = ServerModel.fromJson(Map<String, dynamic>.from(json['server']));
+      } catch (_) {}
+    }
+
+    final item = TerminalPaneItem(
+      id: json['id'] ?? 'pane_${DateTime.now().millisecondsSinceEpoch}',
+      title: json['title'] ?? (json['isRemoteSsh'] == true ? (srv?.name ?? 'SSH Server') : 'Local Machine'),
+      isRemoteSsh: json['isRemoteSsh'] == true,
+      server: srv,
+      workingDirectory: json['workingDirectory'] as String?,
+    );
+
+    final splitName = json['splitDirection'] as String?;
+    if (splitName != null) {
+      item.splitDirection = TerminalSplitDirection.values.firstWhere(
+        (e) => e.name == splitName,
+        orElse: () => TerminalSplitDirection.none,
+      );
+    }
+
+    if (json['childPane'] != null) {
+      try {
+        item.childPane = TerminalPaneItem.fromJson(Map<String, dynamic>.from(json['childPane']));
+      } catch (_) {}
+    }
+
+    return item;
   }
 
   void cleanup() {
@@ -90,6 +140,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   int _activePaneIndex = 0;
   String? _activeSubPaneId;
   bool _showVirtualKeyboard = false;
+  final StorageService _storage = StorageService();
 
   // Chuẩn bảng màu và thuộc tính Ubuntu GNOME Terminal (Canonical Ubuntu palette)
   static final _terminalTheme = TerminalTheme(
@@ -121,14 +172,83 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize default primary pane (Local)
+    _loadSavedTerminalSessions();
+  }
+
+  Future<void> _loadSavedTerminalSessions() async {
+    try {
+      final savedData = await _storage.getTerminalSessions();
+      if (savedData != null && savedData.isNotEmpty) {
+        final decoded = json.decode(savedData);
+        if (decoded is Map<String, dynamic> && decoded['panes'] is List) {
+          final rawPanes = decoded['panes'] as List;
+          final loadedPanes = <TerminalPaneItem>[];
+          for (final raw in rawPanes) {
+            if (raw is Map<String, dynamic>) {
+              loadedPanes.add(TerminalPaneItem.fromJson(raw));
+            }
+          }
+
+          if (loadedPanes.isNotEmpty) {
+            if (!mounted) return;
+            setState(() {
+              _panes.clear();
+              _panes.addAll(loadedPanes);
+              _activePaneIndex = (decoded['activePaneIndex'] is int &&
+                      decoded['activePaneIndex'] >= 0 &&
+                      decoded['activePaneIndex'] < _panes.length)
+                  ? decoded['activePaneIndex'] as int
+                  : 0;
+              _activeSubPaneId = decoded['activeSubPaneId'] as String?;
+            });
+
+            // Kết nối các pane và child pane
+            for (final pane in _panes) {
+              _connectPane(pane);
+              if (pane.childPane != null) {
+                _connectPane(pane.childPane!);
+              }
+            }
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Fallback nếu không có cấu hình lưu trước, lấy thư mục gần nhất nếu có
+    String? initialDir;
+    try {
+      final recents = await _storage.getRecentScopes();
+      if (recents.isNotEmpty && Directory(recents.first).existsSync()) {
+        initialDir = recents.first;
+      }
+    } catch (_) {}
+
     final firstPane = TerminalPaneItem(
       id: 'pane_${DateTime.now().millisecondsSinceEpoch}',
       title: 'Local Machine',
       isRemoteSsh: false,
+      workingDirectory: initialDir,
     );
-    _panes.add(firstPane);
+    if (!mounted) return;
+    setState(() {
+      _panes.clear();
+      _panes.add(firstPane);
+      _activePaneIndex = 0;
+      _activeSubPaneId = null;
+    });
     _connectPane(firstPane);
+  }
+
+  Future<void> _saveTerminalSessions() async {
+    try {
+      final data = {
+        'activePaneIndex': _activePaneIndex,
+        'activeSubPaneId': _activeSubPaneId,
+        'panes': _panes.map((p) => p.toJson()).toList(),
+      };
+      await _storage.setTerminalSessions(json.encode(data));
+    } catch (_) {}
   }
 
   @override
@@ -178,7 +298,22 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final isWin = Platform.isWindows;
       final shell = Platform.environment['SHELL'] ??
           (isWin ? 'cmd.exe' : (File('/bin/bash').existsSync() ? '/bin/bash' : '/bin/sh'));
-      final homeDir = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? (isWin ? 'C:\\' : '/');
+      final defaultHome = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? (isWin ? 'C:\\' : '/');
+
+      // Ưu tiên: pane.workingDirectory -> recent scope -> defaultHome
+      String targetDir = defaultHome;
+      if (pane.workingDirectory != null && pane.workingDirectory!.trim().isNotEmpty && Directory(pane.workingDirectory!.trim()).existsSync()) {
+        targetDir = pane.workingDirectory!.trim();
+      } else {
+        try {
+          final recents = await _storage.getRecentScopes();
+          if (recents.isNotEmpty && Directory(recents.first).existsSync()) {
+            targetDir = recents.first;
+            pane.workingDirectory = targetDir;
+            _saveTerminalSessions();
+          }
+        } catch (_) {}
+      }
 
       final initialCols = pane.terminal.viewWidth > 0 ? pane.terminal.viewWidth : 80;
       final initialRows = pane.terminal.viewHeight > 0 ? pane.terminal.viewHeight : 24;
@@ -187,7 +322,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       pane.pty = Pty.start(
         shell,
         arguments: isWin ? [] : ['-l'],
-        workingDirectory: homeDir,
+        workingDirectory: targetDir,
         environment: {
           ...Platform.environment,
           'TERM': 'xterm-256color',
@@ -211,6 +346,24 @@ class _TerminalScreenState extends State<TerminalScreen> {
         (data) {
           final decoded = utf8.decode(data, allowMalformed: true);
           pane.terminal.write(decoded);
+
+          // Phát hiện OSC 7 escape sequence: OSC 7 ; file://hostname/path ST / BEL
+          // Ví dụ: \x1b]7;file://localhost/home/yenai/Documents\x07 hoặc \x1b\x5c
+          final osc7Match = RegExp(r'\x1b\]7;file://(?:[^/]+)?(/.*?)(?:\x07|\x1b\\)').firstMatch(decoded);
+          if (osc7Match != null) {
+            var rawPath = osc7Match.group(1);
+            if (rawPath != null) {
+              try {
+                rawPath = Uri.decodeFull(rawPath);
+                if (Directory(rawPath).existsSync() && rawPath != pane.workingDirectory) {
+                  pane.workingDirectory = rawPath;
+                  _storage.addRecentScope(rawPath);
+                  _saveTerminalSessions();
+                  if (mounted) setState(() {});
+                }
+              } catch (_) {}
+            }
+          }
         },
         onDone: () {
           if (mounted) setState(() => pane.isConnected = false);
@@ -226,6 +379,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
         if (pane.pty != null) {
           try {
             pane.pty!.write(utf8.encode(data));
+
+            // Kiểm tra lệnh cd trực tiếp khi người dùng gõ
+            if (data == '\r' || data == '\n') {
+              Future.delayed(const Duration(milliseconds: 300), () {
+                _syncCurrentWorkingDirectory(pane);
+              });
+            }
           } catch (_) {}
         }
       };
@@ -246,6 +406,25 @@ class _TerminalScreenState extends State<TerminalScreen> {
       }
       pane.terminal.write('\r\n\x1b[31m[Lỗi mở Terminal cục bộ]: $e\x1b[0m\r\n');
     }
+  }
+
+  void _syncCurrentWorkingDirectory(TerminalPaneItem pane) {
+    if (pane.isRemoteSsh) return;
+    try {
+      final pid = pane.pty?.pid;
+      if (pid != null && Platform.isLinux) {
+        final link = Link('/proc/$pid/cwd');
+        if (link.existsSync()) {
+          final target = link.targetSync();
+          if (target.isNotEmpty && Directory(target).existsSync() && target != pane.workingDirectory) {
+            pane.workingDirectory = target;
+            _storage.addRecentScope(target);
+            _saveTerminalSessions();
+            if (mounted) setState(() {});
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _connectSshPane(TerminalPaneItem pane) async {
@@ -276,10 +455,32 @@ class _TerminalScreenState extends State<TerminalScreen> {
         });
       }
 
+      // Nếu có workingDirectory từ trước trên SSH server, tự động chuyển vào thư mục đó
+      if (pane.workingDirectory != null && pane.workingDirectory!.trim().isNotEmpty) {
+        final dir = pane.workingDirectory!.trim();
+        pane.sshSession?.stdin.add(utf8.encode('cd "$dir" 2>/dev/null || true\n'));
+      }
+
       pane.sshSession!.stdout.listen(
         (data) {
           final decoded = utf8.decode(data, allowMalformed: true);
           pane.terminal.write(decoded);
+
+          // Nhận diện OSC 7 qua SSH
+          final osc7Match = RegExp(r'\x1b\]7;file://(?:[^/]+)?(/.*?)(?:\x07|\x1b\\)').firstMatch(decoded);
+          if (osc7Match != null) {
+            var rawPath = osc7Match.group(1);
+            if (rawPath != null) {
+              try {
+                rawPath = Uri.decodeFull(rawPath);
+                if (rawPath.isNotEmpty && rawPath != pane.workingDirectory) {
+                  pane.workingDirectory = rawPath;
+                  _saveTerminalSessions();
+                  if (mounted) setState(() {});
+                }
+              } catch (_) {}
+            }
+          }
         },
         onDone: () {
           if (mounted) setState(() => pane.isConnected = false);
@@ -333,6 +534,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _activeSubPaneId = null;
     });
     _connectPane(newPane);
+    _saveTerminalSessions();
   }
 
   void _removeWindow(int index) {
@@ -345,6 +547,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       }
       _activeSubPaneId = null;
     });
+    _saveTerminalSessions();
   }
 
   void _splitActiveWindow(TerminalSplitDirection direction, int windowIndex, TerminalPaneItem targetPane) {
@@ -362,6 +565,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         _activePaneIndex = windowIndex;
         _activeSubPaneId = null;
       });
+      _saveTerminalSessions();
       return;
     }
 
@@ -383,6 +587,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _activePaneIndex = windowIndex;
       _activeSubPaneId = windowPane.childPane?.id;
     });
+    _saveTerminalSessions();
   }
 
   void _closeChildPane(int windowIndex) {
@@ -395,6 +600,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         windowPane.splitDirection = TerminalSplitDirection.none;
         _activeSubPaneId = null;
       });
+      _saveTerminalSessions();
     }
   }
 
@@ -511,6 +717,23 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
         // 2. THAO TÁC TERMINAL
         PopupMenuItem<String>(
+          value: 'set_directory',
+          height: 34,
+          child: Row(
+            children: [
+              const Icon(Icons.folder_open_rounded, size: 15, color: AppColors.accentCyan),
+              const SizedBox(width: 8),
+              Text(
+                pane.workingDirectory != null && pane.workingDirectory!.isNotEmpty
+                    ? 'Đổi thư mục: .../${pane.workingDirectory!.split(Platform.isWindows ? r'\' : '/').where((p) => p.isNotEmpty).last}'
+                    : 'Chọn thư mục làm việc (cd)',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
           value: 'restart_pane',
           height: 34,
           child: const Row(
@@ -566,7 +789,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
     if (result == null) return;
 
-    if (result == 'split_none') {
+    if (result == 'set_directory') {
+      _pickDirectoryForPane(pane);
+    } else if (result == 'split_none') {
       _splitActiveWindow(TerminalSplitDirection.none, windowIndex, pane);
     } else if (result == 'split_horizontal') {
       _splitActiveWindow(TerminalSplitDirection.horizontal, windowIndex, pane);
@@ -582,6 +807,29 @@ class _TerminalScreenState extends State<TerminalScreen> {
     } else if (result == 'close_window') {
       _removeWindow(windowIndex);
     }
+  }
+
+  Future<void> _pickDirectoryForPane(TerminalPaneItem pane) async {
+    try {
+      final initial = (pane.workingDirectory != null && Directory(pane.workingDirectory!).existsSync())
+          ? pane.workingDirectory
+          : (Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '/');
+      final selected = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Chọn thư mục làm việc cho Terminal',
+        initialDirectory: initial,
+      );
+      if (selected != null && selected.isNotEmpty && mounted) {
+        pane.workingDirectory = selected;
+        await _storage.addRecentScope(selected);
+        await _saveTerminalSessions();
+        if (pane.isConnected) {
+          _sendCmdToActive('cd "$selected"');
+        } else {
+          _connectPane(pane);
+        }
+        setState(() {});
+      }
+    } catch (_) {}
   }
 
   @override
@@ -1192,6 +1440,42 @@ class _TerminalScreenState extends State<TerminalScreen> {
                             ),
                           ),
                         ),
+                        if (pane.workingDirectory != null && pane.workingDirectory!.trim().isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => _pickDirectoryForPane(pane),
+                            borderRadius: BorderRadius.circular(3),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.sidebarBg,
+                                borderRadius: BorderRadius.circular(3),
+                                border: Border.all(color: AppColors.borderDark, width: 0.8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.folder_open_rounded, size: 11, color: AppColors.accentCyan),
+                                  const SizedBox(width: 4),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 180),
+                                    child: Text(
+                                      pane.workingDirectory!.split(Platform.isWindows ? r'\' : '/').where((p) => p.isNotEmpty).isEmpty
+                                          ? pane.workingDirectory!
+                                          : pane.workingDirectory!.split(Platform.isWindows ? r'\' : '/').where((p) => p.isNotEmpty).last,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 10,
+                                        color: AppColors.textDim,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
 

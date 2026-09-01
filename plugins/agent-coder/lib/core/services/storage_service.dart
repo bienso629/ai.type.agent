@@ -137,6 +137,53 @@ class StorageService {
     await _prefs.setBool(_keyIsLoggedIn, value);
   }
 
+  // Scope History Persistence
+  static const String _keyRecentScopes = 'recent_scopes_history';
+
+  Future<List<String>> getRecentScopes() async {
+    await init();
+    return _prefs.getStringList(_keyRecentScopes) ?? [];
+  }
+
+  Future<void> addRecentScope(String scope) async {
+    await init();
+    final clean = scope.trim();
+    if (clean.isEmpty) return;
+    var list = _prefs.getStringList(_keyRecentScopes) ?? [];
+    list.removeWhere((item) => item.trim() == clean);
+    list.insert(0, clean);
+    if (list.length > 20) {
+      list = list.sublist(0, 20);
+    }
+    await _prefs.setStringList(_keyRecentScopes, list);
+  }
+
+  Future<void> removeRecentScope(String scope) async {
+    await init();
+    final clean = scope.trim();
+    var list = _prefs.getStringList(_keyRecentScopes) ?? [];
+    list.removeWhere((item) => item.trim() == clean);
+    await _prefs.setStringList(_keyRecentScopes, list);
+  }
+
+  Future<void> clearRecentScopes() async {
+    await init();
+    await _prefs.remove(_keyRecentScopes);
+  }
+
+  // Terminal Tabs & Split Layout Persistence
+  static const String _keyTerminalSessions = 'terminal_sessions_layout';
+
+  Future<String?> getTerminalSessions() async {
+    await init();
+    return _prefs.getString(_keyTerminalSessions);
+  }
+
+  Future<void> setTerminalSessions(String jsonStr) async {
+    await init();
+    await _prefs.setString(_keyTerminalSessions, jsonStr);
+  }
+
   Future<bool> getRememberMe() async {
     await init();
     return _prefs.getBool(_keyRememberMe) ?? true;

@@ -1,10 +1,8 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import { ApiModel, MODEL_CATEGORIES, ModelCategory } from '@/data/models-parser'
 import { ModelCard } from './ModelCard'
-
-const ITEMS_PER_PAGE = 12
 
 export function ModelsSection({
   models,
@@ -17,7 +15,7 @@ export function ModelsSection({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProvider, setSelectedProvider] = useState<string>('all')
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [currentPage, setCurrentPage] = useState<number>(1)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Extract list of unique providers
   const providers = useMemo(() => {
@@ -51,55 +49,19 @@ export function ModelsSection({
     })
   }, [models, activeCategory, selectedProvider, searchQuery])
 
-  // Reset về trang 1 khi lọc thay đổi
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [activeCategory, selectedProvider, searchQuery])
-
-  // Phân trang
-  const totalPages = Math.ceil(filteredModels.length / ITEMS_PER_PAGE) || 1
-  const paginatedModels = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE
-    return filteredModels.slice(start, start + ITEMS_PER_PAGE)
-  }, [filteredModels, currentPage])
-
   const handleCopied = (id: string) => {
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2500)
   }
 
-  const handlePageChange = (page: number) => {
-    if (page < 1 || page > totalPages) return
-    setCurrentPage(page)
-    const el = document.getElementById('models')
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' })
-    }
-  }
-
-  // Tạo danh sách các số trang hiển thị
-  const getPageNumbers = () => {
-    const pages: (number | string)[] = []
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i)
-      }
-    } else {
-      pages.push(1)
-      if (currentPage > 3) {
-        pages.push('...')
-      }
-      const start = Math.max(2, currentPage - 1)
-      const end = Math.min(totalPages - 1, currentPage + 1)
-      for (let i = start; i <= end; i++) {
-        pages.push(i)
-      }
-      if (currentPage < totalPages - 2) {
-        pages.push('...')
-      }
-      pages.push(totalPages)
-    }
-    return pages
+  const handleScroll = (direction: 'left' | 'right') => {
+    if (!scrollContainerRef.current) return
+    const container = scrollContainerRef.current
+    const scrollAmount = container.clientWidth * 0.8
+    container.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth',
+    })
   }
 
   return (
@@ -176,37 +138,68 @@ export function ModelsSection({
         </div>
       </div>
 
-      {/* Category Tabs */}
-      <div className="mt-8 flex flex-wrap gap-2 border-b border-border pb-4">
-        {MODEL_CATEGORIES.map((c) => {
-          const count =
-            c.id === 'all'
-              ? models.length
-              : models.filter((m) => m.category === c.id).length
+      {/* Category Tabs & Slider Navigation */}
+      <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+        <div className="flex flex-wrap gap-2">
+          {MODEL_CATEGORIES.map((c) => {
+            const count =
+              c.id === 'all'
+                ? models.length
+                : models.filter((m) => m.category === c.id).length
 
-          return (
-            <button
-              key={c.id}
-              onClick={() => setActiveCategory(c.id)}
-              className={`glow-button-secondary inline-flex h-8 items-center gap-2 rounded-md border px-3.5 text-xs font-medium transition-all ${
-                activeCategory === c.id
-                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                  : 'border-border bg-card text-secondary-foreground hover:border-primary/50'
-              }`}
-            >
-              <span className="leading-none">{c.label}</span>
-              <span
-                className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1.5 font-mono text-[10px] leading-none ${
+            return (
+              <button
+                key={c.id}
+                onClick={() => setActiveCategory(c.id)}
+                className={`glow-button-secondary inline-flex h-8 items-center gap-2 rounded-md border px-3.5 text-xs font-medium transition-all ${
                   activeCategory === c.id
-                    ? 'bg-primary-foreground/20 text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground'
+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                    : 'border-border bg-card text-secondary-foreground hover:border-primary/50'
                 }`}
               >
-                {count}
-              </span>
+                <span className="leading-none">{c.label}</span>
+                <span
+                  className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1.5 font-mono text-[10px] leading-none ${
+                    activeCategory === c.id
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-secondary text-muted-foreground'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Slide navigation buttons */}
+        {filteredModels.length > 0 && (
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <span className="font-mono text-xs text-muted-foreground mr-1">
+              {filteredModels.length} mô hình
+            </span>
+            <button
+              type="button"
+              onClick={() => handleScroll('left')}
+              title="Cuộn sang trái"
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-secondary-foreground transition-all hover:border-primary hover:text-primary active:scale-95"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
-          )
-        })}
+            <button
+              type="button"
+              onClick={() => handleScroll('right')}
+              title="Cuộn sang phải"
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-secondary-foreground transition-all hover:border-primary hover:text-primary active:scale-95"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Quick notice bar for copied ID */}
@@ -217,74 +210,23 @@ export function ModelsSection({
         </div>
       )}
 
-      {/* Models Grid */}
+      {/* 2-Row Horizontal Slide Container */}
       {filteredModels.length > 0 ? (
-        <>
-          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {paginatedModels.map((m) => (
-              <ModelCard key={m.id} model={m} onCopy={handleCopied} />
+        <div className="relative mt-8">
+          <div
+            ref={scrollContainerRef}
+            className="grid grid-rows-2 grid-flow-col auto-cols-[minmax(320px,400px)] gap-5 overflow-x-auto scroll-smooth scrollbar-thin px-1 py-2"
+            style={{
+              scrollbarGutter: 'stable',
+            }}
+          >
+            {filteredModels.map((m) => (
+              <div key={m.id} className="h-full">
+                <ModelCard model={m} onCopy={handleCopied} />
+              </div>
             ))}
           </div>
-
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-border pt-6">
-              <div className="text-xs text-muted-foreground font-mono">
-                Hiển thị <span className="font-semibold text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> - <span className="font-semibold text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, filteredModels.length)}</span> trên <span className="font-semibold text-foreground">{filteredModels.length}</span> mô hình
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:border-primary/50 disabled:opacity-40 disabled:hover:border-border"
-                >
-                  Trước
-                </button>
-
-                <div className="flex items-center gap-1">
-                  {getPageNumbers().map((p, idx) => {
-                    if (p === '...') {
-                      return (
-                        <span key={`ellipsis-${idx}`} className="px-2 py-1 text-xs text-muted-foreground font-mono">
-                          ...
-                        </span>
-                      )
-                    }
-
-                    const pageNum = Number(p)
-                    const isActive = pageNum === currentPage
-
-                    return (
-                      <button
-                        key={pageNum}
-                        type="button"
-                        onClick={() => handlePageChange(pageNum)}
-                        className={`min-w-[32px] rounded-md border px-2.5 py-1.5 font-mono text-xs font-semibold transition-all ${
-                          isActive
-                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                            : 'border-border bg-card text-secondary-foreground hover:border-primary/50'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:border-primary/50 disabled:opacity-40 disabled:hover:border-border"
-                >
-                  Sau
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       ) : (
         <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">
           <div className="font-mono text-sm text-muted-foreground">

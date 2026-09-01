@@ -1,18 +1,26 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Search, RefreshCw, AlertCircle, CheckCircle, Clock, AlertTriangle, Key, ExternalLink } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
 
 interface OrderLookupProps {
   initialCode?: string
 }
 
 export const OrderLookup: React.FC<OrderLookupProps> = ({ initialCode = '' }) => {
-  const [query, setQuery] = useState(initialCode)
+  const { user } = useAuth()
+  const [query, setQuery] = useState(initialCode || user?.email || '')
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any[] | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
   const [searched, setSearched] = useState(false)
+
+  useEffect(() => {
+    if (!query && user?.email) {
+      setQuery(user.email)
+    }
+  }, [user])
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()

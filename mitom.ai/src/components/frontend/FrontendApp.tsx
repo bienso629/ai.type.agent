@@ -17,10 +17,12 @@ export interface TopUp {
 }
 
 export const TOPUPS: TopUp[] = [
+  { amount: 20000, bonusPct: 5, label: 'Thử nghiệm', highlight: false },
+  { amount: 50000, bonusPct: 5, label: 'Nhẹ nhàng', highlight: false },
   { amount: 100000, bonusPct: 5, label: 'Khởi động', highlight: false },
   { amount: 200000, bonusPct: 5, label: 'Tiết kiệm', highlight: false },
-  { amount: 500000, bonusPct: 10, label: 'Phổ biến', highlight: true },
-  { amount: 1000000, bonusPct: 15, label: 'Đại lý', highlight: false },
+  { amount: 500000, bonusPct: 5, label: 'Phổ biến', highlight: true },
+  { amount: 1000000, bonusPct: 5, label: 'Miệt mài (VIP)', highlight: false },
 ]
 
 export const PAY_METHODS = [
@@ -85,17 +87,17 @@ export function Logo({ onClick }: { onClick?: () => void }) {
 }
 
 export function QrMock({ amount }: { amount?: number }) {
-  const bankId = 'MB'
-  const accountNo = '0348731111'
-  const accountName = 'MITOM AI'
+  const bankId = 'MBBank'
+  const accountNo = '0938414436'
+  const accountName = 'NGUYEN NGOC THANH VY'
   const memo = amount ? `NAP ${amount / 1000}K` : 'NAP TIEN MITOM AI'
   const qrUrl = amount
-    ? `https://img.vietqr.io/image/${bankId}-${accountNo}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(memo)}&accountName=${encodeURIComponent(accountName)}`
+    ? `https://vietqr.app/img?bank=${bankId}&acc=${accountNo}&template=&showinfo=true&holder=${encodeURIComponent(accountName)}&amount=${amount}&memo=${encodeURIComponent(memo)}`
     : null
 
   if (qrUrl) {
     return (
-      <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl bg-white p-1 shadow-md">
+      <div className="w-full max-w-xs aspect-square shrink-0 overflow-hidden rounded-2xl bg-white p-3 md:p-4 shadow-lg ring-1 ring-border flex items-center justify-center">
         <img
           src={qrUrl}
           alt="Mã VietQR nạp tiền"
@@ -106,9 +108,9 @@ export function QrMock({ amount }: { amount?: number }) {
   }
 
   return (
-    <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-xl bg-primary/10 text-center font-mono text-xs text-primary">
-      <span className="font-bold">VietQR</span>
-      <span className="text-[10px] text-muted-foreground">Tự động cộng</span>
+    <div className="flex w-full max-w-xs aspect-square shrink-0 flex-col items-center justify-center rounded-2xl bg-primary/10 text-center font-mono text-xs text-primary ring-1 ring-border">
+      <span className="font-bold text-base">VietQR</span>
+      <span className="text-xs text-muted-foreground">Tự động cộng</span>
     </div>
   )
 }
@@ -122,13 +124,21 @@ function TopUpPage({
   onDone: (order: any) => void
   onNavigate: (p: Page) => void
 }) {
+  const { user } = useAuth()
   const [pay, setPay] = useState('vietqr')
   const [phone, setPhone] = useState('')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [name, setName] = useState(user?.name || '')
+  const [email, setEmail] = useState(user?.email || '')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (user) {
+      if (user.email && !email) setEmail(user.email)
+      if (user.name && !name) setName(user.name)
+    }
+  }, [user])
 
   const bonus = Math.round((topup.amount * topup.bonusPct) / 100)
   const total = topup.amount
@@ -181,7 +191,7 @@ function TopUpPage({
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-5 py-12 md:px-8">
+    <main className="mx-auto max-w-6xl px-5 py-12 md:px-8">
       <button
         onClick={() => onNavigate('home')}
         className="group mb-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -208,8 +218,8 @@ function TopUpPage({
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="space-y-6">
+      <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[1fr_360px]">
+        <div className="grid gap-6 md:grid-cols-2">
           <fieldset className="rounded-xl border border-border bg-card p-6">
             <legend className="px-2 font-display text-lg font-bold">Thông tin nhận mã / tài khoản</legend>
             <div className="space-y-4">
@@ -222,7 +232,7 @@ function TopUpPage({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="0908888888"
-                    className="mt-1.5 w-full rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </label>
               </div>
@@ -235,7 +245,7 @@ function TopUpPage({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Nguyễn Văn A"
-                    className="mt-1.5 w-full rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </label>
               </div>
@@ -248,7 +258,7 @@ function TopUpPage({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="ban@gmail.com"
-                    className="mt-1.5 w-full rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </label>
               </div>
@@ -261,7 +271,7 @@ function TopUpPage({
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="Model cần tư vấn hoặc ghi chú thêm..."
-                    className="mt-1.5 w-full rounded-sm border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </label>
               </div>
@@ -300,14 +310,14 @@ function TopUpPage({
               ))}
             </div>
             {pay === 'vietqr' && (
-              <div className="mt-4 flex items-center gap-4 rounded-xl border border-dashed border-border bg-secondary/40 p-4">
+              <div className="mt-4 flex flex-col items-center gap-5 rounded-2xl border border-dashed border-border bg-secondary/30 p-6 md:p-8">
                 <QrMock amount={topup.amount} />
-                <div className="text-sm">
-                  <div className="font-semibold">Quét mã, số dư cộng tự động</div>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">
-                    Mì Tôm AI<br />
-                    STK 0348731111 · MB Bank<br />
-                    Nội dung: NAP {topup.amount / 1000}K
+                <div className="text-center md:text-left w-full space-y-2">
+                  <div className="font-bold text-foreground text-base">Quét mã VietQR tự động</div>
+                  <p className="font-mono text-xs leading-relaxed text-muted-foreground bg-secondary/50 p-4 rounded-xl border border-border">
+                    <span className="text-foreground font-semibold">Chủ TK:</span> NGUYEN NGOC THANH VY<br />
+                    <span className="text-foreground font-semibold">STK:</span> 0938414436 · MB Bank<br />
+                    <span className="text-foreground font-semibold">Nội dung:</span> <span className="font-bold text-primary">NAP {topup.amount / 1000}K</span>
                   </p>
                 </div>
               </div>
@@ -428,10 +438,12 @@ function SuccessPage({
           </dl>
 
           {orderInfo.qrCodeUrl && (
-            <div className="mt-6 flex flex-col items-center justify-center rounded-xl bg-white p-4">
-              <img src={orderInfo.qrCodeUrl} alt="Mã thanh toán VietQR" className="h-48 w-48 object-contain" />
-              <p className="mt-2 text-center text-xs font-medium text-slate-800">
-                Quét mã trên ứng dụng ngân hàng để hoàn tất tự động
+            <div className="mt-6 flex flex-col items-center justify-center rounded-2xl bg-white p-6 md:p-8 shadow-xl ring-1 ring-border">
+              <div className="w-full max-w-sm aspect-square relative flex items-center justify-center">
+                <img src={orderInfo.qrCodeUrl} alt="Mã thanh toán VietQR" className="w-full h-full object-contain rounded-xl" />
+              </div>
+              <p className="mt-4 text-center text-sm font-semibold text-slate-800 bg-slate-100 px-4 py-2 rounded-full ring-1 ring-slate-200">
+                Mở ứng dụng ngân hàng bất kỳ để quét mã thanh toán tự động
               </p>
             </div>
           )}
@@ -787,7 +799,7 @@ function HomePage({
                 onClick={goPricing}
                 className="glow-button rounded-md bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
               >
-                Nạp số dư API
+                Các gói thẻ
               </button>
               <button
                 onClick={goModels}
@@ -815,7 +827,7 @@ function HomePage({
             <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl shadow-black/40">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">Số dư API Mì Tôm</span>
-                <span className="rounded-sm bg-emerald/15 px-2.5 py-1 font-mono text-[11px] font-bold text-emerald">
+                <span className="rounded-sm bg-emerald/15 font-mono text-[11px] font-bold text-emerald">
                   Đang hoạt động
                 </span>
               </div>
@@ -882,7 +894,7 @@ function HomePage({
             </p>
           </div>
 
-          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {TOPUPS.map((t) => {
               const bonus = Math.round((t.amount * t.bonusPct) / 100)
               return (
