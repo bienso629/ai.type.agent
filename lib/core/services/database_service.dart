@@ -71,6 +71,9 @@ class DatabaseService {
     try {
       await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN target_server TEXT;');
     } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN cli_conv_id TEXT;');
+    } catch (_) {}
   }
 
   Future<String> _resolveDbPath() async {
@@ -274,6 +277,37 @@ class DatabaseService {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<String?> getCliConversationId(String sessionId) async {
+    try {
+      final db = await _getDb();
+      final rows = await db.query(
+        'chat_sessions',
+        columns: ['cli_conv_id'],
+        where: 'id = ?',
+        whereArgs: [sessionId],
+      );
+      if (rows.isNotEmpty && rows.first['cli_conv_id'] != null) {
+        final val = rows.first['cli_conv_id']?.toString().trim() ?? '';
+        return val.isNotEmpty ? val : null;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setCliConversationId(String sessionId, String cliConvId) async {
+    try {
+      final db = await _getDb();
+      await db.update(
+        'chat_sessions',
+        {'cli_conv_id': cliConvId.trim()},
+        where: 'id = ?',
+        whereArgs: [sessionId],
+      );
+    } catch (_) {}
   }
 
   Future<bool> deleteSession(String id) async {

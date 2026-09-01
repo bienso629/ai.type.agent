@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models/attachment_item.dart';
@@ -20,27 +19,6 @@ class NativeAiService {
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
   final NativeSshService _sshService = NativeSshService();
-
-  static String _formatToUuid(String sessionId) {
-    if (RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(sessionId)) {
-      return sessionId.toLowerCase();
-    }
-    // DNS Namespace UUID bytes: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
-    final nsBytes = [
-      0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
-      0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
-    ];
-    final inputBytes = utf8.encode(sessionId);
-    final hash = sha1.convert([...nsBytes, ...inputBytes]).bytes;
-    final bytes = List<int>.from(hash.sublist(0, 16));
-    // Set version 5 (bits 4-7 of byte 6 = 0101)
-    bytes[6] = (bytes[6] & 0x0f) | 0x50;
-    // Set variant RFC 4122 (bits 6-7 of byte 8 = 10)
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-    String hex(int start, int end) => bytes.sublist(start, end).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
-  }
 
   static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
 Bạn có quyền thực thi lệnh bash/shell/terminal thực tế qua công cụ `execute_terminal_command`.
@@ -173,6 +151,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             sessionId: sessionId,
             cliName: targetModel,
             prompt: message,
+            history: history,
             workingDir: workingDir,
             targetServerModel: targetServerModel,
             onToken: onToken,
@@ -215,19 +194,23 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           {'role': 'system', 'content': sysPrompt},
         ];
 
-        // Append recent history
+        // Append recent history (prior turns)
         if (history != null && history.isNotEmpty) {
           for (final h in history) {
-            messages.add({
-              'role': h['role'] ?? 'user',
-              'content': h['content'] ?? '',
-            });
+            final role = h['role']?.toString() ?? 'user';
+            final content = h['content']?.toString() ?? '';
+            if (content.isNotEmpty) {
+              messages.add({
+                'role': role,
+                'content': content,
+              });
+            }
           }
         } else {
-          // Fetch last 10 messages from DB
-          final dbHistory = await _dbService.getMessages(sessionId, limit: 10);
+          // Fetch last 15 messages from DB
+          final dbHistory = await _dbService.getMessages(sessionId, limit: 15);
           for (final m in dbHistory.messages) {
-            if (m.content != message) {
+            if (m.content != message && m.content.isNotEmpty) {
               messages.add({
                 'role': m.role,
                 'content': m.content,
@@ -548,6 +531,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     required String sessionId,
     required String cliName,
     required String prompt,
+    List<Map<String, dynamic>>? history,
     String? workingDir,
     ServerModel? targetServerModel,
     required void Function(String token) onToken,
@@ -563,7 +547,8 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     final cfg = await _configService.loadConfig();
     final customPromptTemplate = cfg['custom_prompt']?.toString();
 
-    final convUuid = _formatToUuid(sessionId);
+    // Check if we have an existing persistent CLI conversation ID for this session
+    String? cliConvId = await _dbService.getCliConversationId(sessionId);
 
     if (targetServerModel != null) {
       final configuredBinary = targetServerModel.cliBinary.isNotEmpty ? targetServerModel.cliBinary : 'agy';
@@ -587,9 +572,17 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
       String remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
       if (remoteBinary == 'agy' || remoteBinary.contains('antigravity')) {
-        remoteCliArgs = "--conversation '$convUuid' -p '$escapedPrompt' --dangerously-skip-permissions";
+        if (cliConvId != null && cliConvId.isNotEmpty) {
+          remoteCliArgs = "--conversation '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
+        } else {
+          remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
+        }
       } else if (remoteBinary == 'claude' || remoteBinary.contains('claude')) {
-        remoteCliArgs = "--session-id '$convUuid' -p '$escapedPrompt' --dangerously-skip-permissions";
+        if (cliConvId != null && cliConvId.isNotEmpty) {
+          remoteCliArgs = "--session-id '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
+        } else {
+          remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
+        }
       }
 
       final cmd = '''
@@ -610,6 +603,13 @@ else
 fi
 ''';
       final result = await _executeCommand(cmd, workingDir: workingDir, server: targetServerModel);
+      final convMatch = RegExp(r'"conversation_id":\s*"([^"]+)"').firstMatch(result);
+      if (convMatch != null) {
+        final foundConv = convMatch.group(1);
+        if (foundConv != null && foundConv.isNotEmpty) {
+          await _dbService.setCliConversationId(sessionId, foundConv);
+        }
+      }
       onToken(result);
       onDone(result);
       return;
@@ -640,6 +640,25 @@ fi
 
       final m = cliName.toLowerCase();
 
+      // Build contextual prompt for CLI models that do not support multi-turn session IDs
+      String contextualPrompt = cleanPrompt;
+      if (m.contains('gemini') || (!m.contains('agy') && !m.contains('antigravity') && !m.contains('claude'))) {
+        final recentHistory = (history != null && history.isNotEmpty)
+            ? history
+            : (await _dbService.getMessages(sessionId, limit: 10)).messages.map((e) => {'role': e.role, 'content': e.content}).toList();
+        final pastMessages = recentHistory.where((h) => (h['content']?.toString().trim().isNotEmpty ?? false) && h['content'] != prompt).toList();
+        if (pastMessages.isNotEmpty) {
+          final historyBuf = StringBuffer();
+          historyBuf.writeln('=== LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ ===');
+          for (final h in pastMessages) {
+            final roleName = (h['role'] == 'user') ? 'Người dùng' : 'Trợ lý AI';
+            historyBuf.writeln('[$roleName]: ${h['content']}');
+          }
+          historyBuf.writeln('=== KẾT THÚC LỊCH SỬ HỘI THOẠI ===\n');
+          contextualPrompt = '${historyBuf.toString()}\n[Câu hỏi / Yêu cầu mới nhất của Người dùng]:\n$prompt\n\n$promptSuffix';
+        }
+      }
+
       // Augmented PATH environment so subprocesses (node, git, etc.) are always found
       final env = Map<String, String>.from(Platform.environment);
       final home = Platform.environment['HOME'] ?? '';
@@ -666,13 +685,21 @@ fi
 
       List<String> args;
       if (m.contains('claude')) {
-        args = ['--session-id', convUuid, '-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+        if (cliConvId != null && cliConvId.isNotEmpty) {
+          args = ['--session-id', cliConvId, '-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+        } else {
+          args = ['-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+        }
       } else if (m.contains('antigravity') || m == 'agy') {
-        args = ['--conversation', convUuid, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+        if (cliConvId != null && cliConvId.isNotEmpty) {
+          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+        } else {
+          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+        }
       } else if (m.contains('gemini')) {
-        args = ['-p', cleanPrompt];
+        args = ['-p', contextualPrompt];
       } else {
-        args = ['-p', cleanPrompt, '--dangerously-skip-permissions'];
+        args = ['-p', contextualPrompt, '--dangerously-skip-permissions'];
       }
 
       onStatus('AI Agent $cliName đang phân tích và thực thi tác vụ...');
@@ -714,6 +741,16 @@ fi
         try {
           final json = jsonDecode(trimmed);
           if (json is Map<String, dynamic>) {
+            // Track and store persistent conversation_id for subsequent turns
+            final emittedConvId = json['conversation_id']?.toString() ??
+                (json['result'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
+                (json['step_update'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
+                json['session_id']?.toString();
+            if (emittedConvId != null && emittedConvId.isNotEmpty && emittedConvId != cliConvId) {
+              cliConvId = emittedConvId;
+              _dbService.setCliConversationId(sessionId, emittedConvId);
+            }
+
             // 1. Antigravity CLI (agy) streaming protocol
             if (json.containsKey('event')) {
               final event = json['event'];

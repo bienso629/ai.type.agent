@@ -187,12 +187,15 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> selectSession(ChatSessionModel session) async {
-    _currentSession = session;
     final sId = session.id;
+    final isDifferentSession = _currentSession?.id != sId;
+    _currentSession = session;
 
-    // If this session is already loaded in memory (or generating), maintain live state
+    // If this session is already loaded in memory (or generating), maintain live state without reloading
     if (_sessionMessages.containsKey(sId)) {
-      notifyListeners();
+      if (isDifferentSession) {
+        notifyListeners();
+      }
       return;
     }
 
@@ -202,7 +205,7 @@ class ChatProvider extends ChangeNotifier {
     try {
       final result = await _api.getChatHistory(
         sId,
-        limitQuestions: 3,
+        limit: 20,
         beforeId: 0,
       );
       _sessionMessages[sId] = result.messages;
@@ -452,9 +455,9 @@ class ChatProvider extends ChangeNotifier {
     _sessionStatuses[sessionId] = 'Đang suy nghĩ...';
     notifyListeners();
 
-    // Prepare history snapshot
+    // Prepare history snapshot (excluding current user message and placeholder)
     final historySnap = _sessionMessages[sessionId]!
-        .where((m) => m.content.isNotEmpty && m != assistantMsg)
+        .where((m) => m.content.isNotEmpty && m != assistantMsg && m != userMsg)
         .map((m) => {'role': m.role, 'content': m.content})
         .toList();
 
