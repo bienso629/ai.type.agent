@@ -1210,7 +1210,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
           Expanded(
             child: Container(
               color: AppColors.bgDark,
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.all(8),
               child: _buildSplitWorkspace(serverProvider),
             ),
           ),
@@ -1247,7 +1247,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: mainCard),
-          const SizedBox(width: 8),
+          const SizedBox(width: 8), // Gap 8px giữa 2 window ngang
           Expanded(child: childCard),
         ],
       );
@@ -1257,7 +1257,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: mainCard),
-        const SizedBox(height: 8),
+        const SizedBox(height: 8), // Gap 8px giữa 2 window dọc
         Expanded(child: childCard),
       ],
     );
