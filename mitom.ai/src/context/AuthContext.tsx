@@ -1,7 +1,6 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { GoogleOAuthProvider } from '@react-oauth/google'
 
 export interface AuthUser {
   id: string | number
@@ -20,6 +19,7 @@ interface AuthContextType {
   isLoginModalOpen: boolean
   openLoginModal: () => void
   closeLoginModal: () => void
+  loginWithLocal: (email: string, password: string) => Promise<{ success: boolean; message?: string }>
   loginWithTadu: (email: string, password: string) => Promise<{ success: boolean; message?: string }>
   loginWithGoogle: (credential?: string, accessToken?: string) => Promise<{ success: boolean; message?: string }>
   logout: () => Promise<void>
@@ -27,10 +27,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
-
-const GOOGLE_CLIENT_ID =
-  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-  '377304131013-199fj4fujd3ku2niuek64cripmms8bqb.apps.googleusercontent.com'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -61,6 +57,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const openLoginModal = () => setIsLoginModalOpen(true)
   const closeLoginModal = () => setIsLoginModalOpen(false)
+
+  const loginWithLocal = async (email: string, password: string) => {
+    try {
+      const res = await fetch('/api/auth/local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        return { success: false, message: data.message || 'Đăng nhập thất bại.' }
+      }
+
+      setUser(data.user)
+      setIsLoginModalOpen(false)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Lỗi mạng khi kết nối đăng nhập.' }
+    }
+  }
 
   const loginWithTadu = async (email: string, password: string) => {
     try {
@@ -113,23 +130,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AuthContext.Provider
-        value={{
-          user,
-          loading,
-          isLoginModalOpen,
-          openLoginModal,
-          closeLoginModal,
-          loginWithTadu,
-          loginWithGoogle,
-          logout,
-          refreshUser,
-        }}
-      >
-        {children}
-      </AuthContext.Provider>
-    </GoogleOAuthProvider>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        isLoginModalOpen,
+        openLoginModal,
+        closeLoginModal,
+        loginWithLocal,
+        loginWithTadu,
+        loginWithGoogle,
+        logout,
+        refreshUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   )
 }
 

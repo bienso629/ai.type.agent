@@ -249,7 +249,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             </div>
 
             {/* VietQR Fullwidth Hero Box */}
-            <div className="w-full rounded-2xl bg-white p-5 md:p-6 shadow-xl ring-1 ring-border text-center flex flex-col items-center justify-center">
+            <div className="w-full text-center flex flex-col items-center justify-center">
               <div className="w-full max-w-sm aspect-square relative flex items-center justify-center">
                 <img
                   src={qrUrl}
@@ -257,7 +257,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                   className="w-full h-full object-contain rounded-xl"
                 />
               </div>
-              <div className="mt-4 flex items-center justify-center gap-2 font-medium text-sm text-slate-800 bg-slate-100 px-4 py-2 rounded-full ring-1 ring-slate-200">
+              <div className="mt-4 flex items-center justify-center gap-2 font-medium text-sm text-muted-foreground px-4 py-2">
                 <QrCode size={16} className="text-primary" />
                 <span>Mở ứng dụng ngân hàng bất kỳ để quét mã VietQR tự động</span>
               </div>

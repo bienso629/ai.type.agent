@@ -6,6 +6,8 @@ import { ApiModel, ALL_MODELS } from '@/data/models-parser'
 import { ModelsSection } from './ModelsSection'
 import { useAuth } from '@/context/AuthContext'
 import { UserProfileModal } from './UserProfileModal'
+import { LoginModal } from './LoginModal'
+import { User } from 'lucide-react'
 
 export type Page = 'home' | 'topup' | 'success'
 
@@ -438,11 +440,11 @@ function SuccessPage({
           </dl>
 
           {orderInfo.qrCodeUrl && (
-            <div className="mt-6 flex flex-col items-center justify-center rounded-2xl bg-white p-6 md:p-8 shadow-xl ring-1 ring-border">
+            <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-border bg-secondary/30 p-6 md:p-8">
               <div className="w-full max-w-sm aspect-square relative flex items-center justify-center">
                 <img src={orderInfo.qrCodeUrl} alt="Mã thanh toán VietQR" className="w-full h-full object-contain rounded-xl" />
               </div>
-              <p className="mt-4 text-center text-sm font-semibold text-slate-800 bg-slate-100 px-4 py-2 rounded-full ring-1 ring-slate-200">
+              <p className="mt-4 text-center text-sm font-medium text-muted-foreground px-4 py-2">
                 Mở ứng dụng ngân hàng bất kỳ để quét mã thanh toán tự động
               </p>
             </div>
@@ -597,6 +599,7 @@ export function FrontendApp({
   const [openFaq, setOpenFaq] = useState<number | null>(0)
   const [isLookupOpen, setIsLookupOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [isLoginOpen, setIsLoginOpen] = useState(false)
 
   const navigate = (p: Page) => {
     setPage(p)
@@ -608,21 +611,37 @@ export function FrontendApp({
     navigate('topup')
   }
 
+  const scrollToElement = (id: string) => {
+    const el = document.getElementById(id)
+    if (el) {
+      const offset = 80 // khoảng cách trừ hao header sticky
+      const bodyRect = document.body.getBoundingClientRect().top
+      const elementRect = el.getBoundingClientRect().top
+      const elementPosition = elementRect - bodyRect
+      const offsetPosition = elementPosition - offset
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth',
+      })
+    }
+  }
+
   const goPricing = () => {
     if (page !== 'home') {
-      navigate('home')
-      setTimeout(() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' }), 60)
+      setPage('home')
+      setTimeout(() => scrollToElement('pricing'), 100)
     } else {
-      document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })
+      scrollToElement('pricing')
     }
   }
 
   const goModels = () => {
     if (page !== 'home') {
-      navigate('home')
-      setTimeout(() => document.getElementById('models')?.scrollIntoView({ behavior: 'smooth' }), 60)
+      setPage('home')
+      setTimeout(() => scrollToElement('models'), 100)
     } else {
-      document.getElementById('models')?.scrollIntoView({ behavior: 'smooth' })
+      scrollToElement('models')
     }
   }
 
@@ -701,10 +720,14 @@ export function FrontendApp({
               </button>
             ) : (
               <button
-                onClick={openLoginModal}
-                className="glow-button rounded-md bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
+                onClick={() => {
+                  setIsLoginOpen(true)
+                  openLoginModal()
+                }}
+                className="glow-button flex items-center gap-1.5 rounded-md bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.03]"
               >
-                Đăng nhập
+                <User size={16} className="shrink-0" />
+                <span>Đăng nhập</span>
               </button>
             )}
           </div>
@@ -750,6 +773,7 @@ export function FrontendApp({
 
       <OrderLookupModal isOpen={isLookupOpen} onClose={() => setIsLookupOpen(false)} />
       <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </div>
   )
 }

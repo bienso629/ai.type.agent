@@ -403,12 +403,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _loadRecentQuestionsForSession(String sessionId, {bool forceReload = false}) async {
-    if (!forceReload && (_sessionRecentQuestions.containsKey(sessionId) || _loadingSessionQuestions.contains(sessionId))) {
+    if (!forceReload && _sessionRecentQuestions.containsKey(sessionId)) {
       return;
     }
-    setState(() {
-      _loadingSessionQuestions.add(sessionId);
-    });
+    if (_loadingSessionQuestions.contains(sessionId)) return;
+    _loadingSessionQuestions.add(sessionId);
+
     try {
       final questions = await _apiService.getRecentUserQuestions(sessionId, limit: 6);
       if (mounted) {
@@ -2306,16 +2306,19 @@ class _ChatScreenState extends State<ChatScreen> {
                                     splashColor: Colors.transparent,
                                     highlightColor: Colors.transparent,
                                     onTap: () {
+                                      if (chat.currentSession?.id == sess.id) return;
                                       chat.selectSession(sess).then((_) {
-                                        _scrollToBottom(instant: true);
+                                        _safeScrollToBottom(instant: true);
                                       });
                                       _loadRecentQuestionsForSession(sess.id);
                                       if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
                                         if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                          serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+                                          if (serverProvider.selectedServer?.id != 'local') {
+                                            serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+                                          }
                                         } else {
                                           final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                          if (matches.isNotEmpty) {
+                                          if (matches.isNotEmpty && serverProvider.selectedServer?.id != matches.first.id) {
                                             serverProvider.selectServer(matches.first);
                                           }
                                         }

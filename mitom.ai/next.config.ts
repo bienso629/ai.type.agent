@@ -14,6 +14,25 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Tắt Rocket Loader của Cloudflare và cấu hình domain proxy
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'cf-rocket-loader',
+            value: 'off',
+          },
+        ],
+      },
+    ]
+  },
+  experimental: {
+    serverActions: {
+      allowedOrigins: ['pay.type.vn', 'localhost:30000', '127.0.0.1:30000'],
+    },
+  },
   webpack: (webpackConfig) => {
     webpackConfig.resolve.extensionAlias = {
       '.cjs': ['.cts', '.cjs'],

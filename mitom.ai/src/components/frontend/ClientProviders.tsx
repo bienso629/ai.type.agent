@@ -8,7 +8,6 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       {children}
-      <LoginModal />
     </AuthProvider>
   )
 }
