@@ -338,14 +338,6 @@ function TopUpPage({
                 </div>
               )}
             </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="glow-button w-full rounded-md bg-primary py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
-            >
-              {loading ? 'Đang tạo đơn...' : `Xác nhận nạp ${formatVnd(total)}`}
-            </button>
           </div>
         </div>
       </form>
@@ -665,23 +657,8 @@ export function FrontendApp({
             <button onClick={goModels} className="transition-colors hover:text-primary">
               Model API ({models.length})
             </button>
-            <button onClick={goPricing} className="transition-colors hover:text-primary">
-              Nạp tiền
-            </button>
-            <button onClick={() => setIsLookupOpen(true)} className="transition-colors hover:text-primary">
-              Tra cứu đơn
-            </button>
-            <a href={ZALO} target="_blank" rel="noreferrer" className="transition-colors hover:text-primary">
-              Liên hệ Zalo
-            </a>
           </nav>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsLookupOpen(true)}
-              className="glow-button-secondary rounded-md border border-border bg-secondary px-3 py-2 text-xs font-semibold text-secondary-foreground hover:border-primary/50 lg:hidden"
-            >
-              Tra cứu
-            </button>
             {user ? (
               <button
                 onClick={() => setIsProfileOpen(true)}

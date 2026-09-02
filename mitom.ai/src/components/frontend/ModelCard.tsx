@@ -89,7 +89,7 @@ export function ModelCard({
                 {model.pricing.map((p, idx) => (
                   <div key={idx} className="space-y-1.5">
                     {model.pricing.length > 1 && (
-                      <div className="rounded bg-background/60 px-2 py-0.5 font-mono text-[10px] font-semibold text-foreground/90">
+                      <div className="px-1 py-0.5 font-mono text-[10px] font-bold text-primary">
                         {p.condition}
                       </div>
                     )}
