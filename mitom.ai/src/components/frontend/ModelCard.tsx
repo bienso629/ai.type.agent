@@ -30,24 +30,16 @@ export function ModelCard({
       <div>
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl font-mono text-xs font-bold"
-              style={{ background: `${model.accent}1a`, color: model.accent }}
-            >
-              {model.initials}
-            </span>
-            <div className="overflow-hidden">
-              <div className="flex items-center gap-2">
-                <h3
-                  className="truncate font-mono text-sm font-bold text-foreground"
-                  title={model.id}
-                >
-                  {model.id}
-                </h3>
-              </div>
-              <span className="text-xs text-muted-foreground">{model.provider}</span>
+          <div className="overflow-hidden">
+            <div className="flex items-center gap-2">
+              <h3
+                className="truncate font-mono text-sm font-bold text-foreground"
+                title={model.id}
+              >
+                {model.id}
+              </h3>
             </div>
+            <span className="text-xs text-muted-foreground">{model.provider}</span>
           </div>
           {model.badge && (
             <span className="inline-flex h-5 shrink-0 items-center rounded-sm bg-primary/15 px-2 font-mono text-[10px] font-semibold text-primary leading-none">

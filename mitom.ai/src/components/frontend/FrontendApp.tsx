@@ -7,9 +7,9 @@ import { ModelsSection } from './ModelsSection'
 import { useAuth } from '@/context/AuthContext'
 import { UserProfileModal } from './UserProfileModal'
 import { LoginModal } from './LoginModal'
-import { User } from 'lucide-react'
+import { User, ChevronLeft, ChevronRight, Sparkles, Copy, Check } from 'lucide-react'
 
-export type Page = 'home' | 'topup' | 'success'
+export type Page = 'home' | 'models' | 'topup' | 'success'
 
 export interface TopUp {
   amount: number
@@ -56,6 +56,120 @@ export const FAQS = [
 
 export const ZALO = 'https://zalo.me/0908888888'
 export const formatVnd = (n: number) => n.toLocaleString('vi-VN') + 'đ'
+
+export function HeroModelSlider({
+  models,
+  goModels,
+}: {
+  models: ApiModel[]
+  goModels: () => void
+}) {
+  // Lấy các model mới nhất hoặc nổi bật nhất
+  const latestModels = React.useMemo(() => {
+    const featured = models.filter(
+      (m) =>
+        m.badge === 'Mới nhất' ||
+        m.id.toLowerCase().includes('deepseek-v4') ||
+        m.id.toLowerCase().includes('glm-5.3') ||
+        m.id.toLowerCase().includes('wan3.0') ||
+        m.id.toLowerCase().includes('qwen3.8') ||
+        m.id.toLowerCase().includes('kimi-k3') ||
+        m.id.toLowerCase().includes('minimax-hailuo')
+    )
+    return featured.length > 0 ? featured : models.slice(0, 10)
+  }, [models])
+
+  const [currentIndex, setCurrentIndex] = useState(0)
+
+  const currentModel = latestModels[currentIndex] || models[0]
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev + 1) % latestModels.length)
+  }
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev - 1 + latestModels.length) % latestModels.length)
+  }
+
+  if (!currentModel) return null
+
+  return (
+    <div className="w-full max-w-md lg:max-w-lg rounded-2xl border border-border bg-card p-6 md:p-7 shadow-2xl shadow-black/40 relative overflow-hidden transition-all duration-300">
+      {/* Background glow theo màu accent của model */}
+      <div
+        className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full opacity-20 blur-3xl transition-all duration-500"
+        style={{ background: currentModel.accent || '#f5c451' }}
+      />
+
+      {/* Header thanh điều hướng Slide */}
+      <div className="flex items-center justify-between pb-4 border-b border-border">
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="text-primary animate-pulse" />
+          <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
+            Mô hình mới nhất
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground mr-1">
+            {currentIndex + 1} / {latestModels.length}
+          </span>
+          <button
+            type="button"
+            onClick={handlePrev}
+            title="Model trước"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={handleNext}
+            title="Model tiếp theo"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Model Info Card */}
+      <div className="mt-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="overflow-hidden">
+            <h3 className="truncate font-mono text-lg md:text-xl font-bold text-foreground" title={currentModel.id}>
+              {currentModel.id}
+            </h3>
+            <span className="text-xs text-muted-foreground font-medium">{currentModel.provider}</span>
+          </div>
+          {currentModel.badge && (
+            <span className="inline-flex h-6 shrink-0 items-center rounded-sm bg-primary/15 px-2.5 font-mono text-[11px] font-bold text-primary">
+              {currentModel.badge}
+            </span>
+          )}
+        </div>
+
+        {/* Mô tả model */}
+        <p className="mt-4 text-xs md:text-sm leading-relaxed text-muted-foreground line-clamp-3 min-h-[3.8rem]">
+          {currentModel.description}
+        </p>
+
+        {/* Thông tin giá & Trạng thái */}
+        <div className="mt-5 rounded-xl border border-border/80 bg-secondary/30 p-4 space-y-2.5">
+          <div className="flex items-center justify-between text-xs md:text-sm font-mono">
+            <span className="text-muted-foreground">Chi phí tham chiếu:</span>
+            <span className="font-bold text-emerald text-sm">
+              {currentModel.highlightPrice || (currentModel.pricing[0]?.rates[0] ? `${currentModel.pricing[0].rates[0].price} ${currentModel.pricing[0].rates[0].currency}` : 'Theo token')}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs font-mono border-t border-border/40 pt-2.5 text-muted-foreground">
+            <span>Giao thức kết nối:</span>
+            <span className="text-foreground font-semibold">OpenAI SDK Compatible (v1)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function Logo({ onClick }: { onClick?: () => void }) {
   return (
@@ -445,6 +559,64 @@ function SuccessPage({
   )
 }
 
+function ModelsPage({
+  models,
+  onNavigate,
+  onTopup,
+}: {
+  models: ApiModel[]
+  onNavigate: (p: Page) => void
+  onTopup: (t: TopUp) => void
+}) {
+  return (
+    <main className="mx-auto max-w-7xl px-5 py-12 md:px-8">
+      {/* Breadcrumb / Back button */}
+      <div className="mb-6 flex items-center justify-between">
+        <button
+          onClick={() => onNavigate('home')}
+          className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground hover:text-primary transition-colors"
+        >
+          <ChevronLeft size={16} /> Quay lại trang chủ
+        </button>
+        <span className="font-mono text-xs text-muted-foreground">
+          Cổng kết nối AI: <strong className="text-primary font-bold">1 Endpoint · {models.length} Model</strong>
+        </span>
+      </div>
+
+      {/* Hero banner của trang Models */}
+      <div className="mb-10 rounded-2xl border border-border bg-card p-6 md:p-8 shadow-xl relative overflow-hidden">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="max-w-3xl relative z-10">
+          <span className="font-mono text-xs uppercase tracking-widest text-primary font-bold">
+            // Danh mục & Bảng giá Model API
+          </span>
+          <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight md:text-5xl">
+            Toàn bộ mô hình AI sẵn sàng kết nối
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground md:text-base">
+            Tra cứu thông số, đơn giá token/lượt gọi và sao chép mã Model ID để tích hợp trực tiếp qua chuẩn OpenAI API.
+          </p>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/70 px-3.5 py-2 font-mono text-xs text-foreground">
+              <span className="text-muted-foreground">Base URL:</span>
+              <code className="text-primary font-bold select-all">https://api-us-ca.umodelverse.ai/v1</code>
+            </div>
+            <button
+              onClick={() => onTopup(TOPUPS[1])}
+              className="glow-button rounded-lg bg-primary px-4 py-2 font-mono text-xs font-bold text-primary-foreground transition-transform hover:scale-[1.02]"
+            >
+              Nạp số dư trải nghiệm
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Models Section hiển thị toàn bộ danh sách */}
+      <ModelsSection models={models} />
+    </main>
+  )
+}
+
 function OrderLookupModal({
   isOpen,
   onClose,
@@ -610,12 +782,7 @@ export function FrontendApp({
   }
 
   const goModels = () => {
-    if (page !== 'home') {
-      setPage('home')
-      setTimeout(() => scrollToElement('models'), 100)
-    } else {
-      scrollToElement('models')
-    }
+    navigate('models')
   }
 
   let content: ReactNode
@@ -628,6 +795,14 @@ export function FrontendApp({
           navigate('success')
         }}
         onNavigate={navigate}
+      />
+    )
+  } else if (page === 'models') {
+    content = (
+      <ModelsPage
+        models={models}
+        onNavigate={navigate}
+        onTopup={startTopup}
       />
     )
   } else if (page === 'success') {
@@ -804,47 +979,9 @@ function HomePage({
             </div>
           </div>
 
-          {/* Wallet balance & API Endpoint mockup */}
+          {/* Slide Model Mới Nhất */}
           <div className="flex items-center justify-center lg:justify-end">
-            <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl shadow-black/40">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">Số dư API Mì Tôm</span>
-                <span className="rounded-sm bg-emerald/15 font-mono text-[11px] font-bold text-emerald">
-                  Đang hoạt động
-                </span>
-              </div>
-              <div className="mt-3 font-display text-4xl font-black text-primary">550.000đ</div>
-              <div className="mt-1 font-mono text-xs text-muted-foreground">Dùng linh hoạt cho hơn 130 model AI</div>
-              <div className="mt-5 space-y-3 border-t border-border pt-5">
-                <span className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">Tác vụ gọi gần đây</span>
-                {[
-                  ['DeepSeek-V4 Pro Request', '−2.400đ', '#0066ff', 'DS'],
-                  ['GLM-5.3 Flash Batch', '−850đ', '#3b82f6', 'GL'],
-                  ['Nạp số dư VietQR', '+1.000.000đ', '#f5c451', '＋'],
-                ].map(([name, amt, c, ini]) => (
-                  <div key={name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="grid h-9 w-9 place-items-center rounded-xl font-mono text-xs font-bold"
-                        style={{ background: `${c}1a`, color: c }}
-                      >
-                        {ini}
-                      </span>
-                      <span className="text-sm font-medium">{name}</span>
-                    </div>
-                    <span className={`font-mono text-sm ${amt.startsWith('+') ? 'text-emerald' : 'text-foreground'}`}>
-                      {amt}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={goPricing}
-                className="glow-button mt-5 w-full rounded-md bg-primary py-3 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02]"
-              >
-                Nạp thêm số dư
-              </button>
-            </div>
+            <HeroModelSlider models={models} goModels={goModels} />
           </div>
         </div>
       </section>
@@ -860,8 +997,27 @@ function HomePage({
         </div>
       </div>
 
-      {/* Models Section */}
-      <ModelsSection models={models} />
+      {/* How it works */}
+      <section id="how" className="mx-auto max-w-7xl px-5 py-20 md:px-8">
+        <div className="mb-12">
+          <span className="font-mono text-xs uppercase tracking-widest text-primary">// Quy trình</span>
+          <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight md:text-4xl">Sử dụng API trong 4 bước</h2>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['01', 'Nạp số dư tài khoản', 'Chọn gói nạp và quét mã thanh toán qua VietQR, Momo hoặc ZaloPay.'],
+            ['02', 'Lấy API Key & Endpoint', 'Nhận API Key kích hoạt và cấu hình Endpoint vào ứng dụng của bạn.'],
+            ['03', 'Chọn Model tương thích', 'Sao chép mã Model từ danh mục (hơn 130 models) và đưa vào cấu hình.'],
+            ['04', 'Gọi API & Tối ưu', 'Trừ theo lượng token/lượt sinh thực tế, hỗ trợ kỹ thuật 24/7 khi cần.'],
+          ].map(([n, t, d]) => (
+            <div key={n} className="relative rounded-xl border border-border bg-card p-6">
+              <span className="font-mono text-3xl font-bold text-primary/30">{n}</span>
+              <h3 className="mt-3 font-display text-lg font-bold">{t}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{d}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* Pricing — nạp tiền */}
       <section id="pricing" className="border-y border-border bg-secondary/30">
@@ -938,28 +1094,6 @@ function HomePage({
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how" className="mx-auto max-w-7xl px-5 py-20 md:px-8">
-        <div className="mb-12">
-          <span className="font-mono text-xs uppercase tracking-widest text-primary">// Quy trình</span>
-          <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight md:text-4xl">Sử dụng API trong 4 bước</h2>
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['01', 'Nạp số dư tài khoản', 'Chọn gói nạp và quét mã thanh toán qua VietQR, Momo hoặc ZaloPay.'],
-            ['02', 'Lấy API Key & Endpoint', 'Nhận API Key kích hoạt và cấu hình Endpoint vào ứng dụng của bạn.'],
-            ['03', 'Chọn Model tương thích', 'Sao chép mã Model từ danh mục (hơn 130 models) và đưa vào cấu hình.'],
-            ['04', 'Gọi API & Tối ưu', 'Trừ theo lượng token/lượt sinh thực tế, hỗ trợ kỹ thuật 24/7 khi cần.'],
-          ].map(([n, t, d]) => (
-            <div key={n} className="relative rounded-xl border border-border bg-card p-6">
-              <span className="font-mono text-3xl font-bold text-primary/30">{n}</span>
-              <h3 className="mt-3 font-display text-lg font-bold">{t}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{d}</p>
-            </div>
-          ))}
         </div>
       </section>
 

@@ -65,42 +65,29 @@ export function ModelsSection({
   }
 
   return (
-    <section id="models" className="mx-auto max-w-7xl px-5 py-20 md:px-8">
-      {/* Section Header */}
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs uppercase tracking-widest text-primary">
-              // Danh mục Model API có sẵn
-            </span>
-            <span className="inline-flex items-center gap-1 rounded bg-emerald/15 px-2 py-0.5 font-mono text-[11px] font-bold text-emerald">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> {models.length} Models Online
-            </span>
-          </div>
-          <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight md:text-4xl">
-            Các mô hình AI sẵn sàng kết nối
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Hệ thống hỗ trợ đầy đủ các model DeepSeek, GLM-5, Qwen, Doubao, Kling, Wan, Vidu và MiniMax. Chuẩn định dạng OpenAI API qua endpoint{' '}
-            <code className="rounded bg-secondary/80 px-1.5 py-0.5 font-mono text-xs text-primary">
-              https://api-us-ca.umodelverse.ai/v1
-            </code>
-            .
-          </p>
+    <section id="models" className="w-full">
+      {/* Search input & Provider dropdown */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 border-b border-border">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded bg-emerald/15 px-2.5 py-1 font-mono text-xs font-bold text-emerald">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> {models.length} Models Sẵn sàng
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">
+            Chuẩn OpenAI API
+          </span>
         </div>
 
-        {/* Search input & Provider dropdown */}
-        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-          <div className="relative min-w-[240px]">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <div className="relative min-w-[260px]">
             <input
               type="text"
               placeholder="Tìm kiếm model, hãng..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border border-border bg-card px-3.5 py-2.5 pl-9 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md border border-border bg-card px-3.5 py-2 pl-9 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <svg
-              className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"
+              className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -112,26 +99,16 @@ export function ModelsSection({
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
               />
             </svg>
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-2.5 text-xs text-muted-foreground hover:text-foreground"
-              >
-                Xóa
-              </button>
-            )}
           </div>
 
           <select
             value={selectedProvider}
             onChange={(e) => setSelectedProvider(e.target.value)}
-            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+            className="rounded-md border border-border bg-card px-3 py-2 text-xs font-mono text-foreground transition-colors focus:border-primary focus:outline-none"
           >
-            <option value="all">Tất cả nhà cung cấp ({providers.length - 1})</option>
-            {providers.filter((p) => p !== 'all').map((p) => (
+            {providers.map((p) => (
               <option key={p} value={p}>
-                {p}
+                {p === 'all' ? 'Tất cả các hãng' : p}
               </option>
             ))}
           </select>

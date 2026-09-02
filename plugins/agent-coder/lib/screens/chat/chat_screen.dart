@@ -1031,6 +1031,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                   : ListView.builder(
                                       controller: _scrollController,
                                       reverse: true,
+                                      cacheExtent: 400.0,
+                                      addRepaintBoundaries: true,
+                                      addAutomaticKeepAlives: true,
                                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                                       itemCount: chat.messages.isEmpty
                                           ? 1
@@ -1047,7 +1050,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                         }
                                         final msgIndex = chat.messages.length - 1 - idx;
                                         final msg = chat.messages[msgIndex];
-                                        return _buildMessageItem(msg, chat, msgIndex);
+                                        return RepaintBoundary(
+                                          child: _buildMessageItem(msg, chat, msgIndex),
+                                        );
                                       },
                                     ),
                             ),
@@ -3326,6 +3331,7 @@ class _CodeBlockWidget extends StatefulWidget {
 
 class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
   bool _copied = false;
+  bool _isExpanded = false;
 
   void _copy() async {
     await Clipboard.setData(ClipboardData(text: widget.code));
@@ -3410,6 +3416,8 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
       langIcon = Icons.code_rounded;
     }
 
+    final lineCount = '\n'.allMatches(widget.code).length + 1;
+    final isVeryLong = lineCount > 40 || widget.code.length > 2500;
     final langLabel = widget.language.isNotEmpty ? widget.language.toUpperCase() : (isRunnable ? 'BASH' : 'CODE');
 
     return Container(
@@ -3447,6 +3455,17 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                     letterSpacing: 0.5,
                   ),
                 ),
+                if (lineCount > 1) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '($lineCount dòng)',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      color: AppColors.textDim,
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 if (isRunnable) ...[
                   Tooltip(
@@ -3484,18 +3503,57 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: SelectableText(
-              widget.code,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-                color: isRunnable ? const Color(0xFF4ADE80) : AppColors.textBody,
-                height: 1.45,
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: (isVeryLong && !_isExpanded) ? 360.0 : double.infinity,
+            ),
+            child: SingleChildScrollView(
+              physics: (isVeryLong && !_isExpanded) ? const ClampingScrollPhysics() : const NeverScrollableScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                child: Text(
+                  widget.code,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    color: isRunnable ? const Color(0xFF4ADE80) : AppColors.textBody,
+                    height: 1.45,
+                  ),
+                ),
               ),
             ),
           ),
+          if (isVeryLong)
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _isExpanded = !_isExpanded;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F172A),
+                  border: Border(top: BorderSide(color: Color(0xFF1E293B))),
+                ),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                      size: 14,
+                      color: AppColors.accentCyan,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _isExpanded ? 'Thu gọn code' : 'Mở rộng toàn bộ ($lineCount dòng)',
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -3626,11 +3684,23 @@ class _CommandRunnerModalState extends State<_CommandRunnerModal> {
           _scrollToBottom();
         });
 
-        final code = await process.exitCode;
+        final code = await process.exitCode.timeout(
+          const Duration(minutes: 5),
+          onTimeout: () {
+            try {
+              process.kill(ProcessSignal.sigkill);
+            } catch (_) {}
+            return -999;
+          },
+        );
         if (!mounted) return;
         setState(() {
           _isRunning = false;
-          _logs.writeln('\n[Hoàn tất]: Tiến trình kết thúc ($code)');
+          if (code == -999) {
+            _logs.writeln('\n[Hết thời gian chờ]: Lệnh đã tự động dừng sau 5 phút.');
+          } else {
+            _logs.writeln('\n[Hoàn tất]: Tiến trình kết thúc ($code)');
+          }
         });
         _scrollToBottom();
       } catch (e) {
