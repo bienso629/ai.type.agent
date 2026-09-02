@@ -21,8 +21,13 @@ export const Transactions: CollectionConfig = {
       name: 'order',
       type: 'relationship',
       relationTo: 'orders',
-      required: true,
-      label: 'Đơn hàng liên kết',
+      label: 'Đơn hàng liên kết (nếu có)',
+    },
+    {
+      name: 'user',
+      type: 'relationship',
+      relationTo: 'users',
+      label: 'Người dùng được cộng tiền',
     },
     {
       name: 'amount',
@@ -33,8 +38,9 @@ export const Transactions: CollectionConfig = {
     {
       name: 'paymentMethod',
       type: 'select',
-      defaultValue: 'vietqr',
+      defaultValue: 'sepay',
       options: [
+        { label: 'SePay / Webhook Ngân Hàng', value: 'sepay' },
         { label: 'VietQR / Chuyển khoản ngân hàng', value: 'vietqr' },
         { label: 'Momo', value: 'momo' },
         { label: 'Thẻ tín dụng / Visa', value: 'credit_card' },

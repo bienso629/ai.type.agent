@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/services/database_service.dart';
 import 'core/services/local_config_service.dart';
 import 'core/services/storage_service.dart';
+import 'core/services/system_notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/custom_window_frame.dart';
 import 'providers/auth_provider.dart';
@@ -75,6 +76,7 @@ class AiTypeAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LogsProvider()),
       ],
       child: MaterialApp(
+        navigatorKey: SystemNotificationService.navigatorKey,
         title: 'AI Type Agent',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,

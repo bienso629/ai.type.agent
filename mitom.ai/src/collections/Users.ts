@@ -55,6 +55,14 @@ export const Users: CollectionConfig = {
       label: 'Số dư tài khoản (VNĐ)',
     },
     {
+      name: 'customerCode',
+      type: 'text',
+      label: 'Mã khách hàng / Cú pháp nạp (Ví dụ: MT938027)',
+      admin: {
+        description: 'Mã nhận diện nạp tiền tự động qua SePay webhook',
+      },
+    },
+    {
       name: 'apiKey',
       type: 'text',
       label: 'API Key truy cập',

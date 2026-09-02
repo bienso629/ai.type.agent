@@ -9,6 +9,7 @@ export interface AuthUser {
   avatar?: string
   authProvider: 'local' | 'google' | 'tadu'
   balance: number
+  customerCode?: string
   apiKey?: string
   role?: string
 }

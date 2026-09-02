@@ -15,8 +15,6 @@ export function ModelsSection({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProvider, setSelectedProvider] = useState<string>('all')
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-
   // Extract list of unique providers
   const providers = useMemo(() => {
     const set = new Set<string>()
@@ -52,16 +50,6 @@ export function ModelsSection({
   const handleCopied = (id: string) => {
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2500)
-  }
-
-  const handleScroll = (direction: 'left' | 'right') => {
-    if (!scrollContainerRef.current) return
-    const container = scrollContainerRef.current
-    const scrollAmount = container.clientWidth * 0.8
-    container.scrollBy({
-      left: direction === 'left' ? -scrollAmount : scrollAmount,
-      behavior: 'smooth',
-    })
   }
 
   return (
@@ -115,7 +103,7 @@ export function ModelsSection({
         </div>
       </div>
 
-      {/* Category Tabs & Slider Navigation */}
+      {/* Category Tabs */}
       <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
         <div className="flex flex-wrap gap-2">
           {MODEL_CATEGORIES.map((c) => {
@@ -149,32 +137,10 @@ export function ModelsSection({
           })}
         </div>
 
-        {/* Slide navigation buttons */}
+        {/* Total models count */}
         {filteredModels.length > 0 && (
-          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-            <span className="font-mono text-xs text-muted-foreground mr-1">
-              {filteredModels.length} mô hình
-            </span>
-            <button
-              type="button"
-              onClick={() => handleScroll('left')}
-              title="Cuộn sang trái"
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-secondary-foreground transition-all hover:border-primary hover:text-primary active:scale-95"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleScroll('right')}
-              title="Cuộn sang phải"
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-secondary-foreground transition-all hover:border-primary hover:text-primary active:scale-95"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 font-mono text-xs text-muted-foreground">
+            Hiển thị: <strong className="text-primary font-bold">{filteredModels.length}</strong> / {models.length} model
           </div>
         )}
       </div>
@@ -187,22 +153,12 @@ export function ModelsSection({
         </div>
       )}
 
-      {/* 2-Row Horizontal Slide Container */}
+      {/* Full Models Grid - Xổ hết danh sách */}
       {filteredModels.length > 0 ? (
-        <div className="relative mt-8">
-          <div
-            ref={scrollContainerRef}
-            className="grid grid-rows-2 grid-flow-col auto-cols-[minmax(320px,400px)] gap-5 overflow-x-auto scroll-smooth scrollbar-thin px-1 py-2"
-            style={{
-              scrollbarGutter: 'stable',
-            }}
-          >
-            {filteredModels.map((m) => (
-              <div key={m.id} className="h-full">
-                <ModelCard model={m} onCopy={handleCopied} />
-              </div>
-            ))}
-          </div>
+        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filteredModels.map((m) => (
+            <ModelCard key={m.id} model={m} onCopy={handleCopied} />
+          ))}
         </div>
       ) : (
         <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">

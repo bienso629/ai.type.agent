@@ -12,6 +12,7 @@ export interface SessionUser {
   avatar?: string
   authProvider: 'local' | 'google' | 'tadu'
   balance?: number
+  customerCode?: string
   apiKey?: string
   role?: string
 }
@@ -24,6 +25,7 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
     avatar: user.avatar || '',
     authProvider: user.authProvider,
     balance: user.balance || 0,
+    customerCode: user.customerCode || '',
     apiKey: user.apiKey || '',
     role: user.role || 'user',
   })

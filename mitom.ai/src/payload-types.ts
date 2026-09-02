@@ -137,6 +137,10 @@ export interface User {
   taduUserId?: string | null;
   googleId?: string | null;
   balance?: number | null;
+  /**
+   * Mã nhận diện nạp tiền tự động qua SePay webhook
+   */
+  customerCode?: string | null;
   apiKey?: string | null;
   role?: ('admin' | 'user') | null;
   updatedAt: string;
@@ -249,9 +253,10 @@ export interface Order {
 export interface Transaction {
   id: number;
   transactionId: string;
-  order: number | Order;
+  order?: (number | null) | Order;
+  user?: (number | null) | User;
   amount: number;
-  paymentMethod?: ('vietqr' | 'momo' | 'credit_card' | 'crypto') | null;
+  paymentMethod?: ('sepay' | 'vietqr' | 'momo' | 'credit_card' | 'crypto') | null;
   status?: ('pending' | 'success' | 'failed') | null;
   rawResponse?:
     | {
@@ -366,6 +371,7 @@ export interface UsersSelect<T extends boolean = true> {
   taduUserId?: T;
   googleId?: T;
   balance?: T;
+  customerCode?: T;
   apiKey?: T;
   role?: T;
   updatedAt?: T;
@@ -472,6 +478,7 @@ export interface OrdersSelect<T extends boolean = true> {
 export interface TransactionsSelect<T extends boolean = true> {
   transactionId?: T;
   order?: T;
+  user?: T;
   amount?: T;
   paymentMethod?: T;
   status?: T;

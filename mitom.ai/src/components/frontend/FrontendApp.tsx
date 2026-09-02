@@ -103,12 +103,9 @@ export function HeroModelSlider({
 
       {/* Header thanh điều hướng Slide */}
       <div className="flex items-center justify-between pb-4 border-b border-border">
-        <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-primary animate-pulse" />
-          <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
-            Mô hình mới nhất
-          </span>
-        </div>
+        <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
+          Mô hình mới nhất
+        </span>
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs text-muted-foreground mr-1">
             {currentIndex + 1} / {latestModels.length}
@@ -200,11 +197,11 @@ export function Logo({ onClick }: { onClick?: () => void }) {
   )
 }
 
-export function QrMock({ amount }: { amount?: number }) {
+export function QrMock({ amount, memo: customMemo }: { amount?: number; memo?: string }) {
   const bankId = 'MBBank'
   const accountNo = '0938414436'
   const accountName = 'NGUYEN NGOC THANH VY'
-  const memo = amount ? `NAP ${amount / 1000}K` : 'NAP TIEN MITOM AI'
+  const memo = customMemo || (amount ? `NAP ${amount / 1000}K` : 'NAP TIEN MITOM AI')
   const qrUrl = amount
     ? `https://vietqr.app/img?bank=${bankId}&acc=${accountNo}&template=&showinfo=true&holder=${encodeURIComponent(accountName)}&amount=${amount}&memo=${encodeURIComponent(memo)}`
     : null
@@ -238,7 +235,7 @@ function TopUpPage({
   onDone: (order: any) => void
   onNavigate: (p: Page) => void
 }) {
-  const { user } = useAuth()
+  const { user, openLoginModal } = useAuth()
   const [pay, setPay] = useState('vietqr')
   const [phone, setPhone] = useState('')
   const [name, setName] = useState(user?.name || '')
@@ -304,8 +301,56 @@ function TopUpPage({
     }
   }
 
+  if (!user) {
+    return (
+      <main className="mx-auto max-w-7xl px-5 py-16 md:px-8">
+        <button
+          onClick={() => onNavigate('home')}
+          className="group mb-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="transition-transform group-hover:-translate-x-1"
+          >
+            <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Quay lại trang chủ
+        </button>
+
+        <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-2xl">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
+            <User size={28} />
+          </div>
+          <h1 className="mt-5 font-display text-2xl font-black">Yêu cầu đăng nhập</h1>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            Bạn cần đăng nhập tài khoản trước khi nạp số dư để hệ thống có thể cộng tiền và cấp API Key chính xác vào tài khoản của bạn.
+          </p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={openLoginModal}
+              className="glow-button rounded-md bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02]"
+            >
+              Đăng nhập ngay
+            </button>
+            <button
+              onClick={() => onNavigate('home')}
+              className="glow-button-secondary rounded-md border border-border bg-secondary px-6 py-3 text-sm font-semibold text-secondary-foreground hover:border-primary/60"
+            >
+              Xem các gói khác
+            </button>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   return (
-    <main className="mx-auto max-w-6xl px-5 py-12 md:px-8">
+    <main className="mx-auto max-w-7xl px-5 py-12 md:px-8">
       <button
         onClick={() => onNavigate('home')}
         className="group mb-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -402,7 +447,10 @@ function TopUpPage({
               <h2 className="font-display text-lg font-bold">2. Thanh toán VietQR</h2>
               <p className="text-xs text-muted-foreground mt-1">Quét mã bằng ứng dụng ngân hàng bất kỳ để thanh toán</p>
               <div className="mt-6 flex flex-col items-center justify-center">
-                <QrMock amount={topup.amount} />
+                <QrMock
+                  amount={topup.amount}
+                  memo={user?.customerCode ? `NAP ${user.customerCode}` : (user?.id ? `NAP MT${user.id}` : `NAP ${topup.amount / 1000}K`)}
+                />
               </div>
             </div>
             <p className="text-center text-xs text-muted-foreground font-mono">
@@ -445,12 +493,6 @@ function TopUpPage({
                   Số dư dùng trực tiếp cho hơn 130+ model AI, không giới hạn thời gian sử dụng.
                 </p>
               </div>
-
-              {error && (
-                <div className="mt-4 rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-400">
-                  {error}
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -753,6 +795,11 @@ export function FrontendApp({
 
   const startTopup = (t: TopUp) => {
     setTopup(t)
+    if (!user) {
+      setIsLoginOpen(true)
+      openLoginModal()
+      return
+    }
     navigate('topup')
   }
 
@@ -1098,7 +1145,7 @@ function HomePage({
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="border-t border-border bg-secondary/30">
+      <section id="faq" className="bg-secondary/30">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 md:px-8 lg:grid-cols-[0.8fr_1.2fr]">
           <div>
             <span className="font-mono text-xs uppercase tracking-widest text-primary">// Hỏi đáp</span>
