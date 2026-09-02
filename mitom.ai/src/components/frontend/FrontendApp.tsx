@@ -29,8 +29,6 @@ export const TOPUPS: TopUp[] = [
 
 export const PAY_METHODS = [
   { id: 'vietqr', label: 'VietQR / Chuyển khoản', note: 'Quét mã, tự động cộng số dư' },
-  { id: 'momo', label: 'Ví Momo', note: 'Thanh toán nhanh qua app' },
-  { id: 'zalopay', label: 'ZaloPay', note: 'Liên kết ngân hàng' },
 ]
 
 export const FAQS = [
@@ -48,7 +46,7 @@ export const FAQS = [
   },
   {
     q: 'Thanh toán và nạp tiền bằng cách nào?',
-    a: 'Chúng tôi hỗ trợ chuyển khoản ngân hàng nội địa VietQR, Momo và ZaloPay. Số dư được cộng tự động ngay sau khi xác nhận thanh toán thành công.',
+    a: 'Chúng tôi hỗ trợ chuyển khoản ngân hàng tự động qua VietQR 24/7. Số dư được cộng tự động ngay sau khi xác nhận thanh toán thành công.',
   },
   {
     q: 'Chính sách hỗ trợ kỹ thuật thế nào?',
@@ -99,7 +97,7 @@ export function QrMock({ amount }: { amount?: number }) {
 
   if (qrUrl) {
     return (
-      <div className="w-full max-w-xs aspect-square shrink-0 overflow-hidden rounded-2xl bg-white p-3 md:p-4 shadow-lg ring-1 ring-border flex items-center justify-center">
+      <div className="w-full max-w-sm sm:max-w-md aspect-square shrink-0 overflow-hidden flex items-center justify-center">
         <img
           src={qrUrl}
           alt="Mã VietQR nạp tiền"
@@ -110,7 +108,7 @@ export function QrMock({ amount }: { amount?: number }) {
   }
 
   return (
-    <div className="flex w-full max-w-xs aspect-square shrink-0 flex-col items-center justify-center rounded-2xl bg-primary/10 text-center font-mono text-xs text-primary ring-1 ring-border">
+    <div className="flex w-full max-w-sm sm:max-w-md aspect-square shrink-0 flex-col items-center justify-center rounded-2xl bg-primary/10 text-center font-mono text-xs text-primary ring-1 ring-border">
       <span className="font-bold text-base">VietQR</span>
       <span className="text-xs text-muted-foreground">Tự động cộng</span>
     </div>
@@ -220,153 +218,136 @@ function TopUpPage({
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[1fr_360px]">
-        <div className="grid gap-6 md:grid-cols-2">
-          <fieldset className="rounded-xl border border-border bg-card p-6">
-            <legend className="px-2 font-display text-lg font-bold">Thông tin nhận mã / tài khoản</legend>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Số điện thoại / Zalo <span className="text-primary">*</span>
-                  <input
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="0908888888"
-                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </label>
-              </div>
+      <form onSubmit={handleSubmit} className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+        <div className="grid lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-border">
+          {/* Cột 1: Thông tin khách hàng */}
+          <div className="p-6 md:p-8 flex flex-col justify-between space-y-6">
+            <div>
+              <h2 className="font-display text-lg font-bold">1. Thông tin tài khoản</h2>
+              <p className="text-xs text-muted-foreground mt-1">Thông tin nhận biên lai và kích hoạt số dư</p>
+              <div className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Số điện thoại / Zalo <span className="text-primary">*</span>
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="0908888888"
+                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                </div>
 
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Họ và tên
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Nguyễn Văn A"
-                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </label>
-              </div>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Họ và tên
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Nguyễn Văn A"
+                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                </div>
 
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Email (để nhận biên lai & API Key)
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ban@gmail.com"
-                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </label>
-              </div>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Email (để nhận biên lai & API Key)
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="ban@gmail.com"
+                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                </div>
 
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Ghi chú
-                  <textarea
-                    rows={2}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Model cần tư vấn hoặc ghi chú thêm..."
-                    className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </label>
-              </div>
-            </div>
-          </fieldset>
-
-          <fieldset className="rounded-xl border border-border bg-card p-6">
-            <legend className="px-2 font-display text-lg font-bold">Phương thức nạp tiền</legend>
-            <div className="space-y-3">
-              {PAY_METHODS.map((m) => (
-                <label
-                  key={m.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors ${
-                    pay === m.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="pay"
-                    checked={pay === m.id}
-                    onChange={() => setPay(m.id)}
-                    className="sr-only"
-                  />
-                  <span
-                    className={`grid h-5 w-5 place-items-center rounded-sm border-2 ${
-                      pay === m.id ? 'border-primary' : 'border-border'
-                    }`}
-                  >
-                    {pay === m.id && <span className="h-2.5 w-2.5 rounded-xs bg-primary" />}
-                  </span>
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold">{m.label}</div>
-                    <div className="text-xs text-muted-foreground">{m.note}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-            {pay === 'vietqr' && (
-              <div className="mt-4 flex flex-col items-center gap-5 rounded-2xl border border-dashed border-border bg-secondary/30 p-6 md:p-8">
-                <QrMock amount={topup.amount} />
-                <div className="text-center md:text-left w-full space-y-2">
-                  <div className="font-bold text-foreground text-base">Quét mã VietQR tự động</div>
-                  <p className="font-mono text-xs leading-relaxed text-muted-foreground bg-secondary/50 p-4 rounded-xl border border-border">
-                    <span className="text-foreground font-semibold">Chủ TK:</span> NGUYEN NGOC THANH VY<br />
-                    <span className="text-foreground font-semibold">STK:</span> 0938414436 · MB Bank<br />
-                    <span className="text-foreground font-semibold">Nội dung:</span> <span className="font-bold text-primary">NAP {topup.amount / 1000}K</span>
-                  </p>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Ghi chú
+                    <textarea
+                      rows={2}
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="Model cần tư vấn hoặc ghi chú thêm..."
+                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
                 </div>
               </div>
-            )}
-          </fieldset>
-        </div>
-
-        <aside className="h-fit rounded-xl border border-border bg-card p-6">
-          <h2 className="font-display text-lg font-bold">Tóm tắt đơn nạp</h2>
-          <dl className="mt-5 space-y-3 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Số tiền nạp</dt>
-              <dd className="font-mono">{formatVnd(topup.amount)}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Khuyến mãi (+{topup.bonusPct}%)</dt>
-              <dd className="font-mono text-emerald">{bonus > 0 ? `+${formatVnd(bonus)}` : '—'}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Phí giao dịch</dt>
-              <dd className="font-mono text-emerald">Miễn phí</dd>
-            </div>
-          </dl>
-          <div className="mt-5 flex items-baseline justify-between border-t border-border pt-5">
-            <span className="font-display text-base font-bold">Số dư nhận được</span>
-            <span className="font-display text-2xl font-black text-primary">
-              {formatVnd(topup.amount + bonus)}
-            </span>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Số dư dùng trực tiếp cho toàn bộ model AI trên hệ thống, không hết hạn.
-          </p>
 
-          {error && (
-            <div className="mt-4 rounded-sm border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-400">
-              {error}
+          {/* Cột 2: Quét mã VietQR */}
+          <div className="p-6 md:p-8 flex flex-col justify-between space-y-6">
+            <div>
+              <h2 className="font-display text-lg font-bold">2. Thanh toán VietQR</h2>
+              <p className="text-xs text-muted-foreground mt-1">Quét mã bằng ứng dụng ngân hàng bất kỳ để thanh toán</p>
+              <div className="mt-6 flex flex-col items-center justify-center">
+                <QrMock amount={topup.amount} />
+              </div>
             </div>
-          )}
+            <p className="text-center text-xs text-muted-foreground font-mono">
+              Hệ thống tự động ghi nhận và cộng tiền 24/7
+            </p>
+          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="glow-button mt-6 w-full rounded-md bg-primary py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50"
-          >
-            {loading ? 'Đang tạo đơn...' : `Thanh toán ${formatVnd(total)}`}
-          </button>
-        </aside>
+          {/* Cột 3: Tóm tắt đơn nạp & Nút thanh toán */}
+          <div className="p-6 md:p-8 flex flex-col justify-between bg-secondary/10 space-y-6">
+            <div>
+              <h2 className="font-display text-lg font-bold">3. Tóm tắt đơn nạp</h2>
+              <p className="text-xs text-muted-foreground mt-1">Chi tiết quyền lợi số dư nạp</p>
+              <dl className="mt-6 space-y-3.5 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Số tiền nạp</dt>
+                  <dd className="font-mono font-semibold">{formatVnd(topup.amount)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Khuyến mãi (+{topup.bonusPct}%)</dt>
+                  <dd className="font-mono font-semibold text-emerald">{bonus > 0 ? `+${formatVnd(bonus)}` : '—'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Phí giao dịch</dt>
+                  <dd className="font-mono font-semibold text-emerald">Miễn phí</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Phương thức</dt>
+                  <dd className="font-medium text-foreground">VietQR</dd>
+                </div>
+              </dl>
+
+              <div className="mt-6 border-t border-border pt-5">
+                <div className="flex items-baseline justify-between">
+                  <span className="font-display text-sm font-bold">Tổng số dư nhận</span>
+                  <span className="font-display text-2xl font-black text-primary">
+                    {formatVnd(topup.amount + bonus)}
+                  </span>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                  Số dư dùng trực tiếp cho hơn 130+ model AI, không giới hạn thời gian sử dụng.
+                </p>
+              </div>
+
+              {error && (
+                <div className="mt-4 rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-400">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="glow-button w-full rounded-md bg-primary py-3.5 text-sm font-bold text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+            >
+              {loading ? 'Đang tạo đơn...' : `Xác nhận nạp ${formatVnd(total)}`}
+            </button>
+          </div>
+        </div>
       </form>
     </main>
   )

@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import Image from 'next/image'
 import { useAuth } from '@/context/AuthContext'
-import { X, Lock, Mail, AlertCircle, Cloud, KeyRound, CheckCircle2 } from 'lucide-react'
+import { X, Lock, Mail, AlertCircle, Cloud, CheckCircle2 } from 'lucide-react'
 
 export function LoginModal({
   isOpen: propIsOpen,
@@ -37,9 +37,12 @@ export function LoginModal({
 
   const handleSuccess = (userName?: string) => {
     setSuccessMessage(`Đăng nhập thành công! Chào mừng ${userName || 'bạn'} quay trở lại.`)
+    setErrorMessage(null)
     setTimeout(() => {
-      setSuccessMessage(null)
       handleClose()
+      setSuccessMessage(null)
+      setEmail('')
+      setPassword('')
     }, 1200)
   }
 
@@ -60,14 +63,14 @@ export function LoginModal({
         if (!res.success) {
           setErrorMessage(res.message || 'Đăng nhập Tadu Cloud thất bại.')
         } else {
-          handleSuccess(email.split('@')[0])
+          handleSuccess(email.trim().split('@')[0])
         }
       } else {
         const res = await loginWithLocal(email.trim(), password)
         if (!res.success) {
           setErrorMessage(res.message || 'Email hoặc mật khẩu không chính xác.')
         } else {
-          handleSuccess(email.split('@')[0])
+          handleSuccess(email.trim().split('@')[0])
         }
       }
     } finally {
@@ -128,11 +131,6 @@ export function LoginModal({
     }, 500)
   }
 
-  const handleTypeLogin = () => {
-    setErrorMessage('Đang kết nối cổng xác thực Type SSO...')
-    window.location.href = 'https://type.vn'
-  }
-
   return (
     <div
       style={{ display: 'flex' }}
@@ -170,17 +168,19 @@ export function LoginModal({
 
         {/* Nội dung Modal Form */}
         <div className="p-6">
-          {successMessage && (
-            <div className="mb-4 flex items-start gap-2.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
-              <CheckCircle2 size={16} className="shrink-0 text-emerald-400 mt-0.5" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
+          {/* Thông báo lỗi */}
           {errorMessage && (
             <div className="mb-4 flex items-start gap-2.5 rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
               <AlertCircle size={16} className="shrink-0 text-rose-400 mt-0.5" />
               <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Thông báo thành công */}
+          {successMessage && (
+            <div className="mb-4 flex items-start gap-2.5 rounded-md border border-emerald/40 bg-emerald/15 p-3 text-xs text-emerald font-medium">
+              <CheckCircle2 size={16} className="shrink-0 text-emerald mt-0.5" />
+              <span>{successMessage}</span>
             </div>
           )}
 
@@ -248,15 +248,15 @@ export function LoginModal({
             </div>
           </div>
 
-          {/* Các lựa chọn đăng nhập khác: Google, Tadu Cloud, Type */}
-          <div className="grid grid-cols-3 gap-2.5">
+          {/* Các lựa chọn đăng nhập khác: Google, Tadu Cloud */}
+          <div className="grid grid-cols-2 gap-3">
             {/* Google */}
             <button
               type="button"
               onClick={handleGoogleOAuthPopup}
-              className="group flex flex-col items-center justify-center gap-1.5 rounded-md border border-border bg-secondary/40 p-2.5 text-xs font-semibold text-foreground transition-all hover:bg-secondary hover:border-primary/50 cursor-pointer"
+              className="group flex items-center justify-center gap-2 rounded-md border border-border bg-secondary/40 py-2.5 px-4 text-xs font-semibold text-foreground transition-all hover:bg-secondary hover:border-primary/50 cursor-pointer"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24">
+              <svg width="18" height="18" viewBox="0 0 24 24" className="shrink-0">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -285,24 +285,14 @@ export function LoginModal({
                 setErrorMessage(null)
                 setSuccessMessage(null)
               }}
-              className={`group flex flex-col items-center justify-center gap-1.5 rounded-md border p-2.5 text-xs font-semibold transition-all cursor-pointer ${
+              className={`group flex items-center justify-center gap-2 rounded-md border py-2.5 px-4 text-xs font-semibold transition-all cursor-pointer ${
                 isTaduMode
                   ? 'border-primary bg-primary/10 text-primary shadow-sm'
                   : 'border-border bg-secondary/40 text-foreground hover:bg-secondary hover:border-primary/50'
               }`}
             >
-              <Cloud size={18} className={isTaduMode ? 'text-primary' : 'text-sky-400'} />
+              <Cloud size={18} className={`shrink-0 ${isTaduMode ? 'text-primary' : 'text-sky-400'}`} />
               <span>Tadu Cloud</span>
-            </button>
-
-            {/* Type */}
-            <button
-              type="button"
-              onClick={handleTypeLogin}
-              className="group flex flex-col items-center justify-center gap-1.5 rounded-md border border-border bg-secondary/40 p-2.5 text-xs font-semibold text-foreground transition-all hover:bg-secondary hover:border-primary/50 cursor-pointer"
-            >
-              <KeyRound size={18} className="text-amber-400" />
-              <span>Type.vn</span>
             </button>
           </div>
         </div>
