@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
 import '../core/services/storage_service.dart';
+import '../core/services/system_notification_service.dart';
 import '../models/attachment_item.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
@@ -496,30 +497,54 @@ class ChatProvider extends ChangeNotifier {
         _sessionStreams.remove(sessionId);
         notifyListeners();
         loadSessions(silent: true); // Refresh session list & titles
+
+        // Gửi Notification thông báo cho người dùng khi Bot trả lời xong
+        final sessionTitle = _currentSession?.title ?? 'AI Type Agent';
+        final snippet = assistantMsg.content.trim();
+        final preview = snippet.length > 80 ? '${snippet.substring(0, 80)}...' : snippet;
+        SystemNotificationService.notifyReplyFinished(
+          title: sessionTitle,
+          message: preview.isNotEmpty ? preview : 'Bot đã hoàn tất câu trả lời!',
+        );
       },
       onError: (err) {
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
         if (assistantMsg.content.isEmpty) {
           final errStr = err.toString();
-          // Xử lý câu trả lời "người" hơn, hóm hỉnh và chân thực khi bot gặp câu hỏi quá khó hoặc không thể trả lời
-          final List<String> humanFallbackReplies = [
-            'Câu hỏi quá khó rồi... Đầu óc em giờ như bị quá tải, đại ca hỏi câu khác dễ thở hơn chút đi!',
-            'Chịu! Câu này ngoài tầm hiểu biết của em rồi, ca này khó quá em xin đầu hàng!',
-            'Khó vậy cũng nghĩ ra hỏi được... Em chịu thua rồi đấy!',
-            'Đang vò đầu bứt tai mà vẫn chưa nghĩ ra cách trả lời câu này cho mượt. Hỏi lại câu khác xem nào!',
-            'Chịu luôn! Câu này hack não quá, em bot quèn không gánh nổi rồi!',
-          ];
-          final randomIndex = DateTime.now().millisecondsSinceEpoch % humanFallbackReplies.length;
-          final fallbackText = humanFallbackReplies[randomIndex];
+
+          String cause;
+          String solution;
 
           if (errStr.contains('SocketException') || errStr.contains('Connection refused') || errStr.contains('Không thể kết nối')) {
-            assistantMsg.content = 'Chịu! Không kết nối được tới máy chủ/mô hình AI rồi. Đại ca kiểm tra lại mạng hoặc server giúp em cái nhé!';
+            cause = 'Không thể kết nối đến máy chủ AI hoặc dịch vụ mạng cục bộ bị gián đoạn.';
+            solution = '1. Kiểm tra lại kết nối mạng Internet hoặc cấu hình địa chỉ IP máy chủ trong mục Cài đặt.\n2. Đảm bảo dịch vụ AI backend/máy chủ đang được bật và cho phép kết nối cổng.';
           } else if (errStr.contains('timeout') || errStr.contains('TimeoutException')) {
-            assistantMsg.content = 'Câu hỏi quá khó rồi... Suy nghĩ lâu quá nên bị quá giờ, đại ca thử chia nhỏ câu hỏi ra xem sao!';
+            cause = 'Yêu cầu xử lý hoặc prompt quá phức tạp/quá dài dẫn đến vượt quá thời gian phản hồi quy định.';
+            solution = '1. **Chia nhỏ yêu cầu**: Thay vì yêu cầu làm toàn bộ hệ thống cùng lúc, hãy yêu cầu từng phần nhỏ (ví dụ: làm giao diện trước, sau đó mới viết logic xử lý).\n2. **Rút gọn ngữ cảnh**: Xóa bớt các đoạn log rác hoặc tệp đính kèm không cần thiết để giảm tải lượng token.';
+          } else if (errStr.contains('401') || errStr.contains('Unauthorized') || errStr.contains('API key')) {
+            cause = 'Khóa xác thực API (API Key) bị thiếu, không hợp lệ hoặc đã hết hạn sử dụng.';
+            solution = '1. Vào phần **Cấu hình AI** kiểm tra lại API Key xem đã nhập chính xác chưa.\n2. Xác nhận tài khoản API của mô hình còn hạn mức lượt gọi.';
+          } else if (errStr.contains('429') || errStr.contains('Rate limit') || errStr.contains('quota')) {
+            cause = 'Mô hình AI đã đạt giới hạn số lượng request hoặc hết hạn mức sử dụng (Quota Exceeded).';
+            solution = '1. Đợi khoảng 1 - 2 phút rồi thử gửi lại yêu cầu.\n2. Chuyển sang sử dụng mô hình AI khác trong danh sách (như Claude, Gemini hoặc CLI Agent).';
           } else {
-            assistantMsg.content = '$fallbackText\n\n*(Chi tiết kỹ thuật nếu cần xem lại: $err)*';
+            cause = 'Yêu cầu hiện tại vượt quá phạm vi xử lý tức thời hoặc prompt bị thiếu thông tin/ngữ cảnh thực thi.';
+            solution = '1. **Cụ thể hóa mục tiêu**: Nêu rõ ngôn ngữ lập trình, file mục tiêu, hoặc chức năng cụ thể cần làm.\n2. **Cung cấp ngữ cảnh**: Gắn thẻ Scope thư mục làm việc hoặc đính kèm file code liên quan để Bot hiểu rõ môi trường.\n3. **Đặt câu lệnh ngắn gọn**: Sử dụng các động từ hành động rõ ràng (ví dụ: "Viết hàm...", "Sửa lỗi tại file...", "Chạy lệnh...").';
           }
+
+          assistantMsg.content = '''### Không thể hoàn tất câu trả lời
+
+Bot chưa thể phản hồi trọn vẹn yêu cầu này. Dưới đây là phân tích nguyên nhân và cách khắc phục để bạn tinh chỉnh prompt:
+
+#### 1. Nguyên nhân chính
+- $cause
+
+#### 2. Hướng dẫn khắc phục & Tối ưu Prompt
+$solution
+
+---
+*(Thông tin kỹ thuật hệ thống: `$err`)*''';
         }
         _sessionGenerating[sessionId] = false;
         _sessionStatuses.remove(sessionId);
