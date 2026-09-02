@@ -501,7 +501,25 @@ class ChatProvider extends ChangeNotifier {
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
         if (assistantMsg.content.isEmpty) {
-          assistantMsg.content = '❌ Lỗi: $err';
+          final errStr = err.toString();
+          // Xử lý câu trả lời "người" hơn, hóm hỉnh và chân thực khi bot gặp câu hỏi quá khó hoặc không thể trả lời
+          final List<String> humanFallbackReplies = [
+            'Câu hỏi quá khó rồi... Đầu óc em giờ như bị quá tải, đại ca hỏi câu khác dễ thở hơn chút đi!',
+            'Chịu! Câu này ngoài tầm hiểu biết của em rồi, ca này khó quá em xin đầu hàng!',
+            'Khó vậy cũng nghĩ ra hỏi được... Em chịu thua rồi đấy!',
+            'Đang vò đầu bứt tai mà vẫn chưa nghĩ ra cách trả lời câu này cho mượt. Hỏi lại câu khác xem nào!',
+            'Chịu luôn! Câu này hack não quá, em bot quèn không gánh nổi rồi!',
+          ];
+          final randomIndex = DateTime.now().millisecondsSinceEpoch % humanFallbackReplies.length;
+          final fallbackText = humanFallbackReplies[randomIndex];
+
+          if (errStr.contains('SocketException') || errStr.contains('Connection refused') || errStr.contains('Không thể kết nối')) {
+            assistantMsg.content = 'Chịu! Không kết nối được tới máy chủ/mô hình AI rồi. Đại ca kiểm tra lại mạng hoặc server giúp em cái nhé!';
+          } else if (errStr.contains('timeout') || errStr.contains('TimeoutException')) {
+            assistantMsg.content = 'Câu hỏi quá khó rồi... Suy nghĩ lâu quá nên bị quá giờ, đại ca thử chia nhỏ câu hỏi ra xem sao!';
+          } else {
+            assistantMsg.content = '$fallbackText\n\n*(Chi tiết kỹ thuật nếu cần xem lại: $err)*';
+          }
         }
         _sessionGenerating[sessionId] = false;
         _sessionStatuses.remove(sessionId);
