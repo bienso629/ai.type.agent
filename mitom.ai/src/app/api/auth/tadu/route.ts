@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import configPromise from '@payload-config'
-import { createSessionToken, generateRandomPassword, generateApiKey } from '@/lib/auth'
+import { createSessionToken, generateRandomPassword, generateApiKey, generateCustomerCode } from '@/lib/auth'
 
 export async function POST(request: Request) {
   try {
@@ -80,6 +80,7 @@ export async function POST(request: Request) {
           name: currentDoc.name || userName,
           authProvider: 'tadu',
           taduUserId: taduUserId || currentDoc.taduUserId,
+          customerCode: currentDoc.customerCode || generateCustomerCode(),
           apiKey: currentDoc.apiKey || generateApiKey(),
         },
       })
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
           authProvider: 'tadu',
           taduUserId: taduUserId,
           balance: 0,
+          customerCode: generateCustomerCode(),
           role: 'user',
           apiKey: generateApiKey(),
         },
@@ -107,6 +109,7 @@ export async function POST(request: Request) {
       avatar: localUser.avatar || '',
       authProvider: 'tadu',
       balance: localUser.balance ?? 0,
+      customerCode: localUser.customerCode,
       apiKey: localUser.apiKey,
       role: localUser.role || 'user',
     })

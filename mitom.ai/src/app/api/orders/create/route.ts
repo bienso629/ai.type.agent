@@ -5,7 +5,21 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { productId, planName, totalAmount, customerEmail, customerPhone, note } = body
+    const {
+      productId,
+      planName,
+      totalAmount,
+      customerEmail,
+      customerPhone,
+      customerType,
+      customerName,
+      identityNumber,
+      invoiceEmail,
+      companyName,
+      companyTaxCode,
+      companyAddress,
+      note,
+    } = body
 
     if (!productId || !planName || !totalAmount || !customerEmail) {
       return NextResponse.json(
@@ -15,6 +29,12 @@ export async function POST(request: Request) {
     }
 
     const payload = await getPayload({ config: configPromise })
+
+    // Tính toán VAT 10% (Giá gói là tiền dịch vụ chưa VAT)
+    const subtotal = Number(totalAmount)
+    const vatRate = 10
+    const vatAmount = Math.round(subtotal * (vatRate / 100))
+    const total = subtotal + vatAmount
 
     // Sinh mã đơn hàng ngẫu nhiên định dạng MT-XXXXXX
     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase()
@@ -28,9 +48,19 @@ export async function POST(request: Request) {
         customerPhone: customerPhone || '',
         product: productId,
         planName,
-        totalAmount: Number(totalAmount),
+        subtotal,
+        vatRate,
+        vatAmount,
+        totalAmount: total,
         paymentStatus: 'pending',
         fulfillmentStatus: 'unfulfilled',
+        customerType: customerType === 'company' ? 'company' : 'personal',
+        customerName: customerName || '',
+        identityNumber: identityNumber || '',
+        invoiceEmail: invoiceEmail || customerEmail,
+        companyName: companyName || '',
+        companyTaxCode: companyTaxCode || '',
+        companyAddress: companyAddress || '',
         note: note || '',
       },
     })

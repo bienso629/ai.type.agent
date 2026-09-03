@@ -15,7 +15,7 @@ export const Transactions: CollectionConfig = {
       type: 'text',
       required: true,
       unique: true,
-      label: 'Mã giao dịch (Bank / QR / SePay / Momo)',
+      label: 'Mã giao dịch (Bank / VietQR / ACB / Momo)',
     },
     {
       name: 'order',
@@ -36,12 +36,23 @@ export const Transactions: CollectionConfig = {
       label: 'Số tiền thanh toán (VNĐ)',
     },
     {
+      name: 'vatRate',
+      type: 'number',
+      defaultValue: 10,
+      label: 'Thuế suất VAT (%)',
+    },
+    {
+      name: 'vatAmount',
+      type: 'number',
+      label: 'Tiền thuế VAT (VNĐ)',
+    },
+    {
       name: 'paymentMethod',
       type: 'select',
-      defaultValue: 'sepay',
+      defaultValue: 'vietqr',
       options: [
-        { label: 'SePay / Webhook Ngân Hàng', value: 'sepay' },
-        { label: 'VietQR / Chuyển khoản ngân hàng', value: 'vietqr' },
+        { label: 'VietQR / Chuyển khoản ACB (TADU)', value: 'vietqr' },
+        { label: 'Webhook Ngân Hàng', value: 'bank_webhook' },
         { label: 'Momo', value: 'momo' },
         { label: 'Thẻ tín dụng / Visa', value: 'credit_card' },
         { label: 'USDT / Crypto', value: 'crypto' },

@@ -42,7 +42,7 @@ export async function GET() {
             avatar: userDoc.avatar || session.avatar,
             authProvider: userDoc.authProvider || session.authProvider,
             balance: userDoc.balance ?? session.balance ?? 0,
-            customerCode: userDoc.customerCode || `MT${String(userDoc.id).padStart(6, '0')}`,
+            customerCode: userDoc.customerCode || `MITO${String(userDoc.id).padStart(6, '0')}`,
             apiKey: userDoc.apiKey || session.apiKey,
             role: userDoc.role || session.role || 'user',
           },

@@ -31,8 +31,8 @@ export const Navbar: React.FC<NavbarProps> = ({ adminRoute = '/admin', onOpenLoo
             <Image
               src="/logo.png"
               alt="Mì Tôm AI Logo"
-              width={42}
-              height={42}
+              width={52}
+              height={52}
               className="brand-img"
               priority
             />

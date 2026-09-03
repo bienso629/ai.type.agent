@@ -51,3 +51,10 @@ export function generateRandomPassword(): string {
 export function generateApiKey(): string {
   return `mt_${crypto.randomBytes(24).toString('hex')}`
 }
+
+export function generateCustomerCode(userId?: number | string): string {
+  if (userId) {
+    return `MITO${String(userId).padStart(6, '0')}`
+  }
+  return `MITO${Math.floor(100000 + Math.random() * 900000)}`
+}

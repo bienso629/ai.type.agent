@@ -138,7 +138,7 @@ export interface User {
   googleId?: string | null;
   balance?: number | null;
   /**
-   * Mã nhận diện nạp tiền tự động qua SePay webhook
+   * Mã nhận diện nạp tiền tự động qua Webhook ngân hàng (Định dạng MITOxxxxxx với xxxxxx là ID người dùng)
    */
   customerCode?: string | null;
   apiKey?: string | null;
@@ -238,10 +238,20 @@ export interface Order {
   customerPhone?: string | null;
   product: number | Product;
   planName: string;
+  subtotal?: number | null;
+  vatRate?: number | null;
+  vatAmount?: number | null;
   totalAmount: number;
   paymentStatus?: ('pending' | 'paid' | 'failed' | 'refunded') | null;
   fulfillmentStatus?: ('unfulfilled' | 'processing' | 'fulfilled') | null;
   deliveryInfo?: string | null;
+  customerType?: ('personal' | 'company') | null;
+  customerName?: string | null;
+  identityNumber?: string | null;
+  invoiceEmail?: string | null;
+  companyName?: string | null;
+  companyTaxCode?: string | null;
+  companyAddress?: string | null;
   note?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -256,7 +266,9 @@ export interface Transaction {
   order?: (number | null) | Order;
   user?: (number | null) | User;
   amount: number;
-  paymentMethod?: ('sepay' | 'vietqr' | 'momo' | 'credit_card' | 'crypto') | null;
+  vatRate?: number | null;
+  vatAmount?: number | null;
+  paymentMethod?: ('vietqr' | 'bank_webhook' | 'momo' | 'credit_card' | 'crypto') | null;
   status?: ('pending' | 'success' | 'failed') | null;
   rawResponse?:
     | {
@@ -463,10 +475,20 @@ export interface OrdersSelect<T extends boolean = true> {
   customerPhone?: T;
   product?: T;
   planName?: T;
+  subtotal?: T;
+  vatRate?: T;
+  vatAmount?: T;
   totalAmount?: T;
   paymentStatus?: T;
   fulfillmentStatus?: T;
   deliveryInfo?: T;
+  customerType?: T;
+  customerName?: T;
+  identityNumber?: T;
+  invoiceEmail?: T;
+  companyName?: T;
+  companyTaxCode?: T;
+  companyAddress?: T;
   note?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -480,6 +502,8 @@ export interface TransactionsSelect<T extends boolean = true> {
   order?: T;
   user?: T;
   amount?: T;
+  vatRate?: T;
+  vatAmount?: T;
   paymentMethod?: T;
   status?: T;
   rawResponse?: T;

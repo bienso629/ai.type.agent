@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import configPromise from '@payload-config'
-import { createSessionToken, generateRandomPassword, generateApiKey } from '@/lib/auth'
+import { createSessionToken, generateRandomPassword, generateApiKey, generateCustomerCode } from '@/lib/auth'
 
 export async function POST(request: Request) {
   try {
@@ -95,6 +95,7 @@ export async function POST(request: Request) {
           avatar: userAvatar || currentDoc.avatar,
           authProvider: 'google',
           googleId: googleId || currentDoc.googleId,
+          customerCode: currentDoc.customerCode || generateCustomerCode(),
           apiKey: currentDoc.apiKey || generateApiKey(),
         },
       })
@@ -109,6 +110,7 @@ export async function POST(request: Request) {
           authProvider: 'google',
           googleId,
           balance: 0,
+          customerCode: generateCustomerCode(),
           role: 'user',
           apiKey: generateApiKey(),
         },
@@ -123,6 +125,7 @@ export async function POST(request: Request) {
       avatar: localUser.avatar || userAvatar,
       authProvider: 'google',
       balance: localUser.balance ?? 0,
+      customerCode: localUser.customerCode,
       apiKey: localUser.apiKey,
       role: localUser.role || 'user',
     })

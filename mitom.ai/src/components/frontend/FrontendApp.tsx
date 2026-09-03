@@ -178,19 +178,19 @@ export function Logo({ onClick }: { onClick?: () => void }) {
           onClick()
         }
       }}
-      className="flex items-center gap-3 group"
+      className="flex items-center gap-3.5 group"
     >
-      <div className="relative h-9 w-9 flex items-center justify-center">
+      <div className="relative h-12 w-12 flex items-center justify-center transition-transform group-hover:scale-105">
         <Image
           src="/logo.png"
           alt="Mì Tôm AI Logo"
-          width={36}
-          height={36}
-          className="h-full w-full object-contain"
+          width={48}
+          height={48}
+          className="h-full w-full object-contain drop-shadow-md"
           priority
         />
       </div>
-      <span className="font-display text-xl font-extrabold tracking-tight">
+      <span className="font-display text-2xl font-black tracking-tight">
         Mì Tôm <span className="text-primary">AI</span>
       </span>
     </a>
@@ -198,20 +198,20 @@ export function Logo({ onClick }: { onClick?: () => void }) {
 }
 
 export function QrMock({ amount, memo: customMemo }: { amount?: number; memo?: string }) {
-  const bankId = 'MBBank'
-  const accountNo = '0938414436'
-  const accountName = 'NGUYEN NGOC THANH VY'
-  const memo = customMemo || (amount ? `NAP ${amount / 1000}K` : 'NAP TIEN MITOM AI')
+  const bankId = 'ACB'
+  const accountNo = '199878939'
+  const accountName = 'CTY CP CN TADU'
+  const addInfo = customMemo || (amount ? `NAP ${amount / 1000}K` : 'NAP TIEN MITOM AI')
   const qrUrl = amount
-    ? `https://vietqr.app/img?bank=${bankId}&acc=${accountNo}&template=&showinfo=true&holder=${encodeURIComponent(accountName)}&amount=${amount}&memo=${encodeURIComponent(memo)}`
-    : null
+    ? `https://img.vietqr.io/image/${bankId}-${accountNo}-compact.jpg?amount=${amount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(accountName)}`
+    : `https://img.vietqr.io/image/${bankId}-${accountNo}-compact.jpg?accountName=${encodeURIComponent(accountName)}`
 
   if (qrUrl) {
     return (
       <div className="w-full max-w-sm sm:max-w-md aspect-square shrink-0 overflow-hidden flex items-center justify-center">
         <img
           src={qrUrl}
-          alt="Mã VietQR nạp tiền"
+          alt="Mã VietQR nạp tiền công ty TADU"
           className="h-full w-full object-contain"
         />
       </div>
@@ -241,6 +241,12 @@ function TopUpPage({
   const [name, setName] = useState(user?.name || '')
   const [email, setEmail] = useState(user?.email || '')
   const [note, setNote] = useState('')
+  const [customerType, setCustomerType] = useState<'personal' | 'company'>('personal')
+  const [identityNumber, setIdentityNumber] = useState('')
+  const [invoiceEmail, setInvoiceEmail] = useState(user?.email || '')
+  const [companyName, setCompanyName] = useState('')
+  const [taxCode, setTaxCode] = useState('')
+  const [companyAddress, setCompanyAddress] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -382,9 +388,42 @@ function TopUpPage({
           {/* Cột 1: Thông tin khách hàng */}
           <div className="p-6 md:p-8 flex flex-col justify-between space-y-6">
             <div>
-              <h2 className="font-display text-lg font-bold">1. Thông tin tài khoản</h2>
-              <p className="text-xs text-muted-foreground mt-1">Thông tin nhận biên lai và kích hoạt số dư</p>
+              <h2 className="font-display text-lg font-bold">1. Thông tin khách hàng & Hóa đơn</h2>
+              <p className="text-xs text-muted-foreground mt-1">Thông tin kích hoạt tài khoản và nhận hóa đơn VAT điện tử</p>
+              
               <div className="mt-6 space-y-4">
+                {/* Chọn đối tượng khách hàng - Tab Tone Màu Đen không viền */}
+                <div>
+                  <span className="block text-xs font-semibold text-muted-foreground mb-2">
+                    Đối tượng xuất hóa đơn VAT (10%)
+                  </span>
+                  <div className="flex rounded-xl bg-black/80 p-1.5 gap-1.5 shadow-inner">
+                    <button
+                      type="button"
+                      onClick={() => setCustomerType('personal')}
+                      className={`flex-1 rounded-lg py-2.5 text-xs font-bold ${
+                        customerType === 'personal'
+                          ? 'bg-gradient-to-b from-neutral-800 to-neutral-950 text-white shadow-md'
+                          : 'text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      Cá nhân
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomerType('company')}
+                      className={`flex-1 rounded-lg py-2.5 text-xs font-bold ${
+                        customerType === 'company'
+                          ? 'bg-gradient-to-b from-neutral-800 to-neutral-950 text-white shadow-md'
+                          : 'text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      Doanh nghiệp / Công ty
+                    </button>
+                  </div>
+                </div>
+
+                {/* Số điện thoại / Zalo (Chung cho cả 2) */}
                 <div>
                   <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Số điện thoại / Zalo <span className="text-primary">*</span>
@@ -394,36 +433,119 @@ function TopUpPage({
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="0908888888"
-                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                   </label>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Họ và tên
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Nguyễn Văn A"
-                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </label>
-                </div>
+                {customerType === 'personal' ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Số CCCD / CMND <span className="text-primary">*</span>
+                        <input
+                          type="text"
+                          required
+                          value={identityNumber}
+                          onChange={(e) => setIdentityNumber(e.target.value)}
+                          placeholder="079099xxxxxx"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </label>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Email (để nhận biên lai & API Key)
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="ban@gmail.com"
-                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </label>
-                </div>
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Họ và tên cá nhân
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Nguyễn Văn A"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Email nhận hóa đơn & API Key <span className="text-primary">*</span>
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value)
+                            setInvoiceEmail(e.target.value)
+                          }}
+                          placeholder="ban@gmail.com"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </label>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Mã số thuế (MST) <span className="text-primary">*</span>
+                        <input
+                          type="text"
+                          required
+                          value={taxCode}
+                          onChange={(e) => setTaxCode(e.target.value)}
+                          placeholder="0312345678"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Tên công ty / Doanh nghiệp <span className="text-primary">*</span>
+                        <input
+                          type="text"
+                          required
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                          placeholder="Công ty TNHH Công Nghệ..."
+                          className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Địa chỉ công ty xuất hóa đơn <span className="text-primary">*</span>
+                        <input
+                          type="text"
+                          required
+                          value={companyAddress}
+                          onChange={(e) => setCompanyAddress(e.target.value)}
+                          placeholder="Số 123 Đường ABC, Quận 1, TP. Hồ Chí Minh"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Email nhận hóa đơn công ty <span className="text-primary">*</span>
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value)
+                            setInvoiceEmail(e.target.value)
+                          }}
+                          placeholder="ketoan@congty.com"
+                          className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </label>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -433,7 +555,7 @@ function TopUpPage({
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                       placeholder="Model cần tư vấn hoặc ghi chú thêm..."
-                      className="mt-1.5 w-full rounded-md border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                   </label>
                 </div>
@@ -448,9 +570,31 @@ function TopUpPage({
               <p className="text-xs text-muted-foreground mt-1">Quét mã bằng ứng dụng ngân hàng bất kỳ để thanh toán</p>
               <div className="mt-6 flex flex-col items-center justify-center">
                 <QrMock
-                  amount={topup.amount}
-                  memo={user?.customerCode ? `NAP ${user.customerCode}` : (user?.id ? `NAP MT${user.id}` : `NAP ${topup.amount / 1000}K`)}
+                  amount={Math.round(topup.amount * 1.1)}
+                  memo={user?.customerCode || (user?.id ? `MITO${String(user.id).padStart(6, '0')}` : 'MITO')}
                 />
+              </div>
+
+              {/* Thông tin tài khoản ngân hàng chuyển khoản */}
+              <div className="mt-5 rounded-xl border border-border bg-secondary/30 p-4 text-xs space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-muted-foreground shrink-0">Ngân hàng:</span>
+                  <span className="font-semibold text-right text-foreground">NH Thương mại cổ phần Á Châu – Chi nhánh Phan Đăng Lưu</span>
+                </div>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-muted-foreground shrink-0">Tên tài khoản:</span>
+                  <span className="font-bold text-primary font-mono text-right">CTY CP CÔNG NGHỆ TADU</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground shrink-0">Số tài khoản:</span>
+                  <span className="font-mono font-bold text-foreground text-sm select-all">199878939</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+                  <span className="text-muted-foreground shrink-0">Nội dung CK:</span>
+                  <span className="font-mono font-bold text-emerald text-sm select-all">
+                    {user?.customerCode || (user?.id ? `MITO${String(user.id).padStart(6, '0')}` : 'MITO')}
+                  </span>
+                </div>
               </div>
             </div>
             <p className="text-center text-xs text-muted-foreground font-mono">
@@ -458,40 +602,45 @@ function TopUpPage({
             </p>
           </div>
 
-          {/* Cột 3: Tóm tắt đơn nạp & Nút thanh toán */}
+          {/* Cột 3: Tóm tắt đơn nạp */}
           <div className="p-6 md:p-8 flex flex-col justify-between bg-secondary/10 space-y-6">
             <div>
               <h2 className="font-display text-lg font-bold">3. Tóm tắt đơn nạp</h2>
-              <p className="text-xs text-muted-foreground mt-1">Chi tiết quyền lợi số dư nạp</p>
-              <dl className="mt-6 space-y-3.5 text-sm">
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Số tiền nạp</dt>
-                  <dd className="font-mono font-semibold">{formatVnd(topup.amount)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Khuyến mãi (+{topup.bonusPct}%)</dt>
-                  <dd className="font-mono font-semibold text-emerald">{bonus > 0 ? `+${formatVnd(bonus)}` : '—'}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Phí giao dịch</dt>
-                  <dd className="font-mono font-semibold text-emerald">Miễn phí</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Phương thức</dt>
-                  <dd className="font-medium text-foreground">VietQR</dd>
-                </div>
-              </dl>
+              <p className="text-xs text-muted-foreground mt-1">Thông tin chi tiết đơn hàng của bạn</p>
 
-              <div className="mt-6 border-t border-border pt-5">
-                <div className="flex items-baseline justify-between">
-                  <span className="font-display text-sm font-bold">Tổng số dư nhận</span>
-                  <span className="font-display text-2xl font-black text-primary">
-                    {formatVnd(topup.amount + bonus)}
+              {/* Bảng chi tiết đơn hàng duy nhất */}
+              <div className="mt-6 rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Gói nạp:</span>
+                    <span className="font-semibold text-foreground">{topup.label} ({formatVnd(topup.amount)})</span>
+                  </div>
+
+                  <div className="flex justify-between items-center border-t border-border/60 pt-3">
+                    <span className="text-muted-foreground">Thuế VAT (10%):</span>
+                    <span className="font-mono text-muted-foreground">+{formatVnd(Math.round(topup.amount * 0.1))}</span>
+                  </div>
+                </div>
+
+                {/* Tổng thanh toán căn phải, không viền, không padding */}
+                <div className="border-t border-border/80 pt-4 text-right">
+                  <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Tổng tiền cần quét mã
+                  </span>
+                  <span className="mt-1 block font-display text-3xl font-black text-primary font-mono">
+                    {formatVnd(Math.round(topup.amount * 1.1))}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    (Đã bao gồm thuế VAT 10%)
                   </span>
                 </div>
-                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                  Số dư dùng trực tiếp cho hơn 130+ model AI, không giới hạn thời gian sử dụng.
-                </p>
+              </div>
+
+              {/* Ghi chú ngắn gọn */}
+              <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground px-1 font-mono">
+                <span>Phương thức: VietQR</span>
+                <span>Phí: 0đ</span>
+                <span>Hạn dùng: Vĩnh viễn</span>
               </div>
             </div>
           </div>
@@ -952,7 +1101,11 @@ export function FrontendApp({
       </footer>
 
       <OrderLookupModal isOpen={isLookupOpen} onClose={() => setIsLookupOpen(false)} />
-      <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+      <UserProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        onLogout={() => navigate('home')}
+      />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </div>
   )

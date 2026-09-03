@@ -57,9 +57,9 @@ export const Users: CollectionConfig = {
     {
       name: 'customerCode',
       type: 'text',
-      label: 'Mã khách hàng / Cú pháp nạp (Ví dụ: MT938027)',
+      label: 'Mã khách hàng / Cú pháp nạp (Ví dụ: MITO000123)',
       admin: {
-        description: 'Mã nhận diện nạp tiền tự động qua SePay webhook',
+        description: 'Mã nhận diện nạp tiền tự động qua Webhook ngân hàng (Định dạng MITOxxxxxx với xxxxxx là ID người dùng)',
       },
     },
     {

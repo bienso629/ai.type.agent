@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import configPromise from '@payload-config'
-import { createSessionToken } from '@/lib/auth'
+import { createSessionToken, generateCustomerCode } from '@/lib/auth'
 
 export async function POST(request: Request) {
   try {
@@ -41,6 +41,18 @@ export async function POST(request: Request) {
       )
     }
 
+    let customerCode = user.customerCode
+    if (!customerCode) {
+      customerCode = generateCustomerCode()
+      try {
+        await payload.update({
+          collection: 'users',
+          id: user.id,
+          data: { customerCode },
+        })
+      } catch {}
+    }
+
     const sessionToken = await createSessionToken({
       id: user.id,
       email: user.email,
@@ -48,6 +60,7 @@ export async function POST(request: Request) {
       avatar: user.avatar || '',
       authProvider: user.authProvider || 'local',
       balance: user.balance ?? 0,
+      customerCode,
       apiKey: user.apiKey,
       role: user.role || 'user',
     })

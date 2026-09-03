@@ -7,9 +7,11 @@ import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw
 export function UserProfileModal({
   isOpen,
   onClose,
+  onLogout,
 }: {
   isOpen: boolean
   onClose: () => void
+  onLogout?: () => void
 }) {
   const { user, logout, refreshUser } = useAuth()
   const [copiedKey, setCopiedKey] = useState(false)
@@ -67,18 +69,15 @@ export function UserProfileModal({
         {/* Body */}
         <div className="p-6 space-y-5">
           {/* Badge phương thức và số dư */}
+          {/* Badge phương thức, mã khách hàng và số dư */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-border bg-secondary/30 p-3.5">
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                 <Shield size={14} className="text-primary" />
-                <span>Phương thức</span>
+                <span>Mã khách hàng</span>
               </div>
-              <div className="text-sm font-bold text-foreground capitalize">
-                {user.authProvider === 'tadu'
-                  ? 'Tadu Cloud'
-                  : user.authProvider === 'google'
-                  ? 'Google OAuth'
-                  : 'Tài khoản Local'}
+              <div className="text-sm font-bold text-primary font-mono select-all">
+                {user.customerCode || `MITO${String(user.id).padStart(6, '0')}`}
               </div>
             </div>
 
@@ -138,9 +137,14 @@ export function UserProfileModal({
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-border bg-secondary/20 px-6 py-4">
           <button
-            onClick={() => {
-              logout()
+            onClick={async () => {
               onClose()
+              await logout()
+              if (onLogout) {
+                onLogout()
+              } else {
+                window.location.href = '/'
+              }
             }}
             className="flex items-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-colors"
           >
