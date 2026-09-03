@@ -19,8 +19,6 @@ export interface TopUp {
 }
 
 export const TOPUPS: TopUp[] = [
-  { amount: 20000, bonusPct: 5, label: 'Thử nghiệm', highlight: false },
-  { amount: 50000, bonusPct: 5, label: 'Nhẹ nhàng', highlight: false },
   { amount: 100000, bonusPct: 5, label: 'Khởi động', highlight: false },
   { amount: 200000, bonusPct: 5, label: 'Tiết kiệm', highlight: false },
   { amount: 500000, bonusPct: 5, label: 'Phổ biến', highlight: true },
