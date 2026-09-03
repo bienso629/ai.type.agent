@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
-import '../../core/widgets/tadu_dialog.dart';
 import '../../models/server_model.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
@@ -15,64 +14,6 @@ class ServerSetupScreen extends StatefulWidget {
 }
 
 class _ServerSetupScreenState extends State<ServerSetupScreen> {
-  void _showServiceStatusModal(BuildContext context, String serviceKey, MetricsProvider provider) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(
-        child: CircularProgressIndicator(color: AppColors.primaryLight),
-      ),
-    );
-
-    final statusOutput = await provider.getServiceStatus(serviceKey);
-
-    if (context.mounted) {
-      Navigator.pop(context); // close loading
-      showDialog(
-        context: context,
-        builder: (ctx) => TaduDialog(
-          minWidth: 560,
-          maxWidth: 760,
-          title: const Row(
-            children: [
-              Icon(Icons.terminal_rounded, color: AppColors.primaryLight, size: 20),
-              SizedBox(width: 8),
-              Text('Trạng Thái Dịch Vụ Systemd: ai-agent.service'),
-            ],
-          ),
-          content: Container(
-            width: double.infinity,
-            height: 320,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.terminalBg,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppColors.borderDark),
-            ),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                statusOutput,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  color: AppColors.terminalGreen,
-                  height: 1.35,
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Đóng'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final metricsProvider = context.watch<MetricsProvider>();
@@ -104,7 +45,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Quản Lý Máy Chủ & Dịch Vụ Systemd',
+                          'Thiết Lập & Giám Sát Tài Nguyên Máy Chủ',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                         ),
                         Text(
@@ -275,167 +216,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 2. Systemd Service Quick Control Panel
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(Icons.settings_suggest_rounded, color: AppColors.primaryLight, size: 18),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Điều Khiển Dịch Vụ Systemd (ai-agent.service)',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: (m.serviceStatus.toLowerCase().trim() == 'active'
-                                        ? AppColors.accent
-                                        : AppColors.warning)
-                                    .withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  color: m.serviceStatus.toLowerCase().trim() == 'active'
-                                      ? AppColors.accent
-                                      : AppColors.warning,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: BoxDecoration(
-                                      color: m.serviceStatus.toLowerCase().trim() == 'active'
-                                          ? AppColors.accent
-                                          : AppColors.warning,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    m.serviceStatus.toLowerCase().trim() == 'active'
-                                        ? 'RUNNING'
-                                        : m.serviceStatus.toUpperCase(),
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: m.serviceStatus.toLowerCase().trim() == 'active'
-                                          ? AppColors.accent
-                                          : AppColors.warning,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Quản lý vòng đời dịch vụ AI Agent Daemon trên máy chủ Linux từ xa qua Systemd unit:',
-                          style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
-                        ),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            // Start Button
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.accent.withValues(alpha: 0.15),
-                                foregroundColor: AppColors.accent,
-                                side: const BorderSide(color: AppColors.accent),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              ),
-                              icon: const Icon(Icons.play_arrow_rounded, size: 16),
-                              label: const Text('Bật Dịch Vụ (Start)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              onPressed: () async {
-                                final ok = await metricsProvider.startService('ai-agent');
-                                if (context.mounted) {
-                                  if (ok) {
-                                    AppToast.success(context, 'Đã gửi lệnh bật dịch vụ ai-agent.service!');
-                                  } else {
-                                    AppToast.error(context, 'Lỗi khi bật dịch vụ ai-agent.service!');
-                                  }
-                                }
-                              },
-                            ),
-                            // Restart Button
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.warning.withValues(alpha: 0.15),
-                                foregroundColor: AppColors.warning,
-                                side: const BorderSide(color: AppColors.warning),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              ),
-                              icon: const Icon(Icons.restart_alt_rounded, size: 16),
-                              label: const Text('Khởi Động Lại (Restart)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              onPressed: () async {
-                                final ok = await metricsProvider.restartService('ai-agent');
-                                if (context.mounted) {
-                                  if (ok) {
-                                    AppToast.success(context, 'Đã gửi lệnh khởi động lại ai-agent.service!');
-                                  } else {
-                                    AppToast.error(context, 'Lỗi khi khởi động lại ai-agent.service!');
-                                  }
-                                }
-                              },
-                            ),
-                            // Stop Button
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.danger.withValues(alpha: 0.15),
-                                foregroundColor: AppColors.danger,
-                                side: const BorderSide(color: AppColors.danger),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              ),
-                              icon: const Icon(Icons.stop_rounded, size: 16),
-                              label: const Text('Dừng Dịch Vụ (Stop)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              onPressed: () async {
-                                final ok = await metricsProvider.stopService('ai-agent');
-                                if (context.mounted) {
-                                  if (ok) {
-                                    AppToast.success(context, 'Đã gửi lệnh dừng ai-agent.service!');
-                                  } else {
-                                    AppToast.error(context, 'Lỗi khi dừng ai-agent.service!');
-                                  }
-                                }
-                              },
-                            ),
-                            // Status Details Button
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: AppColors.primaryLight),
-                                foregroundColor: AppColors.primaryLight,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              ),
-                              icon: const Icon(Icons.terminal_rounded, size: 16),
-                              label: const Text('Kiểm Tra Trạng Thái (Status)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              onPressed: () => _showServiceStatusModal(context, 'ai-agent', metricsProvider),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 3. Server Resource Metrics (CPU, RAM, DISK, NETWORK)
+                  // 2. Server Resource Metrics (CPU, RAM, DISK, NETWORK)
                   const Text(
                     'Tài Nguyên Máy Chủ Đám Mây',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
