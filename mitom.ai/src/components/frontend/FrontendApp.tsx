@@ -560,28 +560,6 @@ function TopUpPage({
                   memo={user?.customerCode || (user?.id ? `MITO${String(user.id).padStart(6, '0')}` : 'MITO')}
                 />
               </div>
-
-              {/* Thông tin tài khoản ngân hàng chuyển khoản - Phẳng, không border, không padding thừa */}
-              <div className="mt-5 text-xs space-y-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-muted-foreground shrink-0">Ngân hàng:</span>
-                  <span className="font-semibold text-right text-foreground">NH Thương mại cổ phần Á Châu – Chi nhánh Phan Đăng Lưu</span>
-                </div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-muted-foreground shrink-0">Tên tài khoản:</span>
-                  <span className="font-bold text-primary font-mono text-right">CTY CP CÔNG NGHỆ TADU</span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground shrink-0">Số tài khoản:</span>
-                  <span className="font-mono font-bold text-foreground text-sm select-all">199878939</span>
-                </div>
-                <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2">
-                  <span className="text-muted-foreground shrink-0">Nội dung CK:</span>
-                  <span className="font-mono font-bold text-emerald text-sm select-all">
-                    {user?.customerCode || (user?.id ? `MITO${String(user.id).padStart(6, '0')}` : 'MITO')}
-                  </span>
-                </div>
-              </div>
             </div>
             <p className="text-center text-xs text-muted-foreground font-mono">
               Hệ thống tự động ghi nhận và cộng tiền 24/7
@@ -1008,13 +986,13 @@ export function FrontendApp({
               Trang chủ
             </button>
             <button onClick={goModels} className="transition-colors hover:text-primary">
-              Model API ({models.length})
+              Models
             </button>
             <button onClick={() => navigate('guide-topup')} className="transition-colors hover:text-primary">
               Hướng dẫn nạp
             </button>
             <button onClick={() => navigate('api-docs')} className="transition-colors hover:text-primary">
-              Tài liệu API
+              Tài liệu
             </button>
           </nav>
           <div className="flex items-center gap-3">

@@ -78,7 +78,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
         </div>
       </div>
 
-      <div className="mt-10 rounded-xl border border-border bg-secondary/20 p-6 md:p-8">
+      <div className="mt-10">
         <h2 className="font-display text-xl font-bold">Thông tin tài khoản thụ hưởng chính thức</h2>
         <p className="mt-1 text-xs text-muted-foreground">Chỉ chuyển khoản vào tài khoản doanh nghiệp chính thức sau đây</p>
 
@@ -102,7 +102,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
             </div>
             <button
               onClick={() => copyToClipboard('199878939', 'account')}
-              className="flex items-center gap-1.5 rounded border border-border bg-secondary px-3 py-1.5 text-xs font-medium hover:border-primary"
+              className="flex items-center gap-1.5 rounded border border-border bg-secondary px-3 py-1.5 text-xs font-medium hover:border-primary transition-colors"
             >
               {copiedAccount ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
               <span>{copiedAccount ? 'Đã chép' : 'Sao chép'}</span>
@@ -116,7 +116,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
             </div>
             <button
               onClick={() => copyToClipboard('MITO', 'syntax')}
-              className="flex items-center gap-1.5 rounded border border-border bg-secondary px-3 py-1.5 text-xs font-medium hover:border-primary"
+              className="flex items-center gap-1.5 rounded border border-border bg-secondary px-3 py-1.5 text-xs font-medium hover:border-primary transition-colors"
             >
               {copiedSyntax ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
               <span>{copiedSyntax ? 'Đã chép' : 'Sao chép'}</span>
@@ -125,7 +125,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
         </div>
       </div>
 
-      <div className="mt-8 rounded-xl border border-border bg-card p-6 md:p-8">
+      <div className="mt-10">
         <h3 className="font-display text-lg font-bold">Lưu ý quan trọng khi nạp tiền</h3>
         <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground list-disc pl-5">
           <li>Số tiền nạp tối thiểu là <strong>100.000 VNĐ</strong> mỗi lần giao dịch.</li>
@@ -227,36 +227,6 @@ main()`
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground md:text-base max-w-3xl">
           Endpoint tương thích 100% với chuẩn OpenAI API. Bạn có thể sử dụng trực tiếp trên Cursor, Cline, Roo Code, LibreChat, Dify hoặc gọi từ Python / Node.js.
         </p>
-      </div>
-
-      {/* Endpoint Info */}
-      <div className="mt-8 rounded-xl border border-border bg-card p-6 md:p-8">
-        <h2 className="font-display text-lg font-bold">Thông số kết nối</h2>
-        <div className="mt-4 grid gap-5 sm:grid-cols-2">
-          <div className="rounded-lg border border-border bg-secondary/30 p-5">
-            <span className="text-xs text-muted-foreground">Base URL (OpenAI Compatible)</span>
-            <div className="mt-2 flex items-center justify-between">
-              <code className="font-mono text-xs md:text-sm font-bold text-primary break-all">https://api-us-ca.umodelverse.ai/v1</code>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText('https://api-us-ca.umodelverse.ai/v1')
-                  setCopiedEndpoint(true)
-                  setTimeout(() => setCopiedEndpoint(false), 2000)
-                }}
-                className="ml-2 shrink-0 rounded p-1.5 text-muted-foreground hover:text-foreground bg-secondary"
-              >
-                {copiedEndpoint ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-secondary/30 p-5">
-            <span className="text-xs text-muted-foreground">API Key</span>
-            <div className="mt-2 font-mono text-xs md:text-sm text-foreground">
-              Lấy tại mục <strong>Thông tin tài khoản</strong> sau khi đăng nhập
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Code Examples with Tabs */}
