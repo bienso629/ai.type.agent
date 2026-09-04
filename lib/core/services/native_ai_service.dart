@@ -819,14 +819,14 @@ fi
                 if (resp != null && resp.isNotEmpty && fullOutput.isEmpty) {
                   fullOutput.write(resp);
                   onToken(resp);
-                } else if (status == 'ERROR' && errorMsg != null && errorMsg.isNotEmpty) {
+                } else if (status == 'ERROR' && errorMsg != null && errorMsg.isNotEmpty && fullOutput.isEmpty) {
                   fullOutput.write('\n[Lỗi Antigravity]: $errorMsg\n');
                   onToken('\n[Lỗi Antigravity]: $errorMsg\n');
                 }
                 // Do not finishSession() here - wait for full process exitCode!
               } else if (event == 'error') {
                 final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
-                if (err.isNotEmpty) {
+                if (err.isNotEmpty && fullOutput.isEmpty) {
                   fullOutput.write('\n[Lỗi Antigravity]: $err\n');
                   onToken('\n[Lỗi Antigravity]: $err\n');
                 }

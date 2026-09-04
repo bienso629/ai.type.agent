@@ -73,22 +73,25 @@ class _ServersScreenState extends State<ServersScreen> {
     AppToast.success(context, 'Đã kích hoạt máy chủ "${server.name}" (${server.serverIp})');
   }
 
-  Future<void> _executeSystemdAction(ServerModel server, String action, String actionName) async {
+  Future<bool> _executeSystemdAction(ServerModel server, String action, String actionName) async {
     try {
       final res = await _api.executeServiceAction('ai-agent', action, server: server);
-      if (!mounted) return;
+      if (!mounted) return false;
       if (res['status'] == 'success' || res['status'] == 'ok') {
         AppToast.success(context, 'Đã gửi lệnh $actionName ai-agent.service trên máy chủ ${server.name}');
+        return true;
       } else {
         AppToast.error(context, 'Lỗi $actionName trên máy chủ ${server.name}: ${res['error'] ?? 'Không thành công'}');
+        return false;
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       AppToast.error(context, 'Lỗi $actionName: $e');
+      return false;
     }
   }
 
-  Future<void> _showSystemdStatusModal(ServerModel server) async {
+  Future<bool?> _showSystemdStatusModal(ServerModel server) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -100,6 +103,7 @@ class _ServersScreenState extends State<ServersScreen> {
     try {
       final res = await _api.executeServiceAction('ai-agent', 'status', server: server);
       final statusOutput = (res['output'] ?? res['message'] ?? 'Không nhận được thông tin trạng thái.').toString();
+      final bool isActive = statusOutput.toLowerCase().contains('active (running)') || statusOutput.toLowerCase().contains('is-active: active');
 
       if (mounted) {
         Navigator.pop(context); // close loading
@@ -146,11 +150,13 @@ class _ServersScreenState extends State<ServersScreen> {
           ),
         );
       }
+      return isActive;
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
         AppToast.error(context, 'Lỗi kiểm tra trạng thái: $e');
       }
+      return null;
     }
   }
 
@@ -207,6 +213,7 @@ class _ServersScreenState extends State<ServersScreen> {
     final remoteDirCtrl = TextEditingController(text: existing?.remoteWorkDir ?? '/opt/ai_agent');
     String selectedAgentMode = existing?.agentMode ?? 'systemd';
     String selectedCliBinary = existing?.cliBinary ?? 'agy';
+    bool isServiceActive = existing != null && (existing.status == 'online' || existing.status == 'active');
 
     showDialog(
       context: context,
@@ -260,7 +267,7 @@ class _ServersScreenState extends State<ServersScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
                         flex: 1,
                         child: Column(
@@ -300,19 +307,19 @@ class _ServersScreenState extends State<ServersScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Mật khẩu SSH (hoặc sudo pass):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                            const Text('SSH Password:', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                             const SizedBox(height: 6),
                             TextField(
                               controller: passCtrl,
                               obscureText: true,
                               decoration: const InputDecoration(
-                                hintText: 'Mật khẩu SSH',
-                                prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
+                                hintText: 'Mật khẩu root VPS',
+                                prefixIcon: Icon(Icons.key_rounded, size: 18),
                               ),
                             ),
                           ],
@@ -321,56 +328,40 @@ class _ServersScreenState extends State<ServersScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Text('Thư mục làm việc trên Server (Remote Work Dir):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                  const Text('Thư Mục Làm Việc Từ Xa (Remote Work Directory):', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                   const SizedBox(height: 6),
                   TextField(
                     controller: remoteDirCtrl,
                     decoration: const InputDecoration(
-                      hintText: '/opt/ai_agent hoặc /var/www',
-                      prefixIcon: Icon(Icons.folder_special_outlined, size: 18),
+                      hintText: '/opt/ai_agent hoặc /root',
+                      prefixIcon: Icon(Icons.folder_open_rounded, size: 18),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
+                  const Divider(color: AppColors.borderDark, height: 1),
+                  const SizedBox(height: 12),
 
-                  // PHẦN LỰA CHỌN CHẾ ĐỘ THỰC THI (CHẾ ĐỘ 1 HOẶC CHẾ ĐỘ 2)
+                  // ── CHẾ ĐỘ HOẠT ĐỘNG CỦA AI AGENT TRÊN MÁY CHỦ ──
+                  const Text(
+                    'CHẾ ĐỘ HOẠT ĐỘNG CỦA AI AGENT TRÊN MÁY CHỦ',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight, letterSpacing: 0.5),
+                  ),
+                  const SizedBox(height: 8),
+
                   Container(
-                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                      color: AppColors.bgDark,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.borderDark),
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.tune_rounded, size: 16, color: AppColors.primaryLight),
-                            SizedBox(width: 6),
-                            Text(
-                              'Chế Độ Hoạt Động Của AI Agent Trên Máy Chủ:',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Tùy chọn 1: Chế độ Dịch vụ Systemd
+                        // Option 1: Systemd Service (Tự Động)
                         InkWell(
                           onTap: () => setDialogState(() => selectedAgentMode = 'systemd'),
-                          borderRadius: BorderRadius.circular(4),
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            margin: const EdgeInsets.only(bottom: 6),
-                            decoration: BoxDecoration(
-                              color: selectedAgentMode == 'systemd'
-                                  ? AppColors.primary.withValues(alpha: 0.15)
-                                  : AppColors.inputBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: selectedAgentMode == 'systemd' ? AppColors.primaryLight : AppColors.borderDark,
-                                width: selectedAgentMode == 'systemd' ? 1.2 : 1.0,
-                              ),
-                            ),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -380,21 +371,38 @@ class _ServersScreenState extends State<ServersScreen> {
                                       value: 'systemd',
                                       groupValue: selectedAgentMode,
                                       activeColor: AppColors.primaryLight,
-                                      onChanged: (val) => setDialogState(() => selectedAgentMode = val ?? 'systemd'),
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                      onChanged: (val) {
+                                        if (val != null) setDialogState(() => selectedAgentMode = val);
+                                      },
                                     ),
-                                    const SizedBox(width: 4),
+                                    const SizedBox(width: 6),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          const Text(
-                                            'Chế độ 1: Chạy bằng AI Agent Service (Systemd Daemon)',
-                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                          Row(
+                                            children: [
+                                              const Text(
+                                                'Chế độ 1: Dịch vụ nền Systemd (ai-agent.service)',
+                                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: const BoxDecoration(
+                                                  color: AppColors.primary,
+                                                  borderRadius: BorderRadius.all(Radius.circular(3)),
+                                                ),
+                                                child: const Text('Khuyên Dùng', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
                                           ),
                                           const SizedBox(height: 2),
-                                          Text(
-                                            'Máy chủ chạy dịch vụ nền ai-agent.service qua cổng API HTTP (mặc định port ${apiPortCtrl.text.isNotEmpty ? apiPortCtrl.text : '8000'})',
-                                            style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                                          const Text(
+                                            'Chạy AI Agent dạng background service ổn định, tự khởi động lại khi reboot, có API port',
+                                            style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
                                           ),
                                         ],
                                       ),
@@ -402,25 +410,23 @@ class _ServersScreenState extends State<ServersScreen> {
                                   ],
                                 ),
                                 if (selectedAgentMode == 'systemd') ...[
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 8),
                                   Padding(
                                     padding: const EdgeInsets.only(left: 36, right: 6),
                                     child: Row(
                                       children: [
-                                        const Text('Cổng Dịch Vụ (Agent Port):', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-                                        const SizedBox(width: 10),
+                                        const Text('API Port:', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                                        const SizedBox(width: 8),
                                         SizedBox(
-                                          width: 110,
+                                          width: 80,
                                           height: 32,
                                           child: TextField(
                                             controller: apiPortCtrl,
                                             keyboardType: TextInputType.number,
-                                            style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.textWhite),
+                                            style: const TextStyle(fontSize: 12),
                                             decoration: const InputDecoration(
-                                              isDense: true,
-                                              hintText: '8000',
                                               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                              prefixIcon: Icon(Icons.numbers_rounded, size: 14, color: AppColors.primaryLight),
+                                              isDense: true,
                                             ),
                                           ),
                                         ),
@@ -435,7 +441,7 @@ class _ServersScreenState extends State<ServersScreen> {
                                   const Divider(color: AppColors.borderDark, height: 1),
                                   const SizedBox(height: 10),
 
-                                  // 1. Quản lý Dịch vụ Systemd trực tiếp (Start / Restart / Stop / Status)
+                                  // 1. Quản lý Dịch vụ Systemd trực tiếp (Start / Restart / Stop)
                                   Container(
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
@@ -466,53 +472,66 @@ class _ServersScreenState extends State<ServersScreen> {
                                           spacing: 8,
                                           runSpacing: 8,
                                           children: [
-                                            // Start
-                                            ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: AppColors.accent.withValues(alpha: 0.15),
-                                                foregroundColor: AppColors.accent,
-                                                side: const BorderSide(color: AppColors.accent),
-                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            // Start (chỉ hiển thị khi service chưa bật)
+                                            if (!isServiceActive)
+                                              ElevatedButton.icon(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.accent.withValues(alpha: 0.15),
+                                                  foregroundColor: AppColors.accent,
+                                                  side: const BorderSide(color: AppColors.accent),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                ),
+                                                icon: const Icon(Icons.play_arrow_rounded, size: 14),
+                                                label: const Text('Bật (Start)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                                onPressed: () async {
+                                                  final ok = await _executeSystemdAction(existing, 'start', 'khởi động');
+                                                  if (ok) {
+                                                    setDialogState(() {
+                                                      isServiceActive = true;
+                                                    });
+                                                  }
+                                                },
                                               ),
-                                              icon: const Icon(Icons.play_arrow_rounded, size: 14),
-                                              label: const Text('Bật (Start)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                              onPressed: () => _executeSystemdAction(existing, 'start', 'khởi động'),
-                                            ),
-                                            // Restart
-                                            ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: AppColors.warning.withValues(alpha: 0.15),
-                                                foregroundColor: AppColors.warning,
-                                                side: const BorderSide(color: AppColors.warning),
-                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            // Restart (chỉ hiển thị khi service đã bật)
+                                            if (isServiceActive)
+                                              ElevatedButton.icon(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.warning.withValues(alpha: 0.15),
+                                                  foregroundColor: AppColors.warning,
+                                                  side: const BorderSide(color: AppColors.warning),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                ),
+                                                icon: const Icon(Icons.restart_alt_rounded, size: 14),
+                                                label: const Text('Khởi Động Lại (Restart)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                                onPressed: () async {
+                                                  final ok = await _executeSystemdAction(existing, 'restart', 'khởi động lại');
+                                                  if (ok) {
+                                                    setDialogState(() {
+                                                      isServiceActive = true;
+                                                    });
+                                                  }
+                                                },
                                               ),
-                                              icon: const Icon(Icons.restart_alt_rounded, size: 14),
-                                              label: const Text('Khởi Động Lại (Restart)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                              onPressed: () => _executeSystemdAction(existing, 'restart', 'khởi động lại'),
-                                            ),
-                                            // Stop
-                                            ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: AppColors.danger.withValues(alpha: 0.15),
-                                                foregroundColor: AppColors.danger,
-                                                side: const BorderSide(color: AppColors.danger),
-                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            // Stop (chỉ hiển thị khi service đã bật)
+                                            if (isServiceActive)
+                                              ElevatedButton.icon(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.danger.withValues(alpha: 0.15),
+                                                  foregroundColor: AppColors.danger,
+                                                  side: const BorderSide(color: AppColors.danger),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                ),
+                                                icon: const Icon(Icons.stop_rounded, size: 14),
+                                                label: const Text('Dừng (Stop)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                                onPressed: () async {
+                                                  final ok = await _executeSystemdAction(existing, 'stop', 'dừng');
+                                                  if (ok) {
+                                                    setDialogState(() {
+                                                      isServiceActive = false;
+                                                    });
+                                                  }
+                                                },
                                               ),
-                                              icon: const Icon(Icons.stop_rounded, size: 14),
-                                              label: const Text('Dừng (Stop)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                              onPressed: () => _executeSystemdAction(existing, 'stop', 'dừng'),
-                                            ),
-                                            // Status
-                                            OutlinedButton.icon(
-                                              style: OutlinedButton.styleFrom(
-                                                side: const BorderSide(color: AppColors.primaryLight),
-                                                foregroundColor: AppColors.primaryLight,
-                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                              ),
-                                              icon: const Icon(Icons.terminal_rounded, size: 14),
-                                              label: const Text('Kiểm Tra Trạng Thái (Status)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                              onPressed: () => _showSystemdStatusModal(existing),
-                                            ),
                                           ],
                                         ),
                                       ],
@@ -557,6 +576,26 @@ class _ServersScreenState extends State<ServersScreen> {
                                               ),
                                             ),
                                             const SizedBox(width: 8),
+                                            // Nút Kiểm Tra Trạng Thái (Status) nằm bên trái nút Thiết lập ngay
+                                            OutlinedButton.icon(
+                                              style: OutlinedButton.styleFrom(
+                                                side: const BorderSide(color: AppColors.primaryLight),
+                                                foregroundColor: AppColors.primaryLight,
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              ),
+                                              icon: const Icon(Icons.terminal_rounded, size: 14),
+                                              label: const Text('Kiểm Tra Trạng Thái', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
+                                              onPressed: () async {
+                                                final active = await _showSystemdStatusModal(existing);
+                                                if (active != null) {
+                                                  setDialogState(() {
+                                                    isServiceActive = active;
+                                                  });
+                                                }
+                                              },
+                                            ),
+                                            const SizedBox(width: 6),
+                                            // Nút Thiết lập ngay
                                             ElevatedButton.icon(
                                               style: ElevatedButton.styleFrom(
                                                 backgroundColor: AppColors.primary,
