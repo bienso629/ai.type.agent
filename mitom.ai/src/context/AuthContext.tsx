@@ -7,7 +7,7 @@ export interface AuthUser {
   email: string
   name?: string
   avatar?: string
-  authProvider: 'local' | 'google' | 'tadu'
+  authProvider: 'local' | 'google'
   balance: number
   customerCode?: string
   apiKey?: string
@@ -21,7 +21,6 @@ interface AuthContextType {
   openLoginModal: () => void
   closeLoginModal: () => void
   loginWithLocal: (email: string, password: string) => Promise<{ success: boolean; message?: string }>
-  loginWithTadu: (email: string, password: string) => Promise<{ success: boolean; message?: string }>
   loginWithGoogle: (credential?: string, accessToken?: string) => Promise<{ success: boolean; message?: string }>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
@@ -80,27 +79,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const loginWithTadu = async (email: string, password: string) => {
-    try {
-      const res = await fetch('/api/auth/tadu', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const data = await res.json()
-
-      if (!res.ok || !data.success) {
-        return { success: false, message: data.message || 'Đăng nhập Tadu thất bại.' }
-      }
-
-      setUser(data.user)
-      setIsLoginModalOpen(false)
-      return { success: true }
-    } catch (err: any) {
-      return { success: false, message: err.message || 'Lỗi mạng khi kết nối đăng nhập.' }
-    }
-  }
-
   const loginWithGoogle = async (credential?: string, accessToken?: string) => {
     try {
       const res = await fetch('/api/auth/google', {
@@ -139,7 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         openLoginModal,
         closeLoginModal,
         loginWithLocal,
-        loginWithTadu,
         loginWithGoogle,
         logout,
         refreshUser,

@@ -10,7 +10,6 @@ export function ModelCard({
   model: ApiModel
   onCopy: (id: string) => void
 }) {
-  const [showPricingDetails, setShowPricingDetails] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const handleCopy = () => {
@@ -49,72 +48,13 @@ export function ModelCard({
         </div>
 
         {/* Description */}
-        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground line-clamp-3">
           {model.description}
         </p>
-
-        {/* Pricing snippet */}
-        {model.pricing.length > 0 && (
-          <div className="mt-4 rounded-lg border border-border/80 bg-secondary/30 p-3">
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="shrink-0 font-mono text-[11px] font-medium text-muted-foreground whitespace-nowrap">Bảng giá API:</span>
-              <button
-                type="button"
-                onClick={() => setShowPricingDetails(!showPricingDetails)}
-                className="shrink-0 font-mono text-[11px] font-semibold text-primary hover:underline whitespace-nowrap"
-              >
-                {showPricingDetails ? 'Thu gọn ▲' : 'Xem chi tiết ▼'}
-              </button>
-            </div>
-
-            {/* Concise preview */}
-            {!showPricingDetails && model.highlightPrice && (
-              <div className="mt-2 flex items-center justify-between rounded border border-border/40 bg-background/50 font-mono text-xs">
-                <span className="text-muted-foreground">Giá cơ bản:</span>
-                <span className="font-bold text-emerald">{model.highlightPrice}</span>
-              </div>
-            )}
-
-            {/* Expanded Pricing Table */}
-            {showPricingDetails && (
-              <div className="mt-2.5 space-y-3 border-t border-border/50 pt-2.5 text-[11px]">
-                {model.pricing.map((p, idx) => (
-                  <div key={idx} className="space-y-1.5">
-                    {model.pricing.length > 1 && (
-                      <div className="px-1 py-0.5 font-mono text-[10px] font-bold text-primary">
-                        {p.condition}
-                      </div>
-                    )}
-                    <div className="overflow-hidden rounded border border-border/50 bg-background/40">
-                      <table className="w-full text-left font-mono">
-                        <thead>
-                          <tr className="border-b border-border/50 bg-secondary/50 text-[10px] uppercase text-muted-foreground">
-                            <th className="font-semibold">Mục tính phí</th>
-                            <th className="text-right font-semibold">Đơn giá</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/30 text-muted-foreground">
-                          {p.rates.map((r, rIdx) => (
-                            <tr key={rIdx} className="hover:bg-secondary/30 transition-colors">
-                              <td className="text-foreground/80 font-medium">{r.item}</td>
-                              <td className="text-right font-bold text-foreground whitespace-nowrap">
-                                {r.price} {r.currency}/{r.unit}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Footer Actions */}
-      <div className="mt-4 pt-3 border-t border-border">
+      <div className="mt-5 pt-3 border-t border-border">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald">
             <span

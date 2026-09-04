@@ -573,8 +573,8 @@ function TopUpPage({
                 />
               </div>
 
-              {/* Thông tin tài khoản ngân hàng chuyển khoản */}
-              <div className="mt-5 rounded-xl border border-border bg-secondary/30 p-4 text-xs space-y-2.5">
+              {/* Thông tin tài khoản ngân hàng chuyển khoản - Phẳng, không border, không padding thừa */}
+              <div className="mt-5 text-xs space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <span className="text-muted-foreground shrink-0">Ngân hàng:</span>
                   <span className="font-semibold text-right text-foreground">NH Thương mại cổ phần Á Châu – Chi nhánh Phan Đăng Lưu</span>
@@ -587,7 +587,7 @@ function TopUpPage({
                   <span className="text-muted-foreground shrink-0">Số tài khoản:</span>
                   <span className="font-mono font-bold text-foreground text-sm select-all">199878939</span>
                 </div>
-                <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+                <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2">
                   <span className="text-muted-foreground shrink-0">Nội dung CK:</span>
                   <span className="font-mono font-bold text-emerald text-sm select-all">
                     {user?.customerCode || (user?.id ? `MITO${String(user.id).padStart(6, '0')}` : 'MITO')}
@@ -606,21 +606,21 @@ function TopUpPage({
               <h2 className="font-display text-lg font-bold">3. Tóm tắt đơn nạp</h2>
               <p className="text-xs text-muted-foreground mt-1">Thông tin chi tiết đơn hàng của bạn</p>
 
-              {/* Bảng chi tiết đơn hàng duy nhất */}
-              <div className="mt-6 rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
+              {/* Bảng chi tiết đơn hàng - Phẳng, không viền, không padding thừa */}
+              <div className="mt-6 space-y-4">
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Gói nạp:</span>
                     <span className="font-semibold text-foreground">{topup.label} ({formatVnd(topup.amount)})</span>
                   </div>
 
-                  <div className="flex justify-between items-center border-t border-border/60 pt-3">
+                  <div className="flex justify-between items-center border-t border-border/40 pt-3">
                     <span className="text-muted-foreground">Thuế VAT (10%):</span>
                     <span className="font-mono text-muted-foreground">+{formatVnd(Math.round(topup.amount * 0.1))}</span>
                   </div>
                 </div>
 
-                {/* Tổng thanh toán căn phải, không viền, không padding */}
+                {/* Tổng thanh toán căn phải */}
                 <div className="border-t border-border/80 pt-4 text-right">
                   <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Tổng tiền cần quét mã
@@ -635,7 +635,7 @@ function TopUpPage({
               </div>
 
               {/* Ghi chú ngắn gọn */}
-              <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground px-1 font-mono">
+              <div className="mt-6 flex items-center justify-between text-xs text-muted-foreground font-mono">
                 <span>Phương thức: VietQR</span>
                 <span>Phí: 0đ</span>
                 <span>Hạn dùng: Vĩnh viễn</span>
@@ -772,8 +772,8 @@ function ModelsPage({
         </span>
       </div>
 
-      {/* Hero banner của trang Models */}
-      <div className="mb-10 rounded-2xl border border-border bg-card p-6 md:p-8 shadow-xl relative overflow-hidden">
+      {/* Hero banner của trang Models - Không border, không padding thừa */}
+      <div className="mb-8 pb-6 border-b border-border/60 relative overflow-hidden">
         <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
         <div className="max-w-3xl relative z-10">
           <span className="font-mono text-xs uppercase tracking-widest text-primary font-bold">
@@ -785,18 +785,6 @@ function ModelsPage({
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground md:text-base">
             Tra cứu thông số, đơn giá token/lượt gọi và sao chép mã Model ID để tích hợp trực tiếp qua chuẩn OpenAI API.
           </p>
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/70 px-3.5 py-2 font-mono text-xs text-foreground">
-              <span className="text-muted-foreground">Base URL:</span>
-              <code className="text-primary font-bold select-all">https://api-us-ca.umodelverse.ai/v1</code>
-            </div>
-            <button
-              onClick={() => onTopup(TOPUPS[1])}
-              className="glow-button rounded-lg bg-primary px-4 py-2 font-mono text-xs font-bold text-primary-foreground transition-transform hover:scale-[1.02]"
-            >
-              Nạp số dư trải nghiệm
-            </button>
-          </div>
         </div>
       </div>
 

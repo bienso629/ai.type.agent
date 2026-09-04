@@ -34,10 +34,13 @@ os.makedirs(TMP_DIR, exist_ok=True)
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--api-key", type=str, default=None)
+parser.add_argument("--port", type=int, default=None)
 parser.add_argument("--anthropic-api-key", type=str, default=None)
 parser.add_argument("--anthropic-auth-token", type=str, default=None)
 parser.add_argument("--anthropic-base-url", type=str, default=None)
 args, unknown = parser.parse_known_args()
+
+SERVER_PORT = args.port or int(os.environ.get("PORT") or os.environ.get("AI_AGENT_PORT") or 54321)
 
 # --api-key được ưu tiên nếu truyền qua argv (tương thích ngược); mặc định đọc từ
 # biến môi trường AI_AGENT_API_KEY để tránh hiện secret trong `ps`/`/proc/<pid>/cmdline`.
@@ -1494,4 +1497,4 @@ if os.path.exists(DIST_DIR):
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=54321)
+    uvicorn.run(app, host="127.0.0.1", port=SERVER_PORT)
