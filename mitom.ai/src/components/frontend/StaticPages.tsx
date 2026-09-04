@@ -131,7 +131,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
           <li>Số tiền nạp tối thiểu là <strong>100.000 VNĐ</strong> mỗi lần giao dịch.</li>
           <li>Số dư sau khi nạp <strong>không có hạn sử dụng</strong>, bạn có thể gọi API đến khi nào hết tiền thì thôi.</li>
           <li>Nếu bạn cần xuất hóa đơn VAT điện tử (10%), vui lòng chọn mục <strong>Công ty / Doanh nghiệp</strong> khi nạp tiền.</li>
-          <li>Trường hợp chuyển sai nội dung chuyển khoản, hãy liên hệ ngay Hotline/Zalo: <strong className="text-primary font-mono">0908.888.888</strong> để được hỗ trợ kiểm tra và cộng số dư thủ công.</li>
+          <li>Trường hợp chuyển sai nội dung chuyển khoản, hãy liên hệ ngay <a href="https://zalo.me/4275289637074408185" target="_blank" rel="noreferrer" className="text-primary font-semibold underline underline-offset-4 hover:opacity-80">Hotline/Zalo hỗ trợ</a> để được kiểm tra và cộng số dư thủ công.</li>
         </ul>
       </div>
     </main>
@@ -149,7 +149,7 @@ export function ApiDocsPage({ onNavigate }: StaticPageProps) {
       code: `from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://api-us-ca.umodelverse.ai/v1",
+    base_url="https://api-vn-sg.mitom.ai/v1",
     api_key="MITOM_API_KEY_CUA_BAN"
 )
 
@@ -168,7 +168,7 @@ print(response.choices[0].message.content)`
       code: `import OpenAI from 'openai'
 
 const openai = new OpenAI({
-  baseURL: 'https://api-us-ca.umodelverse.ai/v1',
+  baseURL: 'https://api-vn-sg.mitom.ai/v1',
   apiKey: 'MITOM_API_KEY_CUA_BAN',
 })
 
@@ -187,7 +187,7 @@ main()`
     },
     curl: {
       lang: 'cURL Terminal',
-      code: `curl https://api-us-ca.umodelverse.ai/v1/chat/completions \\
+      code: `curl https://api-vn-sg.mitom.ai/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer MITOM_API_KEY_CUA_BAN" \\
   -d '{
@@ -396,14 +396,14 @@ export function PrivacyPage({ onNavigate }: StaticPageProps) {
         <section className="rounded-xl border border-border bg-card p-6 md:p-8">
           <h2 className="font-display text-lg font-bold text-foreground">3. Bảo mật thanh toán</h2>
           <p className="mt-2 text-muted-foreground">
-            Các giao dịch chuyển khoản VietQR được đối soát tự động thông qua cổng thanh toán bảo mật của Ngân hàng ACB / SePay. Chúng tôi không lưu giữ thông tin thẻ tín dụng hay mật khẩu ngân hàng của quý khách.
+            Các giao dịch chuyển khoản VietQR được đối soát tự động trực tiếp thông qua hệ thống Ngân hàng ACB. Chúng tôi không lưu giữ thông tin thẻ tín dụng hay mật khẩu ngân hàng của quý khách.
           </p>
         </section>
 
         <section className="rounded-xl border border-border bg-card p-6 md:p-8">
           <h2 className="font-display text-lg font-bold text-foreground">4. Liên hệ bộ phận an toàn thông tin</h2>
           <p className="mt-2 text-muted-foreground">
-            Mọi thắc mắc hoặc yêu cầu xóa dữ liệu tài khoản, quý khách vui lòng liên hệ qua Email: <strong className="text-primary font-mono">support@mitom.ai</strong> hoặc Hotline: <strong className="text-primary font-mono">0908.888.888</strong>.
+            Mọi thắc mắc hoặc yêu cầu xóa dữ liệu tài khoản, quý khách vui lòng liên hệ qua Email: <strong className="text-primary font-mono">support@mitom.ai</strong> hoặc <a href="https://zalo.me/4275289637074408185" target="_blank" rel="noreferrer" className="text-primary font-semibold underline underline-offset-4 hover:opacity-80">Zalo Hỗ trợ</a>.
           </p>
         </section>
       </div>

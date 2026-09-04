@@ -33,7 +33,7 @@ export const PAY_METHODS = [
 export const FAQS = [
   {
     q: 'Endpoint API của Mì Tôm AI kết nối thế nào?',
-    a: 'Endpoint https://api-us-ca.umodelverse.ai/v1 tương thích hoàn toàn với chuẩn OpenAI API. Bạn có thể sử dụng trực tiếp trong OpenAI Python/Node SDK, Next.js, Cline, Cursor, Roo Code, LibreChat, Dify hoặc OpenWebUI bằng cách cấu hình Base URL và API Key.',
+    a: 'Endpoint https://api-vn-sg.mitom.ai/v1 tương thích hoàn toàn với chuẩn OpenAI API. Bạn có thể sử dụng trực tiếp trong OpenAI Python/Node SDK, Next.js, Cline, Cursor, Roo Code, LibreChat, Dify hoặc OpenWebUI bằng cách cấu hình Base URL và API Key.',
   },
   {
     q: 'Số dư nạp vào có bị hết hạn không?',
@@ -53,7 +53,7 @@ export const FAQS = [
   },
 ]
 
-export const ZALO = 'https://zalo.me/0908888888'
+export const ZALO = 'https://zalo.me/4275289637074408185'
 export const formatVnd = (n: number) => n.toLocaleString('vi-VN') + 'đ'
 
 export function HeroModelSlider({
@@ -1081,7 +1081,7 @@ export function FrontendApp({
             <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
               <li>
                 <a href={ZALO} target="_blank" rel="noreferrer" className="transition-colors hover:text-primary">
-                  Zalo: 0908.888.888
+                  Zalo: Hỗ trợ kỹ thuật
                 </a>
               </li>
               <li>
@@ -1310,7 +1310,7 @@ function HomePage({
             <span className="font-mono text-xs uppercase tracking-widest text-primary">// Hỏi đáp</span>
             <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight md:text-4xl">Câu hỏi thường gặp</h2>
             <p className="mt-4 text-muted-foreground">
-              Chưa tìm thấy câu trả lời? Nhắn Zalo <span className="font-mono text-primary">0908.888.888</span> để được đội ngũ kỹ thuật hỗ trợ ngay.
+              Chưa tìm thấy câu trả lời? <a href={ZALO} target="_blank" rel="noreferrer" className="font-semibold text-primary underline underline-offset-4 hover:opacity-80">Nhắn Zalo hỗ trợ ngay</a> để được đội ngũ kỹ thuật hỗ trợ.
             </p>
           </div>
           <div className="divide-y divide-border rounded-xl border border-border bg-card">

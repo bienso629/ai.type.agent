@@ -7,7 +7,7 @@ export default async function HomePage() {
   let models: ApiModel[] = ALL_MODELS
 
   try {
-    const res = await fetch('https://api-us-ca.umodelverse.ai/v1/models', {
+    const res = await fetch('https://api-vn-sg.mitom.ai/v1/models', {
       next: { revalidate: 300 },
     })
     if (res.ok) {

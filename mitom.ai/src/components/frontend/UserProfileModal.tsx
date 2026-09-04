@@ -129,7 +129,7 @@ export function UserProfileModal({
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
               Sử dụng API Key này làm Bearer Token cho Base URL:{' '}
-              <code className="text-primary font-mono">https://api-us-ca.umodelverse.ai/v1</code>
+              <code className="text-primary font-mono">https://api-vn-sg.mitom.ai/v1</code>
             </p>
           </div>
         </div>
