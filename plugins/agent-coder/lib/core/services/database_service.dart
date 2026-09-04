@@ -132,14 +132,25 @@ class DatabaseService {
             ? _enc.decryptValue(rawServer)
             : 'Local Machine';
 
-        // Count messages
-        final countRows = await db.rawQuery(
-          'SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ?',
+        // Count user questions (role = 'user')
+        final qCountRows = await db.rawQuery(
+          "SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ? AND role = 'user'",
           [id],
         );
-        final msgCount = (countRows.isNotEmpty && countRows.first['count'] != null)
-            ? int.tryParse(countRows.first['count'].toString()) ?? 0
+        final qCount = (qCountRows.isNotEmpty && qCountRows.first['count'] != null)
+            ? int.tryParse(qCountRows.first['count'].toString()) ?? 0
             : 0;
+
+        // Count assistant answers (role = 'assistant')
+        final aCountRows = await db.rawQuery(
+          "SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ? AND role = 'assistant'",
+          [id],
+        );
+        final aCount = (aCountRows.isNotEmpty && aCountRows.first['count'] != null)
+            ? int.tryParse(aCountRows.first['count'].toString()) ?? 0
+            : 0;
+
+        final totalMsgCount = qCount + aCount;
 
         result.add(
           ChatSessionModel(
@@ -148,7 +159,9 @@ class DatabaseService {
             isPinned: row['is_pinned'] == 1 || row['is_pinned'] == true,
             createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''),
             updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? ''),
-            messageCount: msgCount,
+            messageCount: totalMsgCount,
+            questionCount: qCount,
+            answerCount: aCount,
             workingDirScope: decScope,
             targetServer: decServer,
           ),

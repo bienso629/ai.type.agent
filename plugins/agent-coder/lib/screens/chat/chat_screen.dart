@@ -334,22 +334,29 @@ class _ChatScreenState extends State<ChatScreen> {
   void _onTextChanged() {
     final text = _textController.text;
     final selection = _textController.selection;
-    if (selection.baseOffset < 0) {
-      if (_inlineDirSuggestions.isNotEmpty) {
-        setState(() => _inlineDirSuggestions.clear());
+    if (selection.baseOffset < 0 || text.length > 50000) {
+      if (_inlineDirSuggestions.isNotEmpty || _isInlineDirLoading) {
+        _dirDebounceTimer?.cancel();
+        setState(() {
+          _inlineDirSuggestions.clear();
+          _isInlineDirLoading = false;
+          _currentSlashWord = '';
+        });
       }
       return;
     }
 
-    final cursor = selection.baseOffset;
-    final textUpToCursor = text.substring(0, cursor);
-    final match = RegExp(r'(?:^|\s)(/[^\s]*)$').firstMatch(textUpToCursor);
+    final cursor = selection.baseOffset.clamp(0, text.length);
+    // Chỉ kiểm tra tối đa 200 ký tự trước con trỏ để tránh lag regex khi text dài
+    final startIdx = (cursor - 200).clamp(0, cursor);
+    final textNearCursor = text.substring(startIdx, cursor);
+    final match = RegExp(r'(?:^|\s)(/[^\s]*)$').firstMatch(textNearCursor);
 
     if (match != null) {
       final word = match.group(1) ?? '/';
       _currentSlashWord = word;
       _dirDebounceTimer?.cancel();
-      _dirDebounceTimer = Timer(const Duration(milliseconds: 120), () async {
+      _dirDebounceTimer = Timer(const Duration(milliseconds: 180), () async {
         if (!mounted) return;
         setState(() => _isInlineDirLoading = true);
         final dirs = await _apiService.listDirectories(prefix: word);
@@ -2278,303 +2285,387 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(6),
-                        itemCount: displaySessions.length,
-                        itemBuilder: (context, idx) {
-                          final sess = displaySessions[idx];
-                          final isSelected = sess.id == chat.currentSession?.id;
-                          final recentQuestions = _sessionRecentQuestions[sess.id] ?? [];
-                          final isLoadingQuestions = _loadingSessionQuestions.contains(sess.id);
+                    : Builder(
+                        builder: (context) {
+                          final now = DateTime.now();
+                          final today = DateTime(now.year, now.month, now.day);
+                          final yesterday = today.subtract(const Duration(days: 1));
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 4),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppColors.primary.withValues(alpha: 0.15)
-                                  : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.04) : Colors.transparent),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
+                          final todaySessions = <ChatSessionModel>[];
+                          final yesterdaySessions = <ChatSessionModel>[];
+                          final olderSessions = <ChatSessionModel>[];
+
+                          for (final sess in displaySessions) {
+                            final sessDate = DateTime(sess.updatedAt.year, sess.updatedAt.month, sess.updatedAt.day);
+                            if (sessDate.isAtSameMomentAs(today) || sessDate.isAfter(today)) {
+                              todaySessions.add(sess);
+                            } else if (sessDate.isAtSameMomentAs(yesterday)) {
+                              yesterdaySessions.add(sess);
+                            } else {
+                              olderSessions.add(sess);
+                            }
+                          }
+
+                          Widget buildSessionTile(ChatSessionModel sess) {
+                            final isSelected = sess.id == chat.currentSession?.id;
+                            final recentQuestions = _sessionRecentQuestions[sess.id] ?? [];
+                            final isLoadingQuestions = _loadingSessionQuestions.contains(sess.id);
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 4),
+                              decoration: BoxDecoration(
                                 color: isSelected
-                                    ? AppColors.primary.withValues(alpha: 0.5)
-                                    : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.25) : AppColors.borderDark.withValues(alpha: 0.3)),
+                                    ? AppColors.primary.withValues(alpha: 0.15)
+                                    : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.04) : Colors.transparent),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? AppColors.primary.withValues(alpha: 0.5)
+                                      : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.25) : AppColors.borderDark.withValues(alpha: 0.3)),
+                                ),
                               ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ClipRRect(
                                     borderRadius: BorderRadius.circular(4),
-                                    hoverColor: Colors.transparent,
-                                    splashColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () {
-                                      if (chat.currentSession?.id == sess.id) return;
-                                      chat.selectSession(sess).then((_) {
-                                        _safeScrollToBottom(instant: true);
-                                      });
-                                      _loadRecentQuestionsForSession(sess.id);
-                                      if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                        if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                          if (serverProvider.selectedServer?.id != 'local') {
-                                            serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                          }
-                                        } else {
-                                          final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                          if (matches.isNotEmpty && serverProvider.selectedServer?.id != matches.first.id) {
-                                            serverProvider.selectServer(matches.first);
-                                          }
-                                        }
-                                      }
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                                      child: Row(
-                                        children: [
-                                          // Left Pin Button
-                                          IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                            hoverColor: Colors.transparent,
-                                            splashColor: Colors.transparent,
-                                            highlightColor: Colors.transparent,
-                                            icon: Transform.rotate(
-                                              angle: sess.isPinned ? -0.5 : 0,
-                                              child: Icon(
-                                                sess.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                                                size: 12.5,
-                                                color: sess.isPinned ? AppColors.warning : AppColors.textDim,
-                                              ),
-                                            ),
-                                            tooltip: sess.isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu',
-                                            onPressed: () async {
-                                              final success = await chat.pinSession(sess);
-                                              if (!success && context.mounted) {
-                                                AppToast.warning(context, 'Chỉ được ghim tối đa 3 hộp hội thoại lên đầu');
+                                    child: _SwipeableSessionItem(
+                                      key: ValueKey('swipe_${sess.id}'),
+                                      onEdit: () => _showEditSessionDialog(chat, sess),
+                                      onDelete: () => _showDeleteDialog(chat, sess),
+                                      backgroundColor: isSelected
+                                          ? const Color(0xFF132733)
+                                          : (sess.isPinned ? const Color(0xFF1B1A1E) : AppColors.sidebarBg),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(4),
+                                          hoverColor: Colors.transparent,
+                                          splashColor: Colors.transparent,
+                                          highlightColor: Colors.transparent,
+                                          onTap: () {
+                                            if (chat.currentSession?.id == sess.id) return;
+                                            chat.selectSession(sess).then((_) {
+                                              _safeScrollToBottom(instant: true);
+                                            });
+                                            _loadRecentQuestionsForSession(sess.id);
+                                            if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
+                                              if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
+                                                if (serverProvider.selectedServer?.id != 'local') {
+                                                  serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+                                                }
+                                              } else {
+                                                final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
+                                                if (matches.isNotEmpty && serverProvider.selectedServer?.id != matches.first.id) {
+                                                  serverProvider.selectServer(matches.first);
+                                                }
                                               }
-                                            },
-                                          ),
-                                          const SizedBox(width: 4),
-                                          // Session Details
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                            }
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                            child: Row(
                                               children: [
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        sess.title,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: TextStyle(
-                                                          fontSize: 11.5,
-                                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                                          color: isSelected ? AppColors.primaryLight : AppColors.textBody,
-                                                        ),
-                                                      ),
+                                                // Left Pin Button
+                                                IconButton(
+                                                  padding: EdgeInsets.zero,
+                                                  constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                                                  hoverColor: Colors.transparent,
+                                                  splashColor: Colors.transparent,
+                                                  highlightColor: Colors.transparent,
+                                                  icon: Transform.rotate(
+                                                    angle: sess.isPinned ? -0.5 : 0,
+                                                    child: Icon(
+                                                      sess.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                                                      size: 12.5,
+                                                      color: sess.isPinned ? AppColors.warning : AppColors.textDim,
                                                     ),
-                                                    if (chat.isSessionGenerating(sess.id)) ...[
-                                                      const SizedBox(width: 4),
-                                                      const SizedBox(
-                                                        width: 9,
-                                                        height: 9,
-                                                        child: CircularProgressIndicator(
-                                                          strokeWidth: 1.5,
-                                                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ],
+                                                  ),
+                                                  tooltip: sess.isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu',
+                                                  onPressed: () async {
+                                                    final success = await chat.pinSession(sess);
+                                                    if (!success && context.mounted) {
+                                                      AppToast.warning(context, 'Chỉ được ghim tối đa 3 hộp hội thoại lên đầu');
+                                                    }
+                                                  },
                                                 ),
-                                                const SizedBox(height: 2),
-                                                Row(
-                                                  children: [
-                                                    if (sess.isPinned)
-                                                      Container(
-                                                        margin: const EdgeInsets.only(right: 6),
-                                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
-                                                        decoration: BoxDecoration(
-                                                          color: AppColors.warning.withValues(alpha: 0.15),
-                                                          borderRadius: BorderRadius.circular(4),
-                                                          border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                                                        ),
-                                                        child: const Text(
-                                                          'Ghim',
-                                                          style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.warning),
-                                                        ),
-                                                      ),
-                                                    // Target Server Badge
-                                                    Builder(
-                                                      builder: (context) {
-                                                        final serverName = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
-                                                            ? sess.targetServer!
-                                                            : 'Local Machine';
-                                                        final isLocal = serverName == 'Local Machine' ||
-                                                            serverName == 'Local' ||
-                                                            serverName == 'localhost' ||
-                                                            serverName == '127.0.0.1';
-                                                        final badgeColor = isLocal ? AppColors.accent : const Color(0xFF38BDF8);
-
-                                                        return Container(
-                                                          margin: const EdgeInsets.only(right: 6),
-                                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
-                                                          decoration: BoxDecoration(
-                                                            color: badgeColor.withValues(alpha: 0.12),
-                                                            borderRadius: BorderRadius.circular(4),
-                                                            border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
-                                                          ),
-                                                          child: Row(
-                                                            mainAxisSize: MainAxisSize.min,
-                                                            children: [
-                                                              Icon(
-                                                                isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
-                                                                size: 9.5,
-                                                                color: badgeColor,
+                                                const SizedBox(width: 4),
+                                                // Session Details
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Text(
+                                                              sess.title,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: TextStyle(
+                                                                fontSize: 11.5,
+                                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                                color: isSelected ? AppColors.primaryLight : AppColors.textBody,
                                                               ),
-                                                              const SizedBox(width: 3),
-                                                              ConstrainedBox(
-                                                                constraints: const BoxConstraints(maxWidth: 80),
-                                                                child: Text(
-                                                                  serverName,
-                                                                  overflow: TextOverflow.ellipsis,
-                                                                  style: TextStyle(
-                                                                    fontSize: 8.5,
-                                                                    fontWeight: FontWeight.bold,
-                                                                    color: badgeColor,
+                                                            ),
+                                                          ),
+                                                          if (chat.isSessionGenerating(sess.id)) ...[
+                                                            const SizedBox(width: 4),
+                                                            const SizedBox(
+                                                              width: 9,
+                                                              height: 9,
+                                                              child: CircularProgressIndicator(
+                                                                strokeWidth: 1.5,
+                                                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Row(
+                                                        children: [
+                                                          if (sess.isPinned)
+                                                            Container(
+                                                              margin: const EdgeInsets.only(right: 6),
+                                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+                                                              decoration: BoxDecoration(
+                                                                color: AppColors.warning.withValues(alpha: 0.15),
+                                                                borderRadius: BorderRadius.circular(4),
+                                                                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                                                              ),
+                                                              child: const Text(
+                                                                'Ghim',
+                                                                style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.warning),
+                                                              ),
+                                                            ),
+                                                          // Target Server Badge
+                                                          Builder(
+                                                            builder: (context) {
+                                                              final serverName = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
+                                                                  ? sess.targetServer!
+                                                                  : 'Local Machine';
+                                                              final isLocal = serverName == 'Local Machine' ||
+                                                                  serverName == 'Local' ||
+                                                                  serverName == 'localhost' ||
+                                                                  serverName == '127.0.0.1';
+                                                              final badgeColor = isLocal ? AppColors.accent : const Color(0xFF38BDF8);
+
+                                                              return Container(
+                                                                margin: const EdgeInsets.only(right: 6),
+                                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+                                                                decoration: BoxDecoration(
+                                                                  color: badgeColor.withValues(alpha: 0.12),
+                                                                  borderRadius: BorderRadius.circular(4),
+                                                                  border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
+                                                                ),
+                                                                child: Row(
+                                                                  mainAxisSize: MainAxisSize.min,
+                                                                  children: [
+                                                                    Icon(
+                                                                      isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
+                                                                      size: 9.5,
+                                                                      color: badgeColor,
+                                                                    ),
+                                                                    const SizedBox(width: 3),
+                                                                    ConstrainedBox(
+                                                                      constraints: const BoxConstraints(maxWidth: 80),
+                                                                      child: Text(
+                                                                        serverName,
+                                                                        overflow: TextOverflow.ellipsis,
+                                                                        style: TextStyle(
+                                                                          fontSize: 8.5,
+                                                                          fontWeight: FontWeight.bold,
+                                                                          color: badgeColor,
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              );
+                                                            },
+                                                          ),
+                                                          // Q&A Count Badge
+                                                          Container(
+                                                            margin: const EdgeInsets.only(right: 6),
+                                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                            decoration: BoxDecoration(
+                                                              color: AppColors.primary.withValues(alpha: 0.15),
+                                                              borderRadius: BorderRadius.circular(4),
+                                                              border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.35)),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                Text(
+                                                                  '${sess.questionCount}',
+                                                                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                                                ),
+                                                                const Padding(
+                                                                  padding: EdgeInsets.symmetric(horizontal: 3),
+                                                                  child: Text(
+                                                                    '/',
+                                                                    style: TextStyle(fontSize: 8.5, color: AppColors.textDim),
                                                                   ),
                                                                 ),
-                                                              ),
-                                                            ],
+                                                                Text(
+                                                                  '${sess.answerCount}',
+                                                                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                                                ),
+                                                              ],
+                                                            ),
                                                           ),
-                                                        );
-                                                      },
-                                                    ),
-                                                    Text(
-                                                      _formatSessionTime(sess.updatedAt),
-                                                      style: const TextStyle(fontSize: 10, color: AppColors.textDim),
-                                                    ),
-                                                  ],
+                                                          Text(
+                                                            _formatSessionTime(sess.updatedAt),
+                                                            style: const TextStyle(fontSize: 10, color: AppColors.textDim),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ],
                                             ),
                                           ),
-                                          // Edit Button
-                                          IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                            hoverColor: Colors.transparent,
-                                            splashColor: Colors.transparent,
-                                            highlightColor: Colors.transparent,
-                                            icon: const Icon(Icons.edit_outlined, size: 13, color: AppColors.textDim),
-                                            tooltip: 'Chỉnh sửa hội thoại (Tên & Máy chủ)',
-                                            onPressed: () => _showEditSessionDialog(chat, sess),
-                                          ),
-                                          // Delete Button
-                                          IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                            hoverColor: Colors.transparent,
-                                            splashColor: Colors.transparent,
-                                            highlightColor: Colors.transparent,
-                                            icon: const Icon(Icons.delete_outline_rounded, size: 13, color: AppColors.textDim),
-                                            tooltip: 'Xóa hộp hội thoại này',
-                                            onPressed: () => _showDeleteDialog(chat, sess),
-                                          ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
 
-                                 // Expanded Section: Recent Questions List
-                                 if (isSelected) ...[
-                                   Container(
-                                     width: double.infinity,
-                                     margin: const EdgeInsets.only(left: 10, right: 8, top: 4, bottom: 8),
-                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                     decoration: BoxDecoration(
-                                       color: AppColors.bgDark.withValues(alpha: 0.7),
-                                       borderRadius: BorderRadius.circular(4),
-                                       border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.6)),
-                                     ),
-                                     child: Column(
-                                       crossAxisAlignment: CrossAxisAlignment.start,
-                                       children: [
-                                         Row(
-                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                           children: [
-                                             const Row(
-                                               children: [
-                                                 Icon(Icons.history_rounded, size: 12, color: AppColors.accentCyan),
-                                                 SizedBox(width: 5),
-                                                 Text(
-                                                   'Câu hỏi gần đây',
-                                                   style: TextStyle(
-                                                     fontSize: 10.5,
-                                                     fontWeight: FontWeight.bold,
-                                                     color: AppColors.accentCyan,
-                                                     letterSpacing: 0.3,
-                                                   ),
-                                                 ),
-                                               ],
-                                             ),
-                                             if (isLoadingQuestions)
-                                               const SizedBox(
-                                                 width: 9,
-                                                 height: 9,
-                                                 child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accentCyan),
-                                               ),
-                                           ],
-                                         ),
-                                         const SizedBox(height: 6),
-                                        if (isLoadingQuestions && recentQuestions.isEmpty)
-                                          const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: 4),
-                                            child: Text('Đang tải câu hỏi...', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
-                                          )
-                                        else if (recentQuestions.isEmpty)
-                                          const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: 4),
-                                            child: Text('Chưa có câu hỏi nào trong hộp này.', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
-                                          )
-                                        else
-                                          ...recentQuestions.map((q) {
-                                            return _RecentQuestionItem(
-                                              question: q,
-                                              session: sess,
-                                              onTap: () => _scrollToQuestion(q, sess),
-                                              onCopy: () {
-                                                Clipboard.setData(ClipboardData(text: q));
-                                                AppToast.success(context, 'Đã sao chép câu hỏi vào bộ nhớ tạm!');
-                                              },
-                                              onReAsk: () async {
-                                                if (sess.id != chat.currentSession?.id) {
-                                                  await chat.selectSession(sess);
-                                                }
-                                                if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                                  if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                                    serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                                  } else {
-                                                    final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                                    if (matches.isNotEmpty) {
-                                                      serverProvider.selectServer(matches.first);
+                                  // Expanded Section: Recent Questions List
+                                  if (isSelected) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      margin: const EdgeInsets.only(left: 10, right: 8, top: 4, bottom: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.bgDark.withValues(alpha: 0.7),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.6)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  const Icon(Icons.history_rounded, size: 12, color: AppColors.accentCyan),
+                                                  const SizedBox(width: 5),
+                                                  Text(
+                                                    'Câu hỏi gần đây (${sess.questionCount} câu)',
+                                                    style: const TextStyle(
+                                                      fontSize: 10.5,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: AppColors.accentCyan,
+                                                      letterSpacing: 0.3,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              if (isLoadingQuestions)
+                                                const SizedBox(
+                                                  width: 9,
+                                                  height: 9,
+                                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accentCyan),
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          if (isLoadingQuestions && recentQuestions.isEmpty)
+                                            const Padding(
+                                              padding: EdgeInsets.symmetric(vertical: 4),
+                                              child: Text('Đang tải câu hỏi...', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+                                            )
+                                          else if (recentQuestions.isEmpty)
+                                            const Padding(
+                                              padding: EdgeInsets.symmetric(vertical: 4),
+                                              child: Text('Chưa có câu hỏi nào trong hộp này.', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+                                            )
+                                          else
+                                            ...recentQuestions.map((q) {
+                                              return _RecentQuestionItem(
+                                                question: q,
+                                                session: sess,
+                                                onTap: () => _scrollToQuestion(q, sess),
+                                                onCopy: () {
+                                                  Clipboard.setData(ClipboardData(text: q));
+                                                  AppToast.success(context, 'Đã sao chép câu hỏi vào bộ nhớ tạm!');
+                                                },
+                                                onReAsk: () async {
+                                                  if (sess.id != chat.currentSession?.id) {
+                                                    await chat.selectSession(sess);
+                                                  }
+                                                  if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
+                                                    if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
+                                                      serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+                                                    } else {
+                                                      final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
+                                                      if (matches.isNotEmpty) {
+                                                        serverProvider.selectServer(matches.first);
+                                                      }
                                                     }
                                                   }
-                                                }
-                                                _textController.text = q;
-                                                _handleSend(chat, serverProvider);
-                                              },
-                                            );
-                                          }),
-                                      ],
+                                                  _textController.text = q;
+                                                  _handleSend(chat, serverProvider);
+                                                },
+                                              );
+                                            }),
+                                        ],
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ],
+                              ),
+                            );
+                          }
+
+                          Widget buildGroupSection(String title, List<ChatSessionModel> groupList) {
+                            if (groupList.isEmpty) return const SizedBox.shrink();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 6, right: 6, top: 8, bottom: 4),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        title.toUpperCase(),
+                                        style: const TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textDim,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Container(
+                                          height: 1,
+                                          color: AppColors.borderDark.withValues(alpha: 0.5),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '${groupList.length}',
+                                        style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ...groupList.map(buildSessionTile),
                               ],
-                            ),
+                            );
+                          }
+
+                          return ListView(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                            children: [
+                              buildGroupSection('Hôm nay', todaySessions),
+                              buildGroupSection('Hôm qua', yesterdaySessions),
+                              buildGroupSection('Lâu hơn', olderSessions),
+                            ],
                           );
                         },
                       ),
@@ -4172,6 +4263,155 @@ class _RecentQuestionItemState extends State<_RecentQuestionItem> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeableSessionItem extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final Color? backgroundColor;
+
+  const _SwipeableSessionItem({
+    super.key,
+    required this.child,
+    required this.onEdit,
+    required this.onDelete,
+    this.backgroundColor,
+  });
+
+  @override
+  State<_SwipeableSessionItem> createState() => _SwipeableSessionItemState();
+}
+
+class _SwipeableSessionItemState extends State<_SwipeableSessionItem> with SingleTickerProviderStateMixin {
+  late final AnimationController _animCtrl;
+  double _dragExtent = 0.0;
+  static const double _maxActionWidth = 68.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    )..addListener(() {
+        setState(() {
+          _dragExtent = _animCtrl.value * -_maxActionWidth;
+        });
+      });
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  void _open() {
+    _animCtrl.animateTo(1.0, curve: Curves.easeOutCubic);
+  }
+
+  void _close() {
+    _animCtrl.animateTo(0.0, curve: Curves.easeOutCubic);
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragExtent = (_dragExtent + details.primaryDelta!).clamp(-_maxActionWidth, 0.0);
+      _animCtrl.value = -_dragExtent / _maxActionWidth;
+    });
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (details.primaryVelocity! < -200 || _dragExtent < -(_maxActionWidth / 2)) {
+      _open();
+    } else {
+      _close();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = widget.backgroundColor ?? AppColors.sidebarBg;
+
+    return MouseRegion(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: _onHorizontalDragUpdate,
+        onHorizontalDragEnd: _onHorizontalDragEnd,
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            // Background Action Buttons (Edit & Delete) nằm cố định bên phải phía dưới
+            Positioned(
+              right: 4,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Edit Button
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.4)),
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.edit_outlined, size: 13, color: AppColors.primaryLight),
+                        tooltip: 'Chỉnh sửa hội thoại',
+                        onPressed: () {
+                          _close();
+                          widget.onEdit();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    // Delete Button
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 13, color: AppColors.danger),
+                        tooltip: 'Xóa hội thoại',
+                        onPressed: () {
+                          _close();
+                          widget.onDelete();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Foreground Content (Slide to Left) che kín lớp dưới
+            Transform.translate(
+              offset: Offset(_dragExtent, 0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: widget.child,
+              ),
+            ),
+          ],
         ),
       ),
     );
