@@ -7,9 +7,10 @@ import { ModelsSection } from './ModelsSection'
 import { useAuth } from '@/context/AuthContext'
 import { UserProfileModal } from './UserProfileModal'
 import { LoginModal } from './LoginModal'
+import { GuideTopupPage, ApiDocsPage, TermsPage, PrivacyPage } from './StaticPages'
 import { User, ChevronLeft, ChevronRight, Sparkles, Copy, Check } from 'lucide-react'
 
-export type Page = 'home' | 'models' | 'topup' | 'success'
+export type Page = 'home' | 'models' | 'topup' | 'success' | 'guide-topup' | 'api-docs' | 'terms' | 'privacy'
 
 export interface TopUp {
   amount: number
@@ -148,19 +149,6 @@ export function HeroModelSlider({
           {currentModel.description}
         </p>
 
-        {/* Thông tin giá & Trạng thái */}
-        <div className="mt-5 rounded-xl border border-border/80 bg-secondary/30 p-4 space-y-2.5">
-          <div className="flex items-center justify-between text-xs md:text-sm font-mono">
-            <span className="text-muted-foreground">Chi phí tham chiếu:</span>
-            <span className="font-bold text-emerald text-sm">
-              {currentModel.highlightPrice || (currentModel.pricing[0]?.rates[0] ? `${currentModel.pricing[0].rates[0].price} ${currentModel.pricing[0].rates[0].currency}` : 'Theo token')}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs font-mono border-t border-border/40 pt-2.5 text-muted-foreground">
-            <span>Giao thức kết nối:</span>
-            <span className="text-foreground font-semibold">OpenAI SDK Compatible (v1)</span>
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -979,6 +967,14 @@ export function FrontendApp({
         onNavigate={navigate}
       />
     )
+  } else if (page === 'guide-topup') {
+    content = <GuideTopupPage onNavigate={navigate} />
+  } else if (page === 'api-docs') {
+    content = <ApiDocsPage onNavigate={navigate} />
+  } else if (page === 'terms') {
+    content = <TermsPage onNavigate={navigate} />
+  } else if (page === 'privacy') {
+    content = <PrivacyPage onNavigate={navigate} />
   } else if (page === 'models') {
     content = (
       <ModelsPage
@@ -1013,6 +1009,12 @@ export function FrontendApp({
             </button>
             <button onClick={goModels} className="transition-colors hover:text-primary">
               Model API ({models.length})
+            </button>
+            <button onClick={() => navigate('guide-topup')} className="transition-colors hover:text-primary">
+              Hướng dẫn nạp
+            </button>
+            <button onClick={() => navigate('api-docs')} className="transition-colors hover:text-primary">
+              Tài liệu API
             </button>
           </nav>
           <div className="flex items-center gap-3">
@@ -1059,24 +1061,64 @@ export function FrontendApp({
               Cổng API AI hiệu năng cao, cung cấp hơn 130 model tiên tiến. Nạp số dư một lần, dùng mọi model qua OpenAI SDK.
             </p>
           </div>
-          {[
-            ['Model nổi bật', ['DeepSeek V3 / V4', 'GLM-5.3 Flash & Pro', 'Qwen 3.8 / Coder', 'Kling Video & Wan-AI']],
-            ['Hỗ trợ', ['Hướng dẫn nạp tiền', 'Tài liệu tích hợp API', 'Điều khoản sử dụng', 'Bảo mật thông tin']],
-            ['Liên hệ', ['Zalo: 0908.888.888', 'Email: support@mitom.ai', 'Cộng đồng AI Việt Nam', 'Hỗ trợ kỹ thuật 24/7']],
-          ].map(([title, links]) => (
-            <div key={title as string}>
-              <h4 className="font-display text-sm font-bold uppercase tracking-wide">{title as string}</h4>
-              <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
-                {(links as string[]).map((l) => (
-                  <li key={l}>
-                    <a href="#" className="transition-colors hover:text-primary">
-                      {l}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <div>
+            <h4 className="font-display text-sm font-bold uppercase tracking-wide">Model nổi bật</h4>
+            <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
+              {['DeepSeek V3 / V4', 'GLM-5.3 Flash & Pro', 'Qwen 3.8 / Coder', 'Kling Video & Wan-AI'].map((l) => (
+                <li key={l}>
+                  <button onClick={goModels} className="text-left transition-colors hover:text-primary">
+                    {l}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-display text-sm font-bold uppercase tracking-wide">Hỗ trợ</h4>
+            <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
+              <li>
+                <button onClick={() => navigate('guide-topup')} className="text-left transition-colors hover:text-primary">
+                  Hướng dẫn nạp tiền
+                </button>
+              </li>
+              <li>
+                <button onClick={() => navigate('api-docs')} className="text-left transition-colors hover:text-primary">
+                  Tài liệu tích hợp API
+                </button>
+              </li>
+              <li>
+                <button onClick={() => navigate('terms')} className="text-left transition-colors hover:text-primary">
+                  Điều khoản sử dụng
+                </button>
+              </li>
+              <li>
+                <button onClick={() => navigate('privacy')} className="text-left transition-colors hover:text-primary">
+                  Bảo mật thông tin
+                </button>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-display text-sm font-bold uppercase tracking-wide">Liên hệ</h4>
+            <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
+              <li>
+                <a href={ZALO} target="_blank" rel="noreferrer" className="transition-colors hover:text-primary">
+                  Zalo: 0908.888.888
+                </a>
+              </li>
+              <li>
+                <a href="mailto:support@mitom.ai" className="transition-colors hover:text-primary">
+                  Email: support@mitom.ai
+                </a>
+              </li>
+              <li>
+                <span className="text-muted-foreground">Cộng đồng AI Việt Nam</span>
+              </li>
+              <li>
+                <span className="text-muted-foreground">Hỗ trợ kỹ thuật 24/7</span>
+              </li>
+            </ul>
+          </div>
         </div>
         <div className="border-t border-border">
           <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-5 py-6 text-xs text-muted-foreground md:flex-row md:px-8">

@@ -2422,105 +2422,115 @@ class _ChatScreenState extends State<ChatScreen> {
                                                           ],
                                                         ],
                                                       ),
-                                                      const SizedBox(height: 2),
-                                                      Row(
-                                                        children: [
-                                                          if (sess.isPinned)
-                                                            Container(
-                                                              margin: const EdgeInsets.only(right: 6),
-                                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
-                                                              decoration: BoxDecoration(
-                                                                color: AppColors.warning.withValues(alpha: 0.15),
-                                                                borderRadius: BorderRadius.circular(4),
-                                                                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                                                              ),
-                                                              child: const Text(
-                                                                'Ghim',
-                                                                style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: AppColors.warning),
-                                                              ),
-                                                            ),
-                                                          // Target Server Badge
-                                                          Builder(
-                                                            builder: (context) {
-                                                              final serverName = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
-                                                                  ? sess.targetServer!
-                                                                  : 'Local Machine';
-                                                              final isLocal = serverName == 'Local Machine' ||
-                                                                  serverName == 'Local' ||
-                                                                  serverName == 'localhost' ||
-                                                                  serverName == '127.0.0.1';
-                                                              final badgeColor = isLocal ? AppColors.accent : const Color(0xFF38BDF8);
+                                                       const SizedBox(height: 3),
+                                                       Row(
+                                                         crossAxisAlignment: CrossAxisAlignment.center,
+                                                         children: [
+                                                           if (sess.isPinned)
+                                                             Container(
+                                                               height: 16,
+                                                               margin: const EdgeInsets.only(right: 6),
+                                                               padding: const EdgeInsets.symmetric(horizontal: 5),
+                                                               alignment: Alignment.center,
+                                                               decoration: BoxDecoration(
+                                                                 color: AppColors.warning.withValues(alpha: 0.15),
+                                                                 borderRadius: BorderRadius.circular(4),
+                                                                 border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                                                               ),
+                                                               child: const Text(
+                                                                 'Ghim',
+                                                                 style: TextStyle(fontSize: 8.5, height: 1.1, fontWeight: FontWeight.bold, color: AppColors.warning),
+                                                               ),
+                                                             ),
+                                                           // Target Server Badge
+                                                           Builder(
+                                                             builder: (context) {
+                                                               final serverName = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
+                                                                   ? sess.targetServer!
+                                                                   : 'Local Machine';
+                                                               final isLocal = serverName == 'Local Machine' ||
+                                                                   serverName == 'Local' ||
+                                                                   serverName == 'localhost' ||
+                                                                   serverName == '127.0.0.1';
+                                                               final badgeColor = isLocal ? AppColors.accent : const Color(0xFF38BDF8);
 
-                                                              return Container(
-                                                                margin: const EdgeInsets.only(right: 6),
-                                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
-                                                                decoration: BoxDecoration(
-                                                                  color: badgeColor.withValues(alpha: 0.12),
-                                                                  borderRadius: BorderRadius.circular(4),
-                                                                  border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
-                                                                ),
-                                                                child: Row(
-                                                                  mainAxisSize: MainAxisSize.min,
-                                                                  children: [
-                                                                    Icon(
-                                                                      isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
-                                                                      size: 9.5,
-                                                                      color: badgeColor,
-                                                                    ),
-                                                                    const SizedBox(width: 3),
-                                                                    ConstrainedBox(
-                                                                      constraints: const BoxConstraints(maxWidth: 80),
-                                                                      child: Text(
-                                                                        serverName,
-                                                                        overflow: TextOverflow.ellipsis,
-                                                                        style: TextStyle(
-                                                                          fontSize: 8.5,
-                                                                          fontWeight: FontWeight.bold,
-                                                                          color: badgeColor,
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              );
-                                                            },
-                                                          ),
-                                                          // Q&A Count Badge
-                                                          Container(
-                                                            margin: const EdgeInsets.only(right: 6),
-                                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                                            decoration: BoxDecoration(
-                                                              color: AppColors.primary.withValues(alpha: 0.15),
-                                                              borderRadius: BorderRadius.circular(4),
-                                                              border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.35)),
-                                                            ),
-                                                            child: Row(
-                                                              mainAxisSize: MainAxisSize.min,
-                                                              children: [
-                                                                Text(
-                                                                  '${sess.questionCount}',
-                                                                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                                                ),
-                                                                const Padding(
-                                                                  padding: EdgeInsets.symmetric(horizontal: 3),
-                                                                  child: Text(
-                                                                    '/',
-                                                                    style: TextStyle(fontSize: 8.5, color: AppColors.textDim),
-                                                                  ),
-                                                                ),
-                                                                Text(
-                                                                  '${sess.answerCount}',
-                                                                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          Text(
-                                                            _formatSessionTime(sess.updatedAt),
-                                                            style: const TextStyle(fontSize: 10, color: AppColors.textDim),
-                                                          ),
-                                                        ],
-                                                      ),
+                                                               return Container(
+                                                                 height: 16,
+                                                                 margin: const EdgeInsets.only(right: 6),
+                                                                 padding: const EdgeInsets.symmetric(horizontal: 5),
+                                                                 alignment: Alignment.center,
+                                                                 decoration: BoxDecoration(
+                                                                   color: badgeColor.withValues(alpha: 0.12),
+                                                                   borderRadius: BorderRadius.circular(4),
+                                                                   border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
+                                                                 ),
+                                                                 child: Row(
+                                                                   mainAxisSize: MainAxisSize.min,
+                                                                   crossAxisAlignment: CrossAxisAlignment.center,
+                                                                   children: [
+                                                                     Icon(
+                                                                       isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
+                                                                       size: 9.5,
+                                                                       color: badgeColor,
+                                                                     ),
+                                                                     const SizedBox(width: 3),
+                                                                     ConstrainedBox(
+                                                                       constraints: const BoxConstraints(maxWidth: 80),
+                                                                       child: Text(
+                                                                         serverName,
+                                                                         overflow: TextOverflow.ellipsis,
+                                                                         style: TextStyle(
+                                                                           fontSize: 8.5,
+                                                                           height: 1.1,
+                                                                           fontWeight: FontWeight.bold,
+                                                                           color: badgeColor,
+                                                                         ),
+                                                                       ),
+                                                                     ),
+                                                                   ],
+                                                                 ),
+                                                               );
+                                                             },
+                                                           ),
+                                                           // Q&A Count Badge
+                                                           Container(
+                                                             height: 16,
+                                                             margin: const EdgeInsets.only(right: 6),
+                                                             padding: const EdgeInsets.symmetric(horizontal: 5),
+                                                             alignment: Alignment.center,
+                                                             decoration: BoxDecoration(
+                                                               color: AppColors.primary.withValues(alpha: 0.15),
+                                                               borderRadius: BorderRadius.circular(4),
+                                                               border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.35)),
+                                                             ),
+                                                             child: Row(
+                                                               mainAxisSize: MainAxisSize.min,
+                                                               crossAxisAlignment: CrossAxisAlignment.center,
+                                                               children: [
+                                                                 Text(
+                                                                   '${sess.questionCount}',
+                                                                   style: const TextStyle(fontSize: 9, height: 1.1, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                                                 ),
+                                                                 const Padding(
+                                                                   padding: EdgeInsets.symmetric(horizontal: 3),
+                                                                   child: Text(
+                                                                     '/',
+                                                                     style: TextStyle(fontSize: 8.5, height: 1.1, color: AppColors.textDim),
+                                                                   ),
+                                                                 ),
+                                                                 Text(
+                                                                   '${sess.answerCount}',
+                                                                   style: const TextStyle(fontSize: 9, height: 1.1, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                                                 ),
+                                                               ],
+                                                             ),
+                                                           ),
+                                                           Text(
+                                                             _formatSessionTime(sess.updatedAt),
+                                                             style: const TextStyle(fontSize: 9.5, color: AppColors.textDim),
+                                                           ),
+                                                         ],
+                                                       ),
                                                     ],
                                                   ),
                                                 ),
