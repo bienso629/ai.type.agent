@@ -1077,20 +1077,25 @@
                 <h6 class="fw-semibold text-white mb-3 d-flex align-items-center gap-2" style="font-size: 0.85rem;">
                     <span>Điều Khiển Dịch Vụ AI Agent (Systemd)</span>
                 </h6>
-                <div class="btn-group-custom">
-                    <button onclick="handleServiceAction('start')" class="btn btn-success btn-sm">
+                <!-- When Service is Stopped / Inactive -->
+                <div id="service-stopped-actions" class="d-flex flex-wrap align-items-center gap-2">
+                    <button onclick="handleServiceAction('start')" class="btn btn-success btn-sm py-2 d-flex align-items-center justify-content-center gap-2" style="width: 160px;">
                         <i class="fa-solid fa-play"></i>
                         <span>Khởi Động</span>
                     </button>
-                    <button onclick="handleServiceAction('restart')" class="btn btn-warning btn-sm text-dark fw-bold">
+                </div>
+
+                <!-- When Service is Active / Running -->
+                <div id="service-running-actions" class="d-flex flex-wrap align-items-center gap-2 d-none">
+                    <button onclick="handleServiceAction('restart')" class="btn btn-warning btn-sm text-dark fw-bold py-2 d-flex align-items-center justify-content-center gap-2" style="width: 160px;">
                         <i class="fa-solid fa-rotate-right"></i>
                         <span>Khởi Động Lại</span>
                     </button>
-                    <button onclick="handleServiceAction('stop')" class="btn btn-danger btn-sm">
+                    <button onclick="handleServiceAction('stop')" class="btn btn-danger btn-sm py-2 d-flex align-items-center justify-content-center gap-2" style="width: 160px;">
                         <i class="fa-solid fa-stop"></i>
                         <span>Tắt</span>
                     </button>
-                    <button onclick="handleServiceAction('status')" class="btn btn-secondary btn-sm">
+                    <button onclick="handleServiceAction('status')" class="btn btn-secondary btn-sm py-2 d-flex align-items-center justify-content-center gap-2" style="width: 160px;">
                         <i class="fa-solid fa-circle-info"></i>
                         <span>Chi Tiết Status</span>
                     </button>
@@ -1310,10 +1315,6 @@
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-3">
-                    <div class="form-check form-switch mb-0 d-flex align-items-center gap-2">
-                        <input class="form-check-input" type="checkbox" id="auto-refresh-logs" checked>
-                        <label class="form-check-label text-secondary fw-medium" for="auto-refresh-logs" style="font-size: 0.76rem;">Tự động làm mới (3s)</label>
-                    </div>
                     <button onclick="fetchServiceLogs()" class="btn btn-sm btn-outline-secondary px-3 py-1.5" style="font-size: 0.75rem;">
                         <i class="fa-solid fa-arrows-rotate"></i>
                         <span>Làm mới</span>
@@ -1393,7 +1394,7 @@
                             </div>
                             <div class="col-12 col-md-6">
                                 <label class="form-label">Proxy Base URL</label>
-                                <input type="password" id="cfg-proxy-base-url" placeholder="https://openrouter.ai/api/v1" class="form-control font-mono">
+                                <input type="password" id="cfg-proxy-base-url" placeholder="https://api.mitom.ai/v1" class="form-control font-mono">
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Proxy API Key</label>
@@ -2009,15 +2010,6 @@
 
         function syncLogInterval(isLogsTabActive) {
             clearInterval(logInterval);
-            const chk = document.getElementById('auto-refresh-logs');
-            if (isLogsTabActive && chk && chk.checked) {
-                logInterval = setInterval(() => {
-                    const logsTab = document.getElementById('tab-logs');
-                    if (logsTab && !logsTab.classList.contains('d-none')) {
-                        fetchServiceLogs();
-                    }
-                }, 3000);
-            }
         }
 
         function syncSystemInfoInterval(isServerTabActive) {
@@ -3617,8 +3609,17 @@
             if (document.getElementById('sidebar-status-dot')) {
                 document.getElementById('sidebar-status-dot').className = isAct ? "live-dot bg-success live-pulse" : "live-dot bg-warning";
             }
-            if (document.getElementById('sidebar-status-text')) {
-                document.getElementById('sidebar-status-text').innerText = isAct ? "Dịch Vụ Online" : "Dịch Vụ Chưa Bật";
+            // Cập nhật hiển thị các nút điều khiển dịch vụ
+            const stoppedActions = document.getElementById('service-stopped-actions');
+            const runningActions = document.getElementById('service-running-actions');
+            if (stoppedActions && runningActions) {
+                if (isAct) {
+                    stoppedActions.classList.add('d-none');
+                    runningActions.classList.remove('d-none');
+                } else {
+                    stoppedActions.classList.remove('d-none');
+                    runningActions.classList.add('d-none');
+                }
             }
 
             // Đồng bộ trạng thái khoá/mở ô nhập liệu Chat Prompt
@@ -4007,12 +4008,7 @@
             }
         }
 
-        document.getElementById('auto-refresh-logs').addEventListener('change', function(e) {
-            syncLogInterval(e.target.checked);
-            if (e.target.checked) {
-                fetchServiceLogs();
-            }
-        });
+
 
         // -------------------------------------------------------------
         // MULTI-SERVER & SETTINGS MANAGEMENT LOGIC
@@ -4394,9 +4390,24 @@
         }
 
         async function saveAISettings() {
+            const rawBaseUrl = document.getElementById('cfg-proxy-base-url').value.trim();
+            if (rawBaseUrl) {
+                try {
+                    const parsedUrl = new URL(rawBaseUrl.startsWith('http://') || rawBaseUrl.startsWith('https://') ? rawBaseUrl : 'https://' + rawBaseUrl);
+                    const hostname = parsedUrl.hostname.toLowerCase();
+                    if (hostname !== 'mitom.ai' && !hostname.endsWith('.mitom.ai')) {
+                        showToast("Chỉ chấp nhận Proxy Base URL thuộc domain *.mitom.ai (Ví dụ: https://api.mitom.ai/v1)!", "error");
+                        return;
+                    }
+                } catch (e) {
+                    showToast("Proxy Base URL không đúng định dạng URL hợp lệ!", "error");
+                    return;
+                }
+            }
+
             const payload = {
                 ai_model: document.getElementById('cfg-ai-model').value.trim() || 'glm-5.3',
-                proxy_base_url: document.getElementById('cfg-proxy-base-url').value.trim(),
+                proxy_base_url: rawBaseUrl,
                 proxy_api_key: document.getElementById('cfg-proxy-api-key').value.trim()
             };
 

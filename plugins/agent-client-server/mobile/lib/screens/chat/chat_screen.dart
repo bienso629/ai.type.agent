@@ -39,6 +39,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentSlashWord = '';
   int _inlineActiveIndex = 0;
   Timer? _dirDebounceTimer;
+  int _inputCharCount = 0;
+  static const int _maxInputChars = 100000;
 
   String? _lastSessionId;
   String _lastTrackedContent = '';
@@ -118,6 +120,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onTextChanged() {
     final text = _textController.text;
+    if (_inputCharCount != text.length) {
+      if ((text.length > 5000 && (_inputCharCount / 1000).floor() != (text.length / 1000).floor()) ||
+          (text.length <= 5000 && (_inputCharCount == 0 || text.isEmpty || (_inputCharCount - text.length).abs() > 20))) {
+        setState(() {
+          _inputCharCount = text.length;
+        });
+      } else {
+        _inputCharCount = text.length;
+      }
+    }
+
     final selection = _textController.selection;
     if (selection.baseOffset < 0) {
       if (_inlineDirSuggestions.isNotEmpty) {
@@ -127,14 +140,16 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final cursor = selection.baseOffset;
-    final textUpToCursor = text.substring(0, cursor);
+    // Tối ưu: Chỉ quét 60 ký tự gần nhất trước con trỏ để tìm '/' thay vì quét toàn bộ chuỗi siêu dài
+    final searchStart = (cursor > 60) ? cursor - 60 : 0;
+    final textUpToCursor = text.substring(searchStart, cursor);
     final match = RegExp(r'(?:^|\s)(/[^\s]*)$').firstMatch(textUpToCursor);
 
     if (match != null) {
       final word = match.group(1) ?? '/';
       _currentSlashWord = word;
       _dirDebounceTimer?.cancel();
-      _dirDebounceTimer = Timer(const Duration(milliseconds: 120), () async {
+      _dirDebounceTimer = Timer(const Duration(milliseconds: 150), () async {
         if (!mounted) return;
         setState(() => _isInlineDirLoading = true);
         final dirs = await _apiService.listDirectories(prefix: word);
@@ -465,7 +480,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: Text(
                           isDone
                               ? 'Đã lưu: ${destFile.path}'
-                              : (errorMsg != null ? errorMsg! : '$receivedFormatted / $totalFormatted'),
+                              : (errorMsg ?? '$receivedFormatted / $totalFormatted'),
                           style: TextStyle(
                             fontSize: 11,
                             color: errorMsg != null ? AppColors.danger : AppColors.textMuted,
@@ -546,6 +561,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _textController.text.trim();
     if ((text.isEmpty && _attachedFiles.isEmpty) || chat.isGenerating) return;
 
+    if (text.length > _maxInputChars) {
+      AppToast.error(context, 'Prompt quá dài (${text.length}/$_maxInputChars ký tự). Vui lòng rút gọn để tránh treo app!');
+      return;
+    }
+
     // Await any in-flight uploads if necessary
     if (_attachedFiles.any((a) => a.isUploading)) {
       int waitMs = 0;
@@ -603,9 +623,14 @@ class _ChatScreenState extends State<ChatScreen> {
       _safeScrollToBottom();
     } else if (chat.messages.length != _lastMessageCount ||
         (chat.messages.isNotEmpty && _lastTrackedContent != chat.messages.last.content)) {
+      final isNearBottom = !_scrollController.hasClients ||
+          (_scrollController.position.maxScrollExtent - _scrollController.position.pixels < 300);
+      final isNewUserMessage = chat.messages.isNotEmpty && chat.messages.last.role == 'user';
       _lastMessageCount = chat.messages.length;
       _lastTrackedContent = chat.messages.isNotEmpty ? chat.messages.last.content : '';
-      _safeScrollToBottom();
+      if (isNearBottom || isNewUserMessage) {
+        _safeScrollToBottom();
+      }
     }
 
     return Scaffold(
@@ -731,9 +756,26 @@ class _ChatScreenState extends State<ChatScreen> {
                             : ListView.builder(
                                 controller: _scrollController,
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                addAutomaticKeepAlives: false,
+                                addRepaintBoundaries: true,
+                                cacheExtent: 400.0,
                                 itemCount: chat.hasMoreMessages
                                     ? chat.messages.length + 1
                                     : (chat.messages.isEmpty ? 1 : chat.messages.length + 1),
+                                findChildIndexCallback: (Key key) {
+                                  if (key is ValueKey<String>) {
+                                    final val = key.value;
+                                    if (val.startsWith('msg_')) {
+                                      final idStr = val.split('_')[1];
+                                      final id = int.tryParse(idStr);
+                                      if (id != null) {
+                                        final idx = chat.messages.indexWhere((m) => m.id == id);
+                                        if (idx != -1) return idx + 1;
+                                      }
+                                    }
+                                  }
+                                  return null;
+                                },
                                 itemBuilder: (context, idx) {
                                   if (idx == 0) {
                                     if (chat.hasMoreMessages) {
@@ -954,368 +996,29 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildMessageItem(ChatMessageModel msg, ChatProvider chat) {
-    final isUser = msg.role == 'user';
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: [
-          if (!isUser) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.asset(
-                'assets/logo.jpg',
-                width: 30,
-                height: 30,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(Icons.smart_toy_rounded, size: 16, color: AppColors.primaryLight),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-          ],
-          Flexible(
-            child: Column(
-              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? AppColors.primary.withValues(alpha: 0.12)
-                        : AppColors.cardBg,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: isUser
-                          ? AppColors.primary.withValues(alpha: 0.4)
-                          : AppColors.borderDark,
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (msg.attachments.isNotEmpty) ...[
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: msg.attachments.map((att) {
-                            return Material(
-                              color: AppColors.bgDark,
-                              borderRadius: BorderRadius.circular(4),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(4),
-                                onTap: () => _downloadAttachment(att),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                                        size: 14,
-                                        color: att.isImage ? AppColors.accentCyan : AppColors.warning,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      ConstrainedBox(
-                                        constraints: const BoxConstraints(maxWidth: 160),
-                                        child: Text(
-                                          att.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '(${att.formattedSize})',
-                                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Icon(
-                                        Icons.download_rounded,
-                                        size: 14,
-                                        color: AppColors.accentCyan,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        if (msg.content.isNotEmpty) const SizedBox(height: 8),
-                      ],
-                      if (msg.content.isNotEmpty)
-                        MarkdownBody(
-                          data: msg.content,
-                          selectable: true,
-                          styleSheet: MarkdownStyleSheet(
-                            p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.55),
-                            pPadding: const EdgeInsets.only(bottom: 6),
-                            strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                            em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.textBody),
-                            h1: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
-                            h1Padding: const EdgeInsets.only(top: 10, bottom: 5),
-                            h2: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
-                            h2Padding: const EdgeInsets.only(top: 9, bottom: 4),
-                            h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.3),
-                            h3Padding: const EdgeInsets.only(top: 7, bottom: 4),
-                            h4: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
-                            h4Padding: const EdgeInsets.only(top: 6, bottom: 3),
-                            h5: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
-                            h5Padding: const EdgeInsets.only(top: 4, bottom: 2),
-                            h6: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600, color: AppColors.textMuted, height: 1.3),
-                            h6Padding: const EdgeInsets.only(top: 4, bottom: 2),
-                            blockSpacing: 8.0,
-                            listBullet: const TextStyle(fontSize: 13.5, color: AppColors.primaryLight),
-                            listBulletPadding: const EdgeInsets.only(right: 6, top: 1),
-                            listIndent: 20.0,
-                            code: const TextStyle(
-                              fontFamily: 'monospace',
-                              backgroundColor: AppColors.codeBg,
-                              color: AppColors.terminalGreen,
-                              fontSize: 12,
-                            ),
-                            codeblockPadding: const EdgeInsets.all(10),
-                            codeblockDecoration: BoxDecoration(
-                              color: AppColors.codeBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.borderDark),
-                            ),
-                            blockquote: const TextStyle(fontSize: 13, color: AppColors.textBody, fontStyle: FontStyle.italic),
-                            blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            blockquoteDecoration: BoxDecoration(
-                              color: AppColors.inputBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: const Border(
-                                left: BorderSide(color: AppColors.primaryLight, width: 3),
-                              ),
-                            ),
-                            horizontalRuleDecoration: const BoxDecoration(
-                              border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
-                            ),
-                            tableBorder: TableBorder.all(
-                              color: AppColors.borderDark,
-                              width: 1.0,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            tableHead: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textWhite,
-                            ),
-                            tableBody: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textBody,
-                            ),
-                            tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                            tableCellsDecoration: const BoxDecoration(
-                              color: AppColors.inputBg,
-                            ),
-                          ),
-                        ),
-
-                      if (msg.content.isEmpty && msg.isStreaming)
-                        const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
-                            ),
-                            SizedBox(width: 8),
-                            Text('Đang xử lý...', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                          ],
-                        ),
-
-                      if (msg.toolExecutions.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
-                      ],
-                    ],
-                  ),
-                ),
-
-                // Message Action Bar (Timestamp, Copy, Retry)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, left: 2, right: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.schedule_rounded, size: 11, color: AppColors.textDim),
-                      const SizedBox(width: 3),
-                      Text(
-                        _formatSessionTime(msg.createdAt),
-                        style: const TextStyle(fontSize: 10.5, color: AppColors.textDim, fontFamily: 'monospace'),
-                      ),
-                      const SizedBox(width: 10),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(3),
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: msg.content));
-                          AppToast.success(context, 'Đã sao chép nội dung vào bộ nhớ tạm!');
-                        },
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          child: Row(
-                            children: [
-                              Icon(Icons.copy_rounded, size: 11, color: AppColors.textDim),
-                              SizedBox(width: 3),
-                              Text('Sao chép', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (!isUser) ...[
-                        const SizedBox(width: 8),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(3),
-                          onTap: () async {
-                            final server = context.read<ServerProvider>().selectedServer;
-                            final srvInfo = server != null ? '${server.sshUser}@${server.serverIp}' : null;
-                            AppToast.info(context, 'Đang tạo và lưu tài liệu PDF chuẩn A4...');
-                            try {
-                              final path = await PdfExportService.exportMessageToPdf(msg, serverInfo: srvInfo);
-                              if (mounted) {
-                                AppToast.success(context, 'Đã lưu PDF tại Downloads: ${path?.split('/').last ?? ''}');
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                AppToast.error(context, 'Lỗi xuất PDF: $e');
-                              }
-                            }
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Row(
-                              children: [
-                                Icon(Icons.picture_as_pdf_outlined, size: 11, color: AppColors.primaryLight),
-                                SizedBox(width: 3),
-                                Text('Tải PDF A4', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w500)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (isUser) ...[
-                        const SizedBox(width: 8),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(3),
-                          onTap: () {
-                            chat.sendMessage(msg.content);
-                            _safeScrollToBottom();
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Row(
-                              children: [
-                                Icon(Icons.rotate_right_rounded, size: 12, color: AppColors.primaryLight),
-                                SizedBox(width: 3),
-                                Text('Hỏi lại', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w600)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (isUser) ...[
-            const SizedBox(width: 10),
-            Builder(
-              builder: (ctx) {
-                final auth = ctx.watch<AuthProvider>();
-                final letter = (auth.userEmail?.isNotEmpty == true)
-                    ? auth.userEmail![0].toUpperCase()
-                    : 'U';
-                return Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    letter,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryLight,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToolCard(ToolExecutionItem tool) {
-    return Container(
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AppColors.terminalBg,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.borderDark),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.terminal_rounded, size: 14, color: AppColors.accent),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  tool.command,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (tool.output.isNotEmpty) ...[
-            const Divider(color: AppColors.borderDark, height: 10),
-            Text(
-              tool.output.trim(),
-              maxLines: 8,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: AppColors.textMuted,
-              ),
-            ),
-          ],
-        ],
-      ),
+    return _MessageItemWidget(
+      key: ValueKey('msg_${msg.id}_${msg.role}_${msg.isStreaming}'),
+      msg: msg,
+      onDownloadAttachment: _downloadAttachment,
+      onRetry: (content) {
+        chat.sendMessage(content);
+        _safeScrollToBottom();
+      },
+      onExportPdf: (m) async {
+        final server = context.read<ServerProvider>().selectedServer;
+        final srvInfo = server != null ? '${server.sshUser}@${server.serverIp}' : null;
+        AppToast.info(context, 'Đang tạo và lưu tài liệu PDF chuẩn A4...');
+        try {
+          final path = await PdfExportService.exportMessageToPdf(m, serverInfo: srvInfo);
+          if (mounted) {
+            AppToast.success(context, 'Đã lưu PDF tại Downloads: ${path?.split('/').last ?? ''}');
+          }
+        } catch (e) {
+          if (mounted) {
+            AppToast.error(context, 'Lỗi xuất PDF: $e');
+          }
+        }
+      },
     );
   }
 
@@ -1633,7 +1336,26 @@ class _ChatScreenState extends State<ChatScreen> {
               controller: _textController,
               focusNode: _inputFocusNode,
               minLines: 2,
-              maxLines: 5,
+              maxLines: 8,
+              maxLength: _maxInputChars,
+              buildCounter: (context, {required currentLength, required isFocused, maxLength}) {
+                if (currentLength > 1000) {
+                  final isNearLimit = currentLength > (_maxInputChars * 0.8);
+                  return Container(
+                    padding: const EdgeInsets.only(top: 2),
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      '$currentLength / $maxLength ký tự',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isNearLimit ? AppColors.danger : AppColors.textMuted,
+                        fontWeight: isNearLimit ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  );
+                }
+                return null;
+              },
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _handleSend(chat, serverProvider),
               decoration: const InputDecoration(
@@ -2271,3 +1993,392 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// High-Performance Virtualized Message Item Widget
+// ---------------------------------------------------------------------------
+
+class _MessageItemWidget extends StatelessWidget {
+  final ChatMessageModel msg;
+  final void Function(AttachmentItem) onDownloadAttachment;
+  final void Function(String) onRetry;
+  final void Function(ChatMessageModel) onExportPdf;
+
+  const _MessageItemWidget({
+    super.key,
+    required this.msg,
+    required this.onDownloadAttachment,
+    required this.onRetry,
+    required this.onExportPdf,
+  });
+
+  static final MarkdownStyleSheet _sharedStyleSheet = MarkdownStyleSheet(
+    p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.55),
+    pPadding: const EdgeInsets.only(bottom: 6),
+    strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
+    em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.textBody),
+    h1: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
+    h1Padding: const EdgeInsets.only(top: 10, bottom: 5),
+    h2: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
+    h2Padding: const EdgeInsets.only(top: 9, bottom: 4),
+    h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.3),
+    h3Padding: const EdgeInsets.only(top: 7, bottom: 4),
+    h4: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
+    h4Padding: const EdgeInsets.only(top: 6, bottom: 3),
+    h5: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
+    h5Padding: const EdgeInsets.only(top: 4, bottom: 2),
+    h6: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600, color: AppColors.textMuted, height: 1.3),
+    h6Padding: const EdgeInsets.only(top: 4, bottom: 2),
+    blockSpacing: 8.0,
+    listBullet: const TextStyle(fontSize: 13.5, color: AppColors.primaryLight),
+    listBulletPadding: const EdgeInsets.only(right: 6, top: 1),
+    listIndent: 20.0,
+    code: const TextStyle(
+      fontFamily: 'monospace',
+      backgroundColor: AppColors.codeBg,
+      color: AppColors.terminalGreen,
+      fontSize: 12,
+    ),
+    codeblockPadding: const EdgeInsets.all(10),
+    codeblockDecoration: BoxDecoration(
+      color: AppColors.codeBg,
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: AppColors.borderDark),
+    ),
+    blockquote: const TextStyle(fontSize: 13, color: AppColors.textBody, fontStyle: FontStyle.italic),
+    blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    blockquoteDecoration: BoxDecoration(
+      color: AppColors.inputBg,
+      borderRadius: BorderRadius.circular(4),
+      border: const Border(
+        left: BorderSide(color: AppColors.primaryLight, width: 3),
+      ),
+    ),
+    horizontalRuleDecoration: const BoxDecoration(
+      border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
+    ),
+    tableBorder: TableBorder.all(
+      color: AppColors.borderDark,
+      width: 1.0,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    tableHead: const TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.bold,
+      color: AppColors.textWhite,
+    ),
+    tableBody: const TextStyle(
+      fontSize: 12,
+      color: AppColors.textBody,
+    ),
+    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    tableCellsDecoration: const BoxDecoration(
+      color: AppColors.inputBg,
+    ),
+  );
+
+  String _formatSessionTime(DateTime dt) {
+    final now = DateTime.now();
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isUser = msg.role == 'user';
+
+    return RepaintBoundary(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            if (!isUser) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'assets/logo.jpg',
+                  width: 30,
+                  height: 30,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(Icons.smart_toy_rounded, size: 16, color: AppColors.primaryLight),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Flexible(
+              child: Column(
+                crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? AppColors.primary.withValues(alpha: 0.12)
+                          : AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isUser
+                            ? AppColors.primary.withValues(alpha: 0.4)
+                            : AppColors.borderDark,
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (msg.attachments.isNotEmpty) ...[
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: msg.attachments.map((att) {
+                              return Material(
+                                color: AppColors.bgDark,
+                                borderRadius: BorderRadius.circular(4),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(4),
+                                  onTap: () => onDownloadAttachment(att),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                                          size: 14,
+                                          color: att.isImage ? AppColors.accentCyan : AppColors.warning,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(maxWidth: 160),
+                                          child: Text(
+                                            att.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '(${att.formattedSize})',
+                                          style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Icon(
+                                          Icons.download_rounded,
+                                          size: 14,
+                                          color: AppColors.accentCyan,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          if (msg.content.isNotEmpty) const SizedBox(height: 8),
+                        ],
+                        if (msg.content.isNotEmpty)
+                          MarkdownBody(
+                            data: msg.content,
+                            selectable: true,
+                            styleSheet: _sharedStyleSheet,
+                          ),
+
+                        if (msg.content.isEmpty && msg.isStreaming)
+                          const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Đang xử lý...', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                            ],
+                          ),
+
+                        if (msg.toolExecutions.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          ...msg.toolExecutions.map((tool) => _ToolCardWidget(tool: tool)),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Message Action Bar (Timestamp, Copy, Retry, PDF)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, left: 2, right: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.schedule_rounded, size: 11, color: AppColors.textDim),
+                        const SizedBox(width: 3),
+                        Text(
+                          _formatSessionTime(msg.createdAt),
+                          style: const TextStyle(fontSize: 10.5, color: AppColors.textDim, fontFamily: 'monospace'),
+                        ),
+                        const SizedBox(width: 10),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(3),
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: msg.content));
+                            AppToast.success(context, 'Đã sao chép nội dung vào bộ nhớ tạm!');
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Row(
+                              children: [
+                                Icon(Icons.copy_rounded, size: 11, color: AppColors.textDim),
+                                SizedBox(width: 3),
+                                Text('Sao chép', style: TextStyle(fontSize: 10.5, color: AppColors.textDim)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (!isUser) ...[
+                          const SizedBox(width: 8),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(3),
+                            onTap: () => onExportPdf(msg),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.picture_as_pdf_outlined, size: 11, color: AppColors.primaryLight),
+                                  SizedBox(width: 3),
+                                  Text('Tải PDF A4', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w500)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (isUser) ...[
+                          const SizedBox(width: 8),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(3),
+                            onTap: () => onRetry(msg.content),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.rotate_right_rounded, size: 12, color: AppColors.primaryLight),
+                                  SizedBox(width: 3),
+                                  Text('Hỏi lại', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isUser) ...[
+              const SizedBox(width: 10),
+              Builder(
+                builder: (ctx) {
+                  final auth = ctx.watch<AuthProvider>();
+                  final letter = (auth.userEmail?.isNotEmpty == true)
+                      ? auth.userEmail![0].toUpperCase()
+                      : 'U';
+                  return Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      letter,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryLight,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolCardWidget extends StatelessWidget {
+  final ToolExecutionItem tool;
+
+  const _ToolCardWidget({required this.tool});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.terminalBg,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppColors.borderDark),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.terminal_rounded, size: 14, color: AppColors.accent),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  tool.command,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (tool.output.isNotEmpty) ...[
+            const Divider(color: AppColors.borderDark, height: 10),
+            Text(
+              tool.output.trim(),
+              maxLines: 8,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+

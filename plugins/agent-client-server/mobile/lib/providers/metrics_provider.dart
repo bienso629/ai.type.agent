@@ -25,14 +25,11 @@ class MetricsProvider extends ChangeNotifier {
 
   MetricsProvider() {
     fetchMetrics();
-    startPolling();
   }
 
   void startPolling() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-      fetchMetrics(silent: true);
-    });
+    _timer = null;
   }
 
   void stopPolling() {

@@ -294,6 +294,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
                   // 2. Service Action Buttons Card
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,
@@ -308,35 +309,68 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
-                              icon: const Icon(Icons.play_arrow_rounded, size: 16),
-                              label: const Text('Khởi Động'),
-                              onPressed: () => _handleServiceAction('start'),
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning, foregroundColor: Colors.black),
-                              icon: const Icon(Icons.rotate_right_rounded, size: 16),
-                              label: const Text('Khởi Động Lại', style: TextStyle(fontWeight: FontWeight.bold)),
-                              onPressed: () => _handleServiceAction('restart'),
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-                              icon: const Icon(Icons.stop_rounded, size: 16),
-                              label: const Text('Tắt'),
-                              onPressed: () => _handleServiceAction('stop'),
-                            ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.inputBg, side: const BorderSide(color: AppColors.borderDark)),
-                              icon: const Icon(Icons.info_outline_rounded, size: 16),
-                              label: const Text('Chi Tiết Status'),
-                              onPressed: () => _handleServiceAction('status'),
-                            ),
-                          ],
+                        Builder(
+                          builder: (context) {
+                            final isRunning = m.serviceStatus.toLowerCase().trim() == 'active';
+                            if (!isRunning) {
+                              return SizedBox(
+                                width: 160,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF16A34A),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                  ),
+                                  icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                                  label: const Text('Khởi Động', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  onPressed: () => _handleServiceAction('start'),
+                                ),
+                              );
+                            }
+                            return Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                SizedBox(
+                                  width: 160,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.warning,
+                                      foregroundColor: Colors.black,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                    icon: const Icon(Icons.rotate_right_rounded, size: 16),
+                                    label: const Text('Khởi Động Lại', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    onPressed: () => _handleServiceAction('restart'),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 160,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.danger,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                    icon: const Icon(Icons.stop_rounded, size: 16),
+                                    label: const Text('Tắt', style: TextStyle(fontSize: 12)),
+                                    onPressed: () => _handleServiceAction('stop'),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 160,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.inputBg,
+                                      side: const BorderSide(color: AppColors.borderDark),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                    icon: const Icon(Icons.info_outline_rounded, size: 16),
+                                    label: const Text('Chi Tiết Status', style: TextStyle(fontSize: 12)),
+                                    onPressed: () => _handleServiceAction('status'),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -345,6 +379,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
                   // 3. 1-Click Deploy Section
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/local_config_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
@@ -18,7 +19,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final ApiService _api = ApiService();
   final TextEditingController _modelCtrl = TextEditingController(text: 'glm-5.3');
-  final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://openrouter.ai/api/v1');
+  final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://api.mitom.ai/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
 
   @override
@@ -45,10 +46,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveAISettings() async {
+    final rawBaseUrl = _baseUrlCtrl.text.trim();
+    if (rawBaseUrl.isNotEmpty && !LocalConfigService.isValidMitomProxyUrl(rawBaseUrl)) {
+      AppToast.error(context, 'Chỉ chấp nhận Proxy Base URL thuộc domain *.mitom.ai (Ví dụ: https://api.mitom.ai/v1)');
+      return;
+    }
+
     try {
       final cfg = await _api.getConfig();
       cfg['ai_model'] = _modelCtrl.text.trim();
-      cfg['proxy_base_url'] = _baseUrlCtrl.text.trim();
+      cfg['proxy_base_url'] = rawBaseUrl;
       cfg['proxy_api_key'] = _apiKeyCtrl.text.trim();
       final ok = await _api.saveConfig(cfg);
       if (mounted) {
@@ -503,7 +510,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   TextField(
                                     controller: _baseUrlCtrl,
                                     obscureText: true,
-                                    decoration: const InputDecoration(hintText: 'https://openrouter.ai/api/v1'),
+                                    decoration: const InputDecoration(hintText: 'https://api.mitom.ai/v1'),
                                   ),
                                 ],
                               ),

@@ -58,43 +58,21 @@ class _LogsScreenState extends State<LogsScreen> {
                     ),
                   ],
                 ),
-                Row(
-                  children: [
-                    Row(
-                      children: [
-                        Switch(
-                          value: logsProvider.autoRefresh,
-                          thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
-                            if (states.contains(WidgetState.selected)) {
-                              return Colors.white;
-                            }
-                            return const Color(0xFF94A3B8);
-                          }),
-                          overlayColor: WidgetStateProperty.all(Colors.transparent),
-                          onChanged: (val) => logsProvider.setAutoRefresh(val),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('Tự động làm mới (3s)', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.cardBg,
-                        side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      ),
-                      icon: logsProvider.isLoading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.refresh_rounded, size: 16),
-                      label: const Text('Làm mới', style: TextStyle(fontSize: 12)),
-                      onPressed: () => logsProvider.fetchLogs(),
-                    ),
-                  ],
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardBg,
+                    side: const BorderSide(color: AppColors.borderDark),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                  icon: logsProvider.isLoading
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Làm mới', style: TextStyle(fontSize: 12)),
+                  onPressed: () => logsProvider.fetchLogs(),
                 ),
               ],
             ),
