@@ -10,6 +10,8 @@ import 'package:xterm/xterm.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/tadu_dialog.dart';
 import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
 
@@ -604,6 +606,100 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
+  void _showRenameTabDialog(int index) {
+    if (index < 0 || index >= _panes.length) return;
+    final windowPane = _panes[index];
+    final titleCtrl = TextEditingController(text: windowPane.title);
+
+    void doSubmit(BuildContext ctx) {
+      final newTitle = titleCtrl.text.trim();
+      Navigator.pop(ctx);
+      if (newTitle.isNotEmpty && newTitle != windowPane.title) {
+        setState(() {
+          windowPane.title = newTitle;
+        });
+        _saveTerminalSessions();
+        if (mounted) {
+          AppToast.success(context, 'Đã đổi tên Tab ${index + 1} thành "$newTitle"!');
+        }
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 400,
+        maxWidth: 480,
+        title: Row(
+          children: [
+            const Icon(Icons.edit_note_rounded, color: AppColors.accentCyan, size: 20),
+            const SizedBox(width: 8),
+            Text('Đổi Tên Tab ${index + 1}'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Nhập tên gợi nhớ mới cho tab terminal:',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: titleCtrl,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+              onSubmitted: (_) => doSubmit(ctx),
+              decoration: InputDecoration(
+                hintText: 'Ví dụ: Backend Server, Docker Logs, Local Dev...',
+                prefixIcon: const Icon(Icons.terminal_rounded, size: 16, color: AppColors.textDim),
+                filled: true,
+                fillColor: AppColors.bgDark,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(4),
+                  borderSide: const BorderSide(color: AppColors.borderDark),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(4),
+                  borderSide: const BorderSide(color: AppColors.borderDark),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(4),
+                  borderSide: const BorderSide(color: AppColors.accentCyan, width: 1.2),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textDim,
+              side: const BorderSide(color: AppColors.borderDark),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            ),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => doSubmit(ctx),
+            icon: const Icon(Icons.check_rounded, size: 14),
+            label: const Text('Lưu Tên Tab'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.textWhite,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _sendCmdToActive(String cmd) {
     final pane = _activePane;
     if (pane != null && pane.isConnected) {
@@ -1010,6 +1106,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                                 });
                                 window.focusNode.requestFocus();
                               },
+                              onDoubleTap: () => _showRenameTabDialog(index),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10),
                                 decoration: BoxDecoration(
@@ -1037,12 +1134,15 @@ class _TerminalScreenState extends State<TerminalScreen> {
                                       color: window.isRemoteSsh ? AppColors.primaryLight : AppColors.accent,
                                     ),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      'Tab ${index + 1}: ${window.title}',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: isWinActive ? FontWeight.bold : FontWeight.normal,
-                                        color: isWinActive ? AppColors.textWhite : AppColors.textDim,
+                                    Tooltip(
+                                      message: 'Click đúp để đổi tên tab',
+                                      child: Text(
+                                        'Tab ${index + 1}: ${window.title}',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: isWinActive ? FontWeight.bold : FontWeight.normal,
+                                          color: isWinActive ? AppColors.textWhite : AppColors.textDim,
+                                        ),
                                       ),
                                     ),
                                     if (isSplit) ...[
