@@ -81,16 +81,31 @@ class _ServersScreenState extends State<ServersScreen> {
       await Process.start('python3', bridgeArgs, mode: ProcessStartMode.detached);
       await Future.delayed(const Duration(milliseconds: 1500));
 
-      // Mo Google Chrome voi SOCKS5 Proxy rieng cua may chu nay (tat thanh thong bao infobars)
+      // Auto fix exit_type trong Preferences de Chrome khong bao gio hien thong bao Restore page sau khi tat dot ngot
+      try {
+        final prefFile = File('$chromeProfile/Default/Preferences');
+        if (prefFile.existsSync()) {
+          var prefText = await prefFile.readAsString();
+          prefText = prefText.replaceAll('"exit_type":"Crashed"', '"exit_type":"Normal"');
+          prefText = prefText.replaceAll('"exited_cleanly":false', '"exited_cleanly":true');
+          await prefFile.writeAsString(prefText);
+        }
+      } catch (_) {}
+
+      // Mo Google Chrome voi SOCKS5 Proxy rieng cua may chu nay (tat sach moi loai thong bao infobars & bubbles)
       final chromeArgs = [
         '--user-data-dir=$chromeProfile',
         '--proxy-server=socks5://127.0.0.1:$localPort',
         '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1',
+        '--test-type',
         '--disable-infobars',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-blink-features=AutomationControlled',
+        '--disable-session-crashed-bubble',
+        '--hide-crash-restore-bubble',
         '--password-store=basic',
+        '--disable-features=Translate,OptimizationGuideModelDownloading,OptimizationHints',
         'https://ifconfig.me',
       ];
 
@@ -1461,7 +1476,7 @@ class _ServersScreenState extends State<ServersScreen> {
                                                 child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
                                               )
                                             : const Icon(
-                                                Icons.open_in_browser_rounded,
+                                                Icons.language_rounded,
                                                 size: 17,
                                                 color: AppColors.accentCyan,
                                               ),
