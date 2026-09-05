@@ -22,6 +22,7 @@ class _ServersScreenState extends State<ServersScreen> {
   final ApiService _api = ApiService();
   final TextEditingController _searchCtrl = TextEditingController();
   final Map<String, String> _testStatus = {}; // serverId -> 'testing' | 'success' | 'failed'
+  final Map<String, bool> _proxyLoading = {}; // serverId -> bool
   final Set<String> _expandedServerIds = {};
   String? _deployingServerId;
   final Map<String, List<String>> _deployLogs = {};
@@ -39,6 +40,87 @@ class _ServersScreenState extends State<ServersScreen> {
       ctrl.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _openProxyAndBrowser(ServerModel server) async {
+    setState(() {
+      _proxyLoading[server.id] = true;
+    });
+
+    try {
+      final scriptDir = '/home/yenai/proxy_scripts';
+      await Directory(scriptDir).create(recursive: true);
+      final chromeProfile = '/home/yenai/.chrome_proxy_${server.id}';
+      await Directory(chromeProfile).create(recursive: true);
+
+      // Tinh toan cong proxy local rieng biet cho tung may chu (tranh dung do cong 1080)
+      final localPort = 1080 + (server.id.hashCode.abs() % 1000);
+
+      // Kiem tra va don dep tien trinh bridge cu cua rieng may chu nay neu co
+      await Process.run('pkill', ['-f', 'socks5_bridge.py.*--host ${server.serverIp}']);
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Khoi dong socks5_bridge.py chay ngam voi port rieng
+      final bridgeArgs = [
+        '$scriptDir/socks5_bridge.py',
+        '--host', server.serverIp,
+        '--ssh-port', server.sshPort.toString(),
+        '--user', server.sshUser,
+        '--port', localPort.toString(),
+      ];
+      if (server.sshPass.isNotEmpty) {
+        bridgeArgs.addAll(['--password', server.sshPass]);
+      }
+      if (server.sshKey != null && server.sshKey!.isNotEmpty) {
+        final keyFile = '$scriptDir/key_${server.id}.pem';
+        await File(keyFile).writeAsString(server.sshKey!);
+        await Process.run('chmod', ['600', keyFile]);
+        bridgeArgs.addAll(['--key', keyFile]);
+      }
+
+      await Process.start('python3', bridgeArgs, mode: ProcessStartMode.detached);
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      // Mo Google Chrome voi SOCKS5 Proxy rieng cua may chu nay (tat thanh thong bao infobars)
+      final chromeArgs = [
+        '--user-data-dir=$chromeProfile',
+        '--proxy-server=socks5://127.0.0.1:$localPort',
+        '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1',
+        '--disable-infobars',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-blink-features=AutomationControlled',
+        '--password-store=basic',
+        'https://ifconfig.me',
+      ];
+
+      final chromeCheck = await Process.run('which', ['google-chrome']);
+      if (chromeCheck.exitCode == 0) {
+        await Process.start('google-chrome', chromeArgs, mode: ProcessStartMode.detached);
+      } else {
+        final stableCheck = await Process.run('which', ['google-chrome-stable']);
+        if (stableCheck.exitCode == 0) {
+          await Process.start('google-chrome-stable', chromeArgs, mode: ProcessStartMode.detached);
+        } else {
+          final chromiumCheck = await Process.run('which', ['chromium']);
+          if (chromiumCheck.exitCode == 0) {
+            await Process.start('chromium', chromeArgs, mode: ProcessStartMode.detached);
+          } else {
+            await Process.start('firefox', ['https://ifconfig.me'], mode: ProcessStartMode.detached);
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi mở trình duyệt Proxy: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _proxyLoading[server.id] = false;
+        });
+      }
+    }
   }
 
   Future<void> _testServerConnection(ServerModel server) async {
@@ -1370,6 +1452,24 @@ class _ServersScreenState extends State<ServersScreen> {
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      // Open Proxy Browser Button
+                                      IconButton(
+                                        icon: _proxyLoading[s.id] == true
+                                            ? const SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
+                                              )
+                                            : const Icon(
+                                                Icons.open_in_browser_rounded,
+                                                size: 17,
+                                                color: AppColors.accentCyan,
+                                              ),
+                                        tooltip: 'Bật Proxy & Mở Trình Duyệt Local qua Server này',
+                                        onPressed: _proxyLoading[s.id] == true ? null : () => _openProxyAndBrowser(s),
+                                      ),
+                                      const SizedBox(width: 8),
+
                                       // Test Connection Button (Icon only)
                                       IconButton(
                                         icon: test == 'testing'
