@@ -107,7 +107,7 @@ export function UserProfileModal({
             <div className="flex items-center justify-between mb-2">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <Key size={14} className="text-primary" />
-                API Key cá nhân
+                API Key sử dụng AI
               </span>
               <button
                 onClick={handleCopyKey}
@@ -128,7 +128,7 @@ export function UserProfileModal({
               {user.apiKey || 'Chưa khởi tạo API Key'}
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
-              Sử dụng API Key này làm Bearer Token cho Base URL:{' '}
+              Sử dụng Key này qua header <code className="text-primary font-mono font-bold">x-api-key</code> cho Base URL:{' '}
               <code className="text-primary font-mono">https://api-vn-sg.mitom.ai/v1</code>
             </p>
           </div>

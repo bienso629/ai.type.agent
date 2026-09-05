@@ -305,33 +305,10 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     try {
-      Uint8List? fileBytes = item.rawBytes;
-      if (fileBytes == null && item.path != null) {
-        final f = File(item.path!);
-        if (f.existsSync()) {
-          fileBytes = await f.readAsBytes();
-        }
-      }
-
-      if (fileBytes == null || fileBytes.isEmpty) {
-        if (mounted) {
-          final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
-          if (idx != -1) {
-            setState(() {
-              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
-                isUploading: false,
-                isUploaded: false,
-                error: 'Không đọc được dữ liệu',
-              );
-            });
-          }
-        }
-        return;
-      }
-
       final res = await _api.uploadFile(
         fileName: item.name,
-        bytes: fileBytes,
+        bytes: item.rawBytes,
+        localFilePath: item.path,
         targetDir: _workingDirScope,
         onProgress: (sent, total, prog) {
           if (!mounted) return;
@@ -566,12 +543,12 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // Await any in-flight uploads if necessary
+    // Await any in-flight uploads if necessary (cho phép tối đa 600s = 10 phút cho tệp 5-10GB)
     if (_attachedFiles.any((a) => a.isUploading)) {
       int waitMs = 0;
-      while (_attachedFiles.any((a) => a.isUploading) && waitMs < 12000 && mounted) {
-        await Future.delayed(const Duration(milliseconds: 250));
-        waitMs += 250;
+      while (_attachedFiles.any((a) => a.isUploading) && waitMs < 600000 && mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        waitMs += 500;
       }
     }
 
@@ -758,6 +735,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                                 addAutomaticKeepAlives: false,
                                 addRepaintBoundaries: true,
+                                // ignore: deprecated_member_use
                                 cacheExtent: 400.0,
                                 itemCount: chat.hasMoreMessages
                                     ? chat.messages.length + 1
@@ -1034,7 +1012,6 @@ class _ChatScreenState extends State<ChatScreen> {
         decoration: BoxDecoration(
           color: AppColors.inputBg,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppColors.borderDark),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1196,18 +1173,9 @@ class _ChatScreenState extends State<ChatScreen> {
             if (_inlineDirSuggestions.isNotEmpty || _isInlineDirLoading) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.bgDark,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1264,12 +1232,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                       ? AppColors.primary.withValues(alpha: 0.25)
                                       : AppColors.cardBg,
                                   borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: isHighlighted
-                                        ? AppColors.primaryLight
-                                        : AppColors.borderDark,
-                                    width: isHighlighted ? 1.2 : 1.0,
-                                  ),
                                 ),
                                 child: Row(
                                   children: [
@@ -1315,7 +1277,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                         decoration: BoxDecoration(
                                           color: AppColors.inputBg,
                                           borderRadius: BorderRadius.circular(3),
-                                          border: Border.all(color: AppColors.borderDark),
                                         ),
                                         child: const Text('Tab: Chèn', style: TextStyle(fontSize: 10, color: AppColors.textBody)),
                                       ),

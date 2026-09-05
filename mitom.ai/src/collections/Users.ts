@@ -10,6 +10,31 @@ export const Users: CollectionConfig = {
   access: {
     read: () => true,
   },
+  hooks: {
+    afterChange: [
+      async ({ doc, req, operation }) => {
+        // Tự động gán mã khách hàng chuẩn MITO + pad(id, 6)
+        if (doc && doc.id) {
+          const expectedCode = `MITO${String(doc.id).padStart(6, '0')}`
+          if (doc.customerCode !== expectedCode) {
+            try {
+              await req.payload.update({
+                collection: 'users',
+                id: doc.id,
+                data: {
+                  customerCode: expectedCode,
+                },
+              })
+              doc.customerCode = expectedCode
+            } catch (e) {
+              // Bỏ qua nếu đang trong transaction lock
+            }
+          }
+        }
+        return doc
+      },
+    ],
+  },
   fields: [
     {
       name: 'name',
@@ -57,6 +82,7 @@ export const Users: CollectionConfig = {
     {
       name: 'customerCode',
       type: 'text',
+      index: true,
       label: 'Mã khách hàng / Cú pháp nạp (Ví dụ: MITO000123)',
       admin: {
         description: 'Mã nhận diện nạp tiền tự động qua Webhook ngân hàng (Định dạng MITOxxxxxx với xxxxxx là ID người dùng)',
@@ -65,6 +91,7 @@ export const Users: CollectionConfig = {
     {
       name: 'apiKey',
       type: 'text',
+      index: true,
       label: 'API Key truy cập',
     },
     {

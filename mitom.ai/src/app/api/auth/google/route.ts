@@ -87,6 +87,7 @@ export async function POST(request: Request) {
 
     if (existingUsers.docs && existingUsers.docs.length > 0) {
       const currentDoc = existingUsers.docs[0]
+      const expectedCustomerCode = `MITO${String(currentDoc.id).padStart(6, '0')}`
       localUser = await payload.update({
         collection: 'users',
         id: currentDoc.id,
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
           avatar: userAvatar || currentDoc.avatar,
           authProvider: 'google',
           googleId: googleId || currentDoc.googleId,
-          customerCode: currentDoc.customerCode || generateCustomerCode(),
+          customerCode: currentDoc.customerCode || expectedCustomerCode,
           apiKey: currentDoc.apiKey || generateApiKey(),
         },
       })
@@ -110,11 +111,22 @@ export async function POST(request: Request) {
           authProvider: 'google',
           googleId,
           balance: 0,
-          customerCode: generateCustomerCode(),
           role: 'user',
           apiKey: generateApiKey(),
         },
       })
+
+      // Cập nhật customerCode chuẩn theo User ID vừa tạo
+      const expectedCustomerCode = `MITO${String(localUser.id).padStart(6, '0')}`
+      if (localUser.customerCode !== expectedCustomerCode) {
+        localUser = await payload.update({
+          collection: 'users',
+          id: localUser.id,
+          data: {
+            customerCode: expectedCustomerCode,
+          },
+        })
+      }
     }
 
     // 3. Khởi tạo Session JWT và thiết lập Cookie

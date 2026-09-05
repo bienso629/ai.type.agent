@@ -42,8 +42,9 @@ export async function POST(request: Request) {
     }
 
     let customerCode = user.customerCode
+    const expectedCustomerCode = `MITO${String(user.id).padStart(6, '0')}`
     if (!customerCode) {
-      customerCode = generateCustomerCode()
+      customerCode = expectedCustomerCode
       try {
         await payload.update({
           collection: 'users',

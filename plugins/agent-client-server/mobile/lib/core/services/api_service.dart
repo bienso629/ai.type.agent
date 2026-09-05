@@ -585,7 +585,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> uploadFile({
     required String fileName,
-    required Uint8List bytes,
+    Uint8List? bytes,
+    String? localFilePath,
     String? targetDir,
     void Function(int sentBytes, int totalBytes, double progress)? onProgress,
   }) async {
@@ -593,6 +594,7 @@ class ApiService {
       return await _ssh.uploadFile(
         fileName: fileName,
         bytes: bytes,
+        localFilePath: localFilePath,
         targetDir: targetDir,
         onProgress: onProgress,
       );
@@ -605,13 +607,20 @@ class ApiService {
       if (targetDir != null && targetDir.isNotEmpty) {
         request.fields['target_dir'] = targetDir;
       }
-      request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
+      if (localFilePath != null && File(localFilePath).existsSync()) {
+        request.files.add(await http.MultipartFile.fromPath('file', localFilePath, filename: fileName));
+      } else if (bytes != null) {
+        request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
+      } else {
+        return {'status': 'error', 'message': 'Không có dữ liệu tệp'};
+      }
 
       final streamedResponse = await _client.send(request);
       final response = await http.Response.fromStream(streamedResponse);
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (onProgress != null) onProgress(bytes.length, bytes.length, 1.0);
+        final fileLen = (bytes != null) ? bytes.length : (File(localFilePath!).lengthSync());
+        if (onProgress != null) onProgress(fileLen, fileLen, 1.0);
         return data is Map<String, dynamic> ? data : {'status': 'success'};
       }
       return {'status': 'error', 'message': 'HTTP ${response.statusCode}'};
