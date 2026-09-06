@@ -8,10 +8,8 @@ import '../../providers/chat_provider.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 import 'chat/chat_screen.dart';
-import 'server_setup/server_setup_screen.dart';
-import 'terminal/terminal_screen.dart';
-import 'logs/logs_screen.dart';
 import 'settings/settings_screen.dart';
+import '../../core/services/native_ssh_service.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -22,6 +20,51 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
+  bool _isTestingConnection = false;
+
+  Future<void> _handleTestConnection() async {
+    if (_isTestingConnection) return;
+    setState(() {
+      _isTestingConnection = true;
+    });
+
+    final serverProvider = context.read<ServerProvider>();
+    final selected = serverProvider.selectedServer;
+
+    try {
+      final ssh = NativeSshService();
+      final bool isOk = await ssh.testConnection(
+        host: selected?.serverIp,
+        port: selected?.sshPort,
+        user: selected?.sshUser,
+        pass: selected?.sshPass,
+      );
+
+      if (mounted) {
+        if (isOk) {
+          AppToast.success(
+            context,
+            'Kết nối SSH máy chủ ${selected?.name ?? selected?.serverIp ?? ""} thành công!',
+          );
+        } else {
+          AppToast.error(
+            context,
+            'Kết nối thất bại. Vui lòng kiểm tra lại IP, Port, User, Mật khẩu!',
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi kiểm tra kết nối: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestingConnection = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -34,9 +77,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = const [
     ChatScreen(),
-    ServerSetupScreen(),
-    TerminalScreen(),
-    LogsScreen(),
     SettingsScreen(),
   ];
 
@@ -47,23 +87,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       'icon': Icons.chat_bubble_outline_rounded,
     },
     {
-      'title': 'Thiết lập',
-      'subtitle': 'Quản lý máy chủ, triển khai code và kiểm soát dịch vụ',
-      'icon': Icons.dns_outlined,
-    },
-    {
-      'title': 'SSH Terminal',
-      'subtitle': 'SSH Interactive Terminal thời gian thực',
-      'icon': Icons.terminal_rounded,
-    },
-    {
-      'title': 'Logs',
-      'subtitle': 'Nhật ký realtime của tiến trình ai-agent.service',
-      'icon': Icons.description_outlined,
-    },
-    {
-      'title': 'Hệ thống',
-      'subtitle': 'Quản lý đa máy chủ Remote & Cấu hình AI toàn cục',
+      'title': 'Cấu hình',
+      'subtitle': 'Cấu hình AI Model, Proxy API và kết nối SSH máy chủ',
       'icon': Icons.settings_outlined,
     },
   ];
@@ -357,52 +382,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
 
-                // 1.4 Inactive Agent Alert Banner (if agent not active)
-                if (!isAgentActive)
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.warning),
-                            SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                'Agent chưa được bật',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.warning),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 28,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.warning,
-                              foregroundColor: Colors.black,
-                              padding: EdgeInsets.zero,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _currentIndex = 1; // Switch to Thiết lập
-                              });
-                            },
-                            child: const Text('Bật Agent ngay', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
 
                 // 1.45 User Account Info & Logout in sidebar
                 Container(
@@ -415,25 +394,44 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                   child: Row(
                     children: [
+                      // User Avatar from Forum type.vn
                       Container(
-                        width: 28,
-                        height: 28,
+                        width: 30,
+                        height: 30,
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
                         ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          (auth.userEmail?.isNotEmpty == true)
-                              ? auth.userEmail![0].toUpperCase()
-                              : 'U',
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primaryLight,
-                          ),
-                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: (auth.avatar != null && auth.avatar!.isNotEmpty)
+                            ? Image.network(
+                                auth.avatar!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Center(
+                                  child: Text(
+                                    (auth.userEmail?.isNotEmpty == true)
+                                        ? auth.userEmail![0].toUpperCase()
+                                        : 'U',
+                                    style: const TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primaryLight,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Center(
+                                child: Text(
+                                  (auth.userEmail?.isNotEmpty == true)
+                                      ? auth.userEmail![0].toUpperCase()
+                                      : 'U',
+                                  style: const TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primaryLight,
+                                  ),
+                                ),
+                              ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -442,14 +440,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              auth.userEmail ?? 'admin@tadu.vn',
+                              (auth.userName?.isNotEmpty == true)
+                                  ? auth.userName!
+                                  : (auth.userEmail ?? 'admin@type.vn'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
                             ),
-                            const Text(
-                              '50k token AI',
-                              style: TextStyle(fontSize: 9.5, color: AppColors.accent, fontWeight: FontWeight.w500),
+                            Text(
+                              auth.userEmail ?? 'Type.vn Member',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
@@ -467,21 +469,57 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
                 // 1.5 Footer
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.shield_rounded, size: 14, color: AppColors.accent),
-                          SizedBox(width: 6),
-                          Text('MXH tự động Desktop', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-                        ],
+                      // Nút "Test kết nối" bên trái Footer
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(4),
+                          onTap: _isTestingConnection ? null : _handleTestConnection,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: _isTestingConnection ? AppColors.primary : AppColors.borderDark,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_isTestingConnection)
+                                  const SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                                  )
+                                else
+                                  const Icon(Icons.wifi_tethering_rounded, size: 13, color: AppColors.accent),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _isTestingConnection ? 'Đang test...' : 'Test kết nối',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isTestingConnection ? AppColors.primaryLight : AppColors.textWhite,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                      Text('v1.3.0', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim)),
+                      const Text(
+                        'v1.3.0',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim),
+                      ),
                     ],
                   ),
                 ),
@@ -530,24 +568,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               label: 'Trợ lý AI',
             ),
             NavigationDestination(
-              icon: Icon(Icons.dns_outlined),
-              selectedIcon: Icon(Icons.dns_rounded, color: AppColors.primaryLight),
-              label: 'Thiết lập',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.terminal_outlined),
-              selectedIcon: Icon(Icons.terminal_rounded, color: AppColors.primaryLight),
-              label: 'Terminal',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.description_outlined),
-              selectedIcon: Icon(Icons.description_rounded, color: AppColors.primaryLight),
-              label: 'Logs',
-            ),
-            NavigationDestination(
               icon: Icon(Icons.settings_outlined),
               selectedIcon: Icon(Icons.settings_rounded, color: AppColors.primaryLight),
-              label: 'Hệ thống',
+              label: 'Cấu hình',
             ),
           ],
         ),

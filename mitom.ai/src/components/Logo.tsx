@@ -7,7 +7,7 @@ export const Logo: React.FC = () => {
         src="/logo.png"
         alt="Mì Tôm AI Logo"
         style={{
-          maxHeight: '44px',
+          maxHeight: '32px',
           width: 'auto',
           objectFit: 'contain',
           display: 'block',

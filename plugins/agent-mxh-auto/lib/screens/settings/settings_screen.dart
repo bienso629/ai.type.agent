@@ -79,9 +79,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final portCtrl = TextEditingController(text: existing?.sshPort.toString() ?? '22');
     final userCtrl = TextEditingController(text: existing?.sshUser ?? 'root');
     final passCtrl = TextEditingController(text: existing?.sshPass ?? '');
-    final modelCtrl = TextEditingController(text: existing?.aiModel ?? 'glm-5.3');
-    final dirCtrl = TextEditingController(text: existing?.remoteWorkDir ?? '/opt/ai_agent');
-    final apiPortCtrl = TextEditingController(text: existing?.apiPort.toString() ?? '8000');
     showDialog(
       context: context,
       builder: (ctx) => TaduDialog(
@@ -142,32 +139,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: modelCtrl,
-                    decoration: const InputDecoration(labelText: 'Model AI (glm-5.3)'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: apiPortCtrl,
-                    decoration: const InputDecoration(labelText: 'Cổng Agent (8000)'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: dirCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Thư Mục Làm Việc Từ Xa (/opt/ai_agent)',
-                prefixIcon: Icon(Icons.folder_open_rounded, size: 18),
-              ),
-            ),
           ],
         ),
         actions: [
@@ -189,9 +160,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 sshPort: int.tryParse(portCtrl.text.trim()) ?? 22,
                 sshUser: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
                 sshPass: passCtrl.text.trim(),
-                aiModel: modelCtrl.text.trim().isEmpty ? 'glm-5.3' : modelCtrl.text.trim(),
-                remoteWorkDir: dirCtrl.text.trim().isEmpty ? '/opt/ai_agent' : dirCtrl.text.trim(),
-                apiPort: int.tryParse(apiPortCtrl.text.trim()) ?? 8000,
+                aiModel: existing?.aiModel ?? 'glm-5.3',
+                remoteWorkDir: existing?.remoteWorkDir ?? '/opt/ai_agent',
+                apiPort: existing?.apiPort ?? 8000,
                 isSelected: existing?.isSelected ?? false,
               );
               Navigator.pop(ctx);
@@ -385,17 +356,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.dns_rounded, size: 18, color: isSelected ? AppColors.primaryLight : AppColors.textMuted),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        s.name,
-                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.dns_rounded, size: 18, color: isSelected ? AppColors.primaryLight : AppColors.textMuted),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            s.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  if (isSelected)
+                                  if (isSelected) ...[
+                                    const SizedBox(width: 6),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
@@ -407,6 +385,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
                                       ),
                                     ),
+                                  ],
                                 ],
                               ),
                               Text(

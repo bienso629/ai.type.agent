@@ -1,14 +1,12 @@
-import express, { Request, Response, NextFunction } from 'express'
+import express, { Request, Response } from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import { authenticateAndCheckBalance, deductBalance } from './db.js'
 
 dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 8008
 const UPSTREAM_BASE_URL = process.env.UPSTREAM_BASE_URL || 'https://api-us-ca.umodelverse.ai/v1'
-const UPSTREAM_MASTER_API_KEY = process.env.UPSTREAM_MASTER_API_KEY || ''
 
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
@@ -48,70 +46,11 @@ app.get('/', (req: Request, res: Response) => {
 })
 
 /**
- * GET /v1/models - Lấy danh sách model (cần API Key hợp lệ và còn tiền)
- */
-app.get('/v1/models', async (req: Request, res: Response): Promise<void> => {
-  const apiKey = extractApiKey(req)
-
-  if (!apiKey) {
-    res.status(401).json({
-      error: {
-        message: 'Bạn chưa cung cấp API Key. Vui lòng truyền header x-api-key hoặc Authorization: Bearer [API_KEY].',
-        type: 'authentication_error',
-        code: 'missing_api_key',
-      },
-    })
-    return
-  }
-
-  // Xác thực tài khoản và kiểm tra số dư
-  const authResult = await authenticateAndCheckBalance(apiKey)
-  if (!authResult.success) {
-    res.status(403).json({
-      error: {
-        message: authResult.message,
-        type: 'permission_denied',
-        code: 'invalid_or_insufficient_balance',
-      },
-    })
-    return
-  }
-
-  try {
-    const upstreamHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    if (UPSTREAM_MASTER_API_KEY) {
-      upstreamHeaders['Authorization'] = `Bearer ${UPSTREAM_MASTER_API_KEY}`
-    } else {
-      upstreamHeaders['Authorization'] = `Bearer ${apiKey}`
-    }
-
-    const upstreamRes = await fetch(`${UPSTREAM_BASE_URL}/models`, {
-      method: 'GET',
-      headers: upstreamHeaders,
-    })
-
-    const data = await upstreamRes.json()
-    res.status(upstreamRes.status).json(data)
-  } catch (error: any) {
-    console.error('[Proxy /v1/models Error]:', error)
-    res.status(502).json({
-      error: {
-        message: 'Lỗi kết nối tới upstream server: ' + error?.message,
-        type: 'gateway_error',
-        code: 'upstream_connection_failed',
-      },
-    })
-  }
-})
-
-/**
- * POST /v1/chat/completions & Tất cả endpoint /v1/*
- * Kiểm tra xác thực -> Kiểm tra số dư -> Wrap forward sang upstream
+ * Xử lý mọi yêu cầu /v1/*: Forward trực tiếp sang upstream umodelverse
+ * Toàn bộ việc kiểm tra API Key, quyền hạn, quota và số dư do upstream umodelverse đảm nhiệm
  */
 app.all('/v1/*', async (req: Request, res: Response): Promise<void> => {
-  const subPath = req.params[0] // Ví dụ: chat/completions, embeddings, images/generations
+  const subPath = req.params[0]
   const apiKey = extractApiKey(req)
 
   if (!apiKey) {
@@ -125,30 +64,11 @@ app.all('/v1/*', async (req: Request, res: Response): Promise<void> => {
     return
   }
 
-  // 1. Kiểm tra tài khoản và số dư
-  const authResult = await authenticateAndCheckBalance(apiKey)
-  if (!authResult.success || !authResult.user) {
-    res.status(403).json({
-      error: {
-        message: authResult.message,
-        type: 'insufficient_quota',
-        code: 'account_inactive_or_zero_balance',
-      },
-    })
-    return
-  }
-
-  // 2. Chuẩn bị headers forward sang upstream
   const targetUrl = `${UPSTREAM_BASE_URL}/${subPath}`
   const forwardHeaders: Record<string, string> = {
     'Content-Type': req.headers['content-type'] || 'application/json',
     'Accept': req.headers['accept'] || 'application/json',
-  }
-
-  if (UPSTREAM_MASTER_API_KEY) {
-    forwardHeaders['Authorization'] = `Bearer ${UPSTREAM_MASTER_API_KEY}`
-  } else {
-    forwardHeaders['Authorization'] = `Bearer ${apiKey}`
+    'Authorization': `Bearer ${apiKey}`,
   }
 
   try {
@@ -184,7 +104,7 @@ app.all('/v1/*', async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    // Xử lý Non-streaming (JSON phản hồi thông thường)
+    // Xử lý Non-streaming (JSON hoặc Text phản hồi từ upstream)
     const resContentType = upstreamResponse.headers.get('content-type') || ''
     if (resContentType.includes('application/json')) {
       const data = await upstreamResponse.json()
@@ -197,7 +117,7 @@ app.all('/v1/*', async (req: Request, res: Response): Promise<void> => {
     console.error(`[Gateway Forward Error -> ${targetUrl}]:`, error)
     res.status(502).json({
       error: {
-        message: 'Lỗi trong quá trình forward request tới upstream model provider: ' + error?.message,
+        message: 'Lỗi trong quá trình forward request tới upstream umodelverse: ' + error?.message,
         type: 'gateway_error',
         code: 'bad_gateway',
       },

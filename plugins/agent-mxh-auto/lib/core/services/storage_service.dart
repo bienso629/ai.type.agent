@@ -16,6 +16,7 @@ class StorageService {
   static const String _keyAuthToken = 'auth_token';
   static const String _keyUserEmail = 'user_email';
   static const String _keyUserName = 'user_name';
+  static const String _keyUserAvatar = 'user_avatar';
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyRememberMe = 'remember_me';
 
@@ -127,6 +128,20 @@ class StorageService {
     }
   }
 
+  Future<String?> getUserAvatar() async {
+    await init();
+    return _prefs.getString(_keyUserAvatar);
+  }
+
+  Future<void> setUserAvatar(String? avatar) async {
+    await init();
+    if (avatar == null || avatar.isEmpty) {
+      await _prefs.remove(_keyUserAvatar);
+    } else {
+      await _prefs.setString(_keyUserAvatar, avatar);
+    }
+  }
+
   Future<bool> isLoggedIn() async {
     await init();
     return _prefs.getBool(_keyIsLoggedIn) ?? false;
@@ -152,6 +167,7 @@ class StorageService {
     await _prefs.remove(_keyAuthToken);
     await _prefs.remove(_keyUserEmail);
     await _prefs.remove(_keyUserName);
+    await _prefs.remove(_keyUserAvatar);
     await _prefs.setBool(_keyIsLoggedIn, false);
   }
 

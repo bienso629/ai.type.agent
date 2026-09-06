@@ -161,6 +161,7 @@ export function Logo({ onClick }: { onClick?: () => void }) {
       onClick={(e) => {
         if (onClick) {
           e.preventDefault()
+          onClick()
         }
       }}
       className="flex items-center gap-2.5 group"

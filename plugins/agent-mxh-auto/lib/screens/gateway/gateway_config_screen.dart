@@ -91,7 +91,7 @@ class _GatewayConfigScreenState extends State<GatewayConfigScreen> {
             const SizedBox(height: 24),
 
             const Text(
-              'Địa chỉ Backend Gateway (Host Control Center)',
+              'Địa chỉ Backend Gateway',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 6),
