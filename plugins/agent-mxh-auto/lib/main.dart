@@ -9,6 +9,7 @@ import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/gateway_provider.dart';
 import 'providers/metrics_provider.dart';
+import 'providers/profile_provider.dart';
 import 'providers/server_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -50,6 +51,7 @@ class TaduCloudAiAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ServerProvider()),
         ChangeNotifierProvider(create: (_) => MetricsProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => ProfileProvider()),
       ],
       child: MaterialApp(
         title: 'Phần mềm AI quản lý MXH tự động',

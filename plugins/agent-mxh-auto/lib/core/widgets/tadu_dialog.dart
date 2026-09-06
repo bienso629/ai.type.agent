@@ -5,6 +5,7 @@ class TaduDialog extends StatelessWidget {
   final Widget title;
   final Widget content;
   final List<Widget>? actions;
+  final List<Widget>? leadingActions;
   final double minWidth;
   final double maxWidth;
   final double? maxHeight;
@@ -15,6 +16,7 @@ class TaduDialog extends StatelessWidget {
     required this.title,
     required this.content,
     this.actions,
+    this.leadingActions,
     this.minWidth = 500,
     this.maxWidth = 620,
     this.maxHeight,
@@ -81,7 +83,7 @@ class TaduDialog extends StatelessWidget {
             ),
 
             // 3. MODAL FOOTER (Border Top Separator)
-            if (actions != null && actions!.isNotEmpty)
+            if ((actions != null && actions!.isNotEmpty) || (leadingActions != null && leadingActions!.isNotEmpty))
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: const BoxDecoration(
@@ -91,12 +93,30 @@ class TaduDialog extends StatelessWidget {
                   ),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    for (int i = 0; i < actions!.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 10),
-                      actions![i],
-                    ],
+                    // Bên trái: leadingActions
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (leadingActions != null)
+                          for (int i = 0; i < leadingActions!.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 10),
+                            leadingActions![i],
+                          ],
+                      ],
+                    ),
+                    // Bên phải: actions
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (actions != null)
+                          for (int i = 0; i < actions!.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 10),
+                            actions![i],
+                          ],
+                      ],
+                    ),
                   ],
                 ),
               ),

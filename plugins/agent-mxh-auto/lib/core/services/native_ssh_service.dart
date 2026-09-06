@@ -61,6 +61,57 @@ class NativeSshService {
     }
   }
 
+  Future<List<String>> getServerIps({
+    String? host,
+    int? port,
+    String? user,
+    String? pass,
+    String? key,
+  }) async {
+    try {
+      final cfg = await _configService.loadConfig();
+      final targetHost = host ?? cfg['server_ip']?.toString() ?? '127.0.0.1';
+      final targetPort = port ?? int.tryParse(cfg['ssh_port']?.toString() ?? '22') ?? 22;
+      final targetUser = user ?? cfg['ssh_user']?.toString() ?? 'root';
+      final targetPass = pass ?? cfg['ssh_pass']?.toString() ?? '';
+
+      final socket = await SSHSocket.connect(targetHost, targetPort, timeout: const Duration(seconds: 7));
+      final client = SSHClient(
+        socket,
+        username: targetUser,
+        onPasswordRequest: () => targetPass,
+        identities: (key != null && key.isNotEmpty) ? SSHKeyPair.fromPem(key) : null,
+      );
+      await client.authenticated;
+
+      final res = await client.run(
+        "ip -4 -o addr show scope global 2>/dev/null | awk '{print \$4}' | cut -d/ -f1"
+      ).timeout(const Duration(seconds: 8));
+      client.close();
+
+      final output = utf8.decode(res).trim();
+      final Set<String> ipSet = {};
+      if (targetHost.isNotEmpty && targetHost != '127.0.0.1' && targetHost != 'localhost') {
+        ipSet.add(targetHost);
+      }
+      for (final line in output.split('\n')) {
+        final clean = line.trim();
+        if (clean.isNotEmpty &&
+            !clean.startsWith('127.') &&
+            !clean.startsWith('172.17.') &&
+            !clean.startsWith('172.18.') &&
+            !clean.startsWith('172.19.') &&
+            !clean.startsWith('172.20.')) {
+          ipSet.add(clean);
+        }
+      }
+      return ipSet.toList();
+    } catch (_) {
+      final fallback = (host != null && host.isNotEmpty) ? [host] : <String>[];
+      return fallback;
+    }
+  }
+
   Future<String> executeCommand(String command, {String? workingDir, int timeoutSeconds = 60}) async {
     try {
       final client = await getClient();

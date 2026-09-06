@@ -119,6 +119,11 @@ class ProfileProvider extends ChangeNotifier {
     return success;
   }
 
+  void addProfile(ProfileItem item) {
+    _profiles.add(item);
+    notifyListeners();
+  }
+
   void addMockProfileIfEmpty() {
     if (_profiles.isEmpty) {
       _profiles = [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/local_config_service.dart';
+import '../../core/services/native_ssh_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
@@ -81,104 +82,174 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final passCtrl = TextEditingController(text: existing?.sshPass ?? '');
     showDialog(
       context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 540,
-        maxWidth: 640,
-        title: Row(
-          children: [
-            const Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 22),
-            const SizedBox(width: 8),
-            Text(existing != null ? 'Chỉnh Sửa Máy Chủ' : 'Thêm Máy Chủ Mới'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tên Gợi Nhớ (Ví dụ: Web Production)',
-                prefixIcon: Icon(Icons.label_outline_rounded, size: 18),
+      builder: (ctx) {
+        bool isTesting = false;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return TaduDialog(
+              minWidth: 540,
+              maxWidth: 640,
+              title: Row(
+                children: [
+                  const Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 22),
+                  const SizedBox(width: 8),
+                  Text(existing != null ? 'Chỉnh Sửa Máy Chủ' : 'Thêm Máy Chủ Mới'),
+                ],
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ipCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Địa Chỉ IP Máy Chủ',
-                prefixIcon: Icon(Icons.public_rounded, size: 18),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Tên Gợi Nhớ (Ví dụ: Web Production)',
+                      prefixIcon: Icon(Icons.label_outline_rounded, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ipCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Địa Chỉ IP Máy Chủ',
+                      prefixIcon: Icon(Icons.public_rounded, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: TextField(
+                          controller: portCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'SSH Port'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: userCtrl,
+                          decoration: const InputDecoration(labelText: 'SSH User (root)'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Mật Khẩu SSH / Sudo',
+                      prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: TextField(
-                    controller: portCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'SSH Port'),
+              leadingActions: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isTesting ? AppColors.primaryLight : AppColors.textWhite,
+                    side: BorderSide(
+                      color: isTesting ? AppColors.primary : AppColors.borderDark,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: userCtrl,
-                    decoration: const InputDecoration(labelText: 'SSH User (root)'),
+                  icon: isTesting
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                        )
+                      : const Icon(Icons.wifi_tethering_rounded, size: 16, color: AppColors.accent),
+                  label: Text(
+                    isTesting ? 'Đang test...' : 'Test kết nối',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
+                  onPressed: isTesting
+                      ? null
+                      : () async {
+                          final host = ipCtrl.text.trim();
+                          if (host.isEmpty) {
+                            AppToast.error(ctx, 'Vui lòng nhập IP máy chủ để kiểm tra!');
+                            return;
+                          }
+                          setModalState(() {
+                            isTesting = true;
+                          });
+
+                          try {
+                            final ssh = NativeSshService();
+                            final ok = await ssh.testConnection(
+                              host: host,
+                              port: int.tryParse(portCtrl.text.trim()) ?? 22,
+                              user: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
+                              pass: passCtrl.text.trim(),
+                            );
+
+                            if (ctx.mounted) {
+                              if (ok) {
+                                AppToast.success(ctx, 'Kết nối SSH thành công đến $host!');
+                              } else {
+                                AppToast.error(ctx, 'Kết nối thất bại! Kiểm tra IP, Port hoặc Mật khẩu.');
+                              }
+                            }
+                          } catch (e) {
+                            if (ctx.mounted) {
+                              AppToast.error(ctx, 'Lỗi kết nối: $e');
+                            }
+                          } finally {
+                            if (ctx.mounted) {
+                              setModalState(() {
+                                isTesting = false;
+                              });
+                            }
+                          }
+                        },
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: passCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Mật Khẩu SSH / Sudo',
-                prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final ip = ipCtrl.text.trim();
-              if (ip.isEmpty) {
-                AppToast.error(context, 'Vui lòng nhập Địa chỉ IP máy chủ');
-                return;
-              }
-              final newServer = ServerModel(
-                id: existing?.id ?? 'srv_${DateTime.now().millisecondsSinceEpoch}',
-                name: nameCtrl.text.trim().isEmpty ? ip : nameCtrl.text.trim(),
-                serverIp: ip,
-                sshPort: int.tryParse(portCtrl.text.trim()) ?? 22,
-                sshUser: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
-                sshPass: passCtrl.text.trim(),
-                aiModel: existing?.aiModel ?? 'glm-5.3',
-                remoteWorkDir: existing?.remoteWorkDir ?? '/opt/ai_agent',
-                apiPort: existing?.apiPort ?? 8000,
-                isSelected: existing?.isSelected ?? false,
-              );
-              Navigator.pop(ctx);
-              final ok = await context.read<ServerProvider>().addOrUpdateServer(newServer);
-              if (mounted) {
-                if (ok) {
-                  AppToast.success(context, 'Đã lưu thông tin máy chủ!');
-                } else {
-                  AppToast.error(context, 'Lưu thông tin máy chủ thất bại');
-                }
-              }
-            },
-            child: const Text('Lưu Máy Chủ'),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final ip = ipCtrl.text.trim();
+                    if (ip.isEmpty) {
+                      AppToast.error(context, 'Vui lòng nhập Địa chỉ IP máy chủ');
+                      return;
+                    }
+                    final newServer = ServerModel(
+                      id: existing?.id ?? 'srv_${DateTime.now().millisecondsSinceEpoch}',
+                      name: nameCtrl.text.trim().isEmpty ? ip : nameCtrl.text.trim(),
+                      serverIp: ip,
+                      sshPort: int.tryParse(portCtrl.text.trim()) ?? 22,
+                      sshUser: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
+                      sshPass: passCtrl.text.trim(),
+                      aiModel: existing?.aiModel ?? 'glm-5.3',
+                      remoteWorkDir: existing?.remoteWorkDir ?? '/opt/ai_agent',
+                      apiPort: existing?.apiPort ?? 8000,
+                      isSelected: existing?.isSelected ?? false,
+                    );
+                    Navigator.pop(ctx);
+                    final ok = await context.read<ServerProvider>().addOrUpdateServer(newServer);
+                    if (mounted) {
+                      if (ok) {
+                        AppToast.success(context, 'Đã lưu thông tin máy chủ!');
+                      } else {
+                        AppToast.error(context, 'Lưu thông tin máy chủ thất bại');
+                      }
+                    }
+                  },
+                  child: const Text('Lưu Máy Chủ'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -328,8 +399,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 420,
-                        mainAxisExtent: 140,
+                        maxCrossAxisExtent: 460,
+                        mainAxisExtent: 195,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
                       ),
@@ -338,9 +409,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final s = serverProvider.servers[idx];
                         final isSelected = serverProvider.selectedServer != null &&
                             (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
+                        final ips = serverProvider.getIpsForServer(s);
+                        final isLoadingIps = serverProvider.isLoadingIps(s.id);
 
                         return Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.cardBg,
                             borderRadius: BorderRadius.circular(6),
@@ -353,6 +426,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
+                              // Hàng 1: Tên server & Badge Đang kết nối
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -388,10 +462,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ],
                                 ],
                               ),
+
+                              // Hàng 2: SSH User & Main IP
                               Text(
                                 '${s.sshUser}@${s.serverIp}:${s.sshPort}',
                                 style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
                               ),
+
+                              // Hàng 3: Danh sách IP trỏ vào (IP Contact Grid/Badges)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.hub_outlined, size: 12, color: AppColors.accentCyan),
+                                      const SizedBox(width: 4),
+                                      const Text(
+                                        'IP trỏ vào:',
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textDim),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      if (isLoadingIps)
+                                        const SizedBox(
+                                          width: 10,
+                                          height: 10,
+                                          child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                                        )
+                                      else
+                                        InkWell(
+                                          onTap: () => serverProvider.fetchIpsForServer(s, force: true),
+                                          child: const Padding(
+                                            padding: EdgeInsets.symmetric(horizontal: 2),
+                                            child: Icon(Icons.refresh_rounded, size: 12, color: AppColors.textMuted),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: ips.map((ip) {
+                                      final isMain = ip == s.serverIp;
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isMain
+                                              ? AppColors.primary.withValues(alpha: 0.15)
+                                              : AppColors.sidebarBg,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: isMain
+                                                ? AppColors.primary.withValues(alpha: 0.4)
+                                                : AppColors.borderDark,
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              ip,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontFamily: 'monospace',
+                                                fontWeight: isMain ? FontWeight.bold : FontWeight.w500,
+                                                color: isMain ? AppColors.primaryLight : AppColors.textWhite,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ],
+                              ),
+
+                              // Hàng 4: Actions (Chọn server, Sửa, Xóa)
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [

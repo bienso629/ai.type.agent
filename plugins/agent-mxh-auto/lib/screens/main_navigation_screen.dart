@@ -8,8 +8,8 @@ import '../../providers/chat_provider.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 import 'chat/chat_screen.dart';
+import 'profiles/profiles_screen.dart';
 import 'settings/settings_screen.dart';
-import '../../core/services/native_ssh_service.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -20,51 +20,6 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
-  bool _isTestingConnection = false;
-
-  Future<void> _handleTestConnection() async {
-    if (_isTestingConnection) return;
-    setState(() {
-      _isTestingConnection = true;
-    });
-
-    final serverProvider = context.read<ServerProvider>();
-    final selected = serverProvider.selectedServer;
-
-    try {
-      final ssh = NativeSshService();
-      final bool isOk = await ssh.testConnection(
-        host: selected?.serverIp,
-        port: selected?.sshPort,
-        user: selected?.sshUser,
-        pass: selected?.sshPass,
-      );
-
-      if (mounted) {
-        if (isOk) {
-          AppToast.success(
-            context,
-            'Kết nối SSH máy chủ ${selected?.name ?? selected?.serverIp ?? ""} thành công!',
-          );
-        } else {
-          AppToast.error(
-            context,
-            'Kết nối thất bại. Vui lòng kiểm tra lại IP, Port, User, Mật khẩu!',
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        AppToast.error(context, 'Lỗi kiểm tra kết nối: $e');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isTestingConnection = false;
-        });
-      }
-    }
-  }
 
   @override
   void initState() {
@@ -77,6 +32,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = const [
     ChatScreen(),
+    ProfilesScreen(),
     SettingsScreen(),
   ];
 
@@ -85,6 +41,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       'title': 'Trợ lý AI',
       'subtitle': 'Trợ lý AI điều khiển & hỗ trợ quản trị Linux',
       'icon': Icons.chat_bubble_outline_rounded,
+    },
+    {
+      'title': 'Profiles',
+      'subtitle': 'Quản lý profile trình duyệt antidetect & tài khoản MXH',
+      'icon': Icons.badge_outlined,
     },
     {
       'title': 'Cấu hình',
@@ -154,9 +115,46 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                             color: isSelected ? AppColors.primaryLight : AppColors.textWhite,
                           ),
                         ),
-                        subtitle: Text(
-                          '${s.sshUser}@${s.serverIp}:${s.sshPort}',
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${s.sshUser}@${s.serverIp}:${s.sshPort}',
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
+                            ),
+                            const SizedBox(height: 4),
+                            Builder(
+                              builder: (context) {
+                                final ips = serverProvider.getIpsForServer(s);
+                                return Wrap(
+                                  spacing: 4,
+                                  runSpacing: 2,
+                                  children: ips.map((ip) {
+                                    final isMain = ip == s.serverIp;
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: isMain ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
+                                        borderRadius: BorderRadius.circular(3),
+                                        border: Border.all(
+                                          color: isMain ? AppColors.primary.withValues(alpha: 0.3) : AppColors.borderDark,
+                                          width: 0.8,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        ip,
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontFamily: 'monospace',
+                                          color: isMain ? AppColors.primaryLight : AppColors.textDim,
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                         trailing: isSelected
                             ? const Icon(Icons.check_circle_rounded, color: AppColors.primaryLight, size: 20)
@@ -469,57 +467,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
                 // 1.5 Footer
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Nút "Test kết nối" bên trái Footer
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(4),
-                          onTap: _isTestingConnection ? null : _handleTestConnection,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: AppColors.cardBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: _isTestingConnection ? AppColors.primary : AppColors.borderDark,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_isTestingConnection)
-                                  const SizedBox(
-                                    width: 12,
-                                    height: 12,
-                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
-                                  )
-                                else
-                                  const Icon(Icons.wifi_tethering_rounded, size: 13, color: AppColors.accent),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _isTestingConnection ? 'Đang test...' : 'Test kết nối',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: _isTestingConnection ? AppColors.primaryLight : AppColors.textWhite,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.shield_rounded, size: 14, color: AppColors.accent),
+                          SizedBox(width: 6),
+                          Text('MXH tự động Desktop', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                        ],
                       ),
-                      const Text(
-                        'v1.3.0',
-                        style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim),
-                      ),
+                      Text('v1.3.0', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim)),
                     ],
                   ),
                 ),
@@ -566,6 +528,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               icon: Icon(Icons.chat_bubble_outline_rounded),
               selectedIcon: Icon(Icons.chat_bubble_rounded, color: AppColors.primaryLight),
               label: 'Trợ lý AI',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.badge_outlined),
+              selectedIcon: Icon(Icons.badge_rounded, color: AppColors.primaryLight),
+              label: 'Profiles',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

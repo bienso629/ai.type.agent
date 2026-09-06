@@ -1,21 +1,38 @@
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
+import '../core/services/native_ssh_service.dart';
 import '../core/services/storage_service.dart';
 import '../models/server_model.dart';
 
 class ServerProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
   final StorageService _storage = StorageService();
+  final NativeSshService _ssh = NativeSshService();
 
   List<ServerModel> _servers = [];
   ServerModel? _selectedServer;
   String _globalAiModel = 'glm-5.3';
   bool _isLoading = false;
   String? _error;
+  final Map<String, List<String>> _serverIpsMap = {};
+  final Set<String> _loadingIpsServerIds = {};
 
   List<ServerModel> get servers => _servers;
   ServerModel? get selectedServer => _selectedServer;
   String get globalAiModel => _globalAiModel;
+  Map<String, List<String>> get serverIpsMap => _serverIpsMap;
+
+  List<String> getIpsForServer(ServerModel server) {
+    if (_serverIpsMap.containsKey(server.id)) {
+      return _serverIpsMap[server.id]!;
+    }
+    if (server.serverIp.isNotEmpty) {
+      return [server.serverIp];
+    }
+    return [];
+  }
+
+  bool isLoadingIps(String serverId) => _loadingIpsServerIds.contains(serverId);
   String get currentAiModel {
     if (_globalAiModel.isNotEmpty) {
       return _globalAiModel;
@@ -73,10 +90,50 @@ class ServerProvider extends ChangeNotifier {
         _selectedServer = null;
       }
       await loadGlobalConfig();
+      // Asynchronously fetch pointing IPs for all servers
+      _fetchServerIpsForAll();
     } catch (e) {
       _error = e.toString();
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void _fetchServerIpsForAll() {
+    for (final server in _servers) {
+      fetchIpsForServer(server);
+    }
+  }
+
+  Future<void> fetchIpsForServer(ServerModel server, {bool force = false}) async {
+    if (!force && _serverIpsMap.containsKey(server.id) && _serverIpsMap[server.id]!.isNotEmpty) {
+      return;
+    }
+    if (_loadingIpsServerIds.contains(server.id)) return;
+
+    _loadingIpsServerIds.add(server.id);
+    notifyListeners();
+
+    try {
+      final ips = await _ssh.getServerIps(
+        host: server.serverIp,
+        port: server.sshPort,
+        user: server.sshUser,
+        pass: server.sshPass,
+        key: server.sshKey,
+      );
+      if (ips.isNotEmpty) {
+        _serverIpsMap[server.id] = ips;
+      } else if (server.serverIp.isNotEmpty) {
+        _serverIpsMap[server.id] = [server.serverIp];
+      }
+    } catch (_) {
+      if (server.serverIp.isNotEmpty) {
+        _serverIpsMap[server.id] = [server.serverIp];
+      }
+    } finally {
+      _loadingIpsServerIds.remove(server.id);
       notifyListeners();
     }
   }

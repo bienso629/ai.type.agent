@@ -91,7 +91,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
               final name = nameCtrl.text.trim();
               if (name.isEmpty) return;
               final pProvider = context.read<ProfileProvider>();
-              pProvider.profiles.add(
+              pProvider.addProfile(
                 ProfileItem(
                   profile: name,
                   running: false,
@@ -101,7 +101,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   ],
                 ),
               );
-              pProvider.notifyListeners();
               Navigator.pop(ctx);
               AppToast.success(context, 'Đã tạo $name thành công!');
             },
