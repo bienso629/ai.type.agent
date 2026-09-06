@@ -552,6 +552,61 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _saveTerminalSessions();
   }
 
+  void _confirmCloseWindow(int index) {
+    if (index < 0 || index >= _panes.length) return;
+    if (_panes.length <= 1) {
+      AppToast.warning(context, 'Không thể đóng tab terminal duy nhất');
+      return;
+    }
+    final pane = _panes[index];
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 400,
+        maxWidth: 480,
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
+            SizedBox(width: 8),
+            Text('Xác Nhận Đóng Terminal'),
+          ],
+        ),
+        content: Text(
+          'Bạn có chắc chắn muốn đóng tab terminal "Tab ${index + 1}: ${pane.title}" không? Các tiến trình đang chạy trong tab này sẽ bị dừng.',
+          style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textBody),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textDim,
+              side: const BorderSide(color: AppColors.borderDark),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            ),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: AppColors.textWhite,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _removeWindow(index);
+              if (mounted) {
+                AppToast.success(context, 'Đã đóng tab terminal');
+              }
+            },
+            child: const Text('Đóng Terminal'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _splitActiveWindow(TerminalSplitDirection direction, int windowIndex, TerminalPaneItem targetPane) {
     if (windowIndex < 0 || windowIndex >= _panes.length) return;
     final windowPane = _panes[windowIndex];
@@ -604,6 +659,60 @@ class _TerminalScreenState extends State<TerminalScreen> {
       });
       _saveTerminalSessions();
     }
+  }
+
+  void _confirmCloseChildPane(int windowIndex) {
+    if (windowIndex < 0 || windowIndex >= _panes.length) return;
+    final windowPane = _panes[windowIndex];
+    if (windowPane.childPane == null) return;
+    final childTitle = windowPane.childPane!.title;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 400,
+        maxWidth: 480,
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
+            SizedBox(width: 8),
+            Text('Xác Nhận Đóng Khung Phụ'),
+          ],
+        ),
+        content: Text(
+          'Bạn có chắc chắn muốn đóng khung terminal phụ "$childTitle" không? Tiến trình đang chạy trong khung này sẽ bị dừng.',
+          style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textBody),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textDim,
+              side: const BorderSide(color: AppColors.borderDark),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            ),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: AppColors.textWhite,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _closeChildPane(windowIndex);
+              if (mounted) {
+                AppToast.success(context, 'Đã đóng khung terminal phụ');
+              }
+            },
+            child: const Text('Đóng Khung Phụ'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showRenameTabDialog(int index) {
@@ -899,9 +1008,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
       pane.terminal.eraseDisplay();
       pane.terminal.setCursor(0, 0);
     } else if (result == 'close_subpane') {
-      _closeChildPane(windowIndex);
+      _confirmCloseChildPane(windowIndex);
     } else if (result == 'close_window') {
-      _removeWindow(windowIndex);
+      _confirmCloseWindow(windowIndex);
     }
   }
 
@@ -1162,7 +1271,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                                     if (_panes.length > 1) ...[
                                       const SizedBox(width: 6),
                                       InkWell(
-                                        onTap: () => _removeWindow(index),
+                                        onTap: () => _confirmCloseWindow(index),
                                         borderRadius: BorderRadius.circular(10),
                                         child: const Padding(
                                           padding: EdgeInsets.all(2),
@@ -1623,7 +1732,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                             tooltip: 'Đóng khung phụ này (Huỷ split)',
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                            onPressed: () => _closeChildPane(windowIndex),
+                            onPressed: () => _confirmCloseChildPane(windowIndex),
                           )
                         else if (!isOnlyOne && _panes.length > 1)
                           IconButton(
@@ -1631,7 +1740,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                             tooltip: 'Đóng Tab cửa sổ này',
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                            onPressed: () => _removeWindow(windowIndex),
+                            onPressed: () => _confirmCloseWindow(windowIndex),
                           ),
                       ],
                     ),
