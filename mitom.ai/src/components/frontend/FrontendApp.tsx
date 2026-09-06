@@ -161,22 +161,21 @@ export function Logo({ onClick }: { onClick?: () => void }) {
       onClick={(e) => {
         if (onClick) {
           e.preventDefault()
-          onClick()
         }
       }}
-      className="flex items-center gap-3.5 group"
+      className="flex items-center gap-2.5 group"
     >
-      <div className="relative h-12 w-12 flex items-center justify-center transition-transform group-hover:scale-105">
+      <div className="relative h-9 w-9 flex items-center justify-center transition-transform group-hover:scale-105">
         <Image
           src="/logo.png"
           alt="Mì Tôm AI Logo"
-          width={48}
-          height={48}
-          className="h-full w-full object-contain drop-shadow-md"
+          width={36}
+          height={36}
+          className="h-full w-full object-contain drop-shadow-sm"
           priority
         />
       </div>
-      <span className="font-display text-2xl font-black tracking-tight">
+      <span className="font-display text-xl font-bold tracking-tight">
         Mì Tôm <span className="text-primary">AI</span>
       </span>
     </a>
@@ -1305,7 +1304,7 @@ function HomePage({
 
       {/* FAQ */}
       <section id="faq" className="bg-secondary/30">
-        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 md:px-8 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 md:px-8 lg:grid-cols-2">
           <div>
             <span className="font-mono text-xs uppercase tracking-widest text-primary">// Hỏi đáp</span>
             <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight md:text-4xl">Câu hỏi thường gặp</h2>
