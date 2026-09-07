@@ -1599,32 +1599,17 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
     return TaduDialog(
       minWidth: 560,
       maxWidth: 680,
-      title: Row(
+      title: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.people_alt_rounded, color: AppColors.primaryLight, size: 20),
-          const SizedBox(width: 8),
-          const Expanded(
+          Icon(Icons.people_alt_rounded, color: AppColors.primaryLight, size: 20),
+          SizedBox(width: 8),
+          Expanded(
             child: Text(
               'Chọn Scope Nhân Vật (Profiles)',
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (totalSelected > 0) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primaryLight),
-              ),
-              child: Text(
-                'Đã chọn: $totalSelected',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-              ),
-            ),
-          ],
         ],
       ),
       content: SizedBox(
@@ -1641,41 +1626,71 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Tìm kiếm nhân vật theo tên, IP, giới tính...',
-                      prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 16),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {});
-                              },
-                            )
-                          : null,
+                  child: SizedBox(
+                    height: 36,
+                    child: TextField(
+                      controller: _searchController,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        hintText: 'Tìm theo tên, IP, giới tính...',
+                        hintStyle: const TextStyle(fontSize: 12, color: AppColors.textDim),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textDim),
+                        prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.textDim),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {});
+                                },
+                              )
+                            : null,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: _selectAll,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                    side: const BorderSide(color: AppColors.borderDark),
+                InkWell(
+                  onTap: _selectAll,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.4), width: 1),
+                    ),
+                    child: const Text(
+                      'Chọn tất cả',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
+                    ),
                   ),
-                  child: const Text('Chọn tất cả', style: TextStyle(fontSize: 11, color: AppColors.primaryLight)),
                 ),
                 const SizedBox(width: 6),
-                OutlinedButton(
-                  onPressed: _clearAll,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                    side: const BorderSide(color: AppColors.borderDark),
+                InkWell(
+                  onTap: _clearAll,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.borderDark, width: 1),
+                    ),
+                    child: const Text(
+                      'Bỏ chọn',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textMuted),
+                    ),
                   ),
-                  child: const Text('Bỏ chọn', style: TextStyle(fontSize: 11, color: AppColors.danger)),
                 ),
               ],
             ),
@@ -1819,7 +1834,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
             widget.onSelect(selected);
             Navigator.pop(context);
           },
-          child: Text('Áp dụng (${_selectedIps.length})'),
+          child: Text('Áp dụng ($totalSelected)'),
         ),
       ],
     );
