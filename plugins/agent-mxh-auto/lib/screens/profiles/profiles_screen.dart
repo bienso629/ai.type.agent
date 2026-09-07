@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/persona_service.dart';
 import '../../core/services/socks5_proxy_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../models/persona_profile_model.dart';
 import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
 
@@ -15,15 +17,27 @@ class ProfilesScreen extends StatefulWidget {
 }
 
 class _ProfilesScreenState extends State<ProfilesScreen> {
-  final TextEditingController _searchCtrl = TextEditingController();
   final Set<String> _openingIps = {};
   final Set<String> _closingIps = {};
   final Socks5ProxyService _socks5Service = Socks5ProxyService();
+  final PersonaService _personaService = PersonaService();
+
+  Map<String, PersonaProfile> _personas = {};
+  bool _isGeneratingPersonas = false;
 
   @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadPersonas();
+  }
+
+  Future<void> _loadPersonas() async {
+    final saved = await _personaService.loadSavedPersonas();
+    if (mounted) {
+      setState(() {
+        _personas = Map.from(saved);
+      });
+    }
   }
 
   void _copyToClipboard(String text, String label) {
@@ -31,14 +45,154 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     AppToast.success(context, 'Đã sao chép $label: $text');
   }
 
+  Future<void> _handleGeneratePersonas(List<String> targetIps) async {
+    if (targetIps.isEmpty) {
+      AppToast.warning(context, 'Không có địa chỉ IP nào để tạo profiles');
+      return;
+    }
+
+    setState(() {
+      _isGeneratingPersonas = true;
+    });
+    AppToast.info(context, 'AI Agent đang phân tích và tạo hồ sơ nhân vật cho ${targetIps.length} IP...');
+
+    try {
+      final newPersonas = await _personaService.generatePersonas(ips: targetIps);
+      if (mounted) {
+        setState(() {
+          _personas.addAll(newPersonas);
+        });
+        AppToast.success(context, 'AI đã tạo thành công hồ sơ cho ${newPersonas.length} IP');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi tạo profiles bằng AI: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGeneratingPersonas = false;
+        });
+      }
+    }
+  }
+
+  void _showPersonaDetails(PersonaProfile persona) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppColors.borderDark),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.psychology_rounded, color: AppColors.primaryLight, size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    persona.name,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                  ),
+                  Text(
+                    'IP: ${persona.ip} | ${persona.gender}, ${persona.age} tuổi',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Cá tính & Tiểu sử (Bio):',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.inputBg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.borderDark),
+                ),
+                child: Text(
+                  persona.bio,
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.textDim, height: 1.4),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Prompt tạo Avatar AI:',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                  ),
+                  InkWell(
+                    onTap: () => _copyToClipboard(persona.avatarPrompt, 'Avatar Prompt'),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.copy_rounded, size: 13, color: AppColors.primaryLight),
+                        SizedBox(width: 4),
+                        Text(
+                          'Sao chép prompt',
+                          style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0C1322),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                ),
+                child: SelectableText(
+                  persona.avatarPrompt,
+                  style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.primaryLight, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Đóng', style: TextStyle(color: AppColors.textMuted)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
     final servers = serverProvider.servers;
     final selectedServer = serverProvider.selectedServer;
-
-    // Tổng hợp tất cả IP Contact Cards từ server hiện tại hoặc tất cả servers
-    final query = _searchCtrl.text.trim().toLowerCase();
 
     // Gom danh sách IP contact card
     final List<_ContactIpItem> allIpCards = [];
@@ -51,15 +205,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         final ip = ips[i];
         final isMain = ip == s.serverIp;
 
-        if (query.isNotEmpty) {
-          final matchIp = ip.toLowerCase().contains(query);
-          final matchServer = s.name.toLowerCase().contains(query);
-          final matchUser = s.sshUser.toLowerCase().contains(query);
-          if (!matchIp && !matchServer && !matchUser) {
-            continue;
-          }
-        }
-
         allIpCards.add(
           _ContactIpItem(
             ip: ip,
@@ -71,8 +216,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       }
     }
 
-    final isScanning = serverProvider.isLoading ||
-        (selectedServer != null && serverProvider.isLoadingIps(selectedServer.id));
+    final allTargetIps = allIpCards.map((e) => e.ip).toSet().toList();
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
@@ -100,23 +244,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             'Profiles / IP Contact Cards',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                           ),
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                            ),
-                            child: Text(
-                              '${allIpCards.length} Đầu IP khả dụng',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primaryLight,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -130,60 +257,27 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   ),
                 ),
 
-                // Search Box
-                SizedBox(
-                  width: 240,
-                  height: 36,
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: (_) => setState(() {}),
-                    style: const TextStyle(fontSize: 12.5),
-                    decoration: InputDecoration(
-                      hintText: 'Tìm theo IP, máy chủ...',
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                      prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textDim),
-                      suffixIcon: _searchCtrl.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 14),
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                setState(() {});
-                              },
-                            )
-                          : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-
-                // Button Quét lại IP
+                // Nút "AI tạo profiles" thay thế tìm kiếm và quét lại IP
                 ElevatedButton.icon(
-                  onPressed: isScanning
+                  onPressed: _isGeneratingPersonas
                       ? null
-                      : () {
-                          if (selectedServer != null) {
-                            serverProvider.fetchIpsForServer(selectedServer, force: true);
-                            AppToast.info(context, 'Đang quét lại danh sách IP cho máy chủ...');
-                          } else {
-                            serverProvider.loadServers();
-                          }
-                        },
-                  icon: isScanning
+                      : () => _handleGeneratePersonas(allTargetIps),
+                  icon: _isGeneratingPersonas
                       ? const SizedBox(
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF070B14)),
                         )
-                      : const Icon(Icons.refresh_rounded, size: 16),
+                      : const Icon(Icons.auto_awesome_rounded, size: 16),
                   label: Text(
-                    isScanning ? 'Đang quét...' : 'Quét lại IP',
+                    _isGeneratingPersonas ? 'Đang tạo profiles...' : 'AI tạo profiles',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: const Color(0xFF070B14),
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -208,7 +302,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Hãy kiểm tra lại cấu hình kết nối SSH hoặc nhấn "Quét lại IP"',
+                          'Hãy kiểm tra lại cấu hình kết nối SSH trong mục Cấu hình',
                           style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                         ),
                       ],
@@ -216,15 +310,15 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // Tính toán số cột responsive, giới hạn tối đa là 5 cột
+                      // Tính toán số cột responsive
                       int crossAxisCount = 3;
                       if (constraints.maxWidth < 650) {
                         crossAxisCount = 1;
-                      } else if (constraints.maxWidth < 950) {
+                      } else if (constraints.maxWidth < 1000) {
                         crossAxisCount = 2;
-                      } else if (constraints.maxWidth < 1300) {
+                      } else if (constraints.maxWidth < 1400) {
                         crossAxisCount = 3;
-                      } else if (constraints.maxWidth < 1650) {
+                      } else if (constraints.maxWidth < 1750) {
                         crossAxisCount = 4;
                       } else {
                         crossAxisCount = 5;
@@ -236,7 +330,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           crossAxisCount: crossAxisCount,
                           crossAxisSpacing: 14,
                           mainAxisSpacing: 14,
-                          mainAxisExtent: 190,
+                          mainAxisExtent: 240,
                         ),
                         itemCount: allIpCards.length,
                         itemBuilder: (context, idx) {
@@ -257,11 +351,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final socks5 = context.watch<Socks5ProxyService>();
     final isBrowserRunning = socks5.isBrowserRunningForIp(item.ip);
     final isAlias = !item.isMain;
+    final persona = _personas[item.ip];
 
-    // Phối màu đặc sắc theo yêu cầu:
-    // Nếu là ALIAS IP và ĐANG MỞ TRÌNH DUYỆT -> Màu Xanh Ngọc Cyber (Emerald/Cyan), viền sáng, huy hiệu Đang duyệt web
-    // Nếu là IP GỐC và ĐANG MỞ TRÌNH DUYỆT -> Màu Vàng Hổ Phách Amber
-    // Nếu chưa mở trình duyệt -> Màu Slate tối mặc định
     final Color cardBorderColor;
     final Color cardBgColor;
     final Color badgeBgColor;
@@ -271,18 +362,18 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
     if (isBrowserRunning) {
       if (isAlias) {
-        cardBorderColor = AppColors.accent; // Xanh ngọc nổi bật cho Alias đang mở
+        cardBorderColor = AppColors.accent;
         cardBgColor = const Color(0xFF091E1A);
         badgeBgColor = AppColors.accent.withValues(alpha: 0.2);
         badgeTextColor = AppColors.accent;
-        statusText = 'Trình duyệt đang mở (Active)';
+        statusText = 'Trình duyệt đang mở';
         statusDotColor = AppColors.accent;
       } else {
         cardBorderColor = AppColors.primaryLight;
         cardBgColor = const Color(0xFF1C1908);
         badgeBgColor = AppColors.primary.withValues(alpha: 0.2);
         badgeTextColor = AppColors.primaryLight;
-        statusText = 'Trình duyệt đang mở (Active)';
+        statusText = 'Trình duyệt đang mở';
         statusDotColor = AppColors.primaryLight;
       }
     } else {
@@ -317,7 +408,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         children: [
           // Header Card (Tên máy chủ + Trạng thái Loại IP)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: isBrowserRunning
                   ? (isAlias ? const Color(0xFF0B2923) : const Color(0xFF26200A))
@@ -329,7 +420,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
               children: [
                 Icon(
                   Icons.dns_rounded,
-                  size: 16,
+                  size: 15,
                   color: isBrowserRunning
                       ? (isAlias ? AppColors.accent : AppColors.primaryLight)
                       : (item.isCurrentServer ? AppColors.primaryLight : AppColors.textDim),
@@ -341,7 +432,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: isBrowserRunning
                           ? (isAlias ? AppColors.accent : AppColors.primaryLight)
@@ -371,107 +462,209 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             ),
           ),
 
-          // Body Card (IP Avatar + Contact Specs)
+          // Body Card (IP Avatar + Persona Profile Specs)
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Avatar IP Badge
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: isBrowserRunning
-                          ? (isAlias ? AppColors.accent.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15))
-                          : AppColors.inputBg,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isBrowserRunning
-                            ? cardBorderColor
-                            : (item.isMain ? AppColors.accent.withValues(alpha: 0.5) : AppColors.borderDark),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        isBrowserRunning ? Icons.language_rounded : Icons.fingerprint_rounded,
-                        color: isBrowserRunning
-                            ? (isAlias ? AppColors.accent : AppColors.primaryLight)
-                            : (item.isMain ? AppColors.accent : AppColors.primaryLight),
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  // Thông số IP
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        InkWell(
-                          onTap: () => _copyToClipboard(item.ip, 'IP'),
-                          borderRadius: BorderRadius.circular(4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                item.ip,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  fontFamily: 'monospace',
-                                  color: isBrowserRunning
-                                      ? (isAlias ? AppColors.accent : AppColors.primaryLight)
-                                      : AppColors.textWhite,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Icon(Icons.copy_rounded, size: 13, color: AppColors.textDim),
-                            ],
+                  // Row 1: Avatar badge + Name / IP / Status
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: isBrowserRunning
+                              ? (isAlias ? AppColors.accent.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15))
+                              : AppColors.inputBg,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isBrowserRunning
+                                ? cardBorderColor
+                                : (item.isMain ? AppColors.accent.withValues(alpha: 0.5) : AppColors.borderDark),
+                            width: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Row(
+                        child: Center(
+                          child: Icon(
+                            persona != null
+                                ? (persona.gender.toLowerCase() == 'nữ' ? Icons.face_3_rounded : Icons.face_rounded)
+                                : (isBrowserRunning ? Icons.language_rounded : Icons.fingerprint_rounded),
+                            color: isBrowserRunning
+                                ? (isAlias ? AppColors.accent : AppColors.primaryLight)
+                                : (item.isMain ? AppColors.accent : AppColors.primaryLight),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(
-                                color: statusDotColor,
-                                shape: BoxShape.circle,
-                                boxShadow: isBrowserRunning
-                                    ? [
-                                        BoxShadow(
-                                          color: statusDotColor.withValues(alpha: 0.8),
-                                          blurRadius: 4,
-                                          spreadRadius: 1,
-                                        ),
-                                      ]
-                                    : null,
+                            // Tên nhân vật hoặc hiển thị Chưa tạo
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    persona?.name ?? 'Chưa tạo nhân vật',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: persona != null ? AppColors.textWhite : AppColors.textDim,
+                                    ),
+                                  ),
+                                ),
+                                if (persona != null) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      '${persona.gender} · ${persona.age}t',
+                                      style: const TextStyle(fontSize: 9.5, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            InkWell(
+                              onTap: () => _copyToClipboard(item.ip, 'IP'),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    item.ip,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'monospace',
+                                      color: isBrowserRunning
+                                          ? (isAlias ? AppColors.accent : AppColors.primaryLight)
+                                          : AppColors.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.copy_rounded, size: 11, color: AppColors.textDim),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: statusDotColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    statusText,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: statusDotColor,
+                                      fontWeight: isBrowserRunning ? FontWeight.w600 : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 6),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Row 2: Bio hoặc Nút xem Prompt avatar
+                  if (persona != null) ...[
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.inputBg.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Expanded(
                               child: Text(
-                                statusText,
-                                maxLines: 1,
+                                persona.bio,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: isBrowserRunning ? FontWeight.w600 : FontWeight.normal,
-                                  color: statusDotColor,
+                                style: const TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.3),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () => _showPersonaDetails(persona),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.palette_outlined, size: 12, color: AppColors.primaryLight),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Prompt',
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ] else ...[
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.inputBg.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: statusDotColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Bấm "AI tạo profiles" để sinh danh tính và prompt avatar',
+                                maxLines: 2,
+                                style: const TextStyle(fontSize: 10.5, color: AppColors.textDim),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -549,7 +742,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         setState(() {
                           _openingIps.add(item.ip);
                         });
-                        AppToast.info(context, 'Đang thiết lập SOCKS5 và mở trình duyệt cho ${item.ip}...');
+                        AppToast.info(context, 'Đang mở trình duyệt cho ${item.ip}...');
                         try {
                           await _socks5Service.launchBrowserWithSocks5(
                             server: item.server,

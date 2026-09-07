@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../models/server_model.dart';
@@ -281,7 +282,31 @@ class Socks5ProxyService extends ChangeNotifier {
       profileDir.createSync(recursive: true);
     }
 
-    final targetUrl = (startUrl != null && startUrl.isNotEmpty) ? startUrl : 'https://whoer.net';
+    // Tắt translate option trong file cấu hình Preferences của profile Chrome
+    try {
+      final defaultDir = Directory('${profileDir.path}/Default');
+      if (!defaultDir.existsSync()) {
+        defaultDir.createSync(recursive: true);
+      }
+      final prefFile = File('${defaultDir.path}/Preferences');
+      Map<String, dynamic> prefData = {};
+      if (prefFile.existsSync()) {
+        try {
+          final content = prefFile.readAsStringSync();
+          if (content.trim().isNotEmpty) {
+            final decoded = jsonDecode(content);
+            if (decoded is Map<String, dynamic>) {
+              prefData = decoded;
+            }
+          }
+        } catch (_) {}
+      }
+      prefData['translate'] = {'enabled': false};
+      prefData['translate_blocked_hosts'] = [];
+      prefFile.writeAsStringSync(jsonEncode(prefData));
+    } catch (_) {}
+
+    final targetUrl = (startUrl != null && startUrl.isNotEmpty) ? startUrl : 'https://type.vn';
 
     // Ưu tiên tìm trình duyệt khả dụng trên hệ thống Linux
     final browserCandidates = [
@@ -318,7 +343,11 @@ class Socks5ProxyService extends ChangeNotifier {
       ];
     } else {
       // Chrome / Chromium / Opera: Sử dụng cờ socks5 chính xác và cô lập hồ sơ trình duyệt
+      // Tắt triệt để tính năng Translate và thanh thông báo "You are using an unsupported command-line flag..."
       args = [
+        '--test-type',
+        '--disable-features=Translate,TranslateUI',
+        '--disable-translate',
         '--proxy-server=$socks5Proxy',
         '--user-data-dir=${profileDir.path}',
         '--no-first-run',

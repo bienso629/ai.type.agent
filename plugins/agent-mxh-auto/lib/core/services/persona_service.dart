@@ -1,0 +1,221 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import '../../models/persona_profile_model.dart';
+import 'local_config_service.dart';
+
+class PersonaService {
+  static final PersonaService _instance = PersonaService._internal();
+  factory PersonaService() => _instance;
+  PersonaService._internal();
+
+  final LocalConfigService _configService = LocalConfigService();
+  final Map<String, PersonaProfile> _cachedPersonas = {};
+  bool _isLoaded = false;
+
+  String get _storageFilePath {
+    final home = Platform.environment['HOME'] ?? '';
+    final dir = p.join(home, '.tadu_ai_agent');
+    if (!Directory(dir).existsSync()) {
+      try {
+        Directory(dir).createSync(recursive: true);
+      } catch (_) {}
+    }
+    return p.join(dir, 'personas.json');
+  }
+
+  Future<Map<String, PersonaProfile>> loadSavedPersonas() async {
+    if (_isLoaded && _cachedPersonas.isNotEmpty) {
+      return Map.unmodifiable(_cachedPersonas);
+    }
+
+    try {
+      final file = File(_storageFilePath);
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.trim().isNotEmpty) {
+          final decoded = jsonDecode(content);
+          if (decoded is Map<String, dynamic>) {
+            _cachedPersonas.clear();
+            decoded.forEach((ip, val) {
+              if (val is Map<String, dynamic>) {
+                _cachedPersonas[ip] = PersonaProfile.fromJson(val);
+              }
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    _isLoaded = true;
+    return Map.unmodifiable(_cachedPersonas);
+  }
+
+  Future<void> savePersonas(Map<String, PersonaProfile> personas) async {
+    _cachedPersonas.addAll(personas);
+    try {
+      final file = File(_storageFilePath);
+      final mapToSave = <String, dynamic>{};
+      _cachedPersonas.forEach((ip, profile) {
+        mapToSave[ip] = profile.toJson();
+      });
+      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(mapToSave));
+    } catch (_) {}
+  }
+
+  PersonaProfile? getPersona(String ip) {
+    return _cachedPersonas[ip];
+  }
+
+  Future<Map<String, PersonaProfile>> generatePersonas({
+    required List<String> ips,
+    String? model,
+  }) async {
+    if (ips.isEmpty) return {};
+
+    final cfg = await _configService.loadConfig();
+    var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
+    if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
+      throw Exception('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
+    }
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+    }
+    final apiKey = cfg['proxy_api_key']?.toString() ?? '';
+    final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
+    final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
+
+    final prompt = '''Bạn là một chuyên gia sáng tạo danh tính số (Digital Persona Creator) cho hệ thống mạng xã hội tự động.
+Dưới đây là danh sách các địa chỉ IP:
+${ips.map((ip) => "- $ip").join("\n")}
+
+Nhiệm vụ: Hãy tạo cho MỖI địa chỉ IP một nhân vật (profile persona) độc nhất, tự nhiên, đậm chất đời thực (Việt Nam hoặc quốc tế đa dạng).
+Mỗi nhân vật phải gồm:
+- ip: Địa chỉ IP tương ứng chính xác
+- name: Họ và tên nhân vật (ví dụ: Nguyễn Hoàng Nam, Trần Thu Hà, Lê Minh Triết...)
+- age: Tuổi (từ 18 đến 45)
+- gender: Giới tính ("Nam" hoặc "Nữ")
+- bio: Mô tả cá tính, nghề nghiệp, sở thích, tính cách ngắn gọn (khoảng 1 - 2 câu súc tích)
+- avatar_prompt: Một prompt chi tiết bằng tiếng Anh chuyên dùng cho AI vẽ ảnh (Midjourney/Stable Diffusion) để tạo chân dung cận cảnh avatar cho nhân vật này (ví dụ: "Close-up portrait of a 24-year-old Vietnamese woman, warm smile, barista outfit in a cozy cafe, cinematic natural sunlight, hyperrealistic 8k").
+
+BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markdown hoặc chỉ bọc trong ```json ... ```):
+[
+  {
+    "ip": "...",
+    "name": "...",
+    "age": 25,
+    "gender": "Nam",
+    "bio": "...",
+    "avatar_prompt": "..."
+  }
+]''';
+
+    final uri = Uri.parse('$baseUrl/chat/completions');
+    final response = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+      },
+      body: jsonEncode({
+        'model': targetModel,
+        'messages': [
+          {
+            'role': 'system',
+            'content': 'Bạn là trợ lý AI chuyên tạo dữ liệu nhân vật chuẩn JSON. Chỉ trả về mảng JSON hợp lệ.',
+          },
+          {
+            'role': 'user',
+            'content': prompt,
+          }
+        ],
+        'temperature': 0.7,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Lỗi gọi AI API (${response.statusCode}): ${response.body}');
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    final choices = data['choices'] as List<dynamic>?;
+    if (choices == null || choices.isEmpty) {
+      throw Exception('Phản hồi AI trống');
+    }
+
+    final rawReply = choices[0]['message']?['content']?.toString() ?? '';
+    final parsedProfiles = _parseAiJson(rawReply, ips);
+
+    await savePersonas(parsedProfiles);
+    return parsedProfiles;
+  }
+
+  Map<String, PersonaProfile> _parseAiJson(String rawText, List<String> ips) {
+    String clean = rawText.trim();
+    if (clean.startsWith('```json')) {
+      clean = clean.substring(7);
+    } else if (clean.startsWith('```')) {
+      clean = clean.substring(3);
+    }
+    if (clean.endsWith('```')) {
+      clean = clean.substring(0, clean.length - 3);
+    }
+    clean = clean.trim();
+
+    // Find JSON array start and end
+    final startIdx = clean.indexOf('[');
+    final endIdx = clean.lastIndexOf(']');
+    if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
+      clean = clean.substring(startIdx, endIdx + 1);
+    }
+
+    final Map<String, PersonaProfile> result = {};
+    try {
+      final decoded = jsonDecode(clean);
+      if (decoded is List) {
+        for (int i = 0; i < decoded.length; i++) {
+          final item = decoded[i];
+          if (item is Map<String, dynamic>) {
+            var ip = item['ip']?.toString().trim() ?? '';
+            if (ip.isEmpty || !ips.contains(ip)) {
+              if (i < ips.length) {
+                ip = ips[i];
+              }
+            }
+            if (ip.isNotEmpty) {
+              result[ip] = PersonaProfile(
+                ip: ip,
+                name: item['name']?.toString() ?? 'Nhân vật AI',
+                age: (item['age'] is num) ? (item['age'] as num).toInt() : 25,
+                gender: item['gender']?.toString() ?? 'Nam',
+                bio: item['bio']?.toString() ?? 'Người dùng mạng xã hội',
+                avatarPrompt: item['avatar_prompt']?.toString() ?? item['avatarPrompt']?.toString() ?? 'Portrait photo, photorealistic 8k',
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      throw Exception('Lỗi phân tích JSON từ AI: $e. Phản hồi thô: $rawText');
+    }
+
+    // Fallback: Nếu một số IP chưa có trong kết quả, gán IP tương ứng
+    for (int i = 0; i < ips.length; i++) {
+      final ip = ips[i];
+      if (!result.containsKey(ip)) {
+        result[ip] = PersonaProfile(
+          ip: ip,
+          name: 'Nhân vật $ip',
+          age: 25,
+          gender: 'Nam',
+          bio: 'Thành viên mạng xã hội năng động',
+          avatarPrompt: 'Portrait of a young creative professional, cinematic lighting, 8k',
+        );
+      }
+    }
+
+    return result;
+  }
+}
