@@ -150,7 +150,7 @@ export function LoginModal({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer shrink-0"
             aria-label="Đóng"
           >
             <X size={18} />

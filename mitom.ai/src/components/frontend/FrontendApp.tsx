@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import { UserProfileModal } from './UserProfileModal'
 import { LoginModal } from './LoginModal'
 import { GuideTopupPage, ApiDocsPage, TermsPage, PrivacyPage } from './StaticPages'
-import { User, ChevronLeft, ChevronRight, Sparkles, Copy, Check } from 'lucide-react'
+import { User, ChevronLeft, ChevronRight, Sparkles, Copy, Check, X } from 'lucide-react'
 
 export type Page = 'home' | 'models' | 'topup' | 'success' | 'guide-topup' | 'api-docs' | 'terms' | 'privacy'
 
@@ -164,19 +164,19 @@ export function Logo({ onClick }: { onClick?: () => void }) {
           onClick()
         }
       }}
-      className="flex items-center gap-2.5 group"
+      className="flex items-center gap-3 group"
     >
-      <div className="relative h-9 w-9 flex items-center justify-center transition-transform group-hover:scale-105">
+      <div className="relative h-12 w-12 flex items-center justify-center transition-transform group-hover:scale-105">
         <Image
           src="/logo.png"
           alt="Mì Tôm AI Logo"
-          width={36}
-          height={36}
+          width={48}
+          height={48}
           className="h-full w-full object-contain drop-shadow-sm"
           priority
         />
       </div>
-      <span className="font-display text-xl font-bold tracking-tight">
+      <span className="font-display text-2xl font-bold tracking-tight">
         Mì Tôm <span className="text-primary">AI</span>
       </span>
     </a>
@@ -815,12 +815,12 @@ function OrderLookupModal({
         <div className="flex items-center justify-between border-b border-border pb-4">
           <h3 className="font-display text-lg font-bold">Tra cứu đơn nạp</h3>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer shrink-0"
+            aria-label="Đóng"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+            <X size={18} />
           </button>
         </div>
 
@@ -989,7 +989,7 @@ export function FrontendApp({
               Models
             </button>
             <button onClick={() => navigate('guide-topup')} className="transition-colors hover:text-primary">
-              Hướng dẫn nạp
+              Hướng dẫn
             </button>
             <button onClick={() => navigate('api-docs')} className="transition-colors hover:text-primary">
               Tài liệu

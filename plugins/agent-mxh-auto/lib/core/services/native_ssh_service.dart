@@ -61,6 +61,194 @@ class NativeSshService {
     }
   }
 
+  /// Kiểm tra trạng thái dịch vụ multi-ip-socks5.service trên máy chủ
+  Future<bool> getMultiIpSocks5Status({
+    required String host,
+    required int port,
+    required String user,
+    required String pass,
+    String? key,
+  }) async {
+    try {
+      final socket = await SSHSocket.connect(host, port, timeout: const Duration(seconds: 7));
+      final client = SSHClient(
+        socket,
+        username: user,
+        onPasswordRequest: () => pass,
+        identities: (key != null && key.isNotEmpty) ? SSHKeyPair.fromPem(key) : null,
+      );
+      await client.authenticated;
+      final res = await client.run("systemctl is-active multi-ip-socks5.service 2>/dev/null").timeout(const Duration(seconds: 6));
+      client.close();
+      final status = utf8.decode(res).trim();
+      return status == 'active';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Bật / Tắt dịch vụ multi-ip-socks5.service trên máy chủ
+  Future<bool> toggleMultiIpSocks5Service({
+    required String host,
+    required int port,
+    required String user,
+    required String pass,
+    required bool enable,
+    String? key,
+  }) async {
+    try {
+      final socket = await SSHSocket.connect(host, port, timeout: const Duration(seconds: 8));
+      final client = SSHClient(
+        socket,
+        username: user,
+        onPasswordRequest: () => pass,
+        identities: (key != null && key.isNotEmpty) ? SSHKeyPair.fromPem(key) : null,
+      );
+      await client.authenticated;
+
+      if (enable) {
+        // Nếu enable, đảm bảo script và file unit đã tồn tại, sau đó enable và start
+        const installCmd = '''
+if [ ! -f /usr/local/bin/multi_ip_socks5.py ]; then
+cat << 'EOF' > /usr/local/bin/multi_ip_socks5.py
+#!/usr/bin/env python3
+import asyncio
+import struct
+import socket
+import sys
+
+def get_all_ips():
+    import subprocess
+    cmd = "ip -4 -o addr show scope global 2>/dev/null | awk '{print \$4}' | cut -d/ -f1"
+    out = subprocess.check_output(cmd, shell=True).decode()
+    return [line.strip() for line in out.splitlines() if line.strip()]
+
+async def handle_socks5(reader, writer, bind_ip):
+    try:
+        ver, nmethods = await reader.readexactly(2)
+        methods = await reader.readexactly(nmethods)
+        writer.write(bytes([0x05, 0x00]))
+        await writer.drain()
+
+        ver, cmd, rsv, atyp = await reader.readexactly(4)
+        if cmd != 1:
+            writer.close()
+            return
+
+        if atyp == 1:
+            dst_ip = socket.inet_ntoa(await reader.readexactly(4))
+        elif atyp == 3:
+            domain_len = (await reader.readexactly(1))[0]
+            dst_ip = (await reader.readexactly(domain_len)).decode()
+        elif atyp == 4:
+            dst_ip = socket.inet_ntop(socket.AF_INET6, await reader.readexactly(16))
+        else:
+            writer.close()
+            return
+        dst_port = struct.unpack('>H', await reader.readexactly(2))[0]
+
+        try:
+            remote_reader, remote_writer = await asyncio.wait_for(
+                asyncio.open_connection(dst_ip, dst_port, local_addr=(bind_ip, 0)),
+                timeout=15
+            )
+        except Exception:
+            writer.write(bytes([0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
+            await writer.drain()
+            writer.close()
+            return
+
+        bind_addr = remote_writer.get_extra_info('sockname')
+        bind_ip_raw = socket.inet_aton(bind_addr[0])
+        bind_port_raw = struct.pack('>H', bind_addr[1])
+        writer.write(bytes([0x05, 0x00, 0x00, 0x01]) + bind_ip_raw + bind_port_raw)
+        await writer.drain()
+
+        async def forward(src, dst):
+            try:
+                while True:
+                    data = await src.read(65536)
+                    if not data:
+                        break
+                    dst.write(data)
+                    await dst.drain()
+            except Exception:
+                pass
+            finally:
+                try:
+                    dst.close()
+                except Exception:
+                    pass
+
+        await asyncio.gather(forward(reader, remote_writer), forward(remote_reader, writer))
+    except Exception:
+        pass
+    finally:
+        try:
+            writer.close()
+        except Exception:
+            pass
+
+def ip_to_port(ip):
+    parts = [int(p) for p in ip.split('.')]
+    return 20000 + (parts[2] * 256 + parts[3]) % 10000
+
+async def main():
+    ips = get_all_ips()
+    servers = []
+    for ip in ips:
+        port = ip_to_port(ip)
+        srv = await asyncio.start_server(
+            lambda r, w, target_ip=ip: handle_socks5(r, w, target_ip),
+            '127.0.0.1',
+            port
+        )
+        servers.append(srv)
+    await asyncio.gather(*(srv.serve_forever() for srv in servers))
+
+if __name__ == '__main__':
+    asyncio.run(main())
+EOF
+chmod +x /usr/local/bin/multi_ip_socks5.py
+fi
+
+if [ ! -f /etc/systemd/system/multi-ip-socks5.service ]; then
+cat << 'EOF' > /etc/systemd/system/multi-ip-socks5.service
+[Unit]
+Description=Multi-IP SOCKS5 Proxy Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/multi_ip_socks5.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+fi
+systemctl enable --now multi-ip-socks5.service
+''';
+        await client.run(installCmd).timeout(const Duration(seconds: 15));
+      } else {
+        // Tắt và vô hiệu hóa service
+        await client.run("systemctl stop multi-ip-socks5.service; systemctl disable multi-ip-socks5.service").timeout(const Duration(seconds: 10));
+      }
+
+      // Kiểm tra lại trạng thái sau khi thao tác
+      final checkRes = await client.run("systemctl is-active multi-ip-socks5.service 2>/dev/null").timeout(const Duration(seconds: 5));
+      client.close();
+      final status = utf8.decode(checkRes).trim();
+      return enable ? (status == 'active') : (status != 'active');
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<List<String>> getServerIps({
     String? host,
     int? port,

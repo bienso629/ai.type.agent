@@ -84,9 +84,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) {
         bool isTesting = false;
+        bool isServiceActive = false;
+        bool isOperatingService = false;
+        bool isCheckingStatus = existing != null && existing.serverIp.isNotEmpty;
+        bool hasCheckedService = false;
 
         return StatefulBuilder(
           builder: (context, setModalState) {
+            // Tự động kiểm tra trạng thái service khi mở modal chỉnh sửa máy chủ
+            if (isCheckingStatus && !hasCheckedService && existing != null && existing.serverIp.isNotEmpty) {
+              Future.microtask(() async {
+                try {
+                  final active = await NativeSshService().getMultiIpSocks5Status(
+                    host: existing.serverIp,
+                    port: existing.sshPort,
+                    user: existing.sshUser.isEmpty ? 'root' : existing.sshUser,
+                    pass: existing.sshPass,
+                  );
+                  if (ctx.mounted) {
+                    setModalState(() {
+                      isServiceActive = active;
+                      hasCheckedService = true;
+                      isCheckingStatus = false;
+                    });
+                  }
+                } catch (_) {
+                  if (ctx.mounted) {
+                    setModalState(() {
+                      hasCheckedService = true;
+                      isCheckingStatus = false;
+                    });
+                  }
+                }
+              });
+            }
+
             return TaduDialog(
               minWidth: 540,
               maxWidth: 640,
@@ -145,8 +177,227 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
                     ),
                   ),
-                ],
-              ),
+                  const SizedBox(height: 16),
+                  // KHỐI QUẢN LÝ SERVICE MULTI-IP SOCKS5
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.sidebarBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderDark),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.hub_rounded, size: 16, color: AppColors.primaryLight),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Dịch Vụ Multi-IP SOCKS5 (Alias Routing)',
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            ),
+                            const Spacer(),
+                            if (isCheckingStatus)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: AppColors.primary.withValues(alpha: 0.4),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 10,
+                                      height: 10,
+                                      child: CircularProgressIndicator(strokeWidth: 1.2, color: AppColors.primaryLight),
+                                    ),
+                                    SizedBox(width: 5),
+                                    Text(
+                                      'Đang kiểm tra...',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primaryLight,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else if (hasCheckedService)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isServiceActive
+                                      ? AppColors.accent.withValues(alpha: 0.15)
+                                      : AppColors.danger.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isServiceActive
+                                        ? AppColors.accent.withValues(alpha: 0.4)
+                                        : AppColors.danger.withValues(alpha: 0.4),
+                                  ),
+                                ),
+                                child: Text(
+                                  isServiceActive ? 'Đang chạy' : 'Đang tắt',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isServiceActive ? AppColors.accent : AppColors.danger,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Kích hoạt service systemd "multi-ip-socks5.service" trên VPS để trình duyệt nhận đúng IP Alias khi mở.',
+                              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                // Nút Bật / Tắt Service
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: isServiceActive ? AppColors.danger : AppColors.primary,
+                                    foregroundColor: isServiceActive ? Colors.white : const Color(0xFF070B14),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                  ),
+                                  icon: isOperatingService
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                                        )
+                                      : Icon(
+                                          isServiceActive ? Icons.stop_circle_outlined : Icons.play_circle_fill_rounded,
+                                          size: 15,
+                                        ),
+                                  label: Text(
+                                    isOperatingService
+                                        ? 'Đang xử lý...'
+                                        : (isServiceActive ? 'Tắt Service (Disable)' : 'Bật Service (Enable)'),
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  onPressed: isOperatingService
+                                      ? null
+                                      : () async {
+                                          final host = ipCtrl.text.trim();
+                                          if (host.isEmpty) {
+                                            AppToast.error(ctx, 'Vui lòng nhập IP máy chủ!');
+                                            return;
+                                          }
+                                          setModalState(() {
+                                            isOperatingService = true;
+                                          });
+                                          try {
+                                            final ssh = NativeSshService();
+                                            final targetEnable = !isServiceActive;
+                                            final ok = await ssh.toggleMultiIpSocks5Service(
+                                              host: host,
+                                              port: int.tryParse(portCtrl.text.trim()) ?? 22,
+                                              user: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
+                                              pass: passCtrl.text.trim(),
+                                              enable: targetEnable,
+                                            );
+                                            if (ctx.mounted) {
+                                              if (ok) {
+                                                setModalState(() {
+                                                  isServiceActive = targetEnable;
+                                                  hasCheckedService = true;
+                                                });
+                                                AppToast.success(
+                                                  ctx,
+                                                  targetEnable
+                                                      ? 'Đã bật multi-ip-socks5.service thành công!'
+                                                      : 'Đã tắt multi-ip-socks5.service thành công!',
+                                                );
+                                              } else {
+                                                AppToast.error(ctx, 'Thao tác service thất bại! Kiểm tra SSH.');
+                                              }
+                                            }
+                                          } catch (e) {
+                                            if (ctx.mounted) {
+                                              AppToast.error(ctx, 'Lỗi: $e');
+                                            }
+                                          } finally {
+                                            if (ctx.mounted) {
+                                              setModalState(() {
+                                                isOperatingService = false;
+                                              });
+                                            }
+                                          }
+                                        },
+                                ),
+                                const SizedBox(width: 8),
+                                // Nút Kiểm tra trạng thái
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppColors.textWhite,
+                                    side: const BorderSide(color: AppColors.borderDark),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                  ),
+                                  icon: const Icon(Icons.refresh_rounded, size: 14, color: AppColors.textDim),
+                                  label: const Text('Kiểm tra trạng thái', style: TextStyle(fontSize: 11.5)),
+                                  onPressed: isOperatingService
+                                      ? null
+                                      : () async {
+                                          final host = ipCtrl.text.trim();
+                                          if (host.isEmpty) {
+                                            AppToast.error(ctx, 'Vui lòng nhập IP máy chủ!');
+                                            return;
+                                          }
+                                          setModalState(() {
+                                            isOperatingService = true;
+                                          });
+                                          try {
+                                            final ssh = NativeSshService();
+                                            final active = await ssh.getMultiIpSocks5Status(
+                                              host: host,
+                                              port: int.tryParse(portCtrl.text.trim()) ?? 22,
+                                              user: userCtrl.text.trim().isEmpty ? 'root' : userCtrl.text.trim(),
+                                              pass: passCtrl.text.trim(),
+                                            );
+                                            if (ctx.mounted) {
+                                              setModalState(() {
+                                                isServiceActive = active;
+                                                hasCheckedService = true;
+                                              });
+                                              AppToast.info(
+                                                ctx,
+                                                active
+                                                    ? 'Dịch vụ multi-ip-socks5 đang HOẠT ĐỘNG (Active)'
+                                                    : 'Dịch vụ multi-ip-socks5 ĐANG TẮT (Inactive)',
+                                              );
+                                            }
+                                          } catch (e) {
+                                            if (ctx.mounted) {
+                                              AppToast.error(ctx, 'Lỗi: $e');
+                                            }
+                                          } finally {
+                                            if (ctx.mounted) {
+                                              setModalState(() {
+                                                isOperatingService = false;
+                                              });
+                                            }
+                                          }
+                                        },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
               leadingActions: [
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
@@ -400,7 +651,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                         maxCrossAxisExtent: 460,
-                        mainAxisExtent: 195,
+                        mainAxisExtent: 125,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
                       ),
@@ -409,8 +660,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final s = serverProvider.servers[idx];
                         final isSelected = serverProvider.selectedServer != null &&
                             (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
-                        final ips = serverProvider.getIpsForServer(s);
-                        final isLoadingIps = serverProvider.isLoadingIps(s.id);
 
                         return Container(
                           padding: const EdgeInsets.all(12),
@@ -469,76 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
                               ),
 
-                              // Hàng 3: Danh sách IP trỏ vào (IP Contact Grid/Badges)
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.hub_outlined, size: 12, color: AppColors.accentCyan),
-                                      const SizedBox(width: 4),
-                                      const Text(
-                                        'IP trỏ vào:',
-                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textDim),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      if (isLoadingIps)
-                                        const SizedBox(
-                                          width: 10,
-                                          height: 10,
-                                          child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
-                                        )
-                                      else
-                                        InkWell(
-                                          onTap: () => serverProvider.fetchIpsForServer(s, force: true),
-                                          child: const Padding(
-                                            padding: EdgeInsets.symmetric(horizontal: 2),
-                                            child: Icon(Icons.refresh_rounded, size: 12, color: AppColors.textMuted),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: ips.map((ip) {
-                                      final isMain = ip == s.serverIp;
-                                      return Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: isMain
-                                              ? AppColors.primary.withValues(alpha: 0.15)
-                                              : AppColors.sidebarBg,
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: isMain
-                                                ? AppColors.primary.withValues(alpha: 0.4)
-                                                : AppColors.borderDark,
-                                            width: 0.8,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              ip,
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontFamily: 'monospace',
-                                                fontWeight: isMain ? FontWeight.bold : FontWeight.w500,
-                                                color: isMain ? AppColors.primaryLight : AppColors.textWhite,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ],
-                              ),
-
-                              // Hàng 4: Actions (Chọn server, Sửa, Xóa)
+                              // Hàng 3: Actions (Chọn server, Sửa, Xóa)
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [

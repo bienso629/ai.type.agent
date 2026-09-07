@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw } from 'lucide-react'
+import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw, X } from 'lucide-react'
 
 export function UserProfileModal({
   isOpen,
@@ -59,10 +59,12 @@ export function UserProfileModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer shrink-0"
+            aria-label="Đóng"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
 
