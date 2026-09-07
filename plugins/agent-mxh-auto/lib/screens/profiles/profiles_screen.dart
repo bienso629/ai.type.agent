@@ -17,6 +17,7 @@ class ProfilesScreen extends StatefulWidget {
 class _ProfilesScreenState extends State<ProfilesScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   final Set<String> _openingIps = {};
+  final Set<String> _closingIps = {};
   final Socks5ProxyService _socks5Service = Socks5ProxyService();
 
   @override
@@ -235,7 +236,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           crossAxisCount: crossAxisCount,
                           crossAxisSpacing: 14,
                           mainAxisSpacing: 14,
-                          mainAxisExtent: 185,
+                          mainAxisExtent: 190,
                         ),
                         itemCount: allIpCards.length,
                         itemBuilder: (context, idx) {
@@ -253,20 +254,60 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   // Khung danh thiếp Contact Card cho từng IP
   Widget _buildContactCard(_ContactIpItem item) {
+    final socks5 = context.watch<Socks5ProxyService>();
+    final isBrowserRunning = socks5.isBrowserRunningForIp(item.ip);
+    final isAlias = !item.isMain;
+
+    // Phối màu đặc sắc theo yêu cầu:
+    // Nếu là ALIAS IP và ĐANG MỞ TRÌNH DUYỆT -> Màu Xanh Ngọc Cyber (Emerald/Cyan), viền sáng, huy hiệu Đang duyệt web
+    // Nếu là IP GỐC và ĐANG MỞ TRÌNH DUYỆT -> Màu Vàng Hổ Phách Amber
+    // Nếu chưa mở trình duyệt -> Màu Slate tối mặc định
+    final Color cardBorderColor;
+    final Color cardBgColor;
+    final Color badgeBgColor;
+    final Color badgeTextColor;
+    final String statusText;
+    final Color statusDotColor;
+
+    if (isBrowserRunning) {
+      if (isAlias) {
+        cardBorderColor = AppColors.accent; // Xanh ngọc nổi bật cho Alias đang mở
+        cardBgColor = const Color(0xFF091E1A);
+        badgeBgColor = AppColors.accent.withValues(alpha: 0.2);
+        badgeTextColor = AppColors.accent;
+        statusText = 'Trình duyệt đang mở (Active)';
+        statusDotColor = AppColors.accent;
+      } else {
+        cardBorderColor = AppColors.primaryLight;
+        cardBgColor = const Color(0xFF1C1908);
+        badgeBgColor = AppColors.primary.withValues(alpha: 0.2);
+        badgeTextColor = AppColors.primaryLight;
+        statusText = 'Trình duyệt đang mở (Active)';
+        statusDotColor = AppColors.primaryLight;
+      }
+    } else {
+      cardBorderColor = item.isCurrentServer ? AppColors.primary.withValues(alpha: 0.4) : AppColors.borderDark;
+      cardBgColor = AppColors.cardBg;
+      badgeBgColor = item.isMain ? AppColors.accent.withValues(alpha: 0.12) : AppColors.sidebarBg;
+      badgeTextColor = item.isMain ? AppColors.accent : AppColors.textDim;
+      statusText = isAlias ? 'Sẵn sàng kết nối Alias' : 'Sẵn sàng kết nối';
+      statusDotColor = item.isMain ? AppColors.accent : AppColors.textDim;
+    }
+
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: cardBgColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: item.isCurrentServer
-              ? AppColors.primary.withValues(alpha: 0.6)
-              : AppColors.borderDark,
-          width: item.isCurrentServer ? 1.4 : 1,
+          color: cardBorderColor,
+          width: isBrowserRunning ? 1.8 : (item.isCurrentServer ? 1.3 : 1),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 6,
+            color: isBrowserRunning
+                ? (isAlias ? AppColors.accent.withValues(alpha: 0.2) : AppColors.primary.withValues(alpha: 0.2))
+                : Colors.black.withValues(alpha: 0.2),
+            blurRadius: isBrowserRunning ? 10 : 6,
             offset: const Offset(0, 3),
           ),
         ],
@@ -274,22 +315,24 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header Card (Tên máy chủ + Trạng thái)
+          // Header Card (Tên máy chủ + Trạng thái Loại IP)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: item.isCurrentServer
-                  ? AppColors.primary.withValues(alpha: 0.12)
-                  : AppColors.sidebarBg,
+              color: isBrowserRunning
+                  ? (isAlias ? const Color(0xFF0B2923) : const Color(0xFF26200A))
+                  : (item.isCurrentServer ? AppColors.primary.withValues(alpha: 0.12) : AppColors.sidebarBg),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
-              border: const Border(bottom: BorderSide(color: AppColors.borderDark, width: 0.8)),
+              border: Border(bottom: BorderSide(color: isBrowserRunning ? cardBorderColor.withValues(alpha: 0.4) : AppColors.borderDark, width: 0.8)),
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.dns_rounded,
                   size: 16,
-                  color: item.isCurrentServer ? AppColors.primaryLight : AppColors.textDim,
+                  color: isBrowserRunning
+                      ? (isAlias ? AppColors.accent : AppColors.primaryLight)
+                      : (item.isCurrentServer ? AppColors.primaryLight : AppColors.textDim),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -300,21 +343,19 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.bold,
-                      color: item.isCurrentServer ? AppColors.primaryLight : AppColors.textWhite,
+                      color: isBrowserRunning
+                          ? (isAlias ? AppColors.accent : AppColors.primaryLight)
+                          : (item.isCurrentServer ? AppColors.primaryLight : AppColors.textWhite),
                     ),
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: item.isMain
-                        ? AppColors.accent.withValues(alpha: 0.15)
-                        : AppColors.cardBg,
+                    color: badgeBgColor,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: item.isMain
-                          ? AppColors.accent.withValues(alpha: 0.4)
-                          : AppColors.borderDark,
+                      color: isBrowserRunning ? cardBorderColor.withValues(alpha: 0.5) : AppColors.borderDark,
                     ),
                   ),
                   child: Text(
@@ -322,7 +363,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     style: TextStyle(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w700,
-                      color: item.isMain ? AppColors.accent : AppColors.textDim,
+                      color: badgeTextColor,
                     ),
                   ),
                 ),
@@ -342,17 +383,23 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: AppColors.inputBg,
+                      color: isBrowserRunning
+                          ? (isAlias ? AppColors.accent.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15))
+                          : AppColors.inputBg,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: item.isMain ? AppColors.accent.withValues(alpha: 0.5) : AppColors.borderDark,
+                        color: isBrowserRunning
+                            ? cardBorderColor
+                            : (item.isMain ? AppColors.accent.withValues(alpha: 0.5) : AppColors.borderDark),
                         width: 1.2,
                       ),
                     ),
                     child: Center(
                       child: Icon(
-                        Icons.fingerprint_rounded,
-                        color: item.isMain ? AppColors.accent : AppColors.primaryLight,
+                        isBrowserRunning ? Icons.language_rounded : Icons.fingerprint_rounded,
+                        color: isBrowserRunning
+                            ? (isAlias ? AppColors.accent : AppColors.primaryLight)
+                            : (item.isMain ? AppColors.accent : AppColors.primaryLight),
                         size: 24,
                       ),
                     ),
@@ -373,11 +420,13 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             children: [
                               Text(
                                 item.ip,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                   fontFamily: 'monospace',
-                                  color: AppColors.textWhite,
+                                  color: isBrowserRunning
+                                      ? (isAlias ? AppColors.accent : AppColors.primaryLight)
+                                      : AppColors.textWhite,
                                 ),
                               ),
                               const SizedBox(width: 6),
@@ -389,17 +438,34 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         Row(
                           children: [
                             Container(
-                              width: 6,
-                              height: 6,
-                              decoration: const BoxDecoration(
-                                color: AppColors.accent,
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: statusDotColor,
                                 shape: BoxShape.circle,
+                                boxShadow: isBrowserRunning
+                                    ? [
+                                        BoxShadow(
+                                          color: statusDotColor.withValues(alpha: 0.8),
+                                          blurRadius: 4,
+                                          spreadRadius: 1,
+                                        ),
+                                      ]
+                                    : null,
                               ),
                             ),
-                            const SizedBox(width: 5),
-                            const Text(
-                              'Đang kết nối định tuyến',
-                              style: TextStyle(fontSize: 10.5, color: AppColors.accent),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                statusText,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: isBrowserRunning ? FontWeight.w600 : FontWeight.normal,
+                                  color: statusDotColor,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -414,71 +480,118 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
           // Footer Action Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: const BoxDecoration(
-              color: AppColors.sidebarBg,
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(9)),
-              border: Border(top: BorderSide(color: AppColors.borderDark, width: 0.8)),
+            decoration: BoxDecoration(
+              color: isBrowserRunning
+                  ? (isAlias ? const Color(0xFF09211C) : const Color(0xFF211D09))
+                  : AppColors.sidebarBg,
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(9)),
+              border: Border(top: BorderSide(color: isBrowserRunning ? cardBorderColor.withValues(alpha: 0.3) : AppColors.borderDark, width: 0.8)),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Builder(
-                    builder: (context) {
-                      final isOpening = _openingIps.contains(item.ip);
-                      return ElevatedButton.icon(
-                        onPressed: isOpening
-                            ? null
-                            : () async {
-                                setState(() {
-                                  _openingIps.add(item.ip);
-                                });
-                                AppToast.info(context, 'Đang thiết lập SOCKS5 và mở trình duyệt cho ${item.ip}...');
-                                try {
-                                  await _socks5Service.launchBrowserWithSocks5(
-                                    server: item.server,
-                                    ip: item.ip,
-                                  );
-                                  if (context.mounted) {
-                                    AppToast.success(context, 'Đã mở trình duyệt kết nối SOCKS5 qua ${item.ip}!');
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    AppToast.error(context, 'Lỗi mở trình duyệt: $e');
-                                  }
-                                } finally {
-                                  if (mounted) {
-                                    setState(() {
-                                      _openingIps.remove(item.ip);
-                                    });
-                                  }
-                                }
-                              },
-                        icon: isOpening
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
-                              )
-                            : const Icon(Icons.open_in_browser_rounded, size: 16),
-                        label: Text(
-                          isOpening ? 'Đang mở trình duyệt...' : 'Mở trình duyệt',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: const Color(0xFF070B14),
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                        ),
-                      );
-                    },
+            child: () {
+              final isOpening = _openingIps.contains(item.ip);
+              final isClosing = _closingIps.contains(item.ip);
+              final isBusy = isOpening || isClosing;
+
+              if (isBrowserRunning) {
+                // Đang mở trình duyệt -> Duy nhất 1 nút "Đóng trình duyệt" (màu đỏ)
+                return ElevatedButton.icon(
+                  onPressed: isBusy
+                      ? null
+                      : () async {
+                          setState(() {
+                            _closingIps.add(item.ip);
+                          });
+                          try {
+                            await _socks5Service.stopSession(item.ip);
+                            if (mounted) {
+                              AppToast.info(context, 'Đã đóng trình duyệt cho ${item.ip}');
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              AppToast.error(context, 'Lỗi khi đóng trình duyệt: $e');
+                            }
+                          } finally {
+                            if (mounted) {
+                              setState(() {
+                                _closingIps.remove(item.ip);
+                              });
+                            }
+                          }
+                        },
+                  icon: isClosing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                        )
+                      : const Icon(Icons.close_rounded, size: 16),
+                  label: Text(
+                    isClosing ? 'Đang đóng trình duyệt...' : 'Đóng trình duyệt',
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                );
+              }
+
+              // Chưa mở trình duyệt -> Duy nhất 1 nút "Mở trình duyệt"
+              return ElevatedButton.icon(
+                onPressed: isBusy
+                    ? null
+                    : () async {
+                        setState(() {
+                          _openingIps.add(item.ip);
+                        });
+                        AppToast.info(context, 'Đang thiết lập SOCKS5 và mở trình duyệt cho ${item.ip}...');
+                        try {
+                          await _socks5Service.launchBrowserWithSocks5(
+                            server: item.server,
+                            ip: item.ip,
+                          );
+                          if (mounted) {
+                            AppToast.success(context, 'Đã mở trình duyệt qua ${item.ip}');
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            AppToast.error(context, 'Lỗi mở trình duyệt: $e');
+                          }
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              _openingIps.remove(item.ip);
+                            });
+                          }
+                        }
+                      },
+                icon: isOpening
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
+                      )
+                    : const Icon(Icons.open_in_browser_rounded, size: 16),
+                label: Text(
+                  isOpening ? 'Đang mở trình duyệt...' : 'Mở trình duyệt',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: const Color(0xFF070B14),
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
                   ),
                 ),
-              ],
-            ),
+              );
+            }(),
           ),
         ],
       ),

@@ -484,13 +484,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       apiPort: existing?.apiPort ?? 8000,
                       isSelected: existing?.isSelected ?? false,
                     );
+                    final srvProvider = context.read<ServerProvider>();
+                    final rootCtx = context;
                     Navigator.pop(ctx);
-                    final ok = await context.read<ServerProvider>().addOrUpdateServer(newServer);
-                    if (mounted) {
+                    final ok = await srvProvider.addOrUpdateServer(newServer);
+                    if (rootCtx.mounted) {
                       if (ok) {
-                        AppToast.success(context, 'Đã lưu thông tin máy chủ!');
+                        AppToast.success(rootCtx, 'Đã lưu thông tin máy chủ!');
                       } else {
-                        AppToast.error(context, 'Lưu thông tin máy chủ thất bại');
+                        AppToast.error(rootCtx, 'Lưu thông tin máy chủ thất bại');
                       }
                     }
                   },

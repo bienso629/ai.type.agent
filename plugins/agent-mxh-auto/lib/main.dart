@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'core/services/database_service.dart';
 import 'core/services/local_config_service.dart';
+import 'core/services/socks5_proxy_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
@@ -52,6 +53,7 @@ class TaduCloudAiAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MetricsProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider.value(value: Socks5ProxyService()),
       ],
       child: MaterialApp(
         title: 'Phần mềm AI quản lý MXH tự động',

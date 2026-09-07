@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import '../../models/server_model.dart';
 
 class Socks5Session {
@@ -33,16 +34,92 @@ class Socks5Session {
   }
 }
 
-class Socks5ProxyService {
+class Socks5ProxyService extends ChangeNotifier {
   static final Socks5ProxyService _instance = Socks5ProxyService._internal();
   factory Socks5ProxyService() => _instance;
-  Socks5ProxyService._internal();
+  Timer? _watchdogTimer;
+
+  Socks5ProxyService._internal() {
+    _startWatchdog();
+  }
+
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    // Quét định kỳ mỗi 1.5 giây để phát hiện ngay khi trình duyệt bị tắt bằng tay (tắt cứng)
+    _watchdogTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+      _checkTerminatedBrowsers();
+    });
+  }
+
+  /// Kiểm tra các session đang ghi nhận, nếu trình duyệt của session không còn tiến trình nào chạy thì dọn dẹp
+  void _checkTerminatedBrowsers() {
+    if (_activeSessions.isEmpty) return;
+    final deadIps = <String>[];
+    for (final entry in _activeSessions.entries) {
+      final ip = entry.key;
+      // Kiểm tra thực tế trên hệ thống xem profile IP này còn tiến trình nào không
+      if (!_isSystemProcessAliveForIp(ip)) {
+        deadIps.add(ip);
+      }
+    }
+
+    if (deadIps.isNotEmpty) {
+      for (final ip in deadIps) {
+        final session = _activeSessions.remove(ip);
+        session?.stop();
+      }
+      notifyListeners();
+    }
+  }
 
   final Map<String, Socks5Session> _activeSessions = {};
 
   bool isIpRunning(String ip) => _activeSessions.containsKey(ip);
 
   Socks5Session? getSession(String ip) => _activeSessions[ip];
+
+  /// Quét xem trên hệ thống OS có tiến trình trình duyệt nào đang chạy profile của IP này không
+  bool _isSystemProcessAliveForIp(String ip) {
+    try {
+      final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final needle = 'browser_profiles/ip_$sanitizedIp';
+      final procDir = Directory('/proc');
+      if (procDir.existsSync()) {
+        final myPid = pid;
+        for (final entity in procDir.listSync(followLinks: false)) {
+          final baseName = entity.path.split('/').last;
+          final p = int.tryParse(baseName);
+          if (p == null || p == myPid) continue;
+          try {
+            final cmdFile = File('${entity.path}/cmdline');
+            if (cmdFile.existsSync()) {
+              final bytes = cmdFile.readAsBytesSync();
+              final cmd = String.fromCharCodes(bytes);
+              if (cmd.contains(needle) && !cmd.contains('python') && !cmd.contains('pgrep')) {
+                return true;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Kiểm tra xem trình duyệt gắn với IP này có đang mở hay không
+  bool isBrowserRunningForIp(String ip) {
+    if (_activeSessions.containsKey(ip)) {
+      if (_isSystemProcessAliveForIp(ip)) {
+        return true;
+      } else {
+        // Tiến trình trình duyệt đã tắt cứng, dọn dẹp session
+        final session = _activeSessions.remove(ip);
+        session?.stop();
+        return false;
+      }
+    }
+    return _isSystemProcessAliveForIp(ip);
+  }
 
   /// Khởi tạo Dynamic SOCKS5 Proxy thông qua OpenSSH native tunnel (-D)
   /// Đảm bảo hỗ trợ hoàn hảo cả TCP lẫn phân giải tên miền (DNS remote)
@@ -149,6 +226,7 @@ class Socks5ProxyService {
         } catch (_) {}
       }
       _activeSessions.remove(ip);
+      notifyListeners();
     });
 
     // 5. Chờ socket SOCKS5 sẵn sàng chấp nhận kết nối (tối đa 15 giây do SSH GSSAPI/Kerberos có thể trễ vài giây)
@@ -182,6 +260,7 @@ class Socks5ProxyService {
     );
 
     _activeSessions[ip] = session;
+    notifyListeners();
     return session;
   }
 
@@ -257,16 +336,39 @@ class Socks5ProxyService {
         mode: ProcessStartMode.detached,
       );
       session.browserProcess = proc;
+      notifyListeners();
       return true;
     } catch (e) {
       throw Exception('Lỗi khi mở trình duyệt: $e');
     }
   }
 
+  /// Đóng trình duyệt và dừng toàn bộ kết nối SOCKS5 của IP
   Future<void> stopSession(String ip) async {
     final session = _activeSessions.remove(ip);
     if (session != null) {
       await session.stop();
     }
+    // Dừng triệt để các tiến trình trình duyệt gắn với profile của IP này nếu còn chạy ngầm
+    try {
+      final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Đóng riêng trình duyệt của IP mà không làm mất hầm SOCKS5 nếu muốn
+  Future<void> closeBrowserForIp(String ip) async {
+    final session = _activeSessions[ip];
+    if (session?.browserProcess != null) {
+      try {
+        session!.browserProcess!.kill();
+      } catch (_) {}
+    }
+    try {
+      final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
+    } catch (_) {}
+    notifyListeners();
   }
 }
