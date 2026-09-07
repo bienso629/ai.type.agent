@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
+import '../../models/persona_profile_model.dart';
 import 'encryption_service.dart';
 import 'storage_service.dart';
 
@@ -77,8 +78,32 @@ class DatabaseService {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS persona_profiles (
+            ip TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            age INTEGER DEFAULT 25,
+            gender TEXT DEFAULT 'Nam',
+            bio TEXT,
+            avatar_prompt TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        ''');
       },
     );
+
+    // Đảm bảo bảng persona_profiles tồn tại nếu DB đã tạo từ trước
+    await _db!.execute('''
+      CREATE TABLE IF NOT EXISTS persona_profiles (
+        ip TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        age INTEGER DEFAULT 25,
+        gender TEXT DEFAULT 'Nam',
+        bio TEXT,
+        avatar_prompt TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
   }
 
   Future<String> _resolveDbPath({String? userKey}) async {
@@ -462,4 +487,80 @@ class DatabaseService {
       return false;
     }
   }
+
+  // ================= PERSONA PROFILES CRUD =================
+
+  /// Lấy toàn bộ danh sách nhân vật đã lưu trong database local
+  Future<Map<String, PersonaProfile>> getPersonaProfiles() async {
+    try {
+      final db = await _getDb();
+      final rows = await db.query('persona_profiles');
+      final result = <String, PersonaProfile>{};
+      for (final r in rows) {
+        final ip = r['ip']?.toString() ?? '';
+        if (ip.isNotEmpty) {
+          result[ip] = PersonaProfile(
+            ip: ip,
+            name: _enc.decryptValue(r['name']?.toString() ?? ''),
+            age: (r['age'] is num) ? (r['age'] as num).toInt() : 25,
+            gender: r['gender']?.toString() ?? 'Nam',
+            bio: _enc.decryptValue(r['bio']?.toString() ?? ''),
+            avatarPrompt: _enc.decryptValue(r['avatar_prompt']?.toString() ?? ''),
+          );
+        }
+      }
+      return result;
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /// Thêm mới hoặc cập nhật thông tin nhân vật cho 1 IP
+  Future<bool> upsertPersonaProfile(PersonaProfile profile) async {
+    try {
+      final db = await _getDb();
+      final row = {
+        'ip': profile.ip,
+        'name': _enc.encryptValue(profile.name),
+        'age': profile.age,
+        'gender': profile.gender,
+        'bio': _enc.encryptValue(profile.bio),
+        'avatar_prompt': _enc.encryptValue(profile.avatarPrompt),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      await db.insert(
+        'persona_profiles',
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Cập nhật hàng loạt danh sách nhân vật vào database local
+  Future<void> batchUpsertPersonaProfiles(List<PersonaProfile> profiles) async {
+    try {
+      final db = await _getDb();
+      final batch = db.batch();
+      for (final p in profiles) {
+        batch.insert(
+          'persona_profiles',
+          {
+            'ip': p.ip,
+            'name': _enc.encryptValue(p.name),
+            'age': p.age,
+            'gender': p.gender,
+            'bio': _enc.encryptValue(p.bio),
+            'avatar_prompt': _enc.encryptValue(p.avatarPrompt),
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    } catch (_) {}
+  }
 }
+

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import '../../models/persona_profile_model.dart';
+import 'database_service.dart';
 import 'local_config_service.dart';
 
 class PersonaService {
@@ -11,6 +12,7 @@ class PersonaService {
   PersonaService._internal();
 
   final LocalConfigService _configService = LocalConfigService();
+  final DatabaseService _dbService = DatabaseService();
   final Map<String, PersonaProfile> _cachedPersonas = {};
   bool _isLoaded = false;
 
@@ -25,11 +27,21 @@ class PersonaService {
     return p.join(dir, 'personas.json');
   }
 
+  /// Nạp danh sách nhân vật từ database local của app (fallback json nếu chưa có trong DB)
   Future<Map<String, PersonaProfile>> loadSavedPersonas() async {
     if (_isLoaded && _cachedPersonas.isNotEmpty) {
       return Map.unmodifiable(_cachedPersonas);
     }
 
+    try {
+      // 1. Thử tải từ database SQLite local
+      final dbPersonas = await _dbService.getPersonaProfiles();
+      if (dbPersonas.isNotEmpty) {
+        _cachedPersonas.addAll(dbPersonas);
+      }
+    } catch (_) {}
+
+    // 2. Đồng bộ thêm từ file JSON nếu database còn thiếu profile nào
     try {
       final file = File(_storageFilePath);
       if (await file.exists()) {
@@ -37,12 +49,19 @@ class PersonaService {
         if (content.trim().isNotEmpty) {
           final decoded = jsonDecode(content);
           if (decoded is Map<String, dynamic>) {
-            _cachedPersonas.clear();
+            final toInsertToDb = <PersonaProfile>[];
             decoded.forEach((ip, val) {
               if (val is Map<String, dynamic>) {
-                _cachedPersonas[ip] = PersonaProfile.fromJson(val);
+                final p = PersonaProfile.fromJson(val);
+                if (!_cachedPersonas.containsKey(ip)) {
+                  _cachedPersonas[ip] = p;
+                  toInsertToDb.add(p);
+                }
               }
             });
+            if (toInsertToDb.isNotEmpty) {
+              await _dbService.batchUpsertPersonaProfiles(toInsertToDb);
+            }
           }
         }
       }
@@ -52,8 +71,33 @@ class PersonaService {
     return Map.unmodifiable(_cachedPersonas);
   }
 
+  /// Lưu hoặc cập nhật một nhân vật đơn lẻ vào cả database local và file cache
+  Future<bool> updatePersona(PersonaProfile persona) async {
+    _cachedPersonas[persona.ip] = persona;
+    bool dbOk = false;
+    try {
+      dbOk = await _dbService.upsertPersonaProfile(persona);
+    } catch (_) {}
+
+    try {
+      final file = File(_storageFilePath);
+      final mapToSave = <String, dynamic>{};
+      _cachedPersonas.forEach((ip, profile) {
+        mapToSave[ip] = profile.toJson();
+      });
+      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(mapToSave));
+    } catch (_) {}
+
+    return dbOk;
+  }
+
+  /// Lưu danh sách nhân vật vào cả database SQLite local và file JSON
   Future<void> savePersonas(Map<String, PersonaProfile> personas) async {
     _cachedPersonas.addAll(personas);
+    try {
+      await _dbService.batchUpsertPersonaProfiles(personas.values.toList());
+    } catch (_) {}
+
     try {
       final file = File(_storageFilePath);
       final mapToSave = <String, dynamic>{};

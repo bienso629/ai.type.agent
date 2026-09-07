@@ -88,7 +88,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         // Build System Prompt
         String sysPrompt = systemPromptBase;
         if (workingDir != null && workingDir.isNotEmpty) {
-          sysPrompt += '\n\n🎯 THƯ MỤC LÀM VIỆC MỤC TIÊU: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
+          if (workingDir.startsWith('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH') || workingDir.contains('👤 Nhân vật:')) {
+            sysPrompt += '\n\n$workingDir\n\n🎯 QUY TẮC BẮT BUỘC: Bạn CHỈ ĐƯỢC THAO TÁC / ĐÓNG VAI / ĐIỀU KHIỂN CÁC NHÂN VẬT TRÊN ĐÚNG VỚI IP TƯƠNG ỨNG ĐÃ ĐƯỢC CẤP.';
+          } else {
+            sysPrompt += '\n\n🎯 PHẠM VI LÀM VIỆC MỤC TIÊU: `$workingDir`\nMọi tác vụ terminal/tài khoản phải tuân thủ phạm vi này.';
+          }
         }
 
         final messages = <Map<String, dynamic>>[

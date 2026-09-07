@@ -55,13 +55,15 @@ class TaduDialog extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  DefaultTextStyle(
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textWhite,
+                  Expanded(
+                    child: DefaultTextStyle(
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textWhite,
+                      ),
+                      child: title,
                     ),
-                    child: title,
                   ),
                   IconButton(
                     padding: EdgeInsets.zero,
