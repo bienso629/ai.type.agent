@@ -58,21 +58,16 @@ class LocalConfigService {
     final configFileName = key.isNotEmpty ? 'config_$key.json' : 'config.json';
 
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      final execDir = p.dirname(Platform.resolvedExecutable);
       final currentDir = Directory.current.path;
+      final appDataDir = p.join(Platform.environment['HOME'] ?? '', '.agent_chatbot_2026');
+      final dir = Directory(appDataDir);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+
       final candidates = [
         p.join(currentDir, configFileName),
-        p.join(currentDir, '..', configFileName),
-        p.join(currentDir, '..', '..', configFileName),
-        p.join(currentDir, '..', '..', '..', configFileName),
-        p.join(execDir, configFileName),
-        p.join(execDir, '..', configFileName),
-        p.join(execDir, '..', '..', configFileName),
-        p.join(execDir, '..', '..', '..', configFileName),
-        p.join(execDir, '..', '..', '..', '..', configFileName),
-        p.join(execDir, '..', '..', '..', '..', '..', configFileName),
-        '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/$configFileName',
-        p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', configFileName),
+        p.join(appDataDir, configFileName),
       ];
 
       for (final candidate in candidates) {
@@ -82,42 +77,9 @@ class LocalConfigService {
         }
       }
 
-      // If user-specific config does not exist yet, search for base config.json and seed/copy it
-      if (key.isNotEmpty) {
-        final fallbackCandidates = [
-          p.join(currentDir, 'config.json'),
-          p.join(currentDir, '..', 'config.json'),
-          p.join(currentDir, '..', '..', 'config.json'),
-          p.join(currentDir, '..', '..', '..', 'config.json'),
-          p.join(execDir, 'config.json'),
-          p.join(execDir, '..', 'config.json'),
-          p.join(execDir, '..', '..', 'config.json'),
-          p.join(execDir, '..', '..', '..', 'config.json'),
-          p.join(execDir, '..', '..', '..', '..', 'config.json'),
-          p.join(execDir, '..', '..', '..', '..', '..', 'config.json'),
-          '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/config.json',
-          p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', 'config.json'),
-        ];
-        for (final fallback in fallbackCandidates) {
-          if (File(fallback).existsSync()) {
-            final targetDir = p.dirname(fallback);
-            final newPath = p.join(targetDir, configFileName);
-            try {
-              File(fallback).copySync(newPath);
-              _resolvedConfigPath = p.normalize(newPath);
-              return _resolvedConfigPath!;
-            } catch (_) {
-              _resolvedConfigPath = p.normalize(fallback);
-              return _resolvedConfigPath!;
-            }
-          }
-        }
-      }
-
-      // If not found in candidates, create in current directory or user home
-      final defaultDesk = p.join(currentDir, configFileName);
-      _resolvedConfigPath = defaultDesk;
-      return defaultDesk;
+      final newCfgPath = p.join(appDataDir, configFileName);
+      _resolvedConfigPath = newCfgPath;
+      return newCfgPath;
     }
 
     try {

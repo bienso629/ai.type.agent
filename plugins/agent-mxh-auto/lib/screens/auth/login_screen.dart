@@ -525,7 +525,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             foregroundColor: _isSlideVerified ? const Color(0xFF070B14) : Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(4),
                             ),
                           ),
                           onPressed: auth.isLoading ? null : _handleLogin,

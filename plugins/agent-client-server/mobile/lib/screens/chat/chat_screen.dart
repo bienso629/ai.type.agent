@@ -962,7 +962,7 @@ class _ChatScreenState extends State<ChatScreen> {
         side: const BorderSide(color: AppColors.borderDark),
         backgroundColor: AppColors.inputBg,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
       ),
       icon: Icon(icon, size: 14, color: iconColor),
       label: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
@@ -1338,7 +1338,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: AppColors.borderDark),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
                       ),
                       icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
                       label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
@@ -1352,7 +1352,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
                       ),
                       icon: Icon(
                         Icons.attach_file_rounded,

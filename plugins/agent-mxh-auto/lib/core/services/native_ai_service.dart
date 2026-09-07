@@ -357,15 +357,18 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           createdAt: DateTime.now(),
         );
         await _dbService.insertMessage(assistantMsg);
-
         onDone(finalReply.isNotEmpty ? finalReply : 'Đã hoàn tất thao tác.');
       } catch (e) {
-        onError('Lỗi xử lý AI: $e');
+        if (!isCancelled) {
+          onError('Lỗi xử lý AI: $e');
+        }
       }
     }();
 
-    return controller.stream.listen((_) {}, onDone: () {
+    controller.onCancel = () {
       isCancelled = true;
-    });
+    };
+
+    return controller.stream.listen((_) {});
   }
 }

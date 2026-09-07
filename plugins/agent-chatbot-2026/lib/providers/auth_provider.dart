@@ -1,15 +1,14 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../core/services/database_service.dart';
 import '../core/services/local_config_service.dart';
 import '../core/services/storage_service.dart';
+import '../core/services/user_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
   final DatabaseService _db = DatabaseService();
   final LocalConfigService _localConfig = LocalConfigService();
-  final http.Client _client = http.Client();
+  final UserService _userService = UserService();
 
   bool _isLoading = false;
   bool _isCheckingAuth = true;
@@ -36,6 +35,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await _userService.init();
       final loggedIn = await _storage.isLoggedIn();
       if (loggedIn) {
         _isAuthenticated = true;
@@ -56,12 +56,75 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> register({
+    required String email,
+    required String password,
+    required String name,
+    bool rememberMe = true,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanPass = password;
+    final cleanName = name.trim();
+
+    if (cleanEmail.isEmpty || cleanPass.isEmpty) {
+      _errorMessage = 'Vui lòng nhập đầy đủ Email và Mật khẩu';
+      notifyListeners();
+      return false;
+    }
+
+    if (cleanPass.length < 6) {
+      _errorMessage = 'Mật khẩu phải từ 6 ký tự trở lên';
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final user = await _userService.register(
+        email: cleanEmail,
+        password: cleanPass,
+        name: cleanName,
+      );
+
+      final token = 'local_session_${DateTime.now().millisecondsSinceEpoch}_${user.id}';
+
+      await _storage.setRememberMe(rememberMe);
+      await _storage.setAuthToken(token);
+      await _storage.setUserEmail(user.email);
+      await _storage.setUserName(user.name);
+      await _storage.setLoggedIn(true);
+
+      _authToken = token;
+      _userEmail = user.email;
+      _userName = user.name;
+      _isAuthenticated = true;
+      _errorMessage = null;
+      _isLoading = false;
+
+      final userKey = StorageService.sanitizeUserKey(user.email);
+      await _db.switchUser(userKey);
+      await _localConfig.switchUser(userKey);
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _errorMessage = msg;
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> login({
     required String email,
     required String password,
     bool rememberMe = true,
   }) async {
-    final cleanEmail = email.trim();
+    final cleanEmail = email.trim().toLowerCase();
     final cleanPass = password;
 
     if (cleanEmail.isEmpty || cleanPass.isEmpty) {
@@ -75,107 +138,41 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final res = await _client.post(
-        Uri.parse('https://api3.tadu.cloud/api/auth/login'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'email': cleanEmail,
-          'password': cleanPass,
-        }),
-      ).timeout(const Duration(seconds: 12));
+      final user = await _userService.authenticate(
+        email: cleanEmail,
+        password: cleanPass,
+      );
 
-      Map<String, dynamic>? body;
-      try {
-        body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>?;
-      } catch (_) {}
-
-      if (res.statusCode == 200 && body != null) {
-        if (body['isError'] == true || body['error'] != null) {
-          final errObj = body['error'];
-          if (errObj is Map) {
-            final msgs = <String>[];
-            for (final entry in errObj.entries) {
-              msgs.add(entry.value.toString());
-            }
-            _errorMessage = msgs.join('\n');
-          } else if (errObj is String) {
-            _errorMessage = errObj;
-          } else if (body['message'] != null) {
-            _errorMessage = body['message'].toString();
-          } else {
-            _errorMessage = 'Email hoặc mật khẩu không chính xác';
-          }
-          _isLoading = false;
-          notifyListeners();
-          return false;
-        }
-
-        // Login Succeeded
-        final data = body['data'];
-        String token = '';
-        String name = '';
-        String parsedEmail = cleanEmail;
-
-        if (data is Map<String, dynamic>) {
-          token = data['token']?.toString() ??
-              data['access_token']?.toString() ??
-              data['jwt']?.toString() ??
-              data['accessToken']?.toString() ??
-              '';
-          if (data['user'] is Map) {
-            final userMap = data['user'] as Map<String, dynamic>;
-            parsedEmail = userMap['email']?.toString() ?? cleanEmail;
-            name = userMap['name']?.toString() ?? userMap['full_name']?.toString() ?? '';
-          } else {
-            parsedEmail = data['email']?.toString() ?? cleanEmail;
-            name = data['name']?.toString() ?? '';
-          }
-        } else if (data is String) {
-          token = data;
-        }
-
-        await _storage.setRememberMe(rememberMe);
-        await _storage.setAuthToken(token);
-        await _storage.setUserEmail(parsedEmail);
-        await _storage.setUserName(name);
-        await _storage.setLoggedIn(true);
-
-        _authToken = token;
-        _userEmail = parsedEmail;
-        _userName = name;
-        _isAuthenticated = true;
-        _errorMessage = null;
-        _isLoading = false;
-
-        final userKey = StorageService.sanitizeUserKey(parsedEmail);
-        await _db.switchUser(userKey);
-        await _localConfig.switchUser(userKey);
-
-        notifyListeners();
-        return true;
-      } else {
-        // Handle non-200 or custom error responses
-        if (body != null && body['error'] != null) {
-          final errObj = body['error'];
-          if (errObj is Map) {
-            _errorMessage = errObj.values.map((v) => v.toString()).join('\n');
-          } else {
-            _errorMessage = errObj.toString();
-          }
-        } else if (body != null && body['message'] != null) {
-          _errorMessage = body['message'].toString();
-        } else {
-          _errorMessage = 'Đăng nhập thất bại (Mã lỗi: ${res.statusCode})';
-        }
+      if (user == null) {
+        _errorMessage = 'Email hoặc mật khẩu không chính xác';
         _isLoading = false;
         notifyListeners();
         return false;
       }
+
+      final token = 'local_session_${DateTime.now().millisecondsSinceEpoch}_${user.id}';
+
+      await _storage.setRememberMe(rememberMe);
+      await _storage.setAuthToken(token);
+      await _storage.setUserEmail(user.email);
+      await _storage.setUserName(user.name);
+      await _storage.setLoggedIn(true);
+
+      _authToken = token;
+      _userEmail = user.email;
+      _userName = user.name;
+      _isAuthenticated = true;
+      _errorMessage = null;
+      _isLoading = false;
+
+      final userKey = StorageService.sanitizeUserKey(user.email);
+      await _db.switchUser(userKey);
+      await _localConfig.switchUser(userKey);
+
+      notifyListeners();
+      return true;
     } catch (e) {
-      _errorMessage = 'Lỗi kết nối máy chủ xác thực Tadu Cloud: $e';
+      _errorMessage = 'Lỗi xác thực hệ thống: $e';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -184,7 +181,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> loginStandaloneMode() async {
     _isAuthenticated = true;
-    _userEmail = 'local.admin@tadu.cloud';
+    _userEmail = 'local.admin@agent.chatbot';
     _userName = 'Local Administrator';
     _authToken = 'native_local_token';
     await _storage.setLoggedIn(true);

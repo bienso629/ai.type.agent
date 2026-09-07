@@ -480,6 +480,11 @@ class ApiService {
       }
 
       http.Client? streamClient;
+      StreamSubscription? responseSub;
+      controller.onCancel = () {
+        responseSub?.cancel();
+        streamClient?.close();
+      };
       try {
         final baseUrl = await _getBaseUrl();
         streamClient = http.Client();
@@ -504,7 +509,7 @@ class ApiService {
 
         var accumulatedReply = '';
 
-        streamedResponse.stream
+        responseSub = streamedResponse.stream
             .transform(utf8.decoder)
             .transform(const LineSplitter())
             .listen(

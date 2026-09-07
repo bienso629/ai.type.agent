@@ -11,6 +11,9 @@ class Socks5Session {
   final Process sshProcess;
   final File? askpassFile;
   Process? browserProcess;
+  Process? deviceProcess;
+  Process? httpBridgeProcess;
+  int? emulatorPort;
 
   Socks5Session({
     required this.localPort,
@@ -32,6 +35,12 @@ class Socks5Session {
     try {
       browserProcess?.kill();
     } catch (_) {}
+    try {
+      deviceProcess?.kill();
+    } catch (_) {}
+    try {
+      httpBridgeProcess?.kill();
+    } catch (_) {}
   }
 }
 
@@ -52,14 +61,14 @@ class Socks5ProxyService extends ChangeNotifier {
     });
   }
 
-  /// Kiểm tra các session đang ghi nhận, nếu trình duyệt của session không còn tiến trình nào chạy thì dọn dẹp
+  /// Kiểm tra các session đang ghi nhận, nếu cả trình duyệt lẫn mobile device của session không còn tiến trình nào chạy thì dọn dẹp
   void _checkTerminatedBrowsers() {
     if (_activeSessions.isEmpty) return;
     final deadIps = <String>[];
     for (final entry in _activeSessions.entries) {
       final ip = entry.key;
-      // Kiểm tra thực tế trên hệ thống xem profile IP này còn tiến trình nào không
-      if (!_isSystemProcessAliveForIp(ip)) {
+      // Kiểm tra thực tế trên hệ thống xem profile IP này còn tiến trình trình duyệt hoặc device nào không
+      if (!_isSystemProcessAliveForIp(ip) && !_isDeviceProcessAliveForIp(ip)) {
         deadIps.add(ip);
       }
     }
@@ -96,7 +105,40 @@ class Socks5ProxyService extends ChangeNotifier {
             if (cmdFile.existsSync()) {
               final bytes = cmdFile.readAsBytesSync();
               final cmd = String.fromCharCodes(bytes);
-              if (cmd.contains(needle) && !cmd.contains('python') && !cmd.contains('pgrep')) {
+              if (cmd.contains(needle) && !cmd.contains('device_profiles') && !cmd.contains('python') && !cmd.contains('pgrep')) {
+                return true;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Quét xem trên hệ thống OS có tiến trình mobile device nào đang chạy cho IP này không
+  bool _isDeviceProcessAliveForIp(String ip) {
+    try {
+      final session = _activeSessions[ip];
+      final port = session?.emulatorPort;
+      final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final needleProfile = 'device_profiles/ip_$sanitizedIp';
+      final needlePort = port != null ? '-port\x00$port' : null;
+      final procDir = Directory('/proc');
+      if (procDir.existsSync()) {
+        final myPid = pid;
+        for (final entity in procDir.listSync(followLinks: false)) {
+          final baseName = entity.path.split('/').last;
+          final p = int.tryParse(baseName);
+          if (p == null || p == myPid) continue;
+          try {
+            final cmdFile = File('${entity.path}/cmdline');
+            if (cmdFile.existsSync()) {
+              final bytes = cmdFile.readAsBytesSync();
+              final cmd = String.fromCharCodes(bytes);
+              final matchesProfile = cmd.contains(needleProfile);
+              final matchesPort = needlePort != null && cmd.contains(needlePort);
+              if ((matchesProfile || matchesPort) && !cmd.contains('python') && !cmd.contains('pgrep')) {
                 return true;
               }
             }
@@ -109,17 +151,12 @@ class Socks5ProxyService extends ChangeNotifier {
 
   /// Kiểm tra xem trình duyệt gắn với IP này có đang mở hay không
   bool isBrowserRunningForIp(String ip) {
-    if (_activeSessions.containsKey(ip)) {
-      if (_isSystemProcessAliveForIp(ip)) {
-        return true;
-      } else {
-        // Tiến trình trình duyệt đã tắt cứng, dọn dẹp session
-        final session = _activeSessions.remove(ip);
-        session?.stop();
-        return false;
-      }
-    }
     return _isSystemProcessAliveForIp(ip);
+  }
+
+  /// Kiểm tra xem mobile device gắn với IP này có đang chạy hay không
+  bool isDeviceRunningForIp(String ip) {
+    return _isDeviceProcessAliveForIp(ip);
   }
 
   /// Khởi tạo Dynamic SOCKS5 Proxy thông qua OpenSSH native tunnel (-D)
@@ -372,32 +409,314 @@ class Socks5ProxyService extends ChangeNotifier {
     }
   }
 
+  /// Tìm binary Android Emulator trên hệ thống
+  String? _findAndroidEmulatorExecutable() {
+    final home = Platform.environment['HOME'] ?? '';
+    final candidates = [
+      '$home/Android/Sdk/emulator/emulator',
+      '$home/android-sdk/emulator/emulator',
+      '/opt/android-sdk/emulator/emulator',
+      '/usr/bin/emulator',
+    ];
+    for (final c in candidates) {
+      if (File(c).existsSync()) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  /// Tìm danh sách AVD khả dụng trên máy tính
+  Future<List<String>> getAvailableAvds() async {
+    final emulatorBin = _findAndroidEmulatorExecutable();
+    if (emulatorBin == null) return [];
+    try {
+      final res = await Process.run(emulatorBin, ['-list-avds']);
+      if (res.exitCode == 0) {
+        final lines = (res.stdout as String).split('\n');
+        return lines.map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Khởi chạy thiết bị Android Emulator chuẩn Android Studio
+  /// Định tuyến toàn bộ lưu lượng mạng máy ảo qua proxy SOCKS5 của chính IP đó
+  Future<bool> launchDeviceWithSocks5({
+    required ServerModel server,
+    required String ip,
+    String? avdName,
+    String? startUrl,
+  }) async {
+    final session = await startSocks5Server(server: server, ip: ip);
+
+    // 1. Kiểm tra Android Emulator binary
+    final emulatorBin = _findAndroidEmulatorExecutable();
+    if (emulatorBin == null) {
+      throw Exception('Không tìm thấy Android Emulator trên hệ thống (~/Android/Sdk/emulator/emulator).');
+    }
+
+    // 2. Xác định tên AVD để khởi chạy
+    String targetAvd = avdName ?? '';
+    if (targetAvd.isEmpty) {
+      final avds = await getAvailableAvds();
+      if (avds.isEmpty) {
+        throw Exception('Chưa tạo bất kỳ thiết bị Android ảo (AVD) nào trong Android Studio.');
+      }
+      targetAvd = avds.first;
+    }
+
+    // 3. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP
+    final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
+    if (!bridgeScript.existsSync()) {
+      throw Exception('Không tìm thấy script cầu nối proxy: ${bridgeScript.path}');
+    }
+
+    // Cấp phát một cổng ngẫu nhiên khả dụng cho HTTP Proxy
+    final tempSocket = await ServerSocket.bind('127.0.0.1', 0);
+    final httpProxyPort = tempSocket.port;
+    await tempSocket.close();
+
+    // Dừng bridge cũ nếu có
+    try {
+      session.httpBridgeProcess?.kill();
+    } catch (_) {}
+
+    final bridgeProc = await Process.start(
+      'python3',
+      [
+        bridgeScript.path,
+        httpProxyPort.toString(),
+        '127.0.0.1',
+        session.localPort.toString(),
+      ],
+      mode: ProcessStartMode.normal,
+    );
+    session.httpBridgeProcess = bridgeProc;
+
+    // Đợi bridge sẵn sàng
+    final completer = Completer<void>();
+    bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+      if (line.contains('READY') && !completer.isCompleted) {
+        completer.complete();
+      }
+    });
+    bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
+
+    await Future.any([
+      completer.future,
+      Future.delayed(const Duration(seconds: 3)),
+    ]);
+
+    // 4. Dọn dẹp các file lock rác (nếu phiên trước bị tắt đột ngột)
+    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    try {
+      final avdDir = Directory('$homeDir/.android/avd/$targetAvd.avd');
+      if (avdDir.existsSync()) {
+        for (final f in avdDir.listSync()) {
+          if (f.path.endsWith('.lock')) {
+            try {
+              f.deleteSync();
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 5. Cấp phát console port (chẵn) cho emulator từ 5554 đến 5584
+    int consolePort = 5554;
+    for (int p = 5554; p <= 5584; p += 2) {
+      if (!_isPortInUse(p) && !_isPortInUse(p + 1)) {
+        consolePort = p;
+        break;
+      }
+    }
+    session.emulatorPort = consolePort;
+
+    final emulatorArgs = [
+      '-avd', targetAvd,
+      '-http-proxy', 'http://127.0.0.1:$httpProxyPort',
+      '-port', consolePort.toString(),
+      '-netdelay', 'none',
+      '-netspeed', 'full',
+      '-no-boot-anim',
+      '-read-only',
+    ];
+
+    try {
+      final proc = await Process.start(
+        emulatorBin,
+        emulatorArgs,
+        mode: ProcessStartMode.detached,
+      );
+      session.deviceProcess = proc;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      session.httpBridgeProcess?.kill();
+      throw Exception('Lỗi khi khởi chạy Android Emulator: $e');
+    }
+  }
+
+  bool _isPortInUse(int port) {
+    try {
+      for (final s in _activeSessions.values) {
+        if (s.emulatorPort == port) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   /// Đóng trình duyệt và dừng toàn bộ kết nối SOCKS5 của IP
   Future<void> stopSession(String ip) async {
     final session = _activeSessions.remove(ip);
     if (session != null) {
       await session.stop();
     }
-    // Dừng triệt để các tiến trình trình duyệt gắn với profile của IP này nếu còn chạy ngầm
+    // Dừng triệt để các tiến trình trình duyệt và device gắn với profile của IP này nếu còn chạy ngầm
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
+      await Process.run('pkill', ['-f', 'device_profiles/ip_$sanitizedIp']);
+      await Process.run('pkill', ['-f', 'ip_$sanitizedIp']);
     } catch (_) {}
     notifyListeners();
   }
 
-  /// Đóng riêng trình duyệt của IP mà không làm mất hầm SOCKS5 nếu muốn
+  /// Đóng riêng trình duyệt của IP mà không làm mất hầm SOCKS5 nếu device vẫn đang chạy
   Future<void> closeBrowserForIp(String ip) async {
     final session = _activeSessions[ip];
     if (session?.browserProcess != null) {
       try {
         session!.browserProcess!.kill();
       } catch (_) {}
+      session?.browserProcess = null;
     }
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
     } catch (_) {}
+
+    // Nếu device cũng không còn chạy thì giải phóng hoàn toàn session SOCKS5
+    if (!_isDeviceProcessAliveForIp(ip)) {
+      final s = _activeSessions.remove(ip);
+      if (s != null) {
+        await s.stop();
+      }
+    }
+
     notifyListeners();
+  }
+
+  /// Đóng riêng mobile device của IP mà không làm mất hầm SOCKS5 nếu trình duyệt vẫn đang chạy
+  Future<void> closeDeviceForIp(String ip) async {
+    final session = _activeSessions[ip];
+    if (session?.deviceProcess != null) {
+      try {
+        session!.deviceProcess!.kill();
+      } catch (_) {}
+      session?.deviceProcess = null;
+    }
+    if (session?.httpBridgeProcess != null) {
+      try {
+        session!.httpBridgeProcess!.kill();
+      } catch (_) {}
+      session?.httpBridgeProcess = null;
+    }
+    try {
+      final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      await Process.run('pkill', ['-f', 'device_profiles/ip_$sanitizedIp']);
+      // Dừng emulator của port đó qua adb nếu có
+      if (session?.emulatorPort != null) {
+        final adbBin = '/home/yenai/Android/Sdk/platform-tools/adb';
+        if (File(adbBin).existsSync()) {
+          await Process.run(adbBin, ['-s', 'emulator-${session!.emulatorPort}', 'emu', 'kill']);
+        }
+      }
+    } catch (_) {}
+
+    // Nếu browser cũng không còn chạy thì giải phóng hoàn toàn session SOCKS5
+    if (!_isSystemProcessAliveForIp(ip)) {
+      final s = _activeSessions.remove(ip);
+      if (s != null) {
+        await s.stop();
+      }
+    }
+
+    notifyListeners();
+  }
+
+  /// Tìm đường dẫn binary adb trên hệ thống
+  String _findAdbExecutable() {
+    final home = Platform.environment['HOME'] ?? '';
+    final candidates = [
+      '$home/Android/Sdk/platform-tools/adb',
+      '$home/android-sdk/platform-tools/adb',
+      '/usr/bin/adb',
+    ];
+    for (final c in candidates) {
+      if (File(c).existsSync()) {
+        return c;
+      }
+    }
+    return 'adb';
+  }
+
+  /// Kết nối tới một thiết bị Android ngoại vi qua mạng WiFi / TCP IP (ví dụ: 192.168.1.227:38233)
+  Future<String> connectRemoteDevice(String address) async {
+    final cleanAddress = address.trim();
+    if (cleanAddress.isEmpty) {
+      throw Exception('Địa chỉ thiết bị không được để trống.');
+    }
+    final adbBin = _findAdbExecutable();
+    final res = await Process.run(adbBin, ['connect', cleanAddress]);
+    final output = ((res.stdout as String) + (res.stderr as String)).trim();
+
+    if (output.toLowerCase().contains('connected to') || output.toLowerCase().contains('already connected to')) {
+      notifyListeners();
+      return output;
+    } else {
+      throw Exception(output.isNotEmpty ? output : 'Không thể kết nối tới thiết bị $cleanAddress');
+    }
+  }
+
+  /// Ngắt kết nối một thiết bị ngoại vi qua ADB
+  Future<void> disconnectRemoteDevice(String address) async {
+    final adbBin = _findAdbExecutable();
+    await Process.run(adbBin, ['disconnect', address.trim()]);
+    notifyListeners();
+  }
+
+  /// Lấy danh sách các thiết bị ngoại vi / vật lý đang kết nối qua ADB
+  Future<List<Map<String, String>>> getConnectedAdbDevices() async {
+    final adbBin = _findAdbExecutable();
+    final res = await Process.run(adbBin, ['devices', '-l']);
+    final lines = (res.stdout as String).split('\n');
+    final List<Map<String, String>> devices = [];
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('List of devices')) continue;
+      final parts = trimmed.split(RegExp(r'\s+'));
+      if (parts.length >= 2) {
+        final serial = parts[0];
+        final state = parts[1];
+        String model = 'Unknown';
+        for (final p in parts) {
+          if (p.startsWith('model:')) {
+            model = p.replaceFirst('model:', '');
+            break;
+          }
+        }
+        final isWifi = serial.contains(':');
+        devices.add({
+          'serial': serial,
+          'state': state,
+          'model': model,
+          'type': isWifi ? 'WiFi Remote' : (serial.startsWith('emulator-') ? 'Local AVD' : 'USB Device'),
+        });
+      }
+    }
+    return devices;
   }
 }

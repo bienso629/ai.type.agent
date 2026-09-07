@@ -115,46 +115,40 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                             color: isSelected ? AppColors.primaryLight : AppColors.textWhite,
                           ),
                         ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${s.sshUser}@${s.serverIp}:${s.sshPort}',
-                              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
-                            ),
-                            const SizedBox(height: 4),
-                            Builder(
-                              builder: (context) {
-                                final ips = serverProvider.getIpsForServer(s);
-                                return Wrap(
-                                  spacing: 4,
-                                  runSpacing: 2,
-                                  children: ips.map((ip) {
-                                    final isMain = ip == s.serverIp;
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                      decoration: BoxDecoration(
-                                        color: isMain ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
-                                        borderRadius: BorderRadius.circular(3),
-                                        border: Border.all(
-                                          color: isMain ? AppColors.primary.withValues(alpha: 0.3) : AppColors.borderDark,
-                                          width: 0.8,
-                                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              Text(
+                                '${s.sshUser}@${s.serverIp}:${s.sshPort}',
+                                style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
+                              ),
+                              const SizedBox(width: 8),
+                              Builder(
+                                builder: (context) {
+                                  final count = serverProvider.getIpsForServer(s).length;
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: isSelected ? AppColors.primary.withValues(alpha: 0.3) : AppColors.borderDark,
                                       ),
-                                      child: Text(
-                                        ip,
-                                        style: TextStyle(
-                                          fontSize: 9.5,
-                                          fontFamily: 'monospace',
-                                          color: isMain ? AppColors.primaryLight : AppColors.textDim,
-                                        ),
+                                    ),
+                                    child: Text(
+                                      '$count IP',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? AppColors.primaryLight : AppColors.textDim,
                                       ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            ),
-                          ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                         trailing: isSelected
                             ? const Icon(Icons.check_circle_rounded, color: AppColors.primaryLight, size: 20)

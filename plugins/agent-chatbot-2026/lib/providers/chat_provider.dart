@@ -63,15 +63,33 @@ class ChatProvider extends ChangeNotifier {
     try {
       final list = await _api.getChatSessions();
       _sessions = list;
-      if (_currentSession != null) {
-        final match = _sessions.where((s) => s.id == _currentSession!.id);
-        if (match.isNotEmpty) {
-          _currentSession = match.first;
+      if (_sessions.isNotEmpty) {
+        if (_currentSession != null) {
+          final match = _sessions.where((s) => s.id == _currentSession!.id);
+          if (match.isNotEmpty) {
+            _currentSession = match.first;
+          } else {
+            _currentSession = _sessions.first;
+            await selectSession(_sessions.first);
+          }
+        } else {
+          _currentSession = _sessions.first;
+          await selectSession(_sessions.first);
         }
+      } else {
+        _currentSession = null;
+        _messages = [];
       }
     } catch (_) {}
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<void> reloadForUser() async {
+    _currentSession = null;
+    _messages = [];
+    _sessions = [];
+    await initChat();
   }
 
   Future<void> createNewSession({String title = 'Cuộc hội thoại mới'}) async {

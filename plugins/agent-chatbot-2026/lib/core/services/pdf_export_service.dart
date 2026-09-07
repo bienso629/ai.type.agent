@@ -249,17 +249,17 @@ class PdfExportService {
                             borderRadius: pw.BorderRadius.all(pw.Radius.circular(6)),
                           ),
                           alignment: pw.Alignment.center,
-                          child: pw.Text('TADU', style: pw.TextStyle(font: fontBold, color: PdfColors.white, fontSize: 10)),
+                          child: pw.Text('AI', style: pw.TextStyle(font: fontBold, color: PdfColors.white, fontSize: 10)),
                         ),
                       pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
-                            'TADU CLOUD AI AGENT',
+                            'AI AGENT CHATBOT',
                             style: pw.TextStyle(
                               font: fontBold,
                               fontSize: 13,
-                              color: PdfColors.red800,
+                              color: PdfColors.blue800,
                             ),
                           ),
                           pw.SizedBox(height: 2),
@@ -316,7 +316,7 @@ class PdfExportService {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    'Báo cáo được xuất tự động bởi Tadu Cloud AI Agent Control Center',
+                    'Báo cáo được xuất tự động bởi AI Agent Control Center',
                     style: pw.TextStyle(font: font, fontSize: 7.5, color: PdfColors.grey500),
                   ),
                   pw.Text(
@@ -735,10 +735,10 @@ class PdfExportService {
           margin: const pw.EdgeInsets.all(36),
           build: (pw.Context context) {
             return [
-              pw.Text('TADU CLOUD AI AGENT - REPORT', style: pw.TextStyle(font: fontBold, fontSize: 14, color: PdfColors.red800)),
+              pw.Text('AI AGENT CHATBOT - REPORT', style: pw.TextStyle(font: fontBold, fontSize: 14, color: PdfColors.blue800)),
               pw.SizedBox(height: 4),
               pw.Text('Thời gian: $timeStr | Hệ thống: ${serverInfo ?? 'Linux Server'}', style: pw.TextStyle(font: font, fontSize: 8.5, color: PdfColors.grey700)),
-              pw.Divider(color: PdfColors.red700, thickness: 1.5),
+              pw.Divider(color: PdfColors.blue700, thickness: 1.5),
               pw.SizedBox(height: 12),
               ...cleanText.split('\n').map((l) => pw.Paragraph(
                 text: l,

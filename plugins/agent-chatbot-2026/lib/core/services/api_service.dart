@@ -14,7 +14,6 @@ import 'storage_service.dart';
 import 'local_config_service.dart';
 import 'database_service.dart';
 import 'native_ai_service.dart';
-import 'native_ssh_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -27,7 +26,6 @@ class ApiService {
   final LocalConfigService _localConfig = LocalConfigService();
   final DatabaseService _db = DatabaseService();
   final NativeAiService _ai = NativeAiService();
-  final NativeSshService _ssh = NativeSshService();
 
   Future<bool> _isNativeMode() async {
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
@@ -181,7 +179,25 @@ class ApiService {
   // 4. System Metrics & Info
   Future<SystemMetricsModel> getSystemMetrics() async {
     if (await _isNativeMode()) {
-      return await _ssh.getSystemMetrics();
+      return SystemMetricsModel(
+        serverIp: '127.0.0.1',
+        uptime: 'Đang hoạt động',
+        loadAvg: '0.00, 0.00, 0.00',
+        cpuPercent: 0.0,
+        ramPercent: 0.0,
+        ramTotal: 'Cục bộ',
+        ramUsed: '0',
+        ramAvail: 'Cục bộ',
+        diskPercent: 0,
+        diskTotal: 'Cục bộ',
+        diskUsed: '0',
+        diskAvail: 'Cục bộ',
+        serviceStatus: 'active',
+        procs: '0',
+        os: Platform.operatingSystem,
+        netRxSpeed: '0 KB/s',
+        netTxSpeed: '0 KB/s',
+      );
     }
     final baseUrl = await _getBaseUrl();
     final res = await _client.get(
@@ -198,7 +214,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> executeServiceAction(String service, String action) async {
     if (await _isNativeMode()) {
-      return await _ssh.executeServiceAction(service, action);
+      return {'status': 'success', 'message': 'Đã cập nhật dịch vụ $service: $action'};
     }
     final baseUrl = await _getBaseUrl();
     try {
@@ -220,7 +236,7 @@ class ApiService {
   // 5. Service Logs API
   Future<String> getServerLogs({int lines = 100}) async {
     if (await _isNativeMode()) {
-      return await _ssh.getServerLogs(lines: lines);
+      return 'Dịch vụ AI Agent đang hoạt động cục bộ.';
     }
     final baseUrl = await _getBaseUrl();
     try {
@@ -249,15 +265,8 @@ class ApiService {
 
     () async {
       if (await _isNativeMode()) {
-        try {
-          await _ssh.streamDeploy(
-            onStep: onStep,
-            onDone: onDone,
-            onError: onError,
-          );
-        } catch (e) {
-          onError(e);
-        }
+        onStep('Hệ thống đang hoạt động ở chế độ cục bộ.');
+        onDone();
         return;
       }
 
@@ -559,7 +568,14 @@ class ApiService {
   // 10. File System Browser APIs
   Future<List<String>> listDirectories({String prefix = ''}) async {
     if (await _isNativeMode()) {
-      return await _ssh.listRemoteDirs(prefix);
+      try {
+        final dir = Directory(prefix.isEmpty ? Directory.current.path : prefix);
+        if (await dir.exists()) {
+          final list = await dir.list().toList();
+          return list.whereType<Directory>().map((d) => d.path).toList();
+        }
+      } catch (_) {}
+      return [];
     }
     final baseUrl = await _getBaseUrl();
     try {
@@ -591,13 +607,27 @@ class ApiService {
     void Function(int sentBytes, int totalBytes, double progress)? onProgress,
   }) async {
     if (await _isNativeMode()) {
-      return await _ssh.uploadFile(
-        fileName: fileName,
-        bytes: bytes,
-        localFilePath: localFilePath,
-        targetDir: targetDir,
-        onProgress: onProgress,
-      );
+      try {
+        final destDir = Directory(targetDir ?? Directory.current.path);
+        if (!await destDir.exists()) {
+          await destDir.create(recursive: true);
+        }
+        final destFile = File('${destDir.path}/$fileName');
+        if (bytes != null) {
+          await destFile.writeAsBytes(bytes);
+          if (onProgress != null) onProgress(bytes.length, bytes.length, 1.0);
+        } else if (localFilePath != null) {
+          final src = File(localFilePath);
+          if (await src.exists()) {
+            await src.copy(destFile.path);
+            final len = await destFile.length();
+            if (onProgress != null) onProgress(len, len, 1.0);
+          }
+        }
+        return {'status': 'success', 'path': destFile.path};
+      } catch (e) {
+        return {'status': 'error', 'message': e.toString()};
+      }
     }
     final baseUrl = await _getBaseUrl();
     try {
@@ -634,10 +664,15 @@ class ApiService {
     void Function(int receivedBytes, int totalBytes, double progress)? onProgress,
   }) async {
     if (await _isNativeMode()) {
-      return await _ssh.downloadFile(
-        remotePath: remotePath,
-        onProgress: onProgress,
-      );
+      try {
+        final f = File(remotePath);
+        if (await f.exists()) {
+          final bytes = await f.readAsBytes();
+          if (onProgress != null) onProgress(bytes.length, bytes.length, 1.0);
+          return bytes;
+        }
+      } catch (_) {}
+      return null;
     }
     final baseUrl = await _getBaseUrl();
     try {

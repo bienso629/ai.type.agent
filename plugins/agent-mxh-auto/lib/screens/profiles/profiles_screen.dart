@@ -5,6 +5,7 @@ import '../../core/services/persona_service.dart';
 import '../../core/services/socks5_proxy_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/tadu_dialog.dart';
 import '../../models/persona_profile_model.dart';
 import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
@@ -19,6 +20,8 @@ class ProfilesScreen extends StatefulWidget {
 class _ProfilesScreenState extends State<ProfilesScreen> {
   final Set<String> _openingIps = {};
   final Set<String> _closingIps = {};
+  final Set<String> _openingDeviceIps = {};
+  final Set<String> _closingDeviceIps = {};
   final Socks5ProxyService _socks5Service = Socks5ProxyService();
   final PersonaService _personaService = PersonaService();
 
@@ -361,7 +364,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             foregroundColor: const Color(0xFF070B14),
                             elevation: 0,
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                           ),
                         ),
                       ],
@@ -370,6 +373,206 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                 ),
               ),
             ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showRemoteDeviceDialog() {
+    final addrCtrl = TextEditingController(text: '192.168.1.227:38233');
+    bool isConnecting = false;
+    List<Map<String, String>> connectedDevices = [];
+    bool isLoadingDevices = true;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void loadDevices() async {
+            try {
+              final list = await _socks5Service.getConnectedAdbDevices();
+              if (dialogCtx.mounted) {
+                setDialogState(() {
+                  connectedDevices = list;
+                  isLoadingDevices = false;
+                });
+              }
+            } catch (_) {
+              if (dialogCtx.mounted) {
+                setDialogState(() {
+                  isLoadingDevices = false;
+                });
+              }
+            }
+          }
+
+          if (isLoadingDevices) {
+            loadDevices();
+          }
+
+          return TaduDialog(
+            minWidth: 500,
+            maxWidth: 580,
+            title: const Row(
+              children: [
+                Icon(Icons.cell_wifi_rounded, color: AppColors.primaryLight, size: 22),
+                SizedBox(width: 8),
+                Text('Kết Nối Thiết Bị Ngoại Vi (WiFi / ADB)'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Nhập địa chỉ IP và cổng ADB không dây của điện thoại hoặc thiết bị ngoại vi:',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: addrCtrl,
+                        style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.settings_ethernet_rounded, size: 18),
+                          hintText: '192.168.1.227:38233',
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      onPressed: isConnecting
+                          ? null
+                          : () async {
+                              final target = addrCtrl.text.trim();
+                              if (target.isEmpty) {
+                                AppToast.warning(dialogCtx, 'Vui lòng nhập địa chỉ IP:Port');
+                                return;
+                              }
+                              setDialogState(() {
+                                isConnecting = true;
+                              });
+                              try {
+                                final msg = await _socks5Service.connectRemoteDevice(target);
+                                if (dialogCtx.mounted) {
+                                  AppToast.success(dialogCtx, msg);
+                                }
+                                loadDevices();
+                              } catch (e) {
+                                if (dialogCtx.mounted) {
+                                  AppToast.error(dialogCtx, 'Lỗi kết nối: $e');
+                                }
+                              } finally {
+                                if (dialogCtx.mounted) {
+                                  setDialogState(() {
+                                    isConnecting = false;
+                                  });
+                                }
+                              }
+                            },
+                      icon: isConnecting
+                          ? const SizedBox(
+                              width: 13,
+                              height: 13,
+                              child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
+                            )
+                          : const Icon(Icons.link_rounded, size: 16),
+                      label: Text(
+                        isConnecting ? 'Đang kết nối...' : 'Kết nối',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: const Color(0xFF070B14),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Danh sách thiết bị ADB đang kết nối:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 180),
+                  decoration: BoxDecoration(
+                    color: AppColors.inputBg,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppColors.borderDark),
+                  ),
+                  child: isLoadingDevices
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(20),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                            ),
+                          ),
+                        )
+                      : connectedDevices.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Text('Chưa có thiết bị nào đang kết nối', style: TextStyle(fontSize: 12, color: AppColors.textDim)),
+                              ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: connectedDevices.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.borderDark),
+                              itemBuilder: (context, idx) {
+                                final d = connectedDevices[idx];
+                                final serial = d['serial'] ?? '';
+                                final isWifi = serial.contains(':');
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    isWifi ? Icons.wifi_tethering_rounded : Icons.phone_android_rounded,
+                                    color: AppColors.primaryLight,
+                                    size: 18,
+                                  ),
+                                  title: Text(
+                                    '${d['model']} (${d['serial']})',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Text(
+                                    'Trạng thái: ${d['state']} | Loại: ${d['type']}',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                  ),
+                                  trailing: isWifi
+                                      ? TextButton(
+                                          onPressed: () async {
+                                            await _socks5Service.disconnectRemoteDevice(serial);
+                                            if (dialogCtx.mounted) {
+                                              AppToast.info(dialogCtx, 'Đã ngắt kết nối $serial');
+                                            }
+                                            loadDevices();
+                                          },
+                                          child: const Text('Ngắt kết nối', style: TextStyle(fontSize: 11, color: AppColors.danger)),
+                                        )
+                                      : null,
+                                );
+                              },
+                            ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Đóng', style: TextStyle(color: AppColors.textMuted)),
+              ),
+            ],
           );
         },
       ),
@@ -445,31 +648,54 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   ),
                 ),
 
-                // Nút "AI tạo profiles" thay thế tìm kiếm và quét lại IP
-                ElevatedButton.icon(
-                  onPressed: _isGeneratingPersonas
-                      ? null
-                      : () => _handleGeneratePersonas(allTargetIps),
-                  icon: _isGeneratingPersonas
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF070B14)),
-                        )
-                      : const Icon(Icons.auto_awesome_rounded, size: 16),
-                  label: Text(
-                    _isGeneratingPersonas ? 'Đang tạo profiles...' : 'AI tạo profiles',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: const Color(0xFF070B14),
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
+                Row(
+                  children: [
+                    // Nút Kết nối thiết bị ngoại vi (WiFi / ADB)
+                    OutlinedButton.icon(
+                      onPressed: _showRemoteDeviceDialog,
+                      icon: const Icon(Icons.cell_wifi_rounded, size: 16, color: AppColors.primaryLight),
+                      label: const Text(
+                        'Kết nối device ngoại vi',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textWhite),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.borderDark),
+                        backgroundColor: AppColors.cardBg,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+
+                    // Nút "AI tạo profiles" thay thế tìm kiếm và quét lại IP
+                    ElevatedButton.icon(
+                      onPressed: _isGeneratingPersonas
+                          ? null
+                          : () => _handleGeneratePersonas(allTargetIps),
+                      icon: _isGeneratingPersonas
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF070B14)),
+                            )
+                          : const Icon(Icons.auto_awesome_rounded, size: 16),
+                      label: Text(
+                        _isGeneratingPersonas ? 'Đang tạo profiles...' : 'AI tạo profiles',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: const Color(0xFF070B14),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -530,6 +756,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   Widget _buildContactCard(_ContactIpItem item) {
     final socks5 = context.watch<Socks5ProxyService>();
     final isBrowserRunning = socks5.isBrowserRunningForIp(item.ip);
+    final isDeviceRunning = socks5.isDeviceRunningForIp(item.ip);
+    final isAnyRunning = isBrowserRunning || isDeviceRunning;
     final isAlias = !item.isMain;
     final persona = _personas[item.ip];
 
@@ -540,20 +768,32 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final String statusText;
     final Color statusDotColor;
 
-    if (isBrowserRunning) {
+    if (isAnyRunning) {
       if (isAlias) {
         cardBorderColor = AppColors.accent;
         cardBgColor = const Color(0xFF091E1A);
         badgeBgColor = AppColors.accent.withValues(alpha: 0.2);
         badgeTextColor = AppColors.accent;
-        statusText = 'Trình duyệt đang mở';
+        if (isBrowserRunning && isDeviceRunning) {
+          statusText = 'Browser & Device đang chạy';
+        } else if (isDeviceRunning) {
+          statusText = 'Mobile Device đang mở';
+        } else {
+          statusText = 'Trình duyệt đang mở';
+        }
         statusDotColor = AppColors.accent;
       } else {
         cardBorderColor = AppColors.primaryLight;
         cardBgColor = const Color(0xFF1C1908);
         badgeBgColor = AppColors.primary.withValues(alpha: 0.2);
         badgeTextColor = AppColors.primaryLight;
-        statusText = 'Trình duyệt đang mở';
+        if (isBrowserRunning && isDeviceRunning) {
+          statusText = 'Browser & Device đang chạy';
+        } else if (isDeviceRunning) {
+          statusText = 'Mobile Device đang mở';
+        } else {
+          statusText = 'Trình duyệt đang mở';
+        }
         statusDotColor = AppColors.primaryLight;
       }
     } else {
@@ -571,14 +811,14 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: cardBorderColor,
-          width: isBrowserRunning ? 1.8 : (item.isCurrentServer ? 1.3 : 1),
+          width: isAnyRunning ? 1.8 : (item.isCurrentServer ? 1.3 : 1),
         ),
         boxShadow: [
           BoxShadow(
-            color: isBrowserRunning
+            color: isAnyRunning
                 ? (isAlias ? AppColors.accent.withValues(alpha: 0.2) : AppColors.primary.withValues(alpha: 0.2))
                 : Colors.black.withValues(alpha: 0.2),
-            blurRadius: isBrowserRunning ? 10 : 6,
+            blurRadius: isAnyRunning ? 10 : 6,
             offset: const Offset(0, 3),
           ),
         ],
@@ -590,18 +830,18 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: isBrowserRunning
+              color: isAnyRunning
                   ? (isAlias ? const Color(0xFF0B2923) : const Color(0xFF26200A))
                   : (item.isCurrentServer ? AppColors.primary.withValues(alpha: 0.12) : AppColors.sidebarBg),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
-              border: Border(bottom: BorderSide(color: isBrowserRunning ? cardBorderColor.withValues(alpha: 0.4) : AppColors.borderDark, width: 0.8)),
+              border: Border(bottom: BorderSide(color: isAnyRunning ? cardBorderColor.withValues(alpha: 0.4) : AppColors.borderDark, width: 0.8)),
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.dns_rounded,
                   size: 15,
-                  color: isBrowserRunning
+                  color: isAnyRunning
                       ? (isAlias ? AppColors.accent : AppColors.primaryLight)
                       : (item.isCurrentServer ? AppColors.primaryLight : AppColors.textDim),
                 ),
@@ -614,7 +854,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: isBrowserRunning
+                      color: isAnyRunning
                           ? (isAlias ? AppColors.accent : AppColors.primaryLight)
                           : (item.isCurrentServer ? AppColors.primaryLight : AppColors.textWhite),
                     ),
@@ -626,7 +866,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     color: badgeBgColor,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: isBrowserRunning ? cardBorderColor.withValues(alpha: 0.5) : AppColors.borderDark,
+                      color: isAnyRunning ? cardBorderColor.withValues(alpha: 0.5) : AppColors.borderDark,
                     ),
                   ),
                   child: Text(
@@ -657,12 +897,12 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: isBrowserRunning
+                          color: isAnyRunning
                               ? (isAlias ? AppColors.accent.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15))
                               : AppColors.inputBg,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: isBrowserRunning
+                            color: isAnyRunning
                                 ? cardBorderColor
                                 : (item.isMain ? AppColors.accent.withValues(alpha: 0.5) : AppColors.borderDark),
                             width: 1.2,
@@ -672,8 +912,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           child: Icon(
                             persona != null
                                 ? (persona.gender.toLowerCase() == 'nữ' ? Icons.face_3_rounded : Icons.face_rounded)
-                                : (isBrowserRunning ? Icons.language_rounded : Icons.fingerprint_rounded),
-                            color: isBrowserRunning
+                                : (isAnyRunning ? Icons.language_rounded : Icons.fingerprint_rounded),
+                            color: isAnyRunning
                                 ? (isAlias ? AppColors.accent : AppColors.primaryLight)
                                 : (item.isMain ? AppColors.accent : AppColors.primaryLight),
                             size: 22,
@@ -731,7 +971,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                           fontSize: 11.5,
                                           fontWeight: FontWeight.w600,
                                           fontFamily: 'monospace',
-                                          color: isBrowserRunning
+                                          color: isAnyRunning
                                               ? (isAlias ? AppColors.accent : AppColors.primaryLight)
                                               : AppColors.textMuted,
                                         ),
@@ -759,7 +999,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: statusDotColor,
-                                      fontWeight: isBrowserRunning ? FontWeight.w600 : FontWeight.normal,
+                                      fontWeight: isAnyRunning ? FontWeight.w600 : FontWeight.normal,
                                     ),
                                   ),
                                 ),
@@ -852,121 +1092,243 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             ),
           ),
 
-          // Footer Action Bar
+          // Footer Action Bar: 2 nút đặt cạnh nhau (Mở/Đóng trình duyệt & Mở/Đóng device)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
-              color: isBrowserRunning
+              color: isAnyRunning
                   ? (isAlias ? const Color(0xFF09211C) : const Color(0xFF211D09))
                   : AppColors.sidebarBg,
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(9)),
-              border: Border(top: BorderSide(color: isBrowserRunning ? cardBorderColor.withValues(alpha: 0.3) : AppColors.borderDark, width: 0.8)),
+              border: Border(top: BorderSide(color: isAnyRunning ? cardBorderColor.withValues(alpha: 0.3) : AppColors.borderDark, width: 0.8)),
             ),
-            child: () {
-              final isOpening = _openingIps.contains(item.ip);
-              final isClosing = _closingIps.contains(item.ip);
-              final isBusy = isOpening || isClosing;
+            child: Row(
+              children: [
+                // 1. NÚT MỞ / ĐÓNG TRÌNH DUYỆT (BROWSER)
+                Expanded(
+                  child: () {
+                    final isOpening = _openingIps.contains(item.ip);
+                    final isClosing = _closingIps.contains(item.ip);
+                    final isBusy = isOpening || isClosing;
 
-              if (isBrowserRunning) {
-                // Đang mở trình duyệt -> Duy nhất 1 nút "Đóng trình duyệt" (màu đỏ)
-                return ElevatedButton.icon(
-                  onPressed: isBusy
-                      ? null
-                      : () async {
-                          setState(() {
-                            _closingIps.add(item.ip);
-                          });
-                          try {
-                            await _socks5Service.stopSession(item.ip);
-                            if (mounted) {
-                              AppToast.info(context, 'Đã đóng trình duyệt cho ${item.ip}');
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              AppToast.error(context, 'Lỗi khi đóng trình duyệt: $e');
-                            }
-                          } finally {
-                            if (mounted) {
+                    if (isBrowserRunning) {
+                      return ElevatedButton.icon(
+                        onPressed: isBusy
+                            ? null
+                            : () async {
+                                setState(() {
+                                  _closingIps.add(item.ip);
+                                });
+                                try {
+                                  await _socks5Service.closeBrowserForIp(item.ip);
+                                  if (mounted) {
+                                    AppToast.info(context, 'Đã đóng trình duyệt cho ${item.ip}');
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    AppToast.error(context, 'Lỗi khi đóng trình duyệt: $e');
+                                  }
+                                } finally {
+                                  if (mounted) {
+                                    setState(() {
+                                      _closingIps.remove(item.ip);
+                                    });
+                                  }
+                                }
+                              },
+                        icon: isClosing
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                              )
+                            : const Icon(Icons.close_rounded, size: 14),
+                        label: Text(
+                          isClosing ? 'Đang đóng...' : 'Đóng browser',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ElevatedButton.icon(
+                      onPressed: isBusy
+                          ? null
+                          : () async {
                               setState(() {
-                                _closingIps.remove(item.ip);
+                                _openingIps.add(item.ip);
                               });
-                            }
-                          }
-                        },
-                  icon: isClosing
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
-                        )
-                      : const Icon(Icons.close_rounded, size: 16),
-                  label: Text(
-                    isClosing ? 'Đang đóng trình duyệt...' : 'Đóng trình duyệt',
-                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.danger,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 9),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                );
-              }
+                              AppToast.info(context, 'Đang mở trình duyệt cho ${item.ip}...');
+                              try {
+                                await _socks5Service.launchBrowserWithSocks5(
+                                  server: item.server,
+                                  ip: item.ip,
+                                );
+                                if (mounted) {
+                                  AppToast.success(context, 'Đã mở trình duyệt qua ${item.ip}');
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  AppToast.error(context, 'Lỗi mở trình duyệt: $e');
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() {
+                                    _openingIps.remove(item.ip);
+                                  });
+                                }
+                              }
+                            },
+                      icon: isOpening
+                          ? const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
+                            )
+                          : const Icon(Icons.open_in_browser_rounded, size: 14),
+                      label: Text(
+                        isOpening ? 'Đang mở...' : 'Mở browser',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: const Color(0xFF070B14),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    );
+                  }(),
+                ),
 
-              // Chưa mở trình duyệt -> Duy nhất 1 nút "Mở trình duyệt"
-              return ElevatedButton.icon(
-                onPressed: isBusy
-                    ? null
-                    : () async {
-                        setState(() {
-                          _openingIps.add(item.ip);
-                        });
-                        AppToast.info(context, 'Đang mở trình duyệt cho ${item.ip}...');
-                        try {
-                          await _socks5Service.launchBrowserWithSocks5(
-                            server: item.server,
-                            ip: item.ip,
-                          );
-                          if (mounted) {
-                            AppToast.success(context, 'Đã mở trình duyệt qua ${item.ip}');
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            AppToast.error(context, 'Lỗi mở trình duyệt: $e');
-                          }
-                        } finally {
-                          if (mounted) {
-                            setState(() {
-                              _openingIps.remove(item.ip);
-                            });
-                          }
-                        }
-                      },
-                icon: isOpening
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
-                      )
-                    : const Icon(Icons.open_in_browser_rounded, size: 16),
-                label: Text(
-                  isOpening ? 'Đang mở trình duyệt...' : 'Mở trình duyệt',
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                const SizedBox(width: 6),
+
+                // 2. NÚT MỞ / ĐÓNG MOBILE DEVICE
+                Expanded(
+                  child: () {
+                    final isOpeningDevice = _openingDeviceIps.contains(item.ip);
+                    final isClosingDevice = _closingDeviceIps.contains(item.ip);
+                    final isDeviceBusy = isOpeningDevice || isClosingDevice;
+
+                    if (isDeviceRunning) {
+                      return ElevatedButton.icon(
+                        onPressed: isDeviceBusy
+                            ? null
+                            : () async {
+                                setState(() {
+                                  _closingDeviceIps.add(item.ip);
+                                });
+                                try {
+                                  await _socks5Service.closeDeviceForIp(item.ip);
+                                  if (mounted) {
+                                    AppToast.info(context, 'Đã đóng mobile device cho ${item.ip}');
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    AppToast.error(context, 'Lỗi khi đóng device: $e');
+                                  }
+                                } finally {
+                                  if (mounted) {
+                                    setState(() {
+                                      _closingDeviceIps.remove(item.ip);
+                                    });
+                                  }
+                                }
+                              },
+                        icon: isClosingDevice
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                              )
+                            : const Icon(Icons.phone_disabled_rounded, size: 14),
+                        label: Text(
+                          isClosingDevice ? 'Đang đóng...' : 'Đóng device',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFC53030),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ElevatedButton.icon(
+                      onPressed: isDeviceBusy
+                          ? null
+                          : () async {
+                              setState(() {
+                                _openingDeviceIps.add(item.ip);
+                              });
+                              AppToast.info(context, 'Đang khởi tạo mobile device cho ${item.ip}...');
+                              try {
+                                await _socks5Service.launchDeviceWithSocks5(
+                                  server: item.server,
+                                  ip: item.ip,
+                                );
+                                if (mounted) {
+                                  AppToast.success(context, 'Đã mở mobile device qua ${item.ip}');
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  AppToast.error(context, 'Lỗi mở mobile device: $e');
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() {
+                                    _openingDeviceIps.remove(item.ip);
+                                  });
+                                }
+                              }
+                            },
+                      icon: isOpeningDevice
+                          ? const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                            )
+                          : const Icon(Icons.smartphone_rounded, size: 14),
+                      label: Text(
+                        isOpeningDevice ? 'Đang mở...' : 'Mở device',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E7D32),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    );
+                  }(),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: const Color(0xFF070B14),
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-              );
-            }(),
+              ],
+            ),
           ),
         ],
       ),

@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import 'database_service.dart';
 import 'local_config_service.dart';
-import 'native_ssh_service.dart';
 
 class NativeAiService {
   static final NativeAiService _instance = NativeAiService._internal();
@@ -13,33 +14,15 @@ class NativeAiService {
   NativeAiService._internal();
 
   final LocalConfigService _configService = LocalConfigService();
-  final NativeSshService _sshService = NativeSshService();
   final DatabaseService _dbService = DatabaseService();
 
-  static const String systemPromptBase = '''Bạn là Tadu Cloud AI Agent - Kỹ sư DevOps Linux thực chiến cấp cao.
-Bạn có quyền thực thi lệnh bash/shell thực tế trên máy chủ qua công cụ `execute_terminal_command`.
+  static const String systemPromptBase = '''Bạn là AI Agent Chatbot - Trợ lý thông minh đa năng cấp cao.
+Bạn hỗ trợ phân tích dữ liệu, viết mã lập trình, giải quyết kỹ thuật và tương tác trực tiếp với hệ thống qua công cụ `execute_terminal_command`.
 
-CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
-
-1. THỰC THI TRIỆT ĐỂ ĐẾN CÙNG - KHÔNG DỪNG NỬA CHỪNG (END-TO-END EXECUTION):
-   - Khi nhận yêu cầu (cài website, upload code, giải nén, cài node/npm, build, tạo virtualhost, cấp SSL, sửa lỗi...): Bạn PHẢI CHỦ ĐỘNG GỌI `execute_terminal_command` chạy liên tục toàn bộ các bước cho đến khi XONG HOÀN TOÀN và KIỂM CHỨNG THÀNH CÔNG.
-   - TUYỆT ĐỐI CẤM dừng lại ở câu nói lấp lửng/dự định (như "Giờ copy...", "Tiếp theo sẽ build...", "Đang kiểm tra..."). Đã định làm gì là PHẢI GỌI TOOL CHẠY LỆNH ĐÓ NGAY LẬP TỨC.
-   - Luôn kiểm tra kết quả bước trước. Nếu lệnh phát sinh lỗi, tự động chẩn đoán và chạy lệnh sửa lỗi ngay.
-   - Sau khi cài đặt/build xong, LUÔN CHẠY lệnh kiểm tra thực tế (ví dụ: `curl -ILs http://<domain>` hoặc `systemctl status <service>`) để xác nhận website/dịch vụ đã hoạt động trước khi đưa ra câu trả lời cuối cùng.
-
-2. VỊ TRÍ TỆP TIN & MÃ NGUỒN TẢI LÊN:
-   - Các tệp đính kèm người dùng tải lên được lưu tại: `/opt/ai_agent/uploads/<tên_tệp>`.
-   - Khi người dùng yêu cầu upload/cài đặt mã nguồn vào một thư mục (ví dụ `/var/www/vhosts/<domain>/httpdocs/`), bạn hãy kiểm tra tệp zip/tar trong `/opt/ai_agent/uploads/`, giải nén hoặc copy vào thư mục đích, chown phân quyền phù hợp và tiến hành cài đặt dependencies / build.
-
-3. TẬP TRUNG ĐÚNG 100% TRỌNG TÂM YÊU CẦU (STRICT SCOPE):
-   - CHỈ xử lý ĐÚNG DUY NHẤT domain/dịch vụ mà người dùng đang yêu cầu trong tin nhắn mới nhất.
-   - TUYỆT ĐỐI KHÔNG kiểm tra lại các website/service cũ không liên quan.
-
-4. BÁO CÁO KẾT QUẢ RÕ RÀNG, CHÍNH XÁC (ZERO FLUFF):
-   - Khi hoàn tất, báo cáo rõ:
-     + Trạng thái: ✅ ĐÃ HOÀN TẤT hoặc ❌ GẶP LỖI CỤ THỂ.
-     + Kết quả kiểm tra (Domain, Port, HTTP Code, Đường dẫn).
-   - Không chào hỏi, không cảm ơn, không văn mẫu xã giao.
+CÁC QUY TẮC BẮT BUỘC:
+1. Trả lời chính xác, trọng tâm, không lan man, giải thích rõ ràng kèm code/lệnh cụ thể khi được hỏi.
+2. Khi cần tra cứu thông tin hệ thống hoặc chạy script, sử dụng `execute_terminal_command`.
+3. Báo cáo kết quả đầy đủ và trung thực.
 ''';
 
   StreamSubscription<String> streamChatMessage({
@@ -295,7 +278,34 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               );
               onTool(toolItem);
 
-              final cmdOutput = await _sshService.executeCommand(cmd, workingDir: workingDir);
+              String cmdOutput = '';
+              try {
+                if (!kIsWeb && (Platform.isLinux || Platform.isMacOS || Platform.isWindows)) {
+                  final shell = Platform.isWindows ? 'cmd.exe' : 'bash';
+                  final shellArgs = Platform.isWindows ? ['/c', cmd] : ['-c', cmd];
+                  final pr = await Process.run(
+                    shell,
+                    shellArgs,
+                    workingDirectory: workingDir,
+                    runInShell: true,
+                  ).timeout(const Duration(seconds: 60));
+                  final out = pr.stdout.toString().trim();
+                  final err = pr.stderr.toString().trim();
+                  if (out.isNotEmpty && err.isNotEmpty) {
+                    cmdOutput = '$out\n[STDERR]:\n$err';
+                  } else if (out.isNotEmpty) {
+                    cmdOutput = out;
+                  } else if (err.isNotEmpty) {
+                    cmdOutput = err;
+                  } else {
+                    cmdOutput = 'Lệnh chạy thành công, không có output.';
+                  }
+                } else {
+                  cmdOutput = 'Lệnh terminal không được hỗ trợ trên nền tảng này.';
+                }
+              } catch (e) {
+                cmdOutput = 'Lỗi thực thi lệnh: $e';
+              }
 
               final finishedTool = ToolExecutionItem(
                 tool: funcName,

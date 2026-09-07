@@ -84,7 +84,7 @@ class StorageService {
     await _prefs.setBool(_keyBiometricEnabled, enabled);
   }
 
-  // Tadu Cloud Authentication
+  // App Authentication
   Future<String?> getAuthToken() async {
     await init();
     return _prefs.getString(_keyAuthToken);

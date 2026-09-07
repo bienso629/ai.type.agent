@@ -10,11 +10,11 @@ class AppColors {
   static const Color borderDark = Color(0xFF1E293B); // --tadu-border
   static const Color borderLight = Color(0xFF334155);
 
-  // Tadu Primary Red Palette
-  static const Color primary = Color(0xFFDC2626); // Crimson Red (Red 600)
-  static const Color primaryHover = Color(0xFFB91C1C); // Red 700
-  static const Color primaryLight = Color(0xFFF87171); // Red 400
-  static const Color primaryDark = Color(0xFF991B1B); // Red 800
+  // Primary Deep Blue Palette
+  static const Color primary = Color(0xFF1D4ED8); // Deep Royal Blue (Blue 700)
+  static const Color primaryHover = Color(0xFF1E40AF); // Blue 800
+  static const Color primaryLight = Color(0xFF60A5FA); // Blue 400
+  static const Color primaryDark = Color(0xFF172554); // Blue 950
 
   // Accents
   static const Color accent = Color(0xFF10B981); // Emerald Green
@@ -104,8 +104,17 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
           textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textBody,
+          side: const BorderSide(color: AppColors.borderDark),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+          textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500),
         ),
       ),
       dialogTheme: DialogThemeData(
@@ -131,7 +140,7 @@ class AppTheme {
           foregroundColor: AppColors.textMuted,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(2),
             side: BorderSide.none,
           ),
           textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500),

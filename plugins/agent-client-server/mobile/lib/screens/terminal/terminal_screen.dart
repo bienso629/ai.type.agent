@@ -436,7 +436,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         side: const BorderSide(color: AppColors.borderDark),
         backgroundColor: AppColors.cardBg,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
       ),
       icon: Icon(icon, size: 13, color: color),
       label: Text(

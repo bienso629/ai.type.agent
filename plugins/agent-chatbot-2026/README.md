@@ -1,6 +1,6 @@
-# 📱 Tadu Cloud AI Agent - Flutter Mobile App
+# AI Agent Chatbot - Flutter Desktop & Web Application
 
-Ứng dụng di động (Android & iOS) quản trị máy chủ Linux VPS và điều khiển trợ lý AI Agent cho hệ thống Tadu Cloud.
+Ứng dụng quản trị máy chủ Linux VPS và điều khiển trợ lý AI Agent Chatbot.
 
 ---
 

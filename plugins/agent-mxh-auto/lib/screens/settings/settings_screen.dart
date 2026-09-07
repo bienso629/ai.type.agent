@@ -268,7 +268,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     foregroundColor: isServiceActive ? Colors.white : const Color(0xFF070B14),
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                     elevation: 0,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                                   ),
                                   icon: isOperatingService
                                       ? const SizedBox(
@@ -343,7 +343,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     foregroundColor: AppColors.textWhite,
                                     side: const BorderSide(color: AppColors.borderDark),
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                                   ),
                                   icon: const Icon(Icons.refresh_rounded, size: 14, color: AppColors.textDim),
                                   label: const Text('Kiểm tra trạng thái', style: TextStyle(fontSize: 11.5)),

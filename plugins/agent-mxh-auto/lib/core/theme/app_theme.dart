@@ -104,8 +104,18 @@ class AppTheme {
           foregroundColor: const Color(0xFF070B14), // Chữ đen trên nền vàng nổi bật
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
           textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: AppColors.borderDark),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600),
         ),
       ),
       dialogTheme: DialogThemeData(

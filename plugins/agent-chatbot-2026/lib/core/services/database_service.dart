@@ -86,21 +86,16 @@ class DatabaseService {
     final dbFileName = key.isNotEmpty ? 'chat_history_$key.db' : 'chat_history.db';
 
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      final execDir = p.dirname(Platform.resolvedExecutable);
       final currentDir = Directory.current.path;
+      final appDataDir = p.join(Platform.environment['HOME'] ?? '', '.agent_chatbot_2026');
+      final dir = Directory(appDataDir);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+
       final candidates = [
         p.join(currentDir, dbFileName),
-        p.join(currentDir, '..', dbFileName),
-        p.join(currentDir, '..', '..', dbFileName),
-        p.join(currentDir, '..', '..', '..', dbFileName),
-        p.join(execDir, dbFileName),
-        p.join(execDir, '..', dbFileName),
-        p.join(execDir, '..', '..', dbFileName),
-        p.join(execDir, '..', '..', '..', dbFileName),
-        p.join(execDir, '..', '..', '..', '..', dbFileName),
-        p.join(execDir, '..', '..', '..', '..', '..', dbFileName),
-        '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/$dbFileName',
-        p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', dbFileName),
+        p.join(appDataDir, dbFileName),
       ];
 
       for (final candidate in candidates) {
@@ -109,54 +104,16 @@ class DatabaseService {
         }
       }
 
-      // If user-specific DB does not exist yet, search for base chat_history.db and seed/copy it
-      if (key.isNotEmpty) {
-        final fallbackCandidates = [
-          p.join(currentDir, 'chat_history.db'),
-          p.join(currentDir, '..', 'chat_history.db'),
-          p.join(currentDir, '..', '..', 'chat_history.db'),
-          p.join(currentDir, '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, 'chat_history.db'),
-          p.join(execDir, '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', '..', '..', 'chat_history.db'),
-          '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/chat_history.db',
-          p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', 'chat_history.db'),
-        ];
-        for (final fallback in fallbackCandidates) {
-          if (File(fallback).existsSync()) {
-            final targetDir = p.dirname(fallback);
-            final newPath = p.join(targetDir, dbFileName);
-            try {
-              File(fallback).copySync(newPath);
-              return p.normalize(newPath);
-            } catch (_) {
-              return p.normalize(fallback);
-            }
-          }
-        }
-      }
-
-      final defaultDesk = p.join(currentDir, dbFileName);
-      return defaultDesk;
+      // If not found, create new DB inside isolated appDataDir
+      final newDbPath = p.join(appDataDir, dbFileName);
+      return newDbPath;
     }
 
     try {
       final appDocDir = await getApplicationDocumentsDirectory();
       final dir = Directory(appDocDir.path);
       if (!dir.existsSync()) dir.createSync(recursive: true);
-      final targetPath = p.join(appDocDir.path, dbFileName);
-      if (key.isNotEmpty && !File(targetPath).existsSync()) {
-        final defaultDb = p.join(appDocDir.path, 'chat_history.db');
-        if (File(defaultDb).existsSync()) {
-          try {
-            File(defaultDb).copySync(targetPath);
-          } catch (_) {}
-        }
-      }
-      return targetPath;
+      return p.join(appDocDir.path, dbFileName);
     } catch (_) {
       return dbFileName;
     }

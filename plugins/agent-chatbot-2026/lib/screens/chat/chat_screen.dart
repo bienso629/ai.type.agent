@@ -30,6 +30,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
   bool _isRightSidebarOpen = true;
+  final TextEditingController _sessionSearchController = TextEditingController();
+  bool _isSearchingSessions = false;
   String? _workingDirScope;
   final List<AttachmentItem> _attachedFiles = [];
 
@@ -75,6 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _dirDebounceTimer?.cancel();
     _textController.removeListener(_onTextChanged);
     _scrollController.removeListener(_onScroll);
+    _sessionSearchController.dispose();
     _inputFocusNode.dispose();
     _textController.dispose();
     _scrollController.dispose();
@@ -662,7 +665,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         Row(
                           children: [
                             Text(
-                              chat.currentSession?.title ?? 'Tadu Cloud AI Assistant',
+                              chat.currentSession?.title ?? 'AI Chatbot Assistant',
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                             ),
                             const SizedBox(width: 8),
@@ -895,7 +898,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(width: 10),
               Text(
-                '👋 Xin chào! Tôi là Tadu Cloud AI Agent (${serverProvider.currentAiModel})',
+                'Xin chào! Tôi là AI Chatbot Agent (${serverProvider.currentAiModel})',
                 style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
               ),
             ],
@@ -962,7 +965,7 @@ class _ChatScreenState extends State<ChatScreen> {
         side: const BorderSide(color: AppColors.borderDark),
         backgroundColor: AppColors.inputBg,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
       ),
       icon: Icon(icon, size: 14, color: iconColor),
       label: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
@@ -984,7 +987,7 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       onExportPdf: (m) async {
         final server = context.read<ServerProvider>().selectedServer;
-        final srvInfo = server != null ? '${server.sshUser}@${server.serverIp}' : null;
+        final srvInfo = server?.name ?? 'AI Agent Local';
         AppToast.info(context, 'Đang tạo và lưu tài liệu PDF chuẩn A4...');
         try {
           final path = await PdfExportService.exportMessageToPdf(m, serverInfo: srvInfo);
@@ -1338,7 +1341,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: AppColors.borderDark),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
                       ),
                       icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
                       label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
@@ -1352,7 +1355,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
                       ),
                       icon: Icon(
                         Icons.attach_file_rounded,
@@ -1410,37 +1413,99 @@ class _ChatScreenState extends State<ChatScreen> {
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.layers_rounded, size: 16, color: AppColors.primaryLight),
-                    SizedBox(width: 8),
-                    Text('Hộp Hội Thoại', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.add_rounded, size: 18, color: AppColors.primaryLight),
-                  tooltip: 'Tạo hội thoại mới',
-                  onPressed: () => chat.createNewSession(),
-                ),
-              ],
-            ),
+            child: _isSearchingSessions
+                ? Container(
+                    height: 34,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputBg,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.search_rounded, size: 15, color: AppColors.primaryLight),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: TextField(
+                            controller: _sessionSearchController,
+                            autofocus: true,
+                            style: const TextStyle(fontSize: 12, color: AppColors.textBody),
+                            decoration: const InputDecoration(
+                              hintText: 'Tìm kiếm hội thoại...',
+                              hintStyle: TextStyle(fontSize: 12, color: AppColors.textDim),
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                          icon: const Icon(Icons.close_rounded, size: 15, color: AppColors.textDim),
+                          tooltip: 'Đóng tìm kiếm',
+                          onPressed: () {
+                            setState(() {
+                              _isSearchingSessions = false;
+                              _sessionSearchController.clear();
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.layers_rounded, size: 16, color: AppColors.primaryLight),
+                          SizedBox(width: 8),
+                          Text('Hộp Hội Thoại', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                        icon: const Icon(Icons.search_rounded, size: 18, color: AppColors.primaryLight),
+                        tooltip: 'Tìm kiếm hội thoại',
+                        onPressed: () {
+                          setState(() {
+                            _isSearchingSessions = true;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
           ),
           Expanded(
-            child: chat.sessions.isEmpty
-                ? const Center(
-                    child: Text('Chưa có hội thoại nào', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(6),
-                    itemCount: chat.sessions.length,
-                    itemBuilder: (context, idx) {
-                      final sess = chat.sessions[idx];
-                      final isSelected = sess.id == chat.currentSession?.id;
+            child: () {
+              final query = _sessionSearchController.text.trim().toLowerCase();
+              final filteredSessions = query.isEmpty
+                  ? chat.sessions
+                  : chat.sessions.where((s) => s.title.toLowerCase().contains(query)).toList();
+
+              if (filteredSessions.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      query.isEmpty ? 'Chưa có hội thoại nào' : 'Không tìm thấy hội thoại phù hợp',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(6),
+                itemCount: filteredSessions.length,
+                itemBuilder: (context, idx) {
+                  final sess = filteredSessions[idx];
+                  final isSelected = sess.id == chat.currentSession?.id;
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 4),
@@ -1547,7 +1612,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       );
                     },
-                  ),
+                    );
+              }(),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

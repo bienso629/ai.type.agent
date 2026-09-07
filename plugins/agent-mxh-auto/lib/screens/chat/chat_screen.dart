@@ -664,11 +664,16 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                       ),
 
-                      // Status Progress Indicator Bar
+                      // Status Progress Indicator Bar with Stop Button
                       if (chat.isGenerating)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          color: AppColors.sidebarBg,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: const BoxDecoration(
+                            color: AppColors.sidebarBg,
+                            border: Border(
+                              top: BorderSide(color: AppColors.borderDark, width: 1),
+                            ),
+                          ),
                           child: Row(
                             children: [
                               const SizedBox(
@@ -683,6 +688,30 @@ class _ChatScreenState extends State<ChatScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => chat.stopGenerating(),
+                                borderRadius: BorderRadius.circular(4),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.danger.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.danger.withValues(alpha: 0.5)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.stop_rounded, size: 14, color: AppColors.danger),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Dừng lại',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.danger),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -812,35 +841,204 @@ class _ChatScreenState extends State<ChatScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildPromptChip(
-                icon: Icons.pie_chart_rounded,
+              _buildActionPromptChip(
+                icon: Icons.thumb_up_alt_rounded,
                 iconColor: AppColors.accentCyan,
-                label: 'Kiểm tra RAM & Ổ đĩa',
-                prompt: 'Kiểm tra dung lượng ổ đĩa và RAM hiện tại',
+                label: 'Like video',
+                taskTitle: 'Like video',
+                defaultPrompt: 'Hãy điều khiển các nhân vật trong scope thực hiện tương tác like video này',
                 chat: chat,
+                serverProvider: serverProvider,
               ),
-              _buildPromptChip(
-                icon: Icons.bolt_rounded,
-                iconColor: AppColors.warning,
-                label: 'Top tiến trình CPU',
-                prompt: 'Xem danh sách tiến trình đang chạy và chiếm nhiều CPU nhất',
-                chat: chat,
-              ),
-              _buildPromptChip(
-                icon: Icons.lan_rounded,
+              _buildActionPromptChip(
+                icon: Icons.comment_rounded,
                 iconColor: AppColors.primaryLight,
-                label: 'Cổng đang mở',
-                prompt: 'Kiểm tra các cổng mạng đang mở (listening ports)',
+                label: 'Viết comment',
+                taskTitle: 'Viết comment',
+                defaultPrompt: 'Hãy điều khiển các nhân vật trong scope viết bình luận phù hợp với tính cách và ngữ cảnh của video này',
                 chat: chat,
+                serverProvider: serverProvider,
+              ),
+              _buildActionPromptChip(
+                icon: Icons.live_tv_rounded,
+                iconColor: AppColors.danger,
+                label: 'Xem livestream',
+                taskTitle: 'Xem livestream',
+                defaultPrompt: 'Hãy điều khiển các nhân vật trong scope vào xem livestream này và tương tác tự nhiên',
+                chat: chat,
+                serverProvider: serverProvider,
               ),
               _buildPromptChip(
-                icon: Icons.sync_rounded,
+                icon: Icons.post_add_rounded,
                 iconColor: AppColors.accent,
-                label: 'Trạng thái Services',
-                prompt: 'Kiểm tra trạng thái service nginx và uvicorn',
+                label: 'Đăng bài',
+                prompt: 'Hãy soạn và đăng bài viết mới dựa trên phong cách của các nhân vật trong scope',
                 chat: chat,
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionPromptChip({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String taskTitle,
+    required String defaultPrompt,
+    required ChatProvider chat,
+    required ServerProvider serverProvider,
+  }) {
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: AppColors.borderDark),
+        backgroundColor: AppColors.inputBg,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      ),
+      icon: Icon(icon, size: 14, color: iconColor),
+      label: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
+      onPressed: () {
+        _openVideoTaskDialog(
+          title: taskTitle,
+          actionIcon: icon,
+          actionColor: iconColor,
+          baseInstruction: defaultPrompt,
+          chat: chat,
+          serverProvider: serverProvider,
+        );
+      },
+    );
+  }
+
+  void _openVideoTaskDialog({
+    required String title,
+    required IconData actionIcon,
+    required Color actionColor,
+    required String baseInstruction,
+    required ChatProvider chat,
+    required ServerProvider serverProvider,
+  }) {
+    final linkController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 460,
+        maxWidth: 540,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(actionIcon, color: actionColor, size: 20),
+            const SizedBox(width: 8),
+            Text('Nhập link video ($title)'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Nhập đường link video/livestream để các nhân vật trong scope thực hiện nhiệm vụ $title:',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppColors.inputBg,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.borderDark, width: 1),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(left: 10, right: 6),
+                    child: Icon(Icons.link_rounded, size: 16, color: AppColors.textDim),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: TextField(
+                        controller: linkController,
+                        autofocus: true,
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          hintText: 'https://...',
+                          hintStyle: TextStyle(fontSize: 12, color: AppColors.textDim),
+                          fillColor: Colors.transparent,
+                          filled: false,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_selectedPersonasScope.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.people_alt_rounded, size: 13, color: AppColors.primaryLight),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Áp dụng cho ${_selectedPersonasScope.length} nhân vật đã chọn trong scope',
+                      style: const TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final rawLink = linkController.text.trim();
+              if (rawLink.isEmpty) {
+                AppToast.warning(context, 'Vui lòng nhập đường link video!');
+                return;
+              }
+              Navigator.pop(ctx);
+
+              String? scopePayload;
+              if (_selectedPersonasScope.isNotEmpty) {
+                final buffer = StringBuffer();
+                buffer.writeln('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH (SCOPE PERSONAS) ===');
+                for (final p in _selectedPersonasScope) {
+                  buffer.writeln('- IP: ${p.ip} | Họ tên: ${p.name} | Tuổi: ${p.age} | Giới tính: ${p.gender} | Bio: ${p.bio}');
+                }
+                scopePayload = buffer.toString().trim();
+              }
+
+              final fullMessage = '$baseInstruction:\n$rawLink';
+              chat.sendMessage(
+                fullMessage,
+                model: serverProvider.currentAiModel,
+                workingDir: scopePayload,
+              );
+              _safeScrollToBottom();
+            },
+            child: const Text('Xác nhận & Chạy'),
           ),
         ],
       ),
@@ -1227,15 +1425,26 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                 ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  ),
-                  icon: const Icon(Icons.send_rounded, size: 14),
-                  label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  onPressed: chat.isGenerating ? null : () => _handleSend(chat, serverProvider),
-                ),
+                chat.isGenerating
+                    ? ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                        icon: const Icon(Icons.stop_circle_rounded, size: 16),
+                        label: const Text('Dừng lại', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        onPressed: () => chat.stopGenerating(),
+                      )
+                    : ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                        icon: const Icon(Icons.send_rounded, size: 14),
+                        label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        onPressed: () => _handleSend(chat, serverProvider),
+                      ),
               ],
             ),
           ],
@@ -1534,10 +1743,15 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
   final Set<String> _selectedIps = {};
   bool _isLoading = true;
 
+  int _currentPage = 1;
+  static const int _pageSize = 10;
+  static const int _maxSelection = 10;
+
   @override
   void initState() {
     super.initState();
-    _selectedIps.addAll(widget.selectedPersonas.map((p) => p.ip));
+    final initialIps = widget.selectedPersonas.map((p) => p.ip).take(_maxSelection);
+    _selectedIps.addAll(initialIps);
     _loadPersonas();
   }
 
@@ -1574,14 +1788,30 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
       if (_selectedIps.contains(p.ip)) {
         _selectedIps.remove(p.ip);
       } else {
+        if (_selectedIps.length >= _maxSelection) {
+          AppToast.warning(context, 'Chỉ được chọn tối đa $_maxSelection nhân vật cùng lúc!');
+          return;
+        }
         _selectedIps.add(p.ip);
       }
     });
   }
 
-  void _selectAll() {
+  void _selectPage() {
+    final filtered = _filteredPersonas;
+    final totalPages = (filtered.length / _pageSize).ceil();
+    final safePage = totalPages == 0 ? 1 : _currentPage.clamp(1, totalPages);
+    final startIndex = (safePage - 1) * _pageSize;
+    final pageItems = filtered.skip(startIndex).take(_pageSize).toList();
+
     setState(() {
-      _selectedIps.addAll(_filteredPersonas.map((p) => p.ip));
+      for (final p in pageItems) {
+        if (_selectedIps.length >= _maxSelection) {
+          AppToast.warning(context, 'Đã đạt giới hạn tối đa $_maxSelection nhân vật!');
+          break;
+        }
+        _selectedIps.add(p.ip);
+      }
     });
   }
 
@@ -1595,9 +1825,13 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
   Widget build(BuildContext context) {
     final filtered = _filteredPersonas;
     final totalSelected = _selectedIps.length;
+    final totalPages = (filtered.length / _pageSize).ceil();
+    final safePage = totalPages == 0 ? 1 : _currentPage.clamp(1, totalPages);
+    final startIndex = (safePage - 1) * _pageSize;
+    final pageItems = filtered.skip(startIndex).take(_pageSize).toList();
 
     return TaduDialog(
-      minWidth: 560,
+      minWidth: 580,
       maxWidth: 680,
       title: const Row(
         mainAxisSize: MainAxisSize.min,
@@ -1613,50 +1847,77 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
         ],
       ),
       content: SizedBox(
-        width: 580,
+        width: 600,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Chọn danh sách nhân vật (persona profiles) để AI Agent quản lý và hành động trong hội thoại này:',
+              'Chọn tối đa 10 nhân vật (persona profiles) để AI Agent quản lý và hành động trong hội thoại này:',
               style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
             ),
             const SizedBox(height: 12),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: SizedBox(
+                  child: Container(
                     height: 36,
-                    child: TextField(
-                      controller: _searchController,
-                      style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        hintText: 'Tìm theo tên, IP, giới tính...',
-                        hintStyle: const TextStyle(fontSize: 12, color: AppColors.textDim),
-                        prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textDim),
-                        prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.textDim),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() {});
-                                },
-                              )
-                            : null,
-                      ),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.borderDark, width: 1),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(left: 10, right: 6),
+                          child: Icon(Icons.search_rounded, size: 16, color: AppColors.textDim),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: TextField(
+                              controller: _searchController,
+                              style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
+                              onChanged: (_) => setState(() {
+                                _currentPage = 1;
+                              }),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(vertical: 8),
+                                hintText: 'Tìm theo tên, IP, giới tính...',
+                                hintStyle: TextStyle(fontSize: 12, color: AppColors.textDim),
+                                fillColor: Colors.transparent,
+                                filled: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_searchController.text.isNotEmpty)
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.textDim),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _currentPage = 1;
+                              });
+                            },
+                          )
+                        else
+                          const SizedBox(width: 6),
+                      ],
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 InkWell(
-                  onTap: _selectAll,
+                  onTap: _selectPage,
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
                     height: 36,
@@ -1668,8 +1929,8 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                       border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.4), width: 1),
                     ),
                     child: const Text(
-                      'Chọn tất cả',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
+                      'Chọn trang này',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
                     ),
                   ),
                 ),
@@ -1688,7 +1949,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                     ),
                     child: const Text(
                       'Bỏ chọn',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textMuted),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: AppColors.textMuted),
                     ),
                   ),
                 ),
@@ -1696,7 +1957,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
             ),
             const SizedBox(height: 12),
             Container(
-              height: 280,
+              height: 320,
               decoration: BoxDecoration(
                 color: AppColors.bgDark,
                 borderRadius: BorderRadius.circular(6),
@@ -1716,16 +1977,16 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                           ),
                         )
                       : ListView.separated(
-                          itemCount: filtered.length,
+                          itemCount: pageItems.length,
                           separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.borderDark),
                           itemBuilder: (context, idx) {
-                            final persona = filtered[idx];
+                            final persona = pageItems[idx];
                             final isSelected = _selectedIps.contains(persona.ip);
 
                             return InkWell(
                               onTap: () => _togglePersona(persona),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 color: isSelected
                                     ? AppColors.primary.withValues(alpha: 0.15)
                                     : Colors.transparent,
@@ -1817,6 +2078,89 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                           },
                         ),
             ),
+            if (totalPages > 1) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  InkWell(
+                    onTap: safePage > 1
+                        ? () => setState(() => _currentPage = safePage - 1)
+                        : null,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: safePage > 1 ? AppColors.cardBg : Colors.transparent,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: safePage > 1 ? AppColors.borderDark : AppColors.borderDark.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.chevron_left_rounded,
+                        size: 16,
+                        color: safePage > 1 ? AppColors.textBody : AppColors.textDim,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Wrap(
+                    spacing: 4,
+                    children: List.generate(totalPages, (index) {
+                      final pNum = index + 1;
+                      final isCur = pNum == safePage;
+                      return InkWell(
+                        onTap: () => setState(() => _currentPage = pNum),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isCur ? AppColors.primary : AppColors.cardBg,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: isCur ? AppColors.primaryLight : AppColors.borderDark,
+                            ),
+                          ),
+                          child: Text(
+                            '$pNum',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isCur ? FontWeight.bold : FontWeight.w500,
+                              color: isCur ? const Color(0xFF070B14) : AppColors.textBody,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: safePage < totalPages
+                        ? () => setState(() => _currentPage = safePage + 1)
+                        : null,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: safePage < totalPages ? AppColors.cardBg : Colors.transparent,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: safePage < totalPages ? AppColors.borderDark : AppColors.borderDark.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: safePage < totalPages ? AppColors.textBody : AppColors.textDim,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -1834,7 +2178,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
             widget.onSelect(selected);
             Navigator.pop(context);
           },
-          child: Text('Áp dụng ($totalSelected)'),
+          child: Text('Áp dụng ($totalSelected/$_maxSelection)'),
         ),
       ],
     );

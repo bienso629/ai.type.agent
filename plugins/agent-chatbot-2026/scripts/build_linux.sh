@@ -33,8 +33,8 @@ cp "$MOBILE_DIR/assets/icon.png" "$PKG_DIR/usr/share/icons/hicolor/512x512/apps/
 # Desktop Launcher
 cat << 'DESKTOP_EOF' > "$PKG_DIR/usr/share/applications/tadu-cloud-ai-agent.desktop"
 [Desktop Entry]
-Name=Tadu Cloud AI Agent
-Comment=Tadu Cloud AI Agent Native Desktop Application
+Name=AI Agent Chatbot
+Comment=AI Agent Chatbot Native Desktop Application
 Exec=/opt/tadu-cloud-ai-agent/tadu_cloud_ai_agent_mobile
 Icon=tadu-cloud-ai-agent
 Terminal=false
@@ -44,14 +44,14 @@ DESKTOP_EOF
 
 # Control file
 cat << 'CONTROL_EOF' > "$PKG_DIR/DEBIAN/control"
-Package: tadu-cloud-ai-agent-flutter
+Package: agent-chatbot-2026-flutter
 Version: 1.3.0
 Section: devel
 Priority: optional
 Architecture: amd64
-Maintainer: Tadu Cloud Team <support@tadu.vn>
-Description: Tadu Cloud AI Agent Native Flutter Desktop Application
- High performance, lightweight native Linux desktop client for Tadu Cloud AI Agent.
+Maintainer: Agent Chatbot Team <support@agent.chatbot>
+Description: AI Agent Chatbot Native Flutter Desktop Application
+ High performance, lightweight native Linux desktop client for AI Agent Chatbot.
 CONTROL_EOF
 
 echo "=== [3/4] Packaging .deb installer ==="

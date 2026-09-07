@@ -104,8 +104,16 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
           textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          side: const BorderSide(color: AppColors.borderDark),
+          textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500),
         ),
       ),
       dialogTheme: DialogThemeData(
@@ -131,7 +139,7 @@ class AppTheme {
           foregroundColor: AppColors.textMuted,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(2),
             side: BorderSide.none,
           ),
           textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500),

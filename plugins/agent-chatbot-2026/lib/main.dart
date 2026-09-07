@@ -4,11 +4,11 @@ import 'package:provider/provider.dart';
 import 'core/services/database_service.dart';
 import 'core/services/local_config_service.dart';
 import 'core/services/storage_service.dart';
+import 'core/services/user_service.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/gateway_provider.dart';
-import 'providers/logs_provider.dart';
 import 'providers/metrics_provider.dart';
 import 'providers/server_provider.dart';
 import 'screens/auth/login_screen.dart';
@@ -20,8 +20,9 @@ void main() async {
   // Initialize Storage Service
   await StorageService().init();
 
-  // Initialize Database and Local Config (Desktop & Mobile)
+  // Initialize Database, Users and Local Config (Desktop & Mobile)
   try {
+    await UserService().init();
     await DatabaseService().init();
     await LocalConfigService().loadConfig();
   } catch (_) {}
@@ -36,11 +37,11 @@ void main() async {
     ),
   );
 
-  runApp(const TaduCloudAiAgentApp());
+  runApp(const AgentChatbotApp());
 }
 
-class TaduCloudAiAgentApp extends StatelessWidget {
-  const TaduCloudAiAgentApp({super.key});
+class AgentChatbotApp extends StatelessWidget {
+  const AgentChatbotApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -51,10 +52,9 @@ class TaduCloudAiAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ServerProvider()),
         ChangeNotifierProvider(create: (_) => MetricsProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
-        ChangeNotifierProvider(create: (_) => LogsProvider()),
       ],
       child: MaterialApp(
-        title: 'Tadu Cloud AI Agent Control Server',
+        title: 'AI Agent Control Server',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
         home: const AuthGate(),

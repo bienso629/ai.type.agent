@@ -8,9 +8,6 @@ import '../../providers/chat_provider.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 import 'chat/chat_screen.dart';
-import 'server_setup/server_setup_screen.dart';
-import 'terminal/terminal_screen.dart';
-import 'logs/logs_screen.dart';
 import 'settings/settings_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -28,132 +25,27 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ServerProvider>().loadServers();
-      context.read<ChatProvider>().loadSessions();
+      context.read<ChatProvider>().reloadForUser();
     });
   }
 
   final List<Widget> _screens = const [
     ChatScreen(),
-    ServerSetupScreen(),
-    TerminalScreen(),
-    LogsScreen(),
     SettingsScreen(),
   ];
 
   final List<Map<String, dynamic>> _tabs = [
     {
       'title': 'Trợ lý AI',
-      'subtitle': 'Trợ lý AI điều khiển & hỗ trợ quản trị Linux',
+      'subtitle': 'Trò chuyện và hỗ trợ kỹ thuật thông minh',
       'icon': Icons.chat_bubble_outline_rounded,
     },
     {
-      'title': 'Thiết lập',
-      'subtitle': 'Quản lý máy chủ, triển khai code và kiểm soát dịch vụ',
-      'icon': Icons.dns_outlined,
-    },
-    {
-      'title': 'SSH Terminal',
-      'subtitle': 'SSH Interactive Terminal thời gian thực',
-      'icon': Icons.terminal_rounded,
-    },
-    {
-      'title': 'Logs',
-      'subtitle': 'Nhật ký realtime của tiến trình ai-agent.service',
-      'icon': Icons.description_outlined,
-    },
-    {
-      'title': 'Hệ thống',
-      'subtitle': 'Quản lý đa máy chủ Remote & Cấu hình AI toàn cục',
+      'title': 'Cài đặt',
+      'subtitle': 'Cấu hình AI Model, Proxy API và tài khoản',
       'icon': Icons.settings_outlined,
     },
   ];
-
-  void _showServerSwitcherDialog(BuildContext context, ServerProvider serverProvider) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 500,
-        maxWidth: 620,
-        title: const Row(
-          children: [
-            Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 22),
-            SizedBox(width: 8),
-            Text('Chuyển Đổi Máy Chủ VPS'),
-          ],
-        ),
-        content: serverProvider.servers.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('Chưa có máy chủ nào trong danh sách', style: TextStyle(color: AppColors.textMuted)),
-              )
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: serverProvider.servers.length,
-                itemBuilder: (context, idx) {
-                  final s = serverProvider.servers[idx];
-                  final isSelected = serverProvider.selectedServer != null &&
-                      (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.inputBg,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: isSelected ? AppColors.primary : AppColors.borderDark,
-                        width: isSelected ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                        leading: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primary.withValues(alpha: 0.2) : AppColors.sidebarBg,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            Icons.storage_rounded,
-                            size: 20,
-                            color: isSelected ? AppColors.primaryLight : AppColors.textMuted,
-                          ),
-                        ),
-                        title: Text(
-                          s.name,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            color: isSelected ? AppColors.primaryLight : AppColors.textWhite,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '${s.sshUser}@${s.serverIp}:${s.sshPort}',
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
-                        ),
-                        trailing: isSelected
-                            ? const Icon(Icons.check_circle_rounded, color: AppColors.primaryLight, size: 20)
-                            : null,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          serverProvider.selectServer(s);
-                        },
-                      ),
-                    ),
-                  );
-                },
-              ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Đóng'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +65,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // DESKTOP LAYOUT (EXACT 1:1 REPLICATION OF templates/index.html)
   // =========================================================================
   Widget _buildDesktopLayout() {
-    final serverProvider = context.watch<ServerProvider>();
     final metricsProvider = context.watch<MetricsProvider>();
     final auth = context.watch<AuthProvider>();
     final m = metricsProvider.metrics;
@@ -228,7 +119,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Tadu Cloud',
+                              'AI Agent',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -260,50 +151,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
 
-                // 1.2 Server Selector Dropdown
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'MÁY CHỦ HIỆN TẠI',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textDim, letterSpacing: 0.5),
-                      ),
-                      const SizedBox(height: 6),
-                      Material(
-                        color: AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(4),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(4),
-                          onTap: () => _showServerSwitcherDialog(context, serverProvider),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.borderDark),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.dns_rounded, size: 15, color: AppColors.primaryLight),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    serverProvider.selectedServer?.name ?? 'Chọn Máy Chủ...',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                                const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: AppColors.textDim),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 12),
 
                 // 1.3 Nav Buttons (Exact 5 items from templates/index.html)
                 Expanded(
@@ -394,10 +242,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                             ),
                             onPressed: () {
                               setState(() {
-                                _currentIndex = 1; // Switch to Thiết lập
+                                _currentIndex = 1; // Switch to Hệ thống
                               });
                             },
-                            child: const Text('Bật Agent ngay', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            child: const Text('Cài đặt hệ thống', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -478,7 +326,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         children: [
                           Icon(Icons.shield_rounded, size: 14, color: AppColors.accent),
                           SizedBox(width: 6),
-                          Text('Tadu Cloud Desktop', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                          Text('AI Agent Desktop', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
                         ],
                       ),
                       Text('v1.3.0', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim)),
@@ -530,21 +378,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               label: 'Trợ lý AI',
             ),
             NavigationDestination(
-              icon: Icon(Icons.dns_outlined),
-              selectedIcon: Icon(Icons.dns_rounded, color: AppColors.primaryLight),
-              label: 'Thiết lập',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.terminal_outlined),
-              selectedIcon: Icon(Icons.terminal_rounded, color: AppColors.primaryLight),
-              label: 'Terminal',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.description_outlined),
-              selectedIcon: Icon(Icons.description_rounded, color: AppColors.primaryLight),
-              label: 'Logs',
-            ),
-            NavigationDestination(
               icon: Icon(Icons.settings_outlined),
               selectedIcon: Icon(Icons.settings_rounded, color: AppColors.primaryLight),
               label: 'Hệ thống',
@@ -569,7 +402,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ],
         ),
         content: const Text(
-          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Tadu Cloud Control Center?',
+          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Control Center?',
           style: TextStyle(fontSize: 13, color: AppColors.textBody),
         ),
         actions: [
