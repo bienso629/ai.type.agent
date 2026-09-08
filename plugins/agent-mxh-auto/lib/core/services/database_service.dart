@@ -117,6 +117,7 @@ class DatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
         task_type TEXT NOT NULL,
+        execution_mode TEXT DEFAULT 'browser',
         target_url TEXT NOT NULL,
         comment_content TEXT,
         persona_ips TEXT NOT NULL,
@@ -129,6 +130,9 @@ class DatabaseService {
     ''');
 
     // Migration: Thêm cột nếu bảng cũ chưa có
+    try {
+      await _db!.execute("ALTER TABLE schedule_tasks ADD COLUMN execution_mode TEXT DEFAULT 'browser'");
+    } catch (_) {}
     try {
       await _db!.execute('ALTER TABLE persona_profiles ADD COLUMN external_device_address TEXT');
     } catch (_) {}

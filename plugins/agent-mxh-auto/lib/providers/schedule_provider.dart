@@ -101,6 +101,7 @@ class ScheduleProvider extends ChangeNotifier {
   Future<bool> createTask({
     required String title,
     required String taskType,
+    String executionMode = 'browser',
     required String targetUrl,
     String? commentContent,
     required List<String> personaIps,
@@ -109,6 +110,7 @@ class ScheduleProvider extends ChangeNotifier {
     final task = ScheduleTaskModel(
       title: title.trim(),
       taskType: taskType,
+      executionMode: executionMode,
       targetUrl: targetUrl.trim(),
       commentContent: commentContent?.trim(),
       personaIps: personaIps,
@@ -161,8 +163,14 @@ class ScheduleProvider extends ChangeNotifier {
     try {
       final personasMap = await _personaService.loadSavedPersonas();
       final targetPersonas = task.personaIps
-          .map((ip) => personasMap[ip])
-          .whereType<PersonaProfile>()
+          .map((ip) => personasMap[ip] ?? PersonaProfile(
+                ip: ip,
+                name: 'Nhân vật $ip',
+                age: 25,
+                gender: 'Nam',
+                bio: '',
+                avatarPrompt: '',
+              ))
           .toList();
 
       if (targetPersonas.isEmpty) {
@@ -171,38 +179,49 @@ class ScheduleProvider extends ChangeNotifier {
       }
 
       int successCount = 0;
+      final List<String> errorMessages = [];
+
       for (final p in targetPersonas) {
         try {
-          if (p.useExternalDevice || p.externalDeviceAddress != null || p.avdName != null) {
+          final isDeviceMode = task.executionMode == 'device';
+
+          if (isDeviceMode) {
             // Mở thiết bị máy ảo / ngoại vi
-            if (defaultServer != null) {
-              await _socks5Service.launchDeviceWithSocks5(
-                server: defaultServer,
-                ip: p.ip,
-                deviceType: p.deviceType,
-                avdName: p.avdName,
-                remoteDeviceAddress: p.externalDeviceAddress,
-                startUrl: task.targetUrl,
-              );
-            }
+            await _socks5Service.launchPersonaDevice(
+              ip: p.ip,
+              server: defaultServer,
+              deviceType: p.deviceType,
+              avdName: p.avdName,
+              remoteDeviceAddress: p.useExternalDevice ? p.externalDeviceAddress : null,
+              startUrl: task.targetUrl,
+            );
           } else {
             // Mở trình duyệt độc lập với Profile IP
-            if (defaultServer != null) {
-              await _socks5Service.launchBrowserWithSocks5(
-                server: defaultServer,
-                ip: p.ip,
-                startUrl: task.targetUrl,
-              );
-            }
+            await _socks5Service.launchPersonaBrowser(
+              ip: p.ip,
+              server: defaultServer,
+              startUrl: task.targetUrl,
+            );
           }
           successCount++;
-        } catch (_) {}
+        } catch (err) {
+          errorMessages.add('${p.name} (${p.ip}): $err');
+        }
       }
 
-      final note = 'Đã tự động kích hoạt cho $successCount/${targetPersonas.length} nhân vật thành công vào lúc ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}.';
-      await updateTaskStatus(task, successCount > 0 ? 'completed' : 'failed', note: note);
+      final timeStr = '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}';
+      if (successCount > 0) {
+        String note = 'Đã tự động kích hoạt cho $successCount/${targetPersonas.length} nhân vật thành công vào lúc $timeStr.';
+        if (errorMessages.isNotEmpty) {
+          note += ' (Lỗi một số profile: ${errorMessages.join('; ')})';
+        }
+        await updateTaskStatus(task, 'completed', note: note);
+      } else {
+        final errorDetail = errorMessages.isNotEmpty ? errorMessages.join('; ') : 'Không thể khởi động trình duyệt hoặc thiết bị.';
+        await updateTaskStatus(task, 'failed', note: 'Thất bại ($timeStr): $errorDetail');
+      }
     } catch (e) {
-      await updateTaskStatus(task, 'failed', note: 'Lỗi thực thi: $e');
+      await updateTaskStatus(task, 'failed', note: 'Lỗi thực thi tác vụ: $e');
     }
   }
 

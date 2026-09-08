@@ -2,6 +2,7 @@ class ScheduleTaskModel {
   final int? id;
   final String title;
   final String taskType; // 'like' | 'comment' | 'livestream' | 'post'
+  final String executionMode; // 'browser' | 'device'
   final String targetUrl;
   final String? commentContent;
   final List<String> personaIps;
@@ -15,6 +16,7 @@ class ScheduleTaskModel {
     this.id,
     required this.title,
     required this.taskType,
+    this.executionMode = 'browser',
     required this.targetUrl,
     this.commentContent,
     required this.personaIps,
@@ -30,6 +32,7 @@ class ScheduleTaskModel {
       if (id != null) 'id': id,
       'title': title,
       'task_type': taskType,
+      'execution_mode': executionMode,
       'target_url': targetUrl,
       'comment_content': commentContent,
       'persona_ips': personaIps.join(','),
@@ -49,6 +52,7 @@ class ScheduleTaskModel {
       id: map['id'] as int?,
       title: map['title']?.toString() ?? '',
       taskType: map['task_type']?.toString() ?? 'like',
+      executionMode: map['execution_mode']?.toString() ?? 'browser',
       targetUrl: map['target_url']?.toString() ?? '',
       commentContent: map['comment_content']?.toString(),
       personaIps: ips,
@@ -64,6 +68,7 @@ class ScheduleTaskModel {
     int? id,
     String? title,
     String? taskType,
+    String? executionMode,
     String? targetUrl,
     String? commentContent,
     List<String>? personaIps,
@@ -77,6 +82,7 @@ class ScheduleTaskModel {
       id: id ?? this.id,
       title: title ?? this.title,
       taskType: taskType ?? this.taskType,
+      executionMode: executionMode ?? this.executionMode,
       targetUrl: targetUrl ?? this.targetUrl,
       commentContent: commentContent ?? this.commentContent,
       personaIps: personaIps ?? this.personaIps,

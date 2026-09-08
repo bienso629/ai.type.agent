@@ -7,9 +7,9 @@ import 'adb_manager_service.dart';
 
 class Socks5Session {
   final int localPort;
-  final ServerModel server;
+  final ServerModel? server;
   final String ip;
-  final Process sshProcess;
+  final Process? sshProcess;
   final File? askpassFile;
   Process? browserProcess;
   Process? deviceProcess;
@@ -19,16 +19,16 @@ class Socks5Session {
 
   Socks5Session({
     required this.localPort,
-    required this.server,
+    this.server,
     required this.ip,
-    required this.sshProcess,
+    this.sshProcess,
     this.askpassFile,
     this.remoteDeviceAddress,
   });
 
   Future<void> stop() async {
     try {
-      sshProcess.kill(ProcessSignal.sigterm);
+      sshProcess?.kill(ProcessSignal.sigterm);
     } catch (_) {}
     try {
       if (askpassFile != null && askpassFile!.existsSync()) {
@@ -309,14 +309,38 @@ class Socks5ProxyService extends ChangeNotifier {
     return session;
   }
 
-  /// Mở trình duyệt trên máy local với cấu hình SOCKS5 trỏ qua SSH Server
-  Future<bool> launchBrowserWithSocks5({
-    required ServerModel server,
+  /// Tìm binary trình duyệt khả dụng trên hệ thống Linux
+  String? findBrowserExecutable() {
+    final browserCandidates = [
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/opera-gx',
+      '/usr/bin/opera',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/brave-browser',
+      '/snap/bin/firefox',
+      '/usr/bin/firefox',
+    ];
+
+    for (final b in browserCandidates) {
+      if (File(b).existsSync()) {
+        return b;
+      }
+    }
+    return null;
+  }
+
+  /// Mở trình duyệt độc lập cho Persona IP (có proxy socks5 nếu có Server, hoặc mở local trực tiếp)
+  Future<bool> launchPersonaBrowser({
     required String ip,
+    ServerModel? server,
     String? startUrl,
   }) async {
-    final session = await startSocks5Server(server: server, ip: ip);
-    final socks5Proxy = 'socks5://127.0.0.1:${session.localPort}';
+    final executable = findBrowserExecutable();
+    if (executable == null) {
+      throw Exception('Không tìm thấy trình duyệt khả dụng (Chrome, Opera, Chromium, Firefox) trên hệ thống local.');
+    }
 
     // Đường dẫn thư mục dữ liệu riêng cho từng IP để cô lập profile không ảnh hưởng trình duyệt gốc
     final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
@@ -352,33 +376,19 @@ class Socks5ProxyService extends ChangeNotifier {
 
     final targetUrl = (startUrl != null && startUrl.isNotEmpty) ? startUrl : 'https://type.vn';
 
-    // Ưu tiên tìm trình duyệt khả dụng trên hệ thống Linux
-    final browserCandidates = [
-      '/usr/bin/google-chrome',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/opera-gx',
-      '/usr/bin/opera',
-      '/usr/bin/chromium',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/brave-browser',
-      '/snap/bin/firefox',
-      '/usr/bin/firefox',
-    ];
-
-    String? executable;
-    for (final b in browserCandidates) {
-      if (File(b).existsSync()) {
-        executable = b;
-        break;
+    // Thử kết nối SOCKS5 nếu có server được chỉ định
+    String? socks5Proxy;
+    Socks5Session? session;
+    if (server != null) {
+      try {
+        session = await startSocks5Server(server: server, ip: ip);
+        socks5Proxy = 'socks5://127.0.0.1:${session.localPort}';
+      } catch (_) {
+        // Fallback: Nếu kết nối SSH server lỗi thì vẫn cho phép mở local browser
       }
     }
 
-    if (executable == null) {
-      throw Exception('Không tìm thấy trình duyệt khả dụng (Chrome, Opera, Chromium, Firefox) trên hệ thống local.');
-    }
-
     final isFirefox = executable.contains('firefox');
-
     List<String> args;
     if (isFirefox) {
       args = [
@@ -386,13 +396,11 @@ class Socks5ProxyService extends ChangeNotifier {
         targetUrl,
       ];
     } else {
-      // Chrome / Chromium / Opera: Sử dụng cờ socks5 chính xác và cô lập hồ sơ trình duyệt
-      // Tắt triệt để tính năng Translate và thanh thông báo "You are using an unsupported command-line flag..."
       args = [
         '--test-type',
         '--disable-features=Translate,TranslateUI',
         '--disable-translate',
-        '--proxy-server=$socks5Proxy',
+        if (socks5Proxy != null) '--proxy-server=$socks5Proxy',
         '--user-data-dir=${profileDir.path}',
         '--no-first-run',
         '--no-default-browser-check',
@@ -408,12 +416,36 @@ class Socks5ProxyService extends ChangeNotifier {
         args,
         mode: ProcessStartMode.detached,
       );
-      session.browserProcess = proc;
+
+      if (session != null) {
+        session.browserProcess = proc;
+      } else {
+        // Lưu lại session cục bộ không SSH để theo dõi trạng thái tiến trình
+        final localSession = _activeSessions[ip] ?? Socks5Session(
+          localPort: 0,
+          server: server,
+          ip: ip,
+          sshProcess: null,
+          askpassFile: null,
+        );
+        localSession.browserProcess = proc;
+        _activeSessions[ip] = localSession;
+      }
+
       notifyListeners();
       return true;
     } catch (e) {
       throw Exception('Lỗi khi mở trình duyệt: $e');
     }
+  }
+
+  /// Mở trình duyệt trên máy local với cấu hình SOCKS5 trỏ qua SSH Server
+  Future<bool> launchBrowserWithSocks5({
+    required ServerModel server,
+    required String ip,
+    String? startUrl,
+  }) async {
+    return launchPersonaBrowser(ip: ip, server: server, startUrl: startUrl);
   }
 
   /// Tìm binary Android Emulator trên hệ thống
@@ -451,66 +483,88 @@ class Socks5ProxyService extends ChangeNotifier {
   }
 
   /// Khởi chạy thiết bị Android (Emulator chuẩn Android Studio hoặc Kết nối Ngoại vi ADB WiFi)
-  /// Định tuyến toàn bộ lưu lượng mạng máy ảo qua proxy SOCKS5 của chính IP đó
-  Future<bool> launchDeviceWithSocks5({
-    required ServerModel server,
+  /// Tự động kết nối proxy SOCKS5 nếu có server, hoặc khởi chạy thiết bị độc lập nếu server null
+  Future<bool> launchPersonaDevice({
     required String ip,
+    ServerModel? server,
     String? avdName,
     String? startUrl,
     String? remoteDeviceAddress,
     String deviceType = 'mobile',
   }) async {
-    final session = await startSocks5Server(server: server, ip: ip);
+    Socks5Session? session;
+    int? httpProxyPort;
 
-    // TRƯỜNG HỢP 1: Kết nối thiết bị Android ngoại vi qua WiFi/TCP-IP và ép HTTP Proxy vào máy
+    if (server != null) {
+      try {
+        session = await startSocks5Server(server: server, ip: ip);
+      } catch (_) {
+        // Fallback: nếu lỗi SSH thì tiếp tục chạy thiết bị cục bộ
+      }
+    }
+
+    if (session == null) {
+      session = _activeSessions[ip] ?? Socks5Session(
+        localPort: 0,
+        server: server,
+        ip: ip,
+        sshProcess: null,
+        askpassFile: null,
+      );
+      _activeSessions[ip] = session;
+    }
+
+    // TRƯỜNG HỢP 1: Kết nối thiết bị Android ngoại vi qua WiFi/TCP-IP và ép HTTP Proxy vào máy (nếu có socks5)
     if (remoteDeviceAddress != null && remoteDeviceAddress.trim().isNotEmpty) {
       final addr = remoteDeviceAddress.trim();
       try {
         await connectRemoteDevice(addr);
         session.remoteDeviceAddress = addr;
 
-        // 1. Khởi tạo HTTP Bridge cho phép truy cập từ mạng LAN (0.0.0.0) chuyển tiếp vào SOCKS5 của IP này
-        final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
-        if (bridgeScript.existsSync()) {
-          final tempSocket = await ServerSocket.bind('0.0.0.0', 0);
-          final httpProxyPort = tempSocket.port;
-          await tempSocket.close();
+        if (session.localPort > 0) {
+          // 1. Khởi tạo HTTP Bridge cho phép truy cập từ mạng LAN (0.0.0.0) chuyển tiếp vào SOCKS5 của IP này
+          final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
+          if (bridgeScript.existsSync()) {
+            final tempSocket = await ServerSocket.bind('0.0.0.0', 0);
+            final hPort = tempSocket.port;
+            await tempSocket.close();
 
-          try {
-            session.httpBridgeProcess?.kill();
-          } catch (_) {}
+            try {
+              session.httpBridgeProcess?.kill();
+            } catch (_) {}
 
-          final bridgeProc = await Process.start(
-            'python3',
-            [
-              bridgeScript.path,
-              httpProxyPort.toString(),
-              '127.0.0.1',
-              session.localPort.toString(),
-              '0.0.0.0',
-            ],
-            mode: ProcessStartMode.normal,
-          );
-          session.httpBridgeProcess = bridgeProc;
+            final bridgeProc = await Process.start(
+              'python3',
+              [
+                bridgeScript.path,
+                hPort.toString(),
+                '127.0.0.1',
+                session.localPort.toString(),
+                '0.0.0.0',
+              ],
+              mode: ProcessStartMode.normal,
+            );
+            session.httpBridgeProcess = bridgeProc;
 
-          final completer = Completer<void>();
-          bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
-            if (line.contains('READY') && !completer.isCompleted) {
-              completer.complete();
-            }
-          });
-          bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
+            final completer = Completer<void>();
+            bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+              if (line.contains('READY') && !completer.isCompleted) {
+                completer.complete();
+              }
+            });
+            bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
 
-          await Future.any([
-            completer.future,
-            Future.delayed(const Duration(seconds: 3)),
-          ]);
+            await Future.any([
+              completer.future,
+              Future.delayed(const Duration(seconds: 3)),
+            ]);
 
-          // 2. Lấy địa chỉ IP mạng LAN của máy host để điện thoại có thể bắt sóng
-          final hostLanIp = await _getLocalHostIp();
+            // 2. Lấy địa chỉ IP mạng LAN của máy host để điện thoại có thể bắt sóng
+            final hostLanIp = await _getLocalHostIp();
 
-          // 3. Ép HTTP Proxy vào hệ thống Android qua lệnh ADB
-          await setAdbGlobalProxy(addr, hostLanIp, httpProxyPort);
+            // 3. Ép HTTP Proxy vào hệ thống Android qua lệnh ADB
+            await setAdbGlobalProxy(addr, hostLanIp, hPort);
+          }
         }
 
         notifyListeners();
@@ -537,50 +591,55 @@ class Socks5ProxyService extends ChangeNotifier {
       targetAvd = avds.first;
     }
 
-    // 3. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP
-    final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
-    if (!bridgeScript.existsSync()) {
-      throw Exception('Không tìm thấy script cầu nối proxy: ${bridgeScript.path}');
+    // 3. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP nếu có socks5
+    if (session.localPort > 0) {
+      final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
+      if (bridgeScript.existsSync()) {
+        final tempSocket = await ServerSocket.bind('127.0.0.1', 0);
+        httpProxyPort = tempSocket.port;
+        await tempSocket.close();
+
+        try {
+          session.httpBridgeProcess?.kill();
+        } catch (_) {}
+
+        final bridgeProc = await Process.start(
+          'python3',
+          [
+            bridgeScript.path,
+            httpProxyPort.toString(),
+            '127.0.0.1',
+            session.localPort.toString(),
+          ],
+          mode: ProcessStartMode.normal,
+        );
+        session.httpBridgeProcess = bridgeProc;
+
+        final completer = Completer<void>();
+        bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+          if (line.contains('READY') && !completer.isCompleted) {
+            completer.complete();
+          }
+        });
+        bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
+
+        await Future.any([
+          completer.future,
+          Future.delayed(const Duration(seconds: 3)),
+        ]);
+      }
     }
 
-    // Cấp phát một cổng ngẫu nhiên khả dụng cho HTTP Proxy
-    final tempSocket = await ServerSocket.bind('127.0.0.1', 0);
-    final httpProxyPort = tempSocket.port;
-    await tempSocket.close();
-
-    // Dừng bridge cũ nếu có
-    try {
-      session.httpBridgeProcess?.kill();
-    } catch (_) {}
-
-    final bridgeProc = await Process.start(
-      'python3',
-      [
-        bridgeScript.path,
-        httpProxyPort.toString(),
-        '127.0.0.1',
-        session.localPort.toString(),
-      ],
-      mode: ProcessStartMode.normal,
-    );
-    session.httpBridgeProcess = bridgeProc;
-
-    // Đợi bridge sẵn sàng
-    final completer = Completer<void>();
-    bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
-      if (line.contains('READY') && !completer.isCompleted) {
-        completer.complete();
-      }
-    });
-    bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
-
-    await Future.any([
-      completer.future,
-      Future.delayed(const Duration(seconds: 3)),
-    ]);
-
-    // 4. Dọn dẹp các file lock rác (nếu phiên trước bị tắt đột ngột)
+    // 4. Tạo thư mục dữ liệu (datadir) riêng biệt cho từng nhân vật theo IP
+    // Đảm bảo mỗi nhân vật có một thiết bị Android độc lập, không dùng chung session, app, hay data
     final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final personaDeviceDir = Directory('$homeDir/.tadu_ai_agent/device_profiles/ip_$sanitizedIp');
+    if (!personaDeviceDir.existsSync()) {
+      personaDeviceDir.createSync(recursive: true);
+    }
+
+    // Dọn dẹp các file lock rác trong AVD gốc và trong persona profile (nếu phiên trước bị tắt đột ngột)
     try {
       final avdDir = Directory('$homeDir/.android/avd/$targetAvd.avd');
       if (avdDir.existsSync()) {
@@ -592,9 +651,16 @@ class Socks5ProxyService extends ChangeNotifier {
           }
         }
       }
+      for (final f in personaDeviceDir.listSync()) {
+        if (f.path.endsWith('.lock')) {
+          try {
+            f.deleteSync();
+          } catch (_) {}
+        }
+      }
     } catch (_) {}
 
-    // 5. Cấp phát console port (chẵn) cho emulator từ 5554 đến 5584
+    // 5. Cấp phát console port (chẵn) cho emulator từ 5554 đến 5584 riêng cho từng nhân vật
     int consolePort = 5554;
     for (int p = 5554; p <= 5584; p += 2) {
       if (!_isPortInUse(p) && !_isPortInUse(p + 1)) {
@@ -606,7 +672,10 @@ class Socks5ProxyService extends ChangeNotifier {
 
     final emulatorArgs = [
       '-avd', targetAvd,
-      '-http-proxy', 'http://127.0.0.1:$httpProxyPort',
+      '-datadir', personaDeviceDir.path,
+      if (httpProxyPort != null) ...[
+        '-http-proxy', 'http://127.0.0.1:$httpProxyPort',
+      ],
       '-port', consolePort.toString(),
       '-netdelay', 'none',
       '-netspeed', 'full',
@@ -635,6 +704,26 @@ class Socks5ProxyService extends ChangeNotifier {
       session.httpBridgeProcess?.kill();
       throw Exception('Lỗi khi khởi chạy Android Emulator: $e');
     }
+  }
+
+  /// Khởi chạy thiết bị Android (Emulator chuẩn Android Studio hoặc Kết nối Ngoại vi ADB WiFi)
+  /// Định tuyến toàn bộ lưu lượng mạng máy ảo qua proxy SOCKS5 của chính IP đó
+  Future<bool> launchDeviceWithSocks5({
+    required ServerModel server,
+    required String ip,
+    String? avdName,
+    String? startUrl,
+    String? remoteDeviceAddress,
+    String deviceType = 'mobile',
+  }) async {
+    return launchPersonaDevice(
+      server: server,
+      ip: ip,
+      avdName: avdName,
+      startUrl: startUrl,
+      remoteDeviceAddress: remoteDeviceAddress,
+      deviceType: deviceType,
+    );
   }
 
   /// Tự động kiểm tra và đánh thức, mở khóa màn hình AVD tránh màn hình đen ngủ

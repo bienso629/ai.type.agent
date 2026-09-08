@@ -68,6 +68,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final urlCtrl = TextEditingController();
     final commentCtrl = TextEditingController();
     String taskType = 'like';
+    String executionMode = 'browser'; // 'browser' | 'device'
     TimeOfDay selectedTime = TimeOfDay.now();
     DateTime chosenDate = targetDate;
     final selectedIps = <String>{};
@@ -103,6 +104,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       hintText: 'Ví dụ: Tương tác clip review sản phẩm mới',
                       isDense: true,
                     ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Hình thức thực thi: Mở trình duyệt hoặc Mở thiết bị
+                  const Text('Phương thức chạy tác vụ:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildExecutionModeRadio(
+                          'browser',
+                          'Mở trình duyệt',
+                          Icons.open_in_browser_rounded,
+                          'Chrome profile riêng theo IP',
+                          executionMode,
+                          (v) => setDialogState(() => executionMode = v),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildExecutionModeRadio(
+                          'device',
+                          'Mở thiết bị',
+                          Icons.phone_android_rounded,
+                          'Máy ảo AVD hoặc ngoại vi WiFi',
+                          executionMode,
+                          (v) => setDialogState(() => executionMode = v),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
 
@@ -364,6 +395,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   final ok = await scheduleProvider.createTask(
                     title: title,
                     taskType: taskType,
+                    executionMode: executionMode,
                     targetUrl: url,
                     commentContent: commentCtrl.text.trim(),
                     personaIps: selectedIps.toList(),
@@ -389,6 +421,71 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildExecutionModeRadio(
+    String mode,
+    String label,
+    IconData icon,
+    String subtitle,
+    String currentMode,
+    Function(String) onSelect,
+  ) {
+    final isSelected = currentMode == mode;
+    return InkWell(
+      onTap: () => onSelect(mode),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryLight : AppColors.borderDark,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? AppColors.primaryLight : AppColors.textMuted,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                      color: isSelected ? AppColors.textWhite : AppColors.textBody,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppColors.textDim,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              isSelected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+              size: 16,
+              color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -809,6 +906,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     Icon(typeIcon, size: 12, color: typeColor),
                     const SizedBox(width: 4),
                     Text(typeLabel, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: typeColor)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: (task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: (task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      task.executionMode == 'device' ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
+                      size: 11,
+                      color: task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      task.executionMode == 'device' ? 'Thiết bị' : 'Trình duyệt',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan,
+                      ),
+                    ),
                   ],
                 ),
               ),
