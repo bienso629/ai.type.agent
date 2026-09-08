@@ -492,6 +492,11 @@ class ApiService {
       try {
         final baseUrl = await _getBaseUrl();
         streamClient = http.Client();
+        controller.onCancel = () {
+          try {
+            streamClient?.close();
+          } catch (_) {}
+        };
         final request = http.Request('POST', Uri.parse('$baseUrl${ApiConstants.epChat}'));
         final headers = await _getHeaders();
         request.headers.addAll(headers);

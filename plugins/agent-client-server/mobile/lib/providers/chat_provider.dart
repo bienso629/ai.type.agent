@@ -311,6 +311,23 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
+  void stopGeneration() {
+    if (!_isGenerating) return;
+    _streamSub?.cancel();
+    _streamSub = null;
+    _isGenerating = false;
+    _currentStatus = '';
+    if (_messages.isNotEmpty && _messages.last.role == 'assistant') {
+      final lastMsg = _messages.last;
+      lastMsg.isStreaming = false;
+      lastMsg.statusMessage = null;
+      if (lastMsg.content.isEmpty) {
+        lastMsg.content = 'Đã dừng phản hồi theo yêu cầu.';
+      }
+    }
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _streamSub?.cancel();

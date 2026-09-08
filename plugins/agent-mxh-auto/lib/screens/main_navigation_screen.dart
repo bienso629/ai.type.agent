@@ -6,7 +6,9 @@ import '../../core/widgets/tadu_dialog.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/metrics_provider.dart';
+import '../../providers/schedule_provider.dart';
 import '../../providers/server_provider.dart';
+import 'calendar/calendar_screen.dart';
 import 'chat/chat_screen.dart';
 import 'profiles/profiles_screen.dart';
 import 'settings/settings_screen.dart';
@@ -27,19 +29,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ServerProvider>().loadServers();
       context.read<ChatProvider>().loadSessions();
+      context.read<ScheduleProvider>().loadTasks();
     });
   }
 
   final List<Widget> _screens = const [
     ChatScreen(),
     ProfilesScreen(),
+    CalendarScreen(),
     SettingsScreen(),
   ];
 
   final List<Map<String, dynamic>> _tabs = [
     {
       'title': 'Trợ lý AI',
-      'subtitle': 'Trợ lý AI điều khiển & hỗ trợ quản trị Linux',
+      'subtitle': 'Trợ lý AI điều khiển & tự động hóa MXH',
       'icon': Icons.chat_bubble_outline_rounded,
     },
     {
@@ -48,8 +52,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       'icon': Icons.badge_outlined,
     },
     {
+      'title': 'Lịch Kế Hoạch',
+      'subtitle': 'Lên lịch trình tương tác, bấm like, comment, xem livestream',
+      'icon': Icons.calendar_month_outlined,
+    },
+    {
       'title': 'Cấu hình',
-      'subtitle': 'Cấu hình AI Model, Proxy API và kết nối SSH máy chủ',
+      'subtitle': 'Cấu hình AI Model, Proxy API và kết nối hệ thống',
       'icon': Icons.settings_outlined,
     },
   ];

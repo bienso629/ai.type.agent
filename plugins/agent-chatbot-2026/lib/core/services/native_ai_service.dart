@@ -156,6 +156,12 @@ CÁC QUY TẮC BẮT BUỘC:
         while (turnCount < maxTurns && !isCancelled) {
           turnCount++;
           final client = http.Client();
+          controller.onCancel = () {
+            isCancelled = true;
+            try {
+              client.close();
+            } catch (_) {}
+          };
           final request = http.Request('POST', Uri.parse('$baseUrl/chat/completions'));
           request.headers.addAll({
             'Content-Type': 'application/json',
@@ -249,6 +255,10 @@ CÁC QUY TẮC BẮT BUỘC:
           );
 
           await streamCompleter.future;
+
+          if (isCancelled) {
+            break;
+          }
 
           // Check if tools were called
           if (toolCallsMap.isNotEmpty) {

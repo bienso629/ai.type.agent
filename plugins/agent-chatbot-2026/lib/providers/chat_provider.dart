@@ -320,13 +320,29 @@ class ChatProvider extends ChangeNotifier {
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
         if (assistantMsg.content.isEmpty) {
-          assistantMsg.content = '❌ Lỗi: $err';
+          assistantMsg.content = 'Lỗi: $err';
         }
         _isGenerating = false;
         _currentStatus = '';
         notifyListeners();
       },
     );
+  }
+
+  void stopGenerating() {
+    if (!_isGenerating) return;
+    _streamSub?.cancel();
+    _streamSub = null;
+    _isGenerating = false;
+    _currentStatus = '';
+    if (_messages.isNotEmpty && _messages.last.role == 'assistant') {
+      _messages.last.isStreaming = false;
+      _messages.last.statusMessage = null;
+      if (_messages.last.content.isEmpty) {
+        _messages.last.content = 'Đã dừng phản hồi theo yêu cầu.';
+      }
+    }
+    notifyListeners();
   }
 
   @override

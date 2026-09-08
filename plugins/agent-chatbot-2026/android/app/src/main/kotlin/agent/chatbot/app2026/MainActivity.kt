@@ -1,4 +1,4 @@
-package com.tadu.tadu_cloud_ai_agent_mobile
+package agent.chatbot.app2026
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -148,7 +148,6 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (result != null && result.files.isNotEmpty) {
-        final startIdx = _attachedFiles.length;
         for (final f in result.files) {
           AttachmentItem? item;
           if (f.bytes != null) {
@@ -169,84 +168,11 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         if (mounted) {
           setState(() {});
-          // Trigger background upload to VPS with progress tracking
-          for (int i = startIdx; i < _attachedFiles.length; i++) {
-            _uploadAttachment(i);
-          }
         }
       }
     } catch (e) {
       if (mounted) {
         AppToast.error(context, 'Lỗi chọn tệp: $e');
-      }
-    }
-  }
-
-  Future<void> _uploadAttachment(int index) async {
-    if (index >= _attachedFiles.length) return;
-    final item = _attachedFiles[index];
-    if (item.isUploaded || item.isUploading) return;
-
-    setState(() {
-      _attachedFiles[index] = item.copyWith(isUploading: true, uploadProgress: 0.01);
-    });
-
-    try {
-      final res = await _api.uploadFile(
-        fileName: item.name,
-        bytes: item.rawBytes,
-        localFilePath: item.path,
-        targetDir: null,
-        onProgress: (sent, total, prog) {
-          if (!mounted) return;
-          final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
-          if (idx != -1) {
-            setState(() {
-              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
-                uploadProgress: prog,
-                isUploading: prog < 1.0,
-                isUploaded: prog >= 1.0,
-              );
-            });
-          }
-        },
-      );
-
-      if (mounted) {
-        final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
-        if (idx != -1) {
-          if (res['status'] == 'success') {
-            setState(() {
-              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
-                isUploading: false,
-                isUploaded: true,
-                uploadProgress: 1.0,
-                remotePath: res['remote_path']?.toString(),
-              );
-            });
-          } else {
-            setState(() {
-              _attachedFiles[idx] = _attachedFiles[idx].copyWith(
-                isUploading: false,
-                isUploaded: false,
-                error: res['message']?.toString() ?? 'Lỗi tải lên',
-              );
-            });
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        final idx = _attachedFiles.indexWhere((x) => x.name == item.name);
-        if (idx != -1) {
-          setState(() {
-            _attachedFiles[idx] = _attachedFiles[idx].copyWith(
-              isUploading: false,
-              isUploaded: false,
-              error: e.toString(),
-            );
-          });
-        }
       }
     }
   }
@@ -659,60 +585,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                 },
                               ),
                       ),
-
-                      // Status Progress Indicator Bar with Stop Button
-                      if (chat.isGenerating)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: const BoxDecoration(
-                            color: AppColors.sidebarBg,
-                            border: Border(
-                              top: BorderSide(color: AppColors.borderDark, width: 1),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  chat.currentStatus.isNotEmpty ? chat.currentStatus : 'AI đang xử lý yêu cầu...',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap: () => chat.stopGenerating(),
-                                borderRadius: BorderRadius.circular(4),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.danger.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: AppColors.danger.withValues(alpha: 0.5)),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.stop_rounded, size: 14, color: AppColors.danger),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Dừng lại',
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.danger),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
 
                       // Input Bar
                       _buildInputBar(chat, serverProvider),
@@ -1148,28 +1020,27 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     const SizedBox(height: 6),
                     Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: _selectedPersonasScope.map((p) {
                         return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.only(left: 4, right: 10, top: 4, bottom: 4),
                           decoration: BoxDecoration(
                             color: AppColors.bgDark,
-                            borderRadius: BorderRadius.circular(3),
-                            border: Border.all(color: AppColors.borderDark),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               CircleAvatar(
-                                radius: 8,
+                                radius: 11,
                                 backgroundColor: p.gender.toLowerCase() == 'nữ'
                                     ? Colors.pinkAccent.withValues(alpha: 0.3)
                                     : AppColors.accentCyan.withValues(alpha: 0.3),
                                 child: Text(
                                   p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
                                   style: TextStyle(
-                                    fontSize: 8,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                     color: p.gender.toLowerCase() == 'nữ'
                                         ? Colors.pinkAccent
@@ -1177,24 +1048,19 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 7),
                               Text(
                                 p.name,
-                                style: const TextStyle(fontSize: 11, color: AppColors.textWhite, fontWeight: FontWeight.w600),
+                                style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite, fontWeight: FontWeight.w600),
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '(${p.ip})',
-                                style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.accentCyan),
-                              ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
                               GestureDetector(
                                 onTap: () {
                                   setState(() {
                                     _selectedPersonasScope.removeWhere((item) => item.ip == p.ip);
                                   });
                                 },
-                                child: const Icon(Icons.close_rounded, size: 12, color: AppColors.textMuted),
+                                child: const Icon(Icons.close_rounded, size: 14, color: AppColors.textMuted),
                               ),
                             ],
                           ),
@@ -1233,92 +1099,43 @@ class _ChatScreenState extends State<ChatScreen> {
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(color: chipBorderColor),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                                  size: 14,
-                                  color: att.isImage ? AppColors.accentCyan : AppColors.warning,
-                                ),
-                                const SizedBox(width: 6),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 160),
-                                  child: Text(
-                                    att.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textWhite),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '(${att.formattedSize})',
-                                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                ),
-                                const SizedBox(width: 6),
-                                if (att.isUploading) ...[
-                                  SizedBox(
-                                    width: 10,
-                                    height: 10,
-                                    child: CircularProgressIndicator(
-                                      value: att.uploadProgress > 0 ? att.uploadProgress : null,
-                                      strokeWidth: 1.5,
-                                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${(att.uploadProgress * 100).toInt()}%',
-                                    style: const TextStyle(
-                                      fontSize: 9.5,
-                                      color: AppColors.accentCyan,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                ] else if (att.isUploaded) ...[
-                                  const Tooltip(
-                                    message: 'Đã lưu trên VPS',
-                                    child: Icon(Icons.check_circle_rounded, size: 14, color: AppColors.accent),
-                                  ),
-                                  const SizedBox(width: 6),
-                                ] else if (att.error != null) ...[
-                                  Tooltip(
-                                    message: att.error!,
-                                    child: const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.danger),
-                                  ),
-                                  const SizedBox(width: 6),
-                                ],
-                                GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _attachedFiles.removeAt(idx);
-                                    });
-                                  },
-                                  child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
-                                ),
-                              ],
+                            Icon(
+                              att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                              size: 14,
+                              color: att.isImage ? AppColors.accentCyan : AppColors.warning,
                             ),
-                            if (att.isUploading) ...[
-                              const SizedBox(height: 4),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(2),
-                                child: SizedBox(
-                                  width: 160,
-                                  child: LinearProgressIndicator(
-                                    value: att.uploadProgress > 0 ? att.uploadProgress : null,
-                                    minHeight: 2.5,
-                                    backgroundColor: AppColors.bgDark,
-                                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
-                                  ),
-                                ),
+                            const SizedBox(width: 6),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 160),
+                              child: Text(
+                                att.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textWhite),
                               ),
-                            ],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '(${att.formattedSize})',
+                              style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                            ),
+                            const SizedBox(width: 6),
+                            const Tooltip(
+                              message: 'Tệp lưu tại local',
+                              child: Icon(Icons.folder_rounded, size: 14, color: AppColors.accentCyan),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _attachedFiles.removeAt(idx);
+                                });
+                              },
+                              child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
+                            ),
                           ],
                         ),
                       );
@@ -1421,26 +1238,31 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                 ),
-                chat.isGenerating
-                    ? ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.danger,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        ),
-                        icon: const Icon(Icons.stop_circle_rounded, size: 16),
-                        label: const Text('Dừng lại', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        onPressed: () => chat.stopGenerating(),
-                      )
-                    : ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        ),
-                        icon: const Icon(Icons.send_rounded, size: 14),
-                        label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        onPressed: () => _handleSend(chat, serverProvider),
-                      ),
+                if (chat.isGenerating)
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.danger.withValues(alpha: 0.18),
+                      foregroundColor: AppColors.danger,
+                      side: const BorderSide(color: AppColors.danger, width: 1),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    ),
+                    icon: const Icon(Icons.stop_rounded, size: 16, color: AppColors.danger),
+                    label: const Text('Dừng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    onPressed: () => chat.stopGenerating(),
+                  )
+                else
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: const Color(0xFF070B14),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 14),
+                    label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    onPressed: () => _handleSend(chat, serverProvider),
+                  ),
               ],
             ),
           ],
@@ -2385,26 +2207,38 @@ class _MessageItemWidget extends StatelessWidget {
                             data: msg.content,
                             selectable: true,
                             styleSheet: _sharedStyleSheet,
+                          )
+                        else if (!msg.isStreaming)
+                          const Text(
+                            'Đã hoàn tất tác vụ.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textMuted,
+                              fontStyle: FontStyle.italic,
+                            ),
                           ),
 
                         if (msg.content.isEmpty && msg.isStreaming)
-                          const Row(
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                              const SizedBox(
+                                width: 13,
+                                height: 13,
+                                child: CircularProgressIndicator(strokeWidth: 1.8, color: AppColors.primaryLight),
                               ),
-                              SizedBox(width: 8),
-                              Text('Đang xử lý...', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                              const SizedBox(width: 8),
+                              Text(
+                                (msg.statusMessage != null && msg.statusMessage!.isNotEmpty)
+                                    ? msg.statusMessage!
+                                    : 'Đang xử lý...',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
                             ],
                           ),
-
-                        if (msg.toolExecutions.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          ...msg.toolExecutions.map((tool) => _ToolCardWidget(tool: tool)),
-                        ],
                       ],
                     ),
                   ),
@@ -2510,60 +2344,6 @@ class _MessageItemWidget extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ToolCardWidget extends StatelessWidget {
-  final ToolExecutionItem tool;
-
-  const _ToolCardWidget({required this.tool});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AppColors.terminalBg,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.borderDark),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.terminal_rounded, size: 14, color: AppColors.accent),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  tool.command,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (tool.output.isNotEmpty) ...[
-            const Divider(color: AppColors.borderDark, height: 10),
-            Text(
-              tool.output.trim(),
-              maxLines: 8,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: AppColors.textMuted,
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

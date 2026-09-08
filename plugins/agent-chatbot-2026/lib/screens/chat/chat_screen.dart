@@ -749,30 +749,6 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                       ),
 
-                      // Status Progress Indicator Bar
-                      if (chat.isGenerating)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          color: AppColors.sidebarBg,
-                          child: Row(
-                            children: [
-                              const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  chat.currentStatus.isNotEmpty ? chat.currentStatus : 'AI đang xử lý yêu cầu...',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
 
                       // Input Bar
                       _buildInputBar(chat, serverProvider),
@@ -1234,12 +1210,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: chat.isGenerating ? AppColors.danger : AppColors.primary,
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   ),
-                  icon: const Icon(Icons.send_rounded, size: 14),
-                  label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  onPressed: chat.isGenerating ? null : () => _handleSend(chat, serverProvider),
+                  icon: Icon(chat.isGenerating ? Icons.stop_rounded : Icons.send_rounded, size: 14),
+                  label: Text(chat.isGenerating ? 'Dừng' : 'Gửi', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  onPressed: chat.isGenerating
+                      ? () => chat.stopGenerating()
+                      : () => _handleSend(chat, serverProvider),
                 ),
               ],
             ),

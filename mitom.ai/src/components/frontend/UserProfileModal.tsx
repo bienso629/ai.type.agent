@@ -14,18 +14,9 @@ export function UserProfileModal({
   onLogout?: () => void
 }) {
   const { user, logout, refreshUser } = useAuth()
-  const [copiedKey, setCopiedKey] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
   if (!isOpen || !user) return null
-
-  const handleCopyKey = () => {
-    if (user.apiKey) {
-      navigator.clipboard.writeText(user.apiKey)
-      setCopiedKey(true)
-      setTimeout(() => setCopiedKey(false), 2000)
-    }
-  }
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -104,40 +95,23 @@ export function UserProfileModal({
             </div>
           </div>
 
-          {/* API Key Box */}
+          {/* Thong tin API Key gui qua email */}
           <div className="rounded-xl border border-border bg-secondary/40 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Key size={14} className="text-primary" />
-                API Key sử dụng AI
-              </span>
-              <button
-                onClick={handleCopyKey}
-                className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
-              >
-                {copiedKey ? (
-                  <>
-                    <Check size={12} /> Đã sao chép
-                  </>
-                ) : (
-                  <>
-                    <Copy size={12} /> Sao chép
-                  </>
-                )}
-              </button>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground mb-1.5">
+              <Key size={14} className="text-primary" />
+              API Key sử dụng AI
             </div>
-            <div className="font-mono text-xs text-muted-foreground break-all bg-background/80 p-2.5 rounded-lg border border-border">
-              {user.apiKey || 'Chưa khởi tạo API Key'}
-            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              API Key được gửi bảo mật trực tiếp vào email đăng ký của bạn (<span className="text-foreground font-medium">{user.email}</span>). Vui lòng kiểm tra hòm thư (bao gồm cả thư mục Spam/Quảng cáo).
+            </p>
             <p className="text-[11px] text-muted-foreground mt-2">
-              Sử dụng Key này qua header <code className="text-primary font-mono font-bold">x-api-key</code> cho Base URL:{' '}
-              <code className="text-primary font-mono">https://api-vn-sg.mitom.ai/v1</code>
+              Base URL tích hợp hệ thống: <code className="text-primary font-mono font-bold">https://api-vn-sg.mitom.ai/v1</code>
             </p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border bg-secondary/20 px-6 py-4">
+        <div className="flex items-center justify-start border-t border-border bg-secondary/20 px-6 py-4">
           <button
             onClick={async () => {
               onClose()
@@ -152,12 +126,6 @@ export function UserProfileModal({
           >
             <LogOut size={14} />
             Đăng xuất
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-md bg-secondary px-5 py-2 text-xs font-semibold text-foreground hover:bg-secondary/80 transition-colors"
-          >
-            Đóng
           </button>
         </div>
       </div>

@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'database_service.dart';
+import 'encryption_service.dart';
 import 'local_config_service.dart';
 
 class KnowledgeDocument {
@@ -80,6 +81,7 @@ class DocumentService {
 
   final DatabaseService _dbService = DatabaseService();
   final LocalConfigService _configService = LocalConfigService();
+  final EncryptionService _enc = EncryptionService();
 
   Future<void> _ensureTable(Database db) async {
     await db.execute('''
@@ -106,7 +108,20 @@ class DocumentService {
         'knowledge_documents',
         orderBy: 'id DESC',
       );
-      return rows.map((r) => KnowledgeDocument.fromMap(r)).toList();
+      return rows.map((r) {
+        final doc = KnowledgeDocument.fromMap(r);
+        final decContent = _enc.decryptValue(doc.content);
+        return KnowledgeDocument(
+          id: doc.id,
+          name: doc.name,
+          extension: doc.extension,
+          size: doc.size,
+          path: doc.path,
+          content: decContent,
+          isEnabled: doc.isEnabled,
+          createdAt: doc.createdAt,
+        );
+      }).toList();
     } catch (_) {
       return [];
     }
@@ -136,7 +151,7 @@ class DocumentService {
       if (bytes != null && bytes.isNotEmpty) {
         size = bytes.length;
         content = await _extractContent(bytes, ext, name, filePath: filePath, onProgress: onProgress);
-      } else {
+      } else if (!kIsWeb && filePath.isNotEmpty) {
         final f = File(filePath);
         if (await f.exists()) {
           size = await f.length();
@@ -145,12 +160,13 @@ class DocumentService {
         }
       }
 
+      final encContent = _enc.encryptValue(content);
       final doc = KnowledgeDocument(
         name: name,
         extension: ext,
         size: size,
         path: filePath,
-        content: content,
+        content: encContent,
         isEnabled: true,
         createdAt: DateTime.now(),
       );
@@ -197,6 +213,15 @@ class DocumentService {
       }
     }
 
+    // Nếu là các định dạng tài liệu khác hoặc nhị phân chưa được parse: Gửi cho AI giải mã
+    if (onProgress != null) {
+      onProgress('Đang gửi tài liệu $filename cho AI trích xuất nội dung...');
+    }
+    final aiExtracted = await _analyzeDocumentWithAi(bytes, ext, filename);
+    if (aiExtracted != null && aiExtracted.isNotEmpty) {
+      return aiExtracted;
+    }
+
     try {
       final latin = latin1.decode(bytes);
       final buffer = StringBuffer();
@@ -224,143 +249,33 @@ class DocumentService {
     String? filePath,
     void Function(String status)? onProgress,
   }) async {
-    File? tempPdfFile;
-    String targetPdfPath = filePath ?? '';
-
-    if (targetPdfPath.isEmpty || !File(targetPdfPath).existsSync()) {
-      final tempDir = Directory.systemTemp.createTempSync('pdf_ocr_');
-      tempPdfFile = File(p.join(tempDir.path, 'temp_input.pdf'))..writeAsBytesSync(bytes);
-      targetPdfPath = tempPdfFile.path;
+    if (onProgress != null) {
+      onProgress('Đang dùng AI Trí tuệ tài liệu phân tích & trích xuất $filename...');
     }
 
-    String extractedText = '';
-    int pageCount = 1;
-
-    try {
-      final infoResult = await Process.run('pdfinfo', [targetPdfPath]);
-      if (infoResult.exitCode == 0) {
-        final match = RegExp(r'Pages:\s+(\d+)').firstMatch(infoResult.stdout.toString());
-        if (match != null) {
-          pageCount = int.tryParse(match.group(1) ?? '1') ?? 1;
-        }
-      }
-    } catch (_) {}
-
-    try {
-      final result = await Process.run('pdftotext', [targetPdfPath, '-']);
-      if (result.exitCode == 0) {
-        extractedText = result.stdout.toString().trim();
-      }
-    } catch (_) {}
-
-    final rawNonWhitespaceCount = extractedText.replaceAll(RegExp(r'\s+'), '').length;
-    final charsPerPage = rawNonWhitespaceCount / pageCount;
-
-    // Nếu bình quân mỗi trang có ít hơn 80 ký tự -> Đây chắc chắn là PDF Scan dạng ảnh!
-    final isScannedPdf = charsPerPage < 80.0;
-
-    if (isScannedPdf) {
-      if (onProgress != null) {
-        onProgress('Phát hiện PDF Scan ($pageCount trang ảnh)! Đang xuất trang để AI nhận diện OCR...');
-      }
-      final visionResult = await _ocrScannedPdfPages(targetPdfPath, filename, pageCount: pageCount, onProgress: onProgress);
-      if (tempPdfFile != null) {
-        try {
-          tempPdfFile.parent.deleteSync(recursive: true);
-        } catch (_) {}
-      }
-      if (visionResult.isNotEmpty) {
-        return visionResult;
-      }
-    } else {
-      if (tempPdfFile != null) {
-        try {
-          tempPdfFile.parent.deleteSync(recursive: true);
-        } catch (_) {}
-      }
-      return '=== [TÀI LIỆU PDF: $filename] ===\n$extractedText\n=== [HẾT TÀI LIỆU PDF] ===';
+    // 1. Ưu tiên 100% dùng AI Document & Vision để trích xuất sạch sẽ, chuẩn xác cho cả Web & Online
+    final aiContent = await _analyzeDocumentWithAi(bytes, 'pdf', filename);
+    if (aiContent != null && aiContent.isNotEmpty) {
+      return '=== [TÀI LIỆU PDF: $filename (ĐÃ ĐƯỢC AI TRÍCH XUẤT CHÍNH XÁC)] ===\n$aiContent\n=== [HẾT TÀI LIỆU PDF] ===';
     }
 
-    return extractedText.isNotEmpty ? extractedText : '[Tài liệu PDF: $filename (Không có text hoặc ảnh scan chưa phân tích được)]';
-  }
-
-  Future<String> _ocrScannedPdfPages(
-    String pdfPath,
-    String filename, {
-    int pageCount = 1,
-    void Function(String status)? onProgress,
-  }) async {
-    final tempRenderDir = Directory.systemTemp.createTempSync('pdf_ppm_');
-    final prefix = p.join(tempRenderDir.path, 'page');
-
-    try {
-      final ppmResult = await Process.run('pdftoppm', [
-        '-png',
-        '-r', '150',
-        pdfPath,
-        prefix,
-      ]);
-
-      if (ppmResult.exitCode != 0) {
-        tempRenderDir.deleteSync(recursive: true);
-        return '';
-      }
-
-      final imageFiles = tempRenderDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.png'))
-          .toList()
-        ..sort((a, b) {
-          // Sắp xếp theo số trang tự nhiên (page-1.png, page-2.png, ... page-10.png)
-          final regex = RegExp(r'page-(\d+)\.png');
-          final matchA = regex.firstMatch(p.basename(a.path));
-          final matchB = regex.firstMatch(p.basename(b.path));
-          if (matchA != null && matchB != null) {
-            final numA = int.parse(matchA.group(1)!);
-            final numB = int.parse(matchB.group(1)!);
-            return numA.compareTo(numB);
-          }
-          return a.path.compareTo(b.path);
-        });
-
-      if (imageFiles.isEmpty) {
-        tempRenderDir.deleteSync(recursive: true);
-        return '';
-      }
-
-      final sb = StringBuffer();
-      sb.writeln('=== [TÀI LIỆU PDF DẠNG SCAN: $filename (ĐÃ PHÂN TÍCH QUA VISION AI & OCR)] ===');
-
-      for (int i = 0; i < imageFiles.length; i++) {
-        final imgFile = imageFiles[i];
-        final pageNum = i + 1;
-        if (onProgress != null) {
-          onProgress('Thị giác AI đang quét OCR trang $pageNum / ${imageFiles.length} của $filename...');
-        }
-
-        final pageBytes = await imgFile.readAsBytes();
-        final pageOcr = await _analyzeImageWithVision(
-          pageBytes,
-          'png',
-          '$filename (Trang $pageNum)',
-        );
-
-        if (pageOcr != null && pageOcr.isNotEmpty) {
-          sb.writeln('\n--- [Trang PDF Scan #$pageNum] ---');
-          sb.writeln(pageOcr);
-        }
-      }
-
-      sb.writeln('=== [HẾT NỘI DUNG PDF DẠNG SCAN $filename] ===');
-      tempRenderDir.deleteSync(recursive: true);
-      return sb.toString().trim();
-    } catch (_) {
+    // 2. Dự phòng môi trường Desktop nếu AI tạm thời mất mạng: Thử dùng công cụ hệ thống nếu có
+    if (!kIsWeb && filePath != null && filePath.isNotEmpty) {
       try {
-        tempRenderDir.deleteSync(recursive: true);
+        final f = File(filePath);
+        if (await f.exists()) {
+          final result = await Process.run('pdftotext', [filePath, '-']);
+          if (result.exitCode == 0) {
+            final text = result.stdout.toString().trim();
+            if (text.isNotEmpty) {
+              return '=== [TÀI LIỆU PDF: $filename] ===\n$text\n=== [HẾT TÀI LIỆU PDF] ===';
+            }
+          }
+        }
       } catch (_) {}
-      return '';
     }
+
+    return '[Tài liệu PDF: $filename (Đã nạp vào hệ thống)]';
   }
 
   Future<String?> _analyzeImageWithVision(Uint8List bytes, String ext, String filename) async {
@@ -418,6 +333,71 @@ class DocumentService {
     return null;
   }
 
+  Future<String?> _analyzeDocumentWithAi(Uint8List bytes, String ext, String filename) async {
+    try {
+      final cfg = await _configService.loadConfig();
+      var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api-vn-sg.mitom.ai/v1';
+      final apiKey = cfg['proxy_api_key']?.toString() ?? '';
+      final model = cfg['ai_model']?.toString() ?? 'gemini-2.5-flash';
+
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+      }
+
+      final b64 = base64Encode(bytes);
+      String mime = 'application/pdf';
+      if (ext == 'pdf') {
+        mime = 'application/pdf';
+      } else if (ext == 'doc' || ext == 'docx') {
+        mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      } else if (ext == 'xls' || ext == 'xlsx') {
+        mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      } else if (ext == 'csv') {
+        mime = 'text/csv';
+      }
+
+      final dataUri = 'data:$mime;base64,$b64';
+
+      final client = http.Client();
+      final res = await client.post(
+        Uri.parse('$baseUrl/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {
+                  'type': 'text',
+                  'text': 'Bạn là hệ thống AI phân tích tài liệu (Document Intelligence) cao cấp. Hãy đọc toàn bộ văn bản, số liệu, bảng biểu, thông tin chi tiết và tóm tắt cấu trúc có trong tệp tài liệu "$filename" (định dạng $ext) này. Bóc tách và xuất ra toàn bộ nội dung chữ tiếng Việt chi tiết, chuẩn xác 100% để lưu vào cơ sở tri thức hệ thống.'
+                },
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': dataUri}
+                }
+              ]
+            }
+          ],
+          'temperature': 0.1,
+        }),
+      ).timeout(const Duration(seconds: 60));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        final reply = data['choices']?[0]?['message']?['content']?.toString().trim();
+        if (reply != null && reply.isNotEmpty) {
+          return reply;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Học lại chỉ 1 tài liệu/ảnh cụ thể
   Future<bool> relearnSingleDocument(KnowledgeDocument doc, {void Function(String status)? onProgress}) async {
     try {
@@ -426,9 +406,11 @@ class DocumentService {
       }
 
       Uint8List? fileBytes;
-      final f = File(doc.path);
-      if (await f.exists()) {
-        fileBytes = await f.readAsBytes();
+      if (!kIsWeb && doc.path.isNotEmpty) {
+        final f = File(doc.path);
+        if (await f.exists()) {
+          fileBytes = await f.readAsBytes();
+        }
       }
 
       String newContent = '';
@@ -449,9 +431,10 @@ class DocumentService {
       if (newContent.isNotEmpty) {
         final db = await _dbService.getRawDatabase();
         if (db != null) {
+          final encContent = _enc.encryptValue(newContent);
           await db.update(
             'knowledge_documents',
-            {'content': newContent},
+            {'content': encContent},
             where: 'id = ?',
             whereArgs: [doc.id],
           );

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -7,6 +8,7 @@ import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import '../../models/persona_profile_model.dart';
+import '../../models/schedule_task_model.dart';
 import 'encryption_service.dart';
 import 'storage_service.dart';
 
@@ -108,6 +110,24 @@ class DatabaseService {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+
+    // Bảng quản lý kế hoạch lịch trình (Calendar schedule tasks)
+    await _db!.execute('''
+      CREATE TABLE IF NOT EXISTS schedule_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        task_type TEXT NOT NULL,
+        target_url TEXT NOT NULL,
+        comment_content TEXT,
+        persona_ips TEXT NOT NULL,
+        scheduled_time TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        result_note TEXT,
+        completed_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
     // Migration: Thêm cột nếu bảng cũ chưa có
     try {
       await _db!.execute('ALTER TABLE persona_profiles ADD COLUMN external_device_address TEXT');
@@ -589,6 +609,80 @@ class DatabaseService {
       }
       await batch.commit(noResult: true);
     } catch (_) {}
+  }
+
+  // ==================== SCHEDULE TASKS (CALENDAR) ====================
+
+  /// Lấy toàn bộ danh sách tác vụ lịch trình
+  Future<List<ScheduleTaskModel>> getScheduleTasks() async {
+    try {
+      final db = await _getDb();
+      final maps = await db.query(
+        'schedule_tasks',
+        orderBy: 'scheduled_time ASC',
+      );
+      return maps.map((m) => ScheduleTaskModel.fromMap(m)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Thêm một tác vụ lịch trình mới
+  Future<int> insertScheduleTask(ScheduleTaskModel task) async {
+    try {
+      final db = await _getDb();
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS schedule_tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          task_type TEXT NOT NULL,
+          target_url TEXT NOT NULL,
+          comment_content TEXT,
+          persona_ips TEXT NOT NULL,
+          scheduled_time TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          result_note TEXT,
+          completed_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      return await db.insert('schedule_tasks', task.toMap());
+    } catch (e) {
+      debugPrint('Lỗi insertScheduleTask: $e');
+      return -1;
+    }
+  }
+
+  /// Cập nhật tác vụ lịch trình
+  Future<bool> updateScheduleTask(ScheduleTaskModel task) async {
+    if (task.id == null) return false;
+    try {
+      final db = await _getDb();
+      final count = await db.update(
+        'schedule_tasks',
+        task.toMap(),
+        where: 'id = ?',
+        whereArgs: [task.id],
+      );
+      return count > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Xóa tác vụ lịch trình theo ID
+  Future<bool> deleteScheduleTask(int id) async {
+    try {
+      final db = await _getDb();
+      final count = await db.delete(
+        'schedule_tasks',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return count > 0;
+    } catch (_) {
+      return false;
+    }
   }
 }
 

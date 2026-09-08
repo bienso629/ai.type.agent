@@ -1371,15 +1371,28 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                 ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                if (chat.isGenerating)
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.danger,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+                    ),
+                    icon: const Icon(Icons.stop_rounded, size: 16),
+                    label: const Text('Dừng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    onPressed: () => chat.stopGeneration(),
+                  )
+                else
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 14),
+                    label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    onPressed: () => _handleSend(chat, serverProvider),
                   ),
-                  icon: const Icon(Icons.send_rounded, size: 14),
-                  label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  onPressed: chat.isGenerating ? null : () => _handleSend(chat, serverProvider),
-                ),
               ],
             ),
           ],

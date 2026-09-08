@@ -12,6 +12,7 @@ import 'providers/chat_provider.dart';
 import 'providers/gateway_provider.dart';
 import 'providers/metrics_provider.dart';
 import 'providers/profile_provider.dart';
+import 'providers/schedule_provider.dart';
 import 'providers/server_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -56,6 +57,7 @@ class TaduCloudAiAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MetricsProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider(create: (_) => ScheduleProvider()),
         ChangeNotifierProvider.value(value: Socks5ProxyService()),
       ],
       child: MaterialApp(

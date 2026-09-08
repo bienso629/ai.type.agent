@@ -504,7 +504,8 @@ class ApiService {
 
         var accumulatedReply = '';
 
-        streamedResponse.stream
+        StreamSubscription? responseSub;
+        responseSub = streamedResponse.stream
             .transform(utf8.decoder)
             .transform(const LineSplitter())
             .listen(
@@ -547,6 +548,11 @@ class ApiService {
           },
           cancelOnError: true,
         );
+
+        controller.onCancel = () {
+          responseSub?.cancel();
+          streamClient?.close();
+        };
       } catch (e) {
         onError(e);
         streamClient?.close();
