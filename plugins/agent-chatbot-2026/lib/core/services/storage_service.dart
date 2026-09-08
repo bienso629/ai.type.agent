@@ -18,6 +18,7 @@ class StorageService {
   static const String _keyUserName = 'user_name';
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyRememberMe = 'remember_me';
+  static const String _keyCustomLogoPath = 'custom_logo_path';
 
   Future<void> init() async {
     if (_isInitialized) return;
@@ -82,6 +83,21 @@ class StorageService {
   Future<void> setBiometricEnabled(bool enabled) async {
     await init();
     await _prefs.setBool(_keyBiometricEnabled, enabled);
+  }
+
+  // Custom App Logo Path
+  Future<String?> getCustomLogoPath() async {
+    await init();
+    return _prefs.getString(_keyCustomLogoPath);
+  }
+
+  Future<void> setCustomLogoPath(String? path) async {
+    await init();
+    if (path == null || path.trim().isEmpty) {
+      await _prefs.remove(_keyCustomLogoPath);
+    } else {
+      await _prefs.setString(_keyCustomLogoPath, path.trim());
+    }
   }
 
   // App Authentication

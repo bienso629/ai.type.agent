@@ -10,12 +10,14 @@ class ServerProvider extends ChangeNotifier {
   List<ServerModel> _servers = [];
   ServerModel? _selectedServer;
   String _globalAiModel = 'glm-5.3';
+  String? _customLogoPath;
   bool _isLoading = false;
   String? _error;
 
   List<ServerModel> get servers => _servers;
   ServerModel? get selectedServer => _selectedServer;
   String get globalAiModel => _globalAiModel;
+  String? get customLogoPath => _customLogoPath;
   String get currentAiModel {
     if (_globalAiModel.isNotEmpty) {
       return _globalAiModel;
@@ -35,11 +37,18 @@ class ServerProvider extends ChangeNotifier {
 
   Future<void> loadGlobalConfig() async {
     try {
+      final savedLogo = await _storage.getCustomLogoPath();
+      if (savedLogo != null && savedLogo.isNotEmpty) {
+        _customLogoPath = savedLogo;
+      }
       final cfg = await _api.getConfig();
       if (cfg['ai_model'] != null && cfg['ai_model'].toString().isNotEmpty) {
         _globalAiModel = cfg['ai_model'].toString();
-        notifyListeners();
       }
+      if (cfg['custom_logo_path'] != null && cfg['custom_logo_path'].toString().isNotEmpty) {
+        _customLogoPath = cfg['custom_logo_path'].toString();
+      }
+      notifyListeners();
     } catch (_) {}
   }
 
@@ -48,6 +57,12 @@ class ServerProvider extends ChangeNotifier {
       _globalAiModel = model;
       notifyListeners();
     }
+  }
+
+  Future<void> setCustomLogo(String? path) async {
+    _customLogoPath = path;
+    await _storage.setCustomLogoPath(path);
+    notifyListeners();
   }
 
   Future<void> loadServers() async {

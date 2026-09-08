@@ -31,12 +31,12 @@ class ChatProvider extends ChangeNotifier {
 
   // Quick Action Chips
   final List<String> quickPrompts = [
-    '📊 Kiểm tra tài nguyên CPU/RAM',
-    '🔄 Khởi động lại Nginx Web Server',
-    '⚡ Top 5 tiến trình ngốn CPU nhất',
-    '🛡️ Kiểm tra trạng thái tường lửa UFW',
-    '🧹 Dọn dẹp RAM Cache & Disk Log',
-    '🔍 Xem 20 dòng log lỗi mới nhất',
+    'Lên kế hoạch đăng bài tuần này cho các nhân vật',
+    'Mở trình duyệt cho nhân vật đang chọn',
+    'Khởi chạy thiết bị device thực hiện tương tác',
+    'Kịch bản tương tác like và comment video tự động',
+    'Kiểm tra trạng thái hoạt động của các profiles',
+    'Tạo nội dung bình luận tự nhiên theo tính cách nhân vật',
   ];
 
   ChatProvider() {

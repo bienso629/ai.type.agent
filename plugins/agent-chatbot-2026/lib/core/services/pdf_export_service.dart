@@ -6,9 +6,22 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../models/chat_message.dart';
+import 'storage_service.dart';
 
 class PdfExportService {
   static Future<pw.ImageProvider?> _loadLogoImage() async {
+    // 0. Try custom_logo_path from StorageService
+    try {
+      final customPath = await StorageService().getCustomLogoPath();
+      if (customPath != null && customPath.trim().isNotEmpty) {
+        final f = File(customPath.trim());
+        if (f.existsSync()) {
+          final bytes = f.readAsBytesSync();
+          if (bytes.isNotEmpty) return pw.MemoryImage(bytes);
+        }
+      }
+    } catch (_) {}
+
     // 1. Try rootBundle logo.jpg
     try {
       final ByteData data = await rootBundle.load('assets/logo.jpg');

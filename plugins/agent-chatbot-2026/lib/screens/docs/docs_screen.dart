@@ -21,6 +21,7 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
   bool _isUploading = false;
   bool _isRelearning = false;
   String _relearningStatus = '';
+  int? _relearningDocId;
 
   @override
   void initState() {
@@ -46,6 +47,8 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
     }
   }
 
+  String _uploadStatus = '';
+
   Future<void> _pickAndUploadFiles() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -60,7 +63,10 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
 
       if (result == null || result.files.isEmpty) return;
 
-      setState(() => _isUploading = true);
+      setState(() {
+        _isUploading = true;
+        _uploadStatus = 'Đang chuẩn bị lập chỉ mục tài liệu...';
+      });
 
       int count = 0;
       for (final pickedFile in result.files) {
@@ -72,6 +78,13 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
           name: name,
           filePath: path,
           bytes: bytes,
+          onProgress: (status) {
+            if (mounted) {
+              setState(() {
+                _uploadStatus = status;
+              });
+            }
+          },
         );
         count++;
       }
@@ -79,7 +92,7 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
       await _loadDocuments();
 
       if (mounted) {
-        AppToast.success(context, 'Đã tải lên và nạp thành công $count tài liệu/hình ảnh cho AI!');
+        AppToast.success(context, 'Đã tải lên và lập chỉ mục thành công $count tài liệu/ảnh!');
       }
     } catch (e) {
       if (mounted) {
@@ -87,29 +100,33 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
       }
     } finally {
       if (mounted) {
-        setState(() => _isUploading = false);
+        setState(() {
+          _isUploading = false;
+          _uploadStatus = '';
+        });
       }
     }
   }
 
-  Future<void> _relearnAllDocuments() async {
-    if (_documents.isEmpty) {
-      AppToast.info(context, 'Chưa có tài liệu hay hình ảnh nào để học lại.');
-      return;
-    }
 
+  Future<void> _relearnSpecificDocument(KnowledgeDocument doc) async {
+    if (_isRelearning || _isUploading) return;
+
+    final isScanOrImg = doc.isImage || doc.isScannedPdf;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => TaduDialog(
-        title: const Text('Học lại toàn bộ tài liệu & hình ảnh'),
-        content: const Text(
-          'AI Agent sẽ quét lại toàn bộ tài liệu, đọc sâu các tệp hình ảnh (OCR + phân tích nội dung biểu đồ/ảnh) bằng Vision AI và cập nhật lại bộ chỉ mục tri thức. Quá trình này có thể mất vài giây đến vài chục giây tùy số lượng file.\n\nBạn có muốn bắt đầu không?',
-          style: TextStyle(fontSize: 13, height: 1.5, color: AppColors.textWhite),
+        title: Text('Học lại tài liệu: ${doc.name}'),
+        content: Text(
+          isScanOrImg
+              ? 'AI Agent sẽ quét lại các trang và chạy Vision OCR để phân tích lại toàn bộ chữ viết, số liệu trong tệp "${doc.name}".\n\nBạn có muốn thực hiện không?'
+              : 'AI Agent sẽ lập chỉ mục và cập nhật lại nội dung văn bản cho tệp "${doc.name}".\n\nBạn có muốn thực hiện không?',
+          style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textWhite),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Để sau', style: TextStyle(color: AppColors.textMuted)),
+            child: const Text('Hủy bỏ', style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -118,7 +135,7 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
               textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Bắt đầu học lại'),
+            child: const Text('Học lại ngay'),
           ),
         ],
       ),
@@ -128,15 +145,17 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
 
     setState(() {
       _isRelearning = true;
-      _relearningStatus = 'Đang khởi động phân tích tri thức...';
+      _relearningDocId = doc.id;
+      _relearningStatus = 'Đang phân tích lại: ${doc.name}...';
     });
 
     try {
-      final res = await _docService.relearnAllDocuments(
-        onProgress: (name, current, total) {
+      final success = await _docService.relearnSingleDocument(
+        doc,
+        onProgress: (status) {
           if (mounted) {
             setState(() {
-              _relearningStatus = 'Đang phân tích ($current/$total): $name';
+              _relearningStatus = status;
             });
           }
         },
@@ -145,19 +164,21 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
       await _loadDocuments();
 
       if (mounted) {
-        AppToast.success(
-          context,
-          'AI Agent đã học lại toàn bộ dữ liệu thành công! (Cập nhật: ${res['updated']} tài liệu/hình ảnh)',
-        );
+        if (success) {
+          AppToast.success(context, 'Đã học lại thành công tài liệu "${doc.name}"!');
+        } else {
+          AppToast.info(context, 'Tài liệu "${doc.name}" đã được cập nhật.');
+        }
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error(context, 'Có lỗi khi học lại tài liệu: $e');
+        AppToast.error(context, 'Lỗi khi học lại: $e');
       }
     } finally {
       if (mounted) {
         setState(() {
           _isRelearning = false;
+          _relearningDocId = null;
           _relearningStatus = '';
         });
       }
@@ -216,6 +237,9 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
       context: context,
       builder: (ctx) {
         return TaduDialog(
+          minWidth: 550,
+          maxWidth: 750,
+          scrollableBody: false,
           title: Row(
             children: [
               _buildExtBadge(doc.extension),
@@ -237,25 +261,43 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
                 'Dung lượng: ${doc.formattedSize} • Ngày tải: ${doc.createdAt.toString().split('.')[0]}',
                 style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
               ),
-              const Divider(color: AppColors.borderDark, height: 24),
-              Text(
-                doc.isImage ? 'KẾT QUẢ PHÂN TÍCH THỊ GIÁC AI (VISION & OCR):' : 'DỮ LIỆU ĐÃ TRÍCH XUẤT CHO AI:',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight, letterSpacing: 0.5),
+              const Divider(color: AppColors.borderDark, height: 20),
+              Row(
+                children: [
+                  Text(
+                    doc.isImage
+                        ? 'KẾT QUẢ PHÂN TÍCH THỊ GIÁC AI (VISION & OCR):'
+                        : (doc.isScannedPdf ? 'KẾT QUẢ QUÉT THỊ GIÁC PDF SCAN (OCR VISION):' : 'DỮ LIỆU ĐÃ TRÍCH XUẤT CHO AI:'),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight, letterSpacing: 0.5),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${doc.content.length} ký tự',
+                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
-              Container(
-                height: 350,
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.bgDark,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.borderDark),
-                ),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    doc.content.isEmpty ? '(Chưa có nội dung văn bản bóc tách được)' : doc.content,
-                    style: const TextStyle(fontSize: 12, height: 1.5, color: AppColors.textBody, fontFamily: 'monospace'),
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: AppColors.bgDark,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.borderDark),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Scrollbar(
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        child: SelectableText(
+                          doc.content.isEmpty ? '(Chưa có nội dung văn bản bóc tách được)' : doc.content,
+                          style: const TextStyle(fontSize: 12.5, height: 1.6, color: AppColors.textBody, fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -343,40 +385,17 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Tài Liệu & Cơ Sở Tri Thức (Knowledge Base)',
+                      'Tài Liệu & Cơ Sở Tri Thức',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Nạp tài liệu, biểu đồ và hình ảnh để AI Agent học hỏi và phân tích thị giác thông minh',
+                      'Nạp tài liệu, biểu đồ và hình ảnh để AI Agent nghiên cứu, tham khảo và bổ trợ trả lời chi tiết hơn',
                       style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                     ),
                   ],
                 ),
                 const Spacer(),
-
-                // Re-learn Button (Học lại nội dung & hình ảnh)
-                OutlinedButton.icon(
-                  onPressed: (_isRelearning || _isUploading) ? null : _relearnAllDocuments,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.accent,
-                    side: const BorderSide(color: AppColors.accent),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                  ),
-                  icon: _isRelearning
-                      ? const SizedBox(
-                          width: 15,
-                          height: 15,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
-                        )
-                      : const Icon(Icons.sync_rounded, size: 17),
-                  label: Text(
-                    _isRelearning ? 'Đang học lại...' : 'Học lại dữ liệu & ảnh',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 12),
 
                 // Upload Button
                 ElevatedButton.icon(
@@ -404,8 +423,28 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
             ),
           ),
 
-          // Re-learning Status Progress Bar if running
-          if (_isRelearning)
+          // Indexing & Re-learning Status Progress Bar if running
+          if (_isUploading && _uploadStatus.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              color: AppColors.primaryLight.withValues(alpha: 0.15),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _uploadStatus,
+                    style: const TextStyle(fontSize: 12, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          if (_isRelearning || _relearningDocId != null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -534,29 +573,6 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        // Summary status box
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.primaryLight.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline_rounded, color: AppColors.primaryLight, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Đang kích hoạt $enabledCount / ${_documents.length} tài liệu & hình ảnh. AI Agent sẽ tự động đối chiếu thông tin và phân tích thị giác để phản hồi.',
-                  style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
         // Document Cards
         ..._documents.map((doc) => _buildDocumentCard(doc)),
       ],
@@ -625,6 +641,19 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
                           style: TextStyle(fontSize: 10, color: Color(0xFFF59E0B), fontWeight: FontWeight.bold),
                         ),
                       ),
+                    ] else if (doc.isScannedPdf) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.purpleAccent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'PDF Scan OCR',
+                          style: TextStyle(fontSize: 10, color: Colors.purpleAccent, fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -643,6 +672,20 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
             icon: const Icon(Icons.visibility_outlined, size: 18, color: AppColors.textMuted),
             tooltip: doc.isImage ? 'Xem phân tích thị giác' : 'Xem trích xuất nội dung',
             onPressed: () => _previewDocument(doc),
+          ),
+          // Nút học lại dữ liệu cho từng item tài liệu
+          IconButton(
+            icon: (_relearningDocId == doc.id)
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                  )
+                : const Icon(Icons.sync_rounded, size: 18, color: AppColors.accent),
+            tooltip: 'Học lại tài liệu này (Vision OCR & Index)',
+            onPressed: (_relearningDocId != null || _isRelearning || _isUploading)
+                ? null
+                : () => _relearnSpecificDocument(doc),
           ),
           Switch(
             value: doc.isEnabled,

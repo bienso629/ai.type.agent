@@ -284,11 +284,24 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             ],
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textDim),
-                          onPressed: () => Navigator.of(dialogCtx).pop(),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => Navigator.of(dialogCtx).pop(),
+                            borderRadius: BorderRadius.circular(6),
+                            hoverColor: AppColors.borderDark.withValues(alpha: 0.6),
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.borderDark, width: 1),
+                              ),
+                              child: const Center(
+                                child: Icon(Icons.close_rounded, size: 18, color: AppColors.textDim),
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -437,7 +450,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                 hintText: 'Prompt tiếng Anh tạo chân dung...',
                               ),
                             ),
-                             // Thông tin Agent (System Role / Nhiệm vụ)
+                            const SizedBox(height: 12),
+
+                            // Thông tin Agent (System Role / Nhiệm vụ)
                             const Text('Thông tin Agent (Vai trò / Nhiệm vụ)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
                             const SizedBox(height: 5),
                             TextField(
@@ -449,7 +464,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                 hintText: 'Ví dụ: Seeding bài viết Facebook, tương tác nhóm, trả lời tin nhắn...',
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 12),
 
                             // Cấu hình Thiết bị (Local AVD vs Ngoại vi)
                             Container(
@@ -494,13 +509,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         ),
                                       ),
                                     ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    useExternalDevice
-                                        ? 'Đang bật chế độ Ngoại vi: Kết nối trực tiếp điện thoại thật/box qua ADB WiFi.'
-                                        : 'Đang bật chế độ Local AVD: Chạy giả lập trực tiếp trên máy tính.',
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                                   ),
 
                                   if (useExternalDevice) ...[
@@ -695,7 +703,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                   child: DropdownButton<String?>(
                                                     value: availableAvds.contains(selectedAvd) ? selectedAvd : null,
                                                     hint: Text(
-                                                      isLoadingAvds ? 'Đang tìm...' : (availableAvds.isEmpty ? 'Mặc định (Không có AVD)' : 'Chọn AVD...'),
+                                                      isLoadingAvds ? 'Đang quét...' : (availableAvds.isEmpty ? 'Chưa có AVD (Khuyên dùng Ngoại vi)' : 'Chọn AVD...'),
                                                       style: const TextStyle(fontSize: 11, color: AppColors.textDim),
                                                     ),
                                                     dropdownColor: AppColors.sidebarBg,

@@ -424,6 +424,9 @@ class Socks5ProxyService extends ChangeNotifier {
       '$home/android-sdk/emulator/emulator',
       '/opt/android-sdk/emulator/emulator',
       '/usr/bin/emulator',
+      '/usr/local/bin/emulator',
+      '$home/.android-sdk/emulator/emulator',
+      '$home/.tadu_ai_agent/emulator/emulator',
     ];
     for (final c in candidates) {
       if (File(c).existsSync()) {
@@ -521,7 +524,7 @@ class Socks5ProxyService extends ChangeNotifier {
     // 1. Kiểm tra Android Emulator binary
     final emulatorBin = _findAndroidEmulatorExecutable();
     if (emulatorBin == null) {
-      throw Exception('Không tìm thấy Android Emulator trên hệ thống (~/Android/Sdk/emulator/emulator).');
+      throw Exception('Không tìm thấy Android Emulator trên hệ thống. Vui lòng chuyển sang tab Thiết bị ngoại vi (WiFi ADB) hoặc cài đặt môi trường giả lập.');
     }
 
     // 2. Xác định tên AVD để khởi chạy
@@ -529,7 +532,7 @@ class Socks5ProxyService extends ChangeNotifier {
     if (targetAvd.isEmpty) {
       final avds = await getAvailableAvds();
       if (avds.isEmpty) {
-        throw Exception('Chưa tạo bất kỳ thiết bị Android ảo (AVD) nào trong Android Studio.');
+        throw Exception('Chưa có thiết bị Android ảo (AVD) nào được tạo. Bạn có thể sử dụng ngay chế độ Thiết bị ngoại vi (WiFi ADB) để kết nối điện thoại thật / Android box.');
       }
       targetAvd = avds.first;
     }

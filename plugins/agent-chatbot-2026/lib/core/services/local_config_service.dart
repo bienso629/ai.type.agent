@@ -41,6 +41,7 @@ class LocalConfigService {
     'remote_work_dir': '/root',
     'api_port': 8000,
     'secret_token': 'super_secret_token_123',
+    'custom_logo_path': '',
     'servers': [],
   };
 

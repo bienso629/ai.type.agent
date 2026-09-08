@@ -576,10 +576,6 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ],
                         ),
-                        const Text(
-                          'Có quyền thực thi lệnh bash an toàn trên máy chủ Linux',
-                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                        ),
                       ],
                     ),
                   ],
@@ -828,7 +824,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Tôi có thể giải đáp thắc mắc, phân tích hệ thống và tự động chạy lệnh Terminal khi bạn yêu cầu!',
+            'Tôi có thể hỗ trợ lên kế hoạch nội dung, điều khiển các nhân vật profile mở trình duyệt hoặc thiết bị để tự động hóa tác vụ theo yêu cầu!',
             style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
           ),
           const Divider(height: 20),

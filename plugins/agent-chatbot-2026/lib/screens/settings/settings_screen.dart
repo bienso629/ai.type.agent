@@ -1,8 +1,13 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/local_config_service.dart';
+import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_logo_widget.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/server_provider.dart';
@@ -19,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _modelCtrl = TextEditingController(text: 'glm-5.3');
   final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://api.mitom.ai/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
+  final TextEditingController _logoCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -31,16 +37,106 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _modelCtrl.dispose();
     _baseUrlCtrl.dispose();
     _apiKeyCtrl.dispose();
+    _logoCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _loadGlobalConfig() async {
     try {
+      final savedLogo = await StorageService().getCustomLogoPath();
+      if (savedLogo != null && savedLogo.isNotEmpty) {
+        _logoCtrl.text = savedLogo;
+      }
       final cfg = await _api.getConfig();
       if (cfg['ai_model'] != null) _modelCtrl.text = cfg['ai_model'].toString();
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
+      if (cfg['custom_logo_path'] != null && cfg['custom_logo_path'].toString().isNotEmpty) {
+        _logoCtrl.text = cfg['custom_logo_path'].toString();
+      }
     } catch (_) {}
+  }
+
+  Future<void> _pickLogoFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'svg'],
+        allowMultiple: false,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final picked = result.files.first;
+        String? targetPath;
+
+        // Lưu bản sao logo vào thư mục dữ liệu cục bộ của app để không phụ thuộc file gốc
+        final appDataDir = p.join(Platform.environment['HOME'] ?? '', '.agent_chatbot_2026', 'branding');
+        final targetDir = Directory(appDataDir);
+        if (!targetDir.existsSync()) {
+          targetDir.createSync(recursive: true);
+        }
+
+        final ext = p.extension(picked.name).isNotEmpty ? p.extension(picked.name) : '.png';
+        final savedFile = File(p.join(appDataDir, 'app_logo$ext'));
+
+        if (picked.bytes != null && picked.bytes!.isNotEmpty) {
+          await savedFile.writeAsBytes(picked.bytes!, flush: true);
+          targetPath = savedFile.path;
+        } else if (picked.path != null && picked.path!.isNotEmpty) {
+          final srcFile = File(picked.path!);
+          if (await srcFile.exists()) {
+            await srcFile.copy(savedFile.path);
+            targetPath = savedFile.path;
+          } else {
+            targetPath = picked.path;
+          }
+        }
+
+        if (targetPath != null && targetPath.isNotEmpty) {
+          setState(() {
+            _logoCtrl.text = targetPath!;
+          });
+          await _saveLogoSetting(targetPath);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi tải ảnh logo: $e');
+      }
+    }
+  }
+
+  Future<void> _resetLogo() async {
+    setState(() {
+      _logoCtrl.clear();
+    });
+    await _saveLogoSetting('');
+    if (mounted) {
+      AppToast.info(context, 'Đã khôi phục logo mặc định của ứng dụng');
+    }
+  }
+
+  Future<void> _saveLogoSetting(String path) async {
+    try {
+      final trimmed = path.trim();
+      await StorageService().setCustomLogoPath(trimmed.isEmpty ? null : trimmed);
+      if (mounted) {
+        context.read<ServerProvider>().setCustomLogo(trimmed.isEmpty ? null : trimmed);
+      }
+
+      final cfg = await _api.getConfig();
+      cfg['custom_logo_path'] = trimmed;
+      await _api.saveConfig(cfg);
+
+      if (mounted && trimmed.isNotEmpty) {
+        AppToast.success(context, 'Đã tải lên và đổi Logo ứng dụng thành công!');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Không thể lưu logo: $e');
+      }
+    }
   }
 
   Future<void> _saveAISettings() async {
@@ -55,18 +151,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       cfg['ai_model'] = _modelCtrl.text.trim();
       cfg['proxy_base_url'] = rawBaseUrl;
       cfg['proxy_api_key'] = _apiKeyCtrl.text.trim();
+      cfg['custom_logo_path'] = _logoCtrl.text.trim();
       final ok = await _api.saveConfig(cfg);
       if (mounted) {
         if (ok) {
-          context.read<ServerProvider>().setGlobalAiModel(_modelCtrl.text.trim());
-          AppToast.success(context, 'Đã lưu cấu hình AI thành công!');
+          final serverProv = context.read<ServerProvider>();
+          serverProv.setGlobalAiModel(_modelCtrl.text.trim());
+          final logoPath = _logoCtrl.text.trim();
+          await StorageService().setCustomLogoPath(logoPath.isEmpty ? null : logoPath);
+          if (mounted) {
+            serverProv.setCustomLogo(logoPath.isEmpty ? null : logoPath);
+            AppToast.success(context, 'Đã lưu cấu hình hệ thống thành công!');
+          }
         } else {
-          AppToast.error(context, 'Lưu cấu hình AI thất bại!');
+          AppToast.error(context, 'Lưu cấu hình thất bại!');
         }
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error(context, 'Lỗi: ');
+        AppToast.error(context, 'Lỗi: $e');
       }
     }
   }
@@ -209,7 +312,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // GROUP 2: USER ACCOUNT & ENVIRONMENT
+                  // GROUP 2: LOGO & BRANDING CUSTOMIZATION
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderDark),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.image_rounded, size: 20, color: AppColors.accentCyan),
+                            SizedBox(width: 10),
+                            Text(
+                              '2. Nhận Diện Thương Hiệu (Logo Ứng Dụng)',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 24),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Logo Preview
+                            Container(
+                              width: 80,
+                              height: 80,
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBg,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.borderDark),
+                              ),
+                              child: const AppLogoWidget(
+                                width: 72,
+                                height: 72,
+                                borderRadius: 6,
+                              ),
+                            ),
+                            const SizedBox(width: 18),
+                            // Description and Action
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Bấm nút "Tải Logo Lên" để chọn ảnh từ máy tính (PNG, JPG, WEBP, SVG). Logo mới sẽ được tự động đồng bộ ngay lập tức trên thanh Menu Sidebar, màn hình Đăng nhập, Avatar trợ lý AI và báo cáo PDF.',
+                                    style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.5),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppColors.primary,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                          elevation: 0,
+                                        ),
+                                        icon: const Icon(Icons.cloud_upload_rounded, size: 16),
+                                        label: const Text('Tải Logo Lên', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        onPressed: _pickLogoFile,
+                                      ),
+                                      if (serverProvider.customLogoPath != null && serverProvider.customLogoPath!.isNotEmpty) ...[
+                                        const SizedBox(width: 10),
+                                        OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: AppColors.textMuted,
+                                            side: const BorderSide(color: AppColors.borderDark),
+                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                          ),
+                                          icon: const Icon(Icons.restart_alt_rounded, size: 15),
+                                          label: const Text('Khôi phục mặc định', style: TextStyle(fontSize: 12)),
+                                          onPressed: _resetLogo,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // GROUP 3: USER ACCOUNT & ENVIRONMENT
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
@@ -225,7 +420,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(Icons.person_rounded, size: 20, color: AppColors.primaryLight),
                             SizedBox(width: 10),
                             Text(
-                              '2. Thông Tin Tài Khoản & Bản Quyền',
+                              '3. Thông Tin Tài Khoản & Bản Quyền',
                               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                             ),
                           ],
@@ -251,7 +446,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // GROUP 3: SECURITY & STORAGE INFO
+                  // GROUP 4: SECURITY & STORAGE INFO
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
@@ -267,7 +462,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(Icons.shield_rounded, size: 20, color: AppColors.accent),
                             SizedBox(width: 10),
                             Text(
-                              '3. Bảo Mật & Thông Tin Hệ Thống',
+                              '4. Bảo Mật & Thông Tin Hệ Thống',
                               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                             ),
                           ],

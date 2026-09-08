@@ -34,6 +34,11 @@ class KnowledgeDocument {
     return ext == 'png' || ext == 'jpg' || ext == 'jpeg' || ext == 'webp' || ext == 'gif' || ext == 'bmp';
   }
 
+  bool get isScannedPdf {
+    final ext = extension.toLowerCase();
+    return ext == 'pdf' && (content.contains('OCR & Thị giác Vision AI') || content.contains('Trang PDF Scan') || content.contains('PDF DẠNG SCAN'));
+  }
+
   String get formattedSize {
     if (size < 1024) return '$size B';
     if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
@@ -107,10 +112,12 @@ class DocumentService {
     }
   }
 
+  /// Tải lên và index toàn bộ nội dung tài liệu
   Future<int> addDocument({
     required String name,
     required String filePath,
     Uint8List? bytes,
+    void Function(String status)? onProgress,
   }) async {
     try {
       await _dbService.init();
@@ -122,15 +129,19 @@ class DocumentService {
       int size = 0;
       String content = '';
 
+      if (onProgress != null) {
+        onProgress('Đang đọc tệp $name...');
+      }
+
       if (bytes != null && bytes.isNotEmpty) {
         size = bytes.length;
-        content = await _extractContent(bytes, ext, name);
+        content = await _extractContent(bytes, ext, name, filePath: filePath, onProgress: onProgress);
       } else {
         final f = File(filePath);
         if (await f.exists()) {
           size = await f.length();
           final fileBytes = await f.readAsBytes();
-          content = await _extractContent(fileBytes, ext, name);
+          content = await _extractContent(fileBytes, ext, name, filePath: filePath, onProgress: onProgress);
         }
       }
 
@@ -150,22 +161,27 @@ class DocumentService {
     }
   }
 
-  Future<String> _extractContent(Uint8List bytes, String ext, String filename) async {
-    // 1. Nếu là ảnh (png, jpg, jpeg, webp, gif, bmp)
+  Future<String> _extractContent(
+    Uint8List bytes,
+    String ext,
+    String filename, {
+    String? filePath,
+    void Function(String status)? onProgress,
+  }) async {
     final isImg = ext == 'png' || ext == 'jpg' || ext == 'jpeg' || ext == 'webp' || ext == 'gif' || ext == 'bmp';
     if (isImg) {
-      // Phân tích thị giác bằng Vision AI Model
+      if (onProgress != null) {
+        onProgress('Đang dùng Thị giác AI phân tích & OCR ảnh: $filename');
+      }
       final visionSummary = await _analyzeImageWithVision(bytes, ext, filename);
       if (visionSummary != null && visionSummary.isNotEmpty) {
         return visionSummary;
       }
-      // Fallback nếu chưa phân tích được ngay
       final b64 = base64Encode(bytes);
       final mime = (ext == 'jpg' || ext == 'jpeg') ? 'image/jpeg' : 'image/$ext';
       return '[Hình ảnh: $filename (Dung lượng: ${bytes.length} bytes)]\nData-URI: data:$mime;base64,$b64';
     }
 
-    // 2. Định dạng văn bản mã nguồn / text / csv / markdown
     if (ext == 'txt' || ext == 'md' || ext == 'json' || ext == 'csv' || ext == 'yaml' || ext == 'yml' || ext == 'xml' || ext == 'html' || ext == 'dart' || ext == 'py' || ext == 'js' || ext == 'sh') {
       try {
         return utf8.decode(bytes);
@@ -174,7 +190,13 @@ class DocumentService {
       }
     }
 
-    // 3. Binary docs (PDF, DOCX, XLSX)
+    if (ext == 'pdf') {
+      final pdfContent = await _extractPdfWithFallbackToVision(bytes, filename, filePath: filePath, onProgress: onProgress);
+      if (pdfContent.isNotEmpty) {
+        return pdfContent;
+      }
+    }
+
     try {
       final latin = latin1.decode(bytes);
       final buffer = StringBuffer();
@@ -196,7 +218,151 @@ class DocumentService {
     return '[Nội dung tệp định dạng $ext - Dung lượng: ${bytes.length} bytes]';
   }
 
-  /// Gọi Vision AI để đọc hiểu sâu hình ảnh (OCR + phân tích nội dung, biểu đồ, sơ đồ)
+  Future<String> _extractPdfWithFallbackToVision(
+    Uint8List bytes,
+    String filename, {
+    String? filePath,
+    void Function(String status)? onProgress,
+  }) async {
+    File? tempPdfFile;
+    String targetPdfPath = filePath ?? '';
+
+    if (targetPdfPath.isEmpty || !File(targetPdfPath).existsSync()) {
+      final tempDir = Directory.systemTemp.createTempSync('pdf_ocr_');
+      tempPdfFile = File(p.join(tempDir.path, 'temp_input.pdf'))..writeAsBytesSync(bytes);
+      targetPdfPath = tempPdfFile.path;
+    }
+
+    String extractedText = '';
+    int pageCount = 1;
+
+    try {
+      final infoResult = await Process.run('pdfinfo', [targetPdfPath]);
+      if (infoResult.exitCode == 0) {
+        final match = RegExp(r'Pages:\s+(\d+)').firstMatch(infoResult.stdout.toString());
+        if (match != null) {
+          pageCount = int.tryParse(match.group(1) ?? '1') ?? 1;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final result = await Process.run('pdftotext', [targetPdfPath, '-']);
+      if (result.exitCode == 0) {
+        extractedText = result.stdout.toString().trim();
+      }
+    } catch (_) {}
+
+    final rawNonWhitespaceCount = extractedText.replaceAll(RegExp(r'\s+'), '').length;
+    final charsPerPage = rawNonWhitespaceCount / pageCount;
+
+    // Nếu bình quân mỗi trang có ít hơn 80 ký tự -> Đây chắc chắn là PDF Scan dạng ảnh!
+    final isScannedPdf = charsPerPage < 80.0;
+
+    if (isScannedPdf) {
+      if (onProgress != null) {
+        onProgress('Phát hiện PDF Scan ($pageCount trang ảnh)! Đang xuất trang để AI nhận diện OCR...');
+      }
+      final visionResult = await _ocrScannedPdfPages(targetPdfPath, filename, pageCount: pageCount, onProgress: onProgress);
+      if (tempPdfFile != null) {
+        try {
+          tempPdfFile.parent.deleteSync(recursive: true);
+        } catch (_) {}
+      }
+      if (visionResult.isNotEmpty) {
+        return visionResult;
+      }
+    } else {
+      if (tempPdfFile != null) {
+        try {
+          tempPdfFile.parent.deleteSync(recursive: true);
+        } catch (_) {}
+      }
+      return '=== [TÀI LIỆU PDF: $filename] ===\n$extractedText\n=== [HẾT TÀI LIỆU PDF] ===';
+    }
+
+    return extractedText.isNotEmpty ? extractedText : '[Tài liệu PDF: $filename (Không có text hoặc ảnh scan chưa phân tích được)]';
+  }
+
+  Future<String> _ocrScannedPdfPages(
+    String pdfPath,
+    String filename, {
+    int pageCount = 1,
+    void Function(String status)? onProgress,
+  }) async {
+    final tempRenderDir = Directory.systemTemp.createTempSync('pdf_ppm_');
+    final prefix = p.join(tempRenderDir.path, 'page');
+
+    try {
+      final ppmResult = await Process.run('pdftoppm', [
+        '-png',
+        '-r', '150',
+        pdfPath,
+        prefix,
+      ]);
+
+      if (ppmResult.exitCode != 0) {
+        tempRenderDir.deleteSync(recursive: true);
+        return '';
+      }
+
+      final imageFiles = tempRenderDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.png'))
+          .toList()
+        ..sort((a, b) {
+          // Sắp xếp theo số trang tự nhiên (page-1.png, page-2.png, ... page-10.png)
+          final regex = RegExp(r'page-(\d+)\.png');
+          final matchA = regex.firstMatch(p.basename(a.path));
+          final matchB = regex.firstMatch(p.basename(b.path));
+          if (matchA != null && matchB != null) {
+            final numA = int.parse(matchA.group(1)!);
+            final numB = int.parse(matchB.group(1)!);
+            return numA.compareTo(numB);
+          }
+          return a.path.compareTo(b.path);
+        });
+
+      if (imageFiles.isEmpty) {
+        tempRenderDir.deleteSync(recursive: true);
+        return '';
+      }
+
+      final sb = StringBuffer();
+      sb.writeln('=== [TÀI LIỆU PDF DẠNG SCAN: $filename (ĐÃ PHÂN TÍCH QUA VISION AI & OCR)] ===');
+
+      for (int i = 0; i < imageFiles.length; i++) {
+        final imgFile = imageFiles[i];
+        final pageNum = i + 1;
+        if (onProgress != null) {
+          onProgress('Thị giác AI đang quét OCR trang $pageNum / ${imageFiles.length} của $filename...');
+        }
+
+        final pageBytes = await imgFile.readAsBytes();
+        final pageOcr = await _analyzeImageWithVision(
+          pageBytes,
+          'png',
+          '$filename (Trang $pageNum)',
+        );
+
+        if (pageOcr != null && pageOcr.isNotEmpty) {
+          sb.writeln('\n--- [Trang PDF Scan #$pageNum] ---');
+          sb.writeln(pageOcr);
+        }
+      }
+
+      sb.writeln('=== [HẾT NỘI DUNG PDF DẠNG SCAN $filename] ===');
+      tempRenderDir.deleteSync(recursive: true);
+      return sb.toString().trim();
+    } catch (_) {
+      try {
+        tempRenderDir.deleteSync(recursive: true);
+      } catch (_) {}
+      return '';
+    }
+  }
+
   Future<String?> _analyzeImageWithVision(Uint8List bytes, String ext, String filename) async {
     try {
       final cfg = await _configService.loadConfig();
@@ -228,7 +394,7 @@ class DocumentService {
               'content': [
                 {
                   'type': 'text',
-                  'text': 'Bạn là chuyên gia thị giác AI phân tích tài liệu. Hãy đọc toàn bộ chữ (OCR), số liệu, cấu trúc sơ đồ, biểu đồ hoặc chi tiết quan trọng trong bức ảnh "$filename" này. Trình bày chi tiết, đầy đủ bằng tiếng Việt để nạp vào cơ sở tri thức cho hệ thống.'
+                  'text': 'Bạn là chuyên gia thị giác AI phân tích tài liệu và OCR chính xác cao. Hãy đọc toàn bộ chữ viết, các con số, số liệu bảng biểu, tiêu đề, nội dung ghi chú và giải thích cấu trúc có trong trang/bức ảnh "$filename" này. Trình bày chi tiết, chuẩn xác bằng tiếng Việt để nạp vào cơ sở tri thức cho hệ thống.'
                 },
                 {
                   'type': 'image_url',
@@ -237,19 +403,65 @@ class DocumentService {
               ]
             }
           ],
-          'temperature': 0.2,
+          'temperature': 0.1,
         }),
-      ).timeout(const Duration(seconds: 40));
+      ).timeout(const Duration(seconds: 45));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(utf8.decode(res.bodyBytes));
         final reply = data['choices']?[0]?['message']?['content']?.toString().trim();
         if (reply != null && reply.isNotEmpty) {
-          return '=== [PHÂN TÍCH THỊ GIÁC HÌNH ẢNH: $filename] ===\n$reply\n=== [HẾT PHẦN MÔ TẢ ẢNH $filename] ===';
+          return reply;
         }
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Học lại chỉ 1 tài liệu/ảnh cụ thể
+  Future<bool> relearnSingleDocument(KnowledgeDocument doc, {void Function(String status)? onProgress}) async {
+    try {
+      if (onProgress != null) {
+        onProgress('Đang quét lại tài liệu ${doc.name}...');
+      }
+
+      Uint8List? fileBytes;
+      final f = File(doc.path);
+      if (await f.exists()) {
+        fileBytes = await f.readAsBytes();
+      }
+
+      String newContent = '';
+      if (fileBytes != null && fileBytes.isNotEmpty) {
+        newContent = await _extractContent(fileBytes, doc.extension, doc.name, filePath: doc.path, onProgress: onProgress);
+      } else if (doc.isImage && doc.content.contains('data:image')) {
+        final regex = RegExp(r'data:image\/[a-zA-Z]+;base64,([a-zA-Z0-9+/=]+)');
+        final match = regex.firstMatch(doc.content);
+        if (match != null) {
+          final rawB64 = match.group(1);
+          if (rawB64 != null) {
+            fileBytes = base64Decode(rawB64);
+            newContent = await _extractContent(fileBytes, doc.extension, doc.name, filePath: doc.path, onProgress: onProgress);
+          }
+        }
+      }
+
+      if (newContent.isNotEmpty) {
+        final db = await _dbService.getRawDatabase();
+        if (db != null) {
+          await db.update(
+            'knowledge_documents',
+            {'content': newContent},
+            where: 'id = ?',
+            whereArgs: [doc.id],
+          );
+          return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Nút "Học lại toàn bộ tài liệu & hình ảnh" (Re-indexing / Re-learning)
@@ -270,42 +482,13 @@ class DocumentService {
         onProgress(doc.name, i + 1, total);
       }
 
-      try {
-        Uint8List? fileBytes;
-        final f = File(doc.path);
-        if (await f.exists()) {
-          fileBytes = await f.readAsBytes();
+      final success = await relearnSingleDocument(doc, onProgress: (status) {
+        if (onProgress != null) {
+          onProgress('${doc.name} ($status)', i + 1, total);
         }
+      });
 
-        String newContent = '';
-        if (fileBytes != null && fileBytes.isNotEmpty) {
-          newContent = await _extractContent(fileBytes, doc.extension, doc.name);
-        } else if (doc.isImage && doc.content.contains('data:image')) {
-          // Bóc tách lại từ chuỗi data-uri có sẵn nếu không còn file cục bộ
-          final regex = RegExp(r'data:image\/[a-zA-Z]+;base64,([a-zA-Z0-9+/=]+)');
-          final match = regex.firstMatch(doc.content);
-          if (match != null) {
-            final rawB64 = match.group(1);
-            if (rawB64 != null) {
-              fileBytes = base64Decode(rawB64);
-              newContent = await _extractContent(fileBytes, doc.extension, doc.name);
-            }
-          }
-        }
-
-        if (newContent.isNotEmpty && newContent != doc.content) {
-          final db = await _dbService.getRawDatabase();
-          if (db != null) {
-            await db.update(
-              'knowledge_documents',
-              {'content': newContent},
-              where: 'id = ?',
-              whereArgs: [doc.id],
-            );
-            updatedCount++;
-          }
-        }
-      } catch (_) {}
+      if (success) updatedCount++;
     }
 
     return {'success': true, 'total': total, 'updated': updatedCount};
@@ -364,6 +547,7 @@ class DocumentService {
           matchedSections.add({
             'docName': doc.name,
             'isImage': doc.isImage,
+            'isScannedPdf': doc.isScannedPdf,
             'chunkIndex': i + 1,
             'content': chunk,
             'score': score,
@@ -373,15 +557,18 @@ class DocumentService {
     }
 
     if (matchedSections.isEmpty) {
-      return getEnabledKnowledgeContext();
+      // Câu hỏi không liên quan đến tài liệu -> Không đính kèm tài liệu vào prompt
+      // để AI tự do dùng kiến thức tổng quát và tư duy của chính nó trả lời.
+      return '';
     }
 
     matchedSections.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
 
     final sb = StringBuffer();
-    sb.writeln('\n\n=== TẤT CẢ CÁC ĐOẠN VĂN & HÌNH ẢNH LIÊN QUAN TỪ CƠ SỞ TRI THỨC (KNOWLEDGE BASE) ===');
-    sb.writeln('Tổng hợp ${matchedSections.length} đoạn văn/phân tích hình ảnh liên quan trực tiếp tới câu hỏi: "$userQuery"');
-    sb.writeln('AI Agent BẮT BUỘC ưu tiên sử dụng thông tin trong các đoạn văn này để trả lời:');
+    sb.writeln('\n\n=== NỘI DUNG TÀI LIỆU THAM KHẢO & NGHIÊN CỨU THÊM (REFERENCE ONLY) ===');
+    sb.writeln('Người dùng cung cấp một số đoạn trích xuất liên quan dưới đây CHỈ ĐỂ BẠN THAM KHẢO, NGHIÊN CỨU BỔ SUNG THÔNG TIN CHO ĐẦY ĐỦ HƠN:');
+    sb.writeln('- Đây KHÔNG PHẢI là nguồn giới hạn hoặc duy nhất mà bạn bắt buộc phải dựa vào.');
+    sb.writeln('- Hãy kết hợp với kiến thức chuyên môn, suy luận logic tự nhiên của bạn để đưa ra câu trả lời toàn diện, sâu sắc và hữu ích nhất:');
 
     int totalChars = 0;
     const maxContextChars = 120000;
@@ -391,6 +578,7 @@ class DocumentService {
       final chunkContent = item['content'] as String;
       final docName = item['docName'] as String;
       final isImg = item['isImage'] as bool? ?? false;
+      final isScan = item['isScannedPdf'] as bool? ?? false;
       final chunkIdx = item['chunkIndex'] as int;
 
       if (totalChars + chunkContent.length > maxContextChars) {
@@ -398,7 +586,7 @@ class DocumentService {
         break;
       }
 
-      final prefix = isImg ? '[Hình ảnh tri thức' : '[Đoạn';
+      final prefix = isImg ? '[Hình ảnh' : (isScan ? '[PDF Scan' : '[Đoạn');
       sb.writeln('\n--- $prefix $chunkIdx - Nguồn: $docName] ---');
       sb.writeln(chunkContent.trim());
       totalChars += chunkContent.length;
@@ -509,10 +697,10 @@ class DocumentService {
     if (enabledDocs.isEmpty) return '';
 
     final sb = StringBuffer();
-    sb.writeln('\n\n=== TÀI LIỆU HỌC TẬP & TRI THỨC (KNOWLEDGE BASE) CỦA HỆ THỐNG ===');
-    sb.writeln('Sau đây là tài liệu được người dùng cung cấp. Hãy ưu tiên tham khảo nội dung này để trả lời chính xác:');
+    sb.writeln('\n\n=== TÀI LIỆU THAM KHẢO & NGHIÊN CỨU THÊM (REFERENCE ONLY) ===');
+    sb.writeln('Sau đây là tài liệu người dùng nạp vào CHỈ ĐỂ BẠN THAM KHẢO VÀ NGHIÊN CỨU BỔ TRỢ (không phải nguồn duy nhất để lấy trả lời):');
     for (final d in enabledDocs) {
-      final typeLabel = d.isImage ? 'Hình ảnh' : 'Tài liệu';
+      final typeLabel = d.isImage ? 'Hình ảnh' : (d.isScannedPdf ? 'PDF Scan OCR' : 'Tài liệu');
       sb.writeln('\n--- [$typeLabel: ${d.name} (${d.formattedSize})] ---');
       final contentSnippet = d.content.length > 15000 ? '${d.content.substring(0, 15000)}\n...[Cắt ngắn bớt do độ dài]...' : d.content;
       sb.writeln(contentSnippet);

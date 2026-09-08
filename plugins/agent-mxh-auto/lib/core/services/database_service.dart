@@ -157,38 +157,14 @@ class DatabaseService {
         }
       }
 
-      // If user-specific DB does not exist yet, search for base chat_history.db and seed/copy it
-      if (key.isNotEmpty) {
-        final fallbackCandidates = [
-          p.join(currentDir, 'chat_history.db'),
-          p.join(currentDir, '..', 'chat_history.db'),
-          p.join(currentDir, '..', '..', 'chat_history.db'),
-          p.join(currentDir, '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, 'chat_history.db'),
-          p.join(execDir, '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', '..', 'chat_history.db'),
-          p.join(execDir, '..', '..', '..', '..', '..', 'chat_history.db'),
-          '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/chat_history.db',
-          p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', 'chat_history.db'),
-        ];
-        for (final fallback in fallbackCandidates) {
-          if (File(fallback).existsSync()) {
-            final targetDir = p.dirname(fallback);
-            final newPath = p.join(targetDir, dbFileName);
-            try {
-              File(fallback).copySync(newPath);
-              return p.normalize(newPath);
-            } catch (_) {
-              return p.normalize(fallback);
-            }
-          }
-        }
+      // Luôn lưu trữ DB của user mới vào ~/.tadu_ai_agent/
+      final homeTaduDir = Directory(p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent'));
+      if (!homeTaduDir.existsSync()) {
+        try {
+          homeTaduDir.createSync(recursive: true);
+        } catch (_) {}
       }
-
-      final defaultDesk = p.join(currentDir, dbFileName);
-      return defaultDesk;
+      return p.join(homeTaduDir.path, dbFileName);
     }
 
     try {
@@ -196,14 +172,7 @@ class DatabaseService {
       final dir = Directory(appDocDir.path);
       if (!dir.existsSync()) dir.createSync(recursive: true);
       final targetPath = p.join(appDocDir.path, dbFileName);
-      if (key.isNotEmpty && !File(targetPath).existsSync()) {
-        final defaultDb = p.join(appDocDir.path, 'chat_history.db');
-        if (File(defaultDb).existsSync()) {
-          try {
-            File(defaultDb).copySync(targetPath);
-          } catch (_) {}
-        }
-      }
+
       return targetPath;
     } catch (_) {
       return dbFileName;

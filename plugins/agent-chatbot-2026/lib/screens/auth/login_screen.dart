@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_logo_widget.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../providers/auth_provider.dart';
 
@@ -155,20 +156,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   child: child,
                                 );
                               },
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(14),
-                                child: Image.asset(
-                                  'assets/logo.jpg',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => Container(
-                                    color: AppColors.primaryDark,
-                                    child: const Icon(
-                                      Icons.chat_bubble_outline_rounded,
-                                      color: Colors.white,
-                                      size: 32,
-                                    ),
-                                  ),
-                                ),
+                              child: const AppLogoWidget(
+                                width: 68,
+                                height: 68,
+                                borderRadius: 14,
                               ),
                             ),
                             const SizedBox(height: 16),

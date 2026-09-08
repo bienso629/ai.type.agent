@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_logo_widget.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../providers/auth_provider.dart';
@@ -100,24 +101,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                   child: Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.asset(
-                          'assets/logo.jpg',
-                          width: 36,
-                          height: 36,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                            ),
-                            child: const Icon(Icons.cloud_sync_rounded, color: AppColors.primaryLight, size: 20),
-                          ),
-                        ),
+                      const AppLogoWidget(
+                        width: 36,
+                        height: 36,
+                        borderRadius: 6,
                       ),
                       const SizedBox(width: 12),
                       const Expanded(

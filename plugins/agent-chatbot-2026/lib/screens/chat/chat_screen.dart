@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_logo_widget.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/attachment_item.dart';
@@ -570,24 +571,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _safeScrollToBottom();
   }
 
-  void _triggerScopePicker() async {
-    showDialog(
-      context: context,
-      builder: (ctx) => _ScopePickerDialog(
-        currentScope: _workingDirScope,
-        onSelect: (val) {
-          setState(() {
-            _workingDirScope = val;
-          });
-          if (val != null) {
-            AppToast.success(context, 'Đã đặt phạm vi Agent: $val');
-          } else {
-            AppToast.info(context, 'Đã xóa giới hạn phạm vi làm việc');
-          }
-        },
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -632,15 +615,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     Stack(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Image.asset(
-                            'assets/logo.jpg',
-                            width: 32,
-                            height: 32,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.smart_toy_rounded, color: AppColors.primaryLight, size: 24),
-                          ),
+                        const AppLogoWidget(
+                          width: 32,
+                          height: 32,
+                          borderRadius: 6,
                         ),
                         Positioned(
                           top: 0,
@@ -1230,17 +1208,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
-                      ),
-                      icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
-                      label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
-                      onPressed: _triggerScopePicker,
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
                         side: BorderSide(
                           color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
                         ),
@@ -1615,302 +1582,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-class _ScopePickerDialog extends StatefulWidget {
-  final String? currentScope;
-  final ValueChanged<String?> onSelect;
 
-  const _ScopePickerDialog({
-    required this.currentScope,
-    required this.onSelect,
-  });
-
-  @override
-  State<_ScopePickerDialog> createState() => _ScopePickerDialogState();
-}
-
-class _ScopePickerDialogState extends State<_ScopePickerDialog> {
-  final ApiService _api = ApiService();
-  late final TextEditingController _controller;
-  final FocusNode _dialogFocusNode = FocusNode();
-  List<String> _suggestions = [];
-  bool _isLoading = false;
-  int _selectedIndex = 0;
-  Timer? _debounce;
-
-  static const List<String> _presets = [
-    '/var/www',
-    '/home',
-    '/root',
-    '/etc/nginx',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.currentScope ?? '/var/www');
-    _dialogFocusNode.onKeyEvent = _handleDialogKeyEvent;
-    _loadSuggestions(_controller.text);
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _dialogFocusNode.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  KeyEventResult _handleDialogKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is KeyDownEvent || event is KeyRepeatEvent) {
-      if (_suggestions.isNotEmpty) {
-        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          setState(() {
-            _selectedIndex = (_selectedIndex + 1) % _suggestions.length;
-            _controller.text = _suggestions[_selectedIndex];
-            _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
-          });
-          return KeyEventResult.handled;
-        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-          setState(() {
-            _selectedIndex = (_selectedIndex - 1 + _suggestions.length) % _suggestions.length;
-            _controller.text = _suggestions[_selectedIndex];
-            _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
-          });
-          return KeyEventResult.handled;
-        } else if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-          if (_selectedIndex >= 0 && _selectedIndex < _suggestions.length) {
-            final val = _suggestions[_selectedIndex];
-            widget.onSelect(val);
-            Navigator.pop(context);
-            return KeyEventResult.handled;
-          }
-        }
-      }
-    }
-    return KeyEventResult.ignored;
-  }
-
-  void _loadSuggestions(String query) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 120), () async {
-      setState(() => _isLoading = true);
-      final list = await _api.listDirectories(prefix: query.trim());
-      if (mounted) {
-        setState(() {
-          _suggestions = list;
-          _selectedIndex = 0;
-          _isLoading = false;
-        });
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TaduDialog(
-      minWidth: 540,
-      maxWidth: 620,
-      title: const Row(
-        children: [
-          Icon(Icons.folder_open_rounded, color: AppColors.warning, size: 20),
-          SizedBox(width: 8),
-          Text('Phạm Vi Thư Mục Làm Việc (Scope /)'),
-        ],
-      ),
-      content: SizedBox(
-        width: 540,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Giới hạn thao tác của AI Agent trong thư mục này trên máy chủ Linux:',
-              style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 10),
-
-            // Quick preset chips
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: _presets.map((preset) {
-                final isSelected = _controller.text.trim() == preset;
-                return InkWell(
-                  onTap: () {
-                    _controller.text = preset;
-                    _loadSuggestions(preset);
-                  },
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.primary.withValues(alpha: 0.2)
-                          : AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: isSelected ? AppColors.primary : AppColors.borderDark,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.folder_rounded,
-                          size: 12,
-                          color: isSelected ? AppColors.primaryLight : AppColors.warning,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          preset,
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                            color: isSelected ? AppColors.primaryLight : AppColors.textBody,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-
-            // Input with auto-complete
-            TextField(
-              controller: _controller,
-              focusNode: _dialogFocusNode,
-              onChanged: _loadSuggestions,
-              decoration: InputDecoration(
-                hintText: 'Nhập đường dẫn, dùng phím ↑ ↓ Enter để chọn...',
-                prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                suffixIcon: _isLoading
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                        ),
-                      )
-                    : (_controller.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 16),
-                            onPressed: () {
-                              _controller.clear();
-                              _loadSuggestions('');
-                            },
-                          )
-                        : null),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Suggestions List
-            Container(
-              height: 180,
-              decoration: BoxDecoration(
-                color: AppColors.bgDark,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.borderDark),
-              ),
-              child: _suggestions.isEmpty
-                  ? Center(
-                      child: Text(
-                        _isLoading ? 'Đang tìm kiếm thư mục...' : 'Không có gợi ý thư mục nào',
-                        style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _suggestions.length,
-                      itemBuilder: (context, idx) {
-                        final dir = _suggestions[idx];
-                        final isHighlighted = idx == _selectedIndex || _controller.text.trim() == dir;
-                        return MouseRegion(
-                          onEnter: (_) => setState(() => _selectedIndex = idx),
-                          child: InkWell(
-                            onTap: () {
-                              _controller.text = dir;
-                              _loadSuggestions(dir);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isHighlighted
-                                    ? AppColors.primary.withValues(alpha: 0.22)
-                                    : Colors.transparent,
-                                border: Border(
-                                  bottom: const BorderSide(color: AppColors.borderDark, width: 0.5),
-                                  left: isHighlighted
-                                      ? const BorderSide(color: AppColors.primaryLight, width: 3)
-                                      : BorderSide.none,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.folder_rounded,
-                                    size: 16,
-                                    color: isHighlighted ? AppColors.primaryLight : AppColors.warning,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      dir,
-                                      style: TextStyle(
-                                        fontFamily: 'monospace',
-                                        fontSize: 12,
-                                        color: isHighlighted ? AppColors.primaryLight : AppColors.textWhite,
-                                        fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isHighlighted ? AppColors.primary : AppColors.cardBg,
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: isHighlighted ? AppColors.primaryLight : AppColors.borderDark),
-                                    ),
-                                    child: Text(
-                                      isHighlighted ? '⏎ Chọn' : 'Chọn',
-                                      style: const TextStyle(fontSize: 10, color: AppColors.textWhite, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            widget.onSelect(null);
-            Navigator.pop(context);
-          },
-          child: const Text('Xóa giới hạn', style: TextStyle(color: AppColors.danger)),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final val = _controller.text.trim();
-            widget.onSelect(val.isEmpty ? null : val);
-            Navigator.pop(context);
-          },
-          child: const Text('Áp dụng'),
-        ),
-      ],
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // High-Performance Virtualized Message Item Widget
@@ -2015,23 +1687,10 @@ class _MessageItemWidget extends StatelessWidget {
           mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
             if (!isUser) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Image.asset(
-                  'assets/logo.jpg',
-                  width: 30,
-                  height: 30,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Icon(Icons.smart_toy_rounded, size: 16, color: AppColors.primaryLight),
-                  ),
-                ),
+              const AppLogoWidget(
+                width: 30,
+                height: 30,
+                borderRadius: 6,
               ),
               const SizedBox(width: 10),
             ],

@@ -8,6 +8,7 @@ class TaduDialog extends StatelessWidget {
   final double minWidth;
   final double maxWidth;
   final double? maxHeight;
+  final bool scrollableBody;
   final VoidCallback? onClose;
 
   const TaduDialog({
@@ -18,6 +19,7 @@ class TaduDialog extends StatelessWidget {
     this.minWidth = 500,
     this.maxWidth = 620,
     this.maxHeight,
+    this.scrollableBody = true,
     this.onClose,
   });
 
@@ -53,13 +55,15 @@ class TaduDialog extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  DefaultTextStyle(
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textWhite,
+                  Expanded(
+                    child: DefaultTextStyle(
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textWhite,
+                      ),
+                      child: title,
                     ),
-                    child: title,
                   ),
                   IconButton(
                     padding: EdgeInsets.zero,
@@ -72,12 +76,17 @@ class TaduDialog extends StatelessWidget {
               ),
             ),
 
-            // 2. MODAL BODY (Scrollable if needed)
+            // 2. MODAL BODY
             Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: content,
-              ),
+              child: scrollableBody
+                  ? SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: content,
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: content,
+                    ),
             ),
 
             // 3. MODAL FOOTER (Border Top Separator)
