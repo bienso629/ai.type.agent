@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -22,6 +23,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   final Set<String> _closingIps = {};
   final Set<String> _openingDeviceIps = {};
   final Set<String> _closingDeviceIps = {};
+  final Set<String> _generatingAvatarIps = {};
   final Socks5ProxyService _socks5Service = Socks5ProxyService();
   final PersonaService _personaService = PersonaService();
 
@@ -80,18 +82,90 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     }
   }
 
+  Future<void> _handleGenerateAvatar(PersonaProfile persona, {void Function(void Function())? setModalState}) async {
+    if (_generatingAvatarIps.contains(persona.ip)) return;
+
+    setState(() {
+      _generatingAvatarIps.add(persona.ip);
+    });
+    setModalState?.call(() {});
+    AppToast.info(context, 'AI đang vẽ avatar cho nhân vật ${persona.name} (${persona.ip})...');
+
+    try {
+      final avatarPathOrUrl = await _personaService.generateAvatarImage(persona);
+      if (mounted) {
+        final current = _personas[persona.ip] ?? persona;
+        final updated = PersonaProfile(
+          ip: current.ip,
+          name: current.name,
+          age: current.age,
+          gender: current.gender,
+          bio: current.bio,
+          avatarPrompt: current.avatarPrompt,
+          avatarUrl: avatarPathOrUrl,
+          externalDeviceAddress: current.externalDeviceAddress,
+          useExternalDevice: current.useExternalDevice,
+        );
+        setState(() {
+          _personas[persona.ip] = updated;
+        });
+        setModalState?.call(() {});
+        AppToast.success(context, 'Đã tạo xong avatar AI cho ${persona.name}!');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi khi tạo avatar AI: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _generatingAvatarIps.remove(persona.ip);
+        });
+        setModalState?.call(() {});
+      }
+    }
+  }
+
   void _showPersonaDetails(PersonaProfile persona) {
     final nameCtrl = TextEditingController(text: persona.name);
     final ageCtrl = TextEditingController(text: persona.age.toString());
     String selectedGender = persona.gender;
     final bioCtrl = TextEditingController(text: persona.bio);
     final promptCtrl = TextEditingController(text: persona.avatarPrompt);
+    final externalDeviceCtrl = TextEditingController(text: persona.externalDeviceAddress ?? '192.168.1.227:38233');
+    bool useExternalDevice = persona.useExternalDevice;
+    String selectedDeviceType = persona.deviceType; // 'mobile' | 'tablet'
+    String? selectedAvd = persona.avdName;
+    final agentInfoCtrl = TextEditingController(text: persona.agentInfo ?? '');
+    List<String> availableAvds = [];
+    bool isLoadingAvds = true;
+    bool didFetchAvds = false;
     bool isSaving = false;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) {
+          if (!didFetchAvds) {
+            didFetchAvds = true;
+            _socks5Service.getAvailableAvds().then((avds) {
+              if (dialogCtx.mounted) {
+                setDialogState(() {
+                  availableAvds = avds;
+                  isLoadingAvds = false;
+                  if (selectedAvd == null && avds.isNotEmpty) {
+                    selectedAvd = avds.first;
+                  }
+                });
+              }
+            }).catchError((_) {
+              if (dialogCtx.mounted) {
+                setDialogState(() {
+                  isLoadingAvds = false;
+                });
+              }
+            });
+          }
           return Dialog(
             backgroundColor: AppColors.cardBg,
             insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -100,24 +174,100 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
               side: const BorderSide(color: AppColors.borderDark),
             ),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480, maxHeight: 600),
+              constraints: const BoxConstraints(maxWidth: 520, maxHeight: 720),
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Header
+                    // Header: Avatar có thể bấm để tạo hình trực tiếp + Tên & IP
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(7),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.person_outline_rounded, color: AppColors.primaryLight, size: 20),
-                        ),
+                        () {
+                          final currentP = _personas[persona.ip] ?? persona;
+                          final isGen = _generatingAvatarIps.contains(currentP.ip);
+                          final hasImg = currentP.avatarUrl != null && currentP.avatarUrl!.isNotEmpty;
+
+                          return Tooltip(
+                            message: isGen ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar',
+                            child: InkWell(
+                              onTap: isGen
+                                  ? null
+                                  : () => _handleGenerateAvatar(currentP, setModalState: setDialogState),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isGen ? AppColors.primaryLight : AppColors.primary.withValues(alpha: 0.4),
+                                        width: 1.3,
+                                      ),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(7),
+                                      child: hasImg
+                                          ? (currentP.avatarUrl!.startsWith('http')
+                                              ? Image.network(
+                                                  currentP.avatarUrl!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (ctx, err, stack) => const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
+                                                )
+                                              : Image.file(
+                                                  File(currentP.avatarUrl!),
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (ctx, err, stack) => const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
+                                                ))
+                                          : const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
+                                    ),
+                                  ),
+                                  if (isGen)
+                                    Positioned.fill(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.55),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Center(
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Positioned(
+                                      right: -3,
+                                      bottom: -3,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.cardBg,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.9),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.auto_awesome_rounded, size: 8, color: Color(0xFF070B14)),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }(),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -216,7 +366,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         ),
                                         child: DropdownButtonHideUnderline(
                                           child: DropdownButton<String>(
-                                            value: selectedGender,
+                                            value: (selectedGender == 'Nữ' || selectedGender == 'Female') ? 'Nữ' : 'Nam',
                                             dropdownColor: AppColors.sidebarBg,
                                             icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
                                             isExpanded: true,
@@ -280,11 +430,310 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             const SizedBox(height: 5),
                             TextField(
                               controller: promptCtrl,
-                              maxLines: 3,
+                              maxLines: 2,
                               style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.primaryLight, height: 1.35),
                               decoration: const InputDecoration(
                                 contentPadding: EdgeInsets.all(10),
                                 hintText: 'Prompt tiếng Anh tạo chân dung...',
+                              ),
+                            ),
+                             // Thông tin Agent (System Role / Nhiệm vụ)
+                            const Text('Thông tin Agent (Vai trò / Nhiệm vụ)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                            const SizedBox(height: 5),
+                            TextField(
+                              controller: agentInfoCtrl,
+                              maxLines: 2,
+                              style: const TextStyle(fontSize: 12, color: AppColors.accent, height: 1.3),
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.all(10),
+                                hintText: 'Ví dụ: Seeding bài viết Facebook, tương tác nhóm, trả lời tin nhắn...',
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+
+                            // Cấu hình Thiết bị (Local AVD vs Ngoại vi)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.sidebarBg,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: useExternalDevice ? AppColors.accent.withValues(alpha: 0.5) : AppColors.primaryLight.withValues(alpha: 0.5),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            useExternalDevice ? Icons.cell_wifi_rounded : Icons.phone_android_rounded,
+                                            size: 16,
+                                            color: useExternalDevice ? AppColors.accent : AppColors.primaryLight,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            useExternalDevice ? 'Thiết bị ngoại vi (WiFi ADB)' : 'Máy ảo Local AVD (Android Studio)',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                          ),
+                                        ],
+                                      ),
+                                      SizedBox(
+                                        height: 24,
+                                        child: Switch(
+                                          value: useExternalDevice,
+                                          activeThumbColor: AppColors.accent,
+                                          onChanged: (val) {
+                                            setDialogState(() {
+                                              useExternalDevice = val;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    useExternalDevice
+                                        ? 'Đang bật chế độ Ngoại vi: Kết nối trực tiếp điện thoại thật/box qua ADB WiFi.'
+                                        : 'Đang bật chế độ Local AVD: Chạy giả lập trực tiếp trên máy tính.',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                  ),
+
+                                  if (useExternalDevice) ...[
+                                    const SizedBox(height: 10),
+                                    const Text(
+                                      'Địa chỉ thiết bị ngoại vi (IP:Port):',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    SizedBox(
+                                      height: 38,
+                                      child: TextField(
+                                        controller: externalDeviceCtrl,
+                                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.accent),
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          prefixIcon: Icon(Icons.settings_ethernet_rounded, size: 16),
+                                          hintText: '192.168.1.227:38233',
+                                        ),
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    const SizedBox(height: 12),
+                                    // Tùy chọn Loại thiết bị: Mobile hoặc Tablet
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              const Text(
+                                                'Loại thiết bị AVD',
+                                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: InkWell(
+                                                      onTap: () {
+                                                        setDialogState(() {
+                                                          selectedDeviceType = 'mobile';
+                                                        });
+                                                      },
+                                                      borderRadius: BorderRadius.circular(6),
+                                                      child: Container(
+                                                        height: 36,
+                                                        decoration: BoxDecoration(
+                                                          color: selectedDeviceType == 'mobile'
+                                                              ? AppColors.primary.withValues(alpha: 0.2)
+                                                              : AppColors.inputBg,
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          border: Border.all(
+                                                            color: selectedDeviceType == 'mobile'
+                                                                ? AppColors.primaryLight
+                                                                : AppColors.borderDark,
+                                                            width: selectedDeviceType == 'mobile' ? 1.5 : 1,
+                                                          ),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisAlignment: MainAxisAlignment.center,
+                                                          children: [
+                                                            Icon(
+                                                              Icons.phone_android_rounded,
+                                                              size: 14,
+                                                              color: selectedDeviceType == 'mobile'
+                                                                  ? AppColors.primaryLight
+                                                                  : AppColors.textDim,
+                                                            ),
+                                                            const SizedBox(width: 5),
+                                                            Text(
+                                                              'Mobile',
+                                                              style: TextStyle(
+                                                                fontSize: 11.5,
+                                                                fontWeight: selectedDeviceType == 'mobile'
+                                                                    ? FontWeight.bold
+                                                                    : FontWeight.normal,
+                                                                color: selectedDeviceType == 'mobile'
+                                                                    ? AppColors.textWhite
+                                                                    : AppColors.textDim,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Expanded(
+                                                    child: InkWell(
+                                                      onTap: () {
+                                                        setDialogState(() {
+                                                          selectedDeviceType = 'tablet';
+                                                        });
+                                                      },
+                                                      borderRadius: BorderRadius.circular(6),
+                                                      child: Container(
+                                                        height: 36,
+                                                        decoration: BoxDecoration(
+                                                          color: selectedDeviceType == 'tablet'
+                                                              ? AppColors.accent.withValues(alpha: 0.2)
+                                                              : AppColors.inputBg,
+                                                          borderRadius: BorderRadius.circular(6),
+                                                          border: Border.all(
+                                                            color: selectedDeviceType == 'tablet'
+                                                                ? AppColors.accent
+                                                                : AppColors.borderDark,
+                                                            width: selectedDeviceType == 'tablet' ? 1.5 : 1,
+                                                          ),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisAlignment: MainAxisAlignment.center,
+                                                          children: [
+                                                            Icon(
+                                                              Icons.tablet_android_rounded,
+                                                              size: 14,
+                                                              color: selectedDeviceType == 'tablet'
+                                                                  ? AppColors.accent
+                                                                  : AppColors.textDim,
+                                                            ),
+                                                            const SizedBox(width: 5),
+                                                            Text(
+                                                              'Tablet',
+                                                              style: TextStyle(
+                                                                fontSize: 11.5,
+                                                                fontWeight: selectedDeviceType == 'tablet'
+                                                                    ? FontWeight.bold
+                                                                    : FontWeight.normal,
+                                                                color: selectedDeviceType == 'tablet'
+                                                                    ? AppColors.textWhite
+                                                                    : AppColors.textDim,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  const Text(
+                                                    'Chọn máy ảo (AVD)',
+                                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                                  ),
+                                                  InkWell(
+                                                    onTap: () {
+                                                      setDialogState(() {
+                                                        selectedDeviceType = 'mobile';
+                                                        selectedAvd = availableAvds.isNotEmpty ? availableAvds.first : null;
+                                                      });
+                                                      AppToast.info(context, 'Đã đặt lại cấu hình máy ảo AVD về mặc định');
+                                                    },
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    child: const Padding(
+                                                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(Icons.restart_alt_rounded, size: 13, color: AppColors.primaryLight),
+                                                          SizedBox(width: 3),
+                                                          Text(
+                                                            'Reset',
+                                                            style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Container(
+                                                height: 36,
+                                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.inputBg,
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(color: AppColors.borderDark),
+                                                ),
+                                                child: DropdownButtonHideUnderline(
+                                                  child: DropdownButton<String?>(
+                                                    value: availableAvds.contains(selectedAvd) ? selectedAvd : null,
+                                                    hint: Text(
+                                                      isLoadingAvds ? 'Đang tìm...' : (availableAvds.isEmpty ? 'Mặc định (Không có AVD)' : 'Chọn AVD...'),
+                                                      style: const TextStyle(fontSize: 11, color: AppColors.textDim),
+                                                    ),
+                                                    dropdownColor: AppColors.sidebarBg,
+                                                    icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
+                                                    isExpanded: true,
+                                                    style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                                                    items: [
+                                                      const DropdownMenuItem<String?>(
+                                                        value: null,
+                                                        child: Text('Mặc định hệ thống', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                                                      ),
+                                                      ...availableAvds.map((avd) {
+                                                        return DropdownMenuItem<String?>(
+                                                          value: avd,
+                                                          child: Text(
+                                                            avd,
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(fontSize: 11.5),
+                                                          ),
+                                                        );
+                                                      }),
+                                                    ],
+                                                    onChanged: (val) {
+                                                      setDialogState(() {
+                                                        selectedAvd = val;
+                                                      });
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ],
@@ -312,6 +761,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     return;
                                   }
                                   final newAge = int.tryParse(ageCtrl.text.trim()) ?? persona.age;
+                                  final currentP = _personas[persona.ip] ?? persona;
                                   final updated = PersonaProfile(
                                     ip: persona.ip,
                                     name: newName,
@@ -319,6 +769,12 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     gender: selectedGender,
                                     bio: bioCtrl.text.trim(),
                                     avatarPrompt: promptCtrl.text.trim(),
+                                    avatarUrl: currentP.avatarUrl,
+                                    externalDeviceAddress: externalDeviceCtrl.text.trim(),
+                                    useExternalDevice: useExternalDevice,
+                                    avdName: selectedAvd,
+                                    deviceType: selectedDeviceType,
+                                    agentInfo: agentInfoCtrl.text.trim(),
                                   );
 
                                   setDialogState(() {
@@ -893,67 +1349,172 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: isAnyRunning
-                              ? (isAlias ? AppColors.accent.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15))
-                              : AppColors.inputBg,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isAnyRunning
-                                ? cardBorderColor
-                                : (item.isMain ? AppColors.accent.withValues(alpha: 0.5) : AppColors.borderDark),
-                            width: 1.2,
+                      // Avatar badge có tương tác: Bấm vào để AI sinh ảnh chân dung avatar
+                      () {
+                        final isGeneratingAvatar = _generatingAvatarIps.contains(item.ip);
+                        final hasCustomAvatar = persona?.avatarUrl != null && persona!.avatarUrl!.isNotEmpty;
+
+                        return Tooltip(
+                          message: persona != null
+                              ? (isGeneratingAvatar ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar cho ${persona.name}')
+                              : 'Tạo hồ sơ trước để sinh ảnh avatar',
+                          child: InkWell(
+                            onTap: (persona == null || isGeneratingAvatar)
+                                ? null
+                                : () => _handleGenerateAvatar(persona),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: isAnyRunning
+                                        ? (isAlias ? AppColors.accent.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15))
+                                        : AppColors.inputBg,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isGeneratingAvatar
+                                          ? AppColors.primaryLight
+                                          : (isAnyRunning
+                                              ? cardBorderColor
+                                              : (item.isMain ? AppColors.accent.withValues(alpha: 0.5) : AppColors.borderDark)),
+                                      width: 1.3,
+                                    ),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(7),
+                                    child: hasCustomAvatar
+                                        ? (persona.avatarUrl!.startsWith('http')
+                                            ? Image.network(
+                                                persona.avatarUrl!,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (ctx, err, stack) => _buildFallbackAvatarIcon(persona, isAnyRunning, isAlias, item.isMain),
+                                              )
+                                            : Image.file(
+                                                File(persona.avatarUrl!),
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (ctx, err, stack) => _buildFallbackAvatarIcon(persona, isAnyRunning, isAlias, item.isMain),
+                                              ))
+                                        : _buildFallbackAvatarIcon(persona, isAnyRunning, isAlias, item.isMain),
+                                  ),
+                                ),
+
+                                if (isGeneratingAvatar)
+                                  Positioned.fill(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.55),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Center(
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else if (persona != null)
+                                  Positioned(
+                                    right: -3,
+                                    bottom: -3,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.cardBg,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.9),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(Icons.auto_awesome_rounded, size: 8, color: Color(0xFF070B14)),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                        child: Center(
-                          child: Icon(
-                            persona != null
-                                ? (persona.gender.toLowerCase() == 'nữ' ? Icons.face_3_rounded : Icons.face_rounded)
-                                : (isAnyRunning ? Icons.language_rounded : Icons.fingerprint_rounded),
-                            color: isAnyRunning
-                                ? (isAlias ? AppColors.accent : AppColors.primaryLight)
-                                : (item.isMain ? AppColors.accent : AppColors.primaryLight),
-                            size: 22,
-                          ),
-                        ),
-                      ),
+                        );
+                      }(),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Tên nhân vật hoặc hiển thị Chưa tạo
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    persona?.name ?? 'Chưa tạo nhân vật',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: persona != null ? AppColors.textWhite : AppColors.textDim,
-                                    ),
-                                  ),
-                                ),
-                                if (persona != null) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
+                            // Tên nhân vật hoặc hiển thị Chưa tạo (Có thể bấm để mở cấu hình)
+                            InkWell(
+                              onTap: () {
+                                final p = persona ?? PersonaProfile(
+                                  ip: item.ip,
+                                  name: 'Nhân vật ${item.ip}',
+                                  age: 25,
+                                  gender: 'Nam',
+                                  bio: 'Nhân vật tự động cho địa chỉ IP ${item.ip}',
+                                  avatarPrompt: '',
+                                );
+                                _showPersonaDetails(p);
+                              },
+                              borderRadius: BorderRadius.circular(4),
+                              child: Row(
+                                children: [
+                                  Expanded(
                                     child: Text(
-                                      '${persona.gender} · ${persona.age}t',
-                                      style: const TextStyle(fontSize: 9.5, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                      persona?.name ?? 'Chưa tạo nhân vật',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: persona != null ? AppColors.textWhite : AppColors.textDim,
+                                      ),
                                     ),
                                   ),
+                                  if (persona != null) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                      child: Text(
+                                        '${persona.gender} · ${persona.age}t',
+                                        style: const TextStyle(fontSize: 9.5, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                    if (persona.useExternalDevice && (persona.externalDeviceAddress?.trim().isNotEmpty ?? false)) ...[
+                                      const SizedBox(width: 4),
+                                      Tooltip(
+                                        message: 'Thiết bị ngoại vi: ${persona.externalDeviceAddress}',
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(3),
+                                            border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.5), width: 0.6),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.wifi_tethering_rounded, size: 9.5, color: Color(0xFF38BDF8)),
+                                              SizedBox(width: 2),
+                                              Text(
+                                                'EXT',
+                                                style: TextStyle(fontSize: 9, color: Color(0xFF38BDF8), fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                             const SizedBox(height: 3),
                             // IP và Trạng thái kết nối
@@ -1027,11 +1588,14 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              child: Text(
-                                persona.bio,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.3),
+                              child: InkWell(
+                                onTap: () => _showPersonaDetails(persona),
+                                child: Text(
+                                  persona.bio,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.3),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 4),
@@ -1057,32 +1621,48 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     ),
                   ] else ...[
                     Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.inputBg.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: statusDotColor,
-                                shape: BoxShape.circle,
+                      child: InkWell(
+                        onTap: () {
+                          final p = PersonaProfile(
+                            ip: item.ip,
+                            name: 'Nhân vật ${item.ip}',
+                            age: 25,
+                            gender: 'Nam',
+                            bio: 'Nhân vật tự động cho địa chỉ IP ${item.ip}',
+                            avatarPrompt: '',
+                          );
+                          _showPersonaDetails(p);
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.inputBg.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: statusDotColor,
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                'Bấm "AI tạo profiles" để sinh danh tính và prompt avatar',
-                                maxLines: 2,
-                                style: const TextStyle(fontSize: 10.5, color: AppColors.textDim),
+                              const SizedBox(width: 6),
+                              const Expanded(
+                                child: Text(
+                                  'Bấm vào đây để tạo và cấu hình nhân vật cho IP này',
+                                  maxLines: 2,
+                                  style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, decoration: TextDecoration.underline),
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              const Icon(Icons.add_circle_outline_rounded, size: 14, color: AppColors.primaryLight),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1223,6 +1803,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     final isOpeningDevice = _openingDeviceIps.contains(item.ip);
                     final isClosingDevice = _closingDeviceIps.contains(item.ip);
                     final isDeviceBusy = isOpeningDevice || isClosingDevice;
+                    final targetRemoteDevice = (persona != null && persona.useExternalDevice && (persona.externalDeviceAddress?.trim().isNotEmpty ?? false))
+                        ? persona.externalDeviceAddress!.trim()
+                        : null;
 
                     if (isDeviceRunning) {
                       return ElevatedButton.icon(
@@ -1274,6 +1857,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                       );
                     }
 
+                    final bool isExt = targetRemoteDevice != null;
+
                     return ElevatedButton.icon(
                       onPressed: isDeviceBusy
                           ? null
@@ -1281,14 +1866,27 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                               setState(() {
                                 _openingDeviceIps.add(item.ip);
                               });
-                              AppToast.info(context, 'Đang khởi tạo mobile device cho ${item.ip}...');
+                              AppToast.info(
+                                context,
+                                isExt
+                                    ? 'Đang kết nối thiết bị ngoại vi ($targetRemoteDevice)...'
+                                    : 'Đang khởi tạo mobile device cho ${item.ip}...',
+                              );
                               try {
                                 await _socks5Service.launchDeviceWithSocks5(
                                   server: item.server,
                                   ip: item.ip,
+                                  remoteDeviceAddress: targetRemoteDevice,
+                                  avdName: persona?.avdName,
+                                  deviceType: persona?.deviceType ?? 'mobile',
                                 );
                                 if (mounted) {
-                                  AppToast.success(context, 'Đã mở mobile device qua ${item.ip}');
+                                  AppToast.success(
+                                    context,
+                                    isExt
+                                        ? 'Đã kết nối ngoại vi $targetRemoteDevice'
+                                        : 'Đã mở ${persona?.deviceType == 'tablet' ? 'tablet' : 'mobile'} device qua ${item.ip}',
+                                  );
                                 }
                               } catch (e) {
                                 if (mounted) {
@@ -1308,15 +1906,15 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                               height: 12,
                               child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
                             )
-                          : const Icon(Icons.smartphone_rounded, size: 14),
+                          : Icon(isExt ? Icons.wifi_tethering_rounded : Icons.smartphone_rounded, size: 14),
                       label: Text(
-                        isOpeningDevice ? 'Đang mở...' : 'Mở device',
+                        isOpeningDevice ? 'Đang mở...' : (isExt ? 'Mở ngoại vi' : 'Mở device'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D32),
+                        backgroundColor: isExt ? const Color(0xFF0284C7) : const Color(0xFF2E7D32),
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
@@ -1331,6 +1929,20 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFallbackAvatarIcon(PersonaProfile? persona, bool isAnyRunning, bool isAlias, bool isMain) {
+    return Center(
+      child: Icon(
+        persona != null
+            ? (persona.gender.toLowerCase() == 'nữ' ? Icons.face_3_rounded : Icons.face_rounded)
+            : (isAnyRunning ? Icons.language_rounded : Icons.fingerprint_rounded),
+        color: isAnyRunning
+            ? (isAlias ? AppColors.accent : AppColors.primaryLight)
+            : (isMain ? AppColors.accent : AppColors.primaryLight),
+        size: 22,
       ),
     );
   }

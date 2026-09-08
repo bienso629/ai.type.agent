@@ -8,6 +8,7 @@ import '../../providers/chat_provider.dart';
 import '../../providers/metrics_provider.dart';
 import '../../providers/server_provider.dart';
 import 'chat/chat_screen.dart';
+import 'docs/docs_screen.dart';
 import 'settings/settings_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = const [
     ChatScreen(),
+    DocsScreen(),
     SettingsScreen(),
   ];
 
@@ -39,6 +41,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       'title': 'Trợ lý AI',
       'subtitle': 'Trò chuyện và hỗ trợ kỹ thuật thông minh',
       'icon': Icons.chat_bubble_outline_rounded,
+    },
+    {
+      'title': 'Tài liệu',
+      'subtitle': 'Hướng dẫn sử dụng và tài liệu kỹ thuật',
+      'icon': Icons.menu_book_rounded,
     },
     {
       'title': 'Cài đặt',
@@ -128,7 +135,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                               ),
                             ),
                             Text(
-                              'AI AGENT CONTROL',
+                              'AI AGENT CHATBOT',
                               style: TextStyle(
                                 fontSize: 9.5,
                                 fontWeight: FontWeight.w600,
@@ -242,7 +249,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                             ),
                             onPressed: () {
                               setState(() {
-                                _currentIndex = 1; // Switch to Hệ thống
+                                _currentIndex = 2; // Switch to Cài đặt
                               });
                             },
                             child: const Text('Cài đặt hệ thống', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
@@ -378,9 +385,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               label: 'Trợ lý AI',
             ),
             NavigationDestination(
+              icon: Icon(Icons.menu_book_rounded),
+              selectedIcon: Icon(Icons.menu_book_rounded, color: AppColors.primaryLight),
+              label: 'Tài liệu',
+            ),
+            NavigationDestination(
               icon: Icon(Icons.settings_outlined),
               selectedIcon: Icon(Icons.settings_rounded, color: AppColors.primaryLight),
-              label: 'Hệ thống',
+              label: 'Cài đặt',
             ),
           ],
         ),
@@ -402,7 +414,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ],
         ),
         content: const Text(
-          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Control Center?',
+          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản AI Agent Chatbot?',
           style: TextStyle(fontSize: 13, color: AppColors.textBody),
         ),
         actions: [

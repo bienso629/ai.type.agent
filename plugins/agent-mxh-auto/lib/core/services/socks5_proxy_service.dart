@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../models/server_model.dart';
+import 'adb_manager_service.dart';
 
 class Socks5Session {
   final int localPort;
@@ -14,6 +15,7 @@ class Socks5Session {
   Process? deviceProcess;
   Process? httpBridgeProcess;
   int? emulatorPort;
+  String? remoteDeviceAddress;
 
   Socks5Session({
     required this.localPort,
@@ -21,6 +23,7 @@ class Socks5Session {
     required this.ip,
     required this.sshProcess,
     this.askpassFile,
+    this.remoteDeviceAddress,
   });
 
   Future<void> stop() async {
@@ -156,6 +159,10 @@ class Socks5ProxyService extends ChangeNotifier {
 
   /// Kiểm tra xem mobile device gắn với IP này có đang chạy hay không
   bool isDeviceRunningForIp(String ip) {
+    final session = _activeSessions[ip];
+    if (session?.remoteDeviceAddress != null) {
+      return true;
+    }
     return _isDeviceProcessAliveForIp(ip);
   }
 
@@ -440,16 +447,77 @@ class Socks5ProxyService extends ChangeNotifier {
     return [];
   }
 
-  /// Khởi chạy thiết bị Android Emulator chuẩn Android Studio
+  /// Khởi chạy thiết bị Android (Emulator chuẩn Android Studio hoặc Kết nối Ngoại vi ADB WiFi)
   /// Định tuyến toàn bộ lưu lượng mạng máy ảo qua proxy SOCKS5 của chính IP đó
   Future<bool> launchDeviceWithSocks5({
     required ServerModel server,
     required String ip,
     String? avdName,
     String? startUrl,
+    String? remoteDeviceAddress,
+    String deviceType = 'mobile',
   }) async {
     final session = await startSocks5Server(server: server, ip: ip);
 
+    // TRƯỜNG HỢP 1: Kết nối thiết bị Android ngoại vi qua WiFi/TCP-IP và ép HTTP Proxy vào máy
+    if (remoteDeviceAddress != null && remoteDeviceAddress.trim().isNotEmpty) {
+      final addr = remoteDeviceAddress.trim();
+      try {
+        await connectRemoteDevice(addr);
+        session.remoteDeviceAddress = addr;
+
+        // 1. Khởi tạo HTTP Bridge cho phép truy cập từ mạng LAN (0.0.0.0) chuyển tiếp vào SOCKS5 của IP này
+        final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
+        if (bridgeScript.existsSync()) {
+          final tempSocket = await ServerSocket.bind('0.0.0.0', 0);
+          final httpProxyPort = tempSocket.port;
+          await tempSocket.close();
+
+          try {
+            session.httpBridgeProcess?.kill();
+          } catch (_) {}
+
+          final bridgeProc = await Process.start(
+            'python3',
+            [
+              bridgeScript.path,
+              httpProxyPort.toString(),
+              '127.0.0.1',
+              session.localPort.toString(),
+              '0.0.0.0',
+            ],
+            mode: ProcessStartMode.normal,
+          );
+          session.httpBridgeProcess = bridgeProc;
+
+          final completer = Completer<void>();
+          bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+            if (line.contains('READY') && !completer.isCompleted) {
+              completer.complete();
+            }
+          });
+          bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
+
+          await Future.any([
+            completer.future,
+            Future.delayed(const Duration(seconds: 3)),
+          ]);
+
+          // 2. Lấy địa chỉ IP mạng LAN của máy host để điện thoại có thể bắt sóng
+          final hostLanIp = await _getLocalHostIp();
+
+          // 3. Ép HTTP Proxy vào hệ thống Android qua lệnh ADB
+          await setAdbGlobalProxy(addr, hostLanIp, httpProxyPort);
+        }
+
+        notifyListeners();
+        return true;
+      } catch (e) {
+        throw Exception('Không thể kết nối thiết bị ngoại vi $addr: $e');
+      }
+    }
+
+    // TRƯỜNG HỢP 2: Khởi chạy Android Emulator chuẩn Android Studio trên máy Local
     // 1. Kiểm tra Android Emulator binary
     final emulatorBin = _findAndroidEmulatorExecutable();
     if (emulatorBin == null) {
@@ -539,8 +607,12 @@ class Socks5ProxyService extends ChangeNotifier {
       '-port', consolePort.toString(),
       '-netdelay', 'none',
       '-netspeed', 'full',
+      '-gpu', 'host',
       '-no-boot-anim',
-      '-read-only',
+      '-no-snapshot-load',
+      if (deviceType == 'tablet') ...[
+        '-skin', '1200x1920',
+      ],
     ];
 
     try {
@@ -550,12 +622,44 @@ class Socks5ProxyService extends ChangeNotifier {
         mode: ProcessStartMode.detached,
       );
       session.deviceProcess = proc;
+
+      // Đánh thức màn hình và mở khóa AVD tự động ngầm để tránh màn hình ngủ đen ngòm
+      _autoWakeAndUnlockAvd(consolePort);
+
       notifyListeners();
       return true;
     } catch (e) {
       session.httpBridgeProcess?.kill();
       throw Exception('Lỗi khi khởi chạy Android Emulator: $e');
     }
+  }
+
+  /// Tự động kiểm tra và đánh thức, mở khóa màn hình AVD tránh màn hình đen ngủ
+  void _autoWakeAndUnlockAvd(int consolePort) {
+    Future.microtask(() async {
+      try {
+        final adbBin = await _findAdbExecutable();
+        final serial = 'emulator-$consolePort';
+
+        // Đợi thiết bị boot xong và sẵn sàng nhận input (tối đa 40 giây)
+        for (int i = 0; i < 20; i++) {
+          await Future.delayed(const Duration(seconds: 2));
+          final res = await Process.run(adbBin, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']);
+          if ((res.stdout as String).trim() == '1') {
+            break;
+          }
+        }
+
+        // 1. Gửi phím WAKEUP (224) và POWER (26) để bật sáng màn hình
+        await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'keyevent', '224']);
+        await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'keyevent', '26']);
+        await Future.delayed(const Duration(milliseconds: 400));
+        // 2. Gửi phím MENU (82) để mở khóa màn hình
+        await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'keyevent', '82']);
+        // 3. Vuốt nhẹ lên mở khóa phòng trường hợp màn hình khóa cần vuốt
+        await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'swipe', '500', '1500', '500', '500', '200']);
+      } catch (_) {}
+    });
   }
 
   bool _isPortInUse(int port) {
@@ -571,6 +675,9 @@ class Socks5ProxyService extends ChangeNotifier {
   Future<void> stopSession(String ip) async {
     final session = _activeSessions.remove(ip);
     if (session != null) {
+      if (session.remoteDeviceAddress != null) {
+        await disconnectRemoteDevice(session.remoteDeviceAddress!);
+      }
       await session.stop();
     }
     // Dừng triệt để các tiến trình trình duyệt và device gắn với profile của IP này nếu còn chạy ngầm
@@ -611,6 +718,12 @@ class Socks5ProxyService extends ChangeNotifier {
   /// Đóng riêng mobile device của IP mà không làm mất hầm SOCKS5 nếu trình duyệt vẫn đang chạy
   Future<void> closeDeviceForIp(String ip) async {
     final session = _activeSessions[ip];
+    if (session?.remoteDeviceAddress != null) {
+      try {
+        await disconnectRemoteDevice(session!.remoteDeviceAddress!);
+      } catch (_) {}
+      session?.remoteDeviceAddress = null;
+    }
     if (session?.deviceProcess != null) {
       try {
         session!.deviceProcess!.kill();
@@ -628,10 +741,8 @@ class Socks5ProxyService extends ChangeNotifier {
       await Process.run('pkill', ['-f', 'device_profiles/ip_$sanitizedIp']);
       // Dừng emulator của port đó qua adb nếu có
       if (session?.emulatorPort != null) {
-        final adbBin = '/home/yenai/Android/Sdk/platform-tools/adb';
-        if (File(adbBin).existsSync()) {
-          await Process.run(adbBin, ['-s', 'emulator-${session!.emulatorPort}', 'emu', 'kill']);
-        }
+        final adbBin = await _findAdbExecutable();
+        await Process.run(adbBin, ['-s', 'emulator-${session!.emulatorPort}', 'emu', 'kill']);
       }
     } catch (_) {}
 
@@ -646,20 +757,9 @@ class Socks5ProxyService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Tìm đường dẫn binary adb trên hệ thống
-  String _findAdbExecutable() {
-    final home = Platform.environment['HOME'] ?? '';
-    final candidates = [
-      '$home/Android/Sdk/platform-tools/adb',
-      '$home/android-sdk/platform-tools/adb',
-      '/usr/bin/adb',
-    ];
-    for (final c in candidates) {
-      if (File(c).existsSync()) {
-        return c;
-      }
-    }
-    return 'adb';
+  /// Tìm và cung cấp đường dẫn binary adb (tự động tải và nhúng nếu hệ thống chưa có)
+  Future<String> _findAdbExecutable() async {
+    return await AdbManagerService().resolveAdbPath();
   }
 
   /// Kết nối tới một thiết bị Android ngoại vi qua mạng WiFi / TCP IP (ví dụ: 192.168.1.227:38233)
@@ -668,7 +768,7 @@ class Socks5ProxyService extends ChangeNotifier {
     if (cleanAddress.isEmpty) {
       throw Exception('Địa chỉ thiết bị không được để trống.');
     }
-    final adbBin = _findAdbExecutable();
+    final adbBin = await _findAdbExecutable();
     final res = await Process.run(adbBin, ['connect', cleanAddress]);
     final output = ((res.stdout as String) + (res.stderr as String)).trim();
 
@@ -680,17 +780,76 @@ class Socks5ProxyService extends ChangeNotifier {
     }
   }
 
-  /// Ngắt kết nối một thiết bị ngoại vi qua ADB
+  /// Lấy địa chỉ IP nội bộ (LAN) của máy tính trạm đang kết nối cùng dải mạng với thiết bị
+  Future<String> _getLocalHostIp() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLinkLocal: false,
+      );
+      for (final iface in interfaces) {
+        // Ưu tiên interface WiFi hoặc Ethernet LAN (bỏ qua loopback và docker/br/tun)
+        final name = iface.name.toLowerCase();
+        if (name.contains('lo') || name.contains('docker') || name.contains('br-') || name.contains('tun')) {
+          continue;
+        }
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback && addr.address.startsWith('192.168.') || addr.address.startsWith('10.') || addr.address.startsWith('172.')) {
+            return addr.address;
+          }
+        }
+      }
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback) return addr.address;
+        }
+      }
+    } catch (_) {}
+    return '127.0.0.1';
+  }
+
+  /// Ép cấu hình HTTP Proxy vào thiết bị Android qua lệnh ADB
+  Future<void> setAdbGlobalProxy(String serial, String host, int port) async {
+    final adbBin = await _findAdbExecutable();
+    final cleanSerial = serial.trim();
+    try {
+      // 1. Cấu hình định dạng chuẩn http_proxy
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'settings', 'put', 'global', 'http_proxy', '$host:$port']);
+      // 2. Cấu hình thêm host và port riêng lẻ (cho các dòng máy OEM như Samsung, Xiaomi, Pixel)
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'settings', 'put', 'global', 'global_http_proxy_host', host]);
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'settings', 'put', 'global', 'global_http_proxy_port', port.toString()]);
+      // 3. Khởi động lại các trình duyệt nền để nhận diện proxy mới ngay lập tức
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'am', 'force-stop', 'com.android.chrome']);
+    } catch (_) {}
+  }
+
+  /// Gỡ bỏ cấu hình HTTP Proxy khỏi thiết bị Android qua ADB về mặc định
+  Future<void> clearAdbGlobalProxy(String serial) async {
+    final adbBin = await _findAdbExecutable();
+    final cleanSerial = serial.trim();
+    try {
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'settings', 'put', 'global', 'http_proxy', ':0']);
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'settings', 'delete', 'global', 'http_proxy']);
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'settings', 'delete', 'global', 'global_http_proxy_host']);
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'settings', 'delete', 'global', 'global_http_proxy_port']);
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'am', 'force-stop', 'com.android.chrome']);
+    } catch (_) {}
+  }
+
+  /// Ngắt kết nối một thiết bị ngoại vi qua ADB và gỡ proxy
   Future<void> disconnectRemoteDevice(String address) async {
-    final adbBin = _findAdbExecutable();
-    await Process.run(adbBin, ['disconnect', address.trim()]);
+    final adbBin = await _findAdbExecutable();
+    final cleanAddr = address.trim();
+    await clearAdbGlobalProxy(cleanAddr);
+    await Process.run(adbBin, ['disconnect', cleanAddr]);
     notifyListeners();
   }
 
   /// Lấy danh sách các thiết bị ngoại vi / vật lý đang kết nối qua ADB
   Future<List<Map<String, String>>> getConnectedAdbDevices() async {
-    final adbBin = _findAdbExecutable();
+    final adbBin = await _findAdbExecutable();
     final res = await Process.run(adbBin, ['devices', '-l']);
+
     final lines = (res.stdout as String).split('\n');
     final List<Map<String, String>> devices = [];
 

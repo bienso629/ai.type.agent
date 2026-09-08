@@ -54,7 +54,7 @@ class AgentChatbotApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ChatProvider()),
       ],
       child: MaterialApp(
-        title: 'AI Agent Control Server',
+        title: 'AI Agent Chatbot',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
         home: const AuthGate(),

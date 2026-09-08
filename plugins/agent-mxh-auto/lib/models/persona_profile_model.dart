@@ -5,6 +5,12 @@ class PersonaProfile {
   final String gender;
   final String bio;
   final String avatarPrompt;
+  final String? avatarUrl;
+  final String? externalDeviceAddress;
+  final bool useExternalDevice;
+  final String? avdName;
+  final String deviceType; // 'mobile' | 'tablet'
+  final String? agentInfo; // Thông tin Agent / System role của nhân vật này
 
   PersonaProfile({
     required this.ip,
@@ -13,6 +19,12 @@ class PersonaProfile {
     required this.gender,
     required this.bio,
     required this.avatarPrompt,
+    this.avatarUrl,
+    this.externalDeviceAddress,
+    this.useExternalDevice = false,
+    this.avdName,
+    this.deviceType = 'mobile',
+    this.agentInfo,
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +34,12 @@ class PersonaProfile {
     'gender': gender,
     'bio': bio,
     'avatar_prompt': avatarPrompt,
+    'avatar_url': avatarUrl,
+    'external_device_address': externalDeviceAddress,
+    'use_external_device': useExternalDevice ? 1 : 0,
+    'avd_name': avdName,
+    'device_type': deviceType,
+    'agent_info': agentInfo,
   };
 
   factory PersonaProfile.fromJson(Map<String, dynamic> json) => PersonaProfile(
@@ -31,5 +49,11 @@ class PersonaProfile {
     gender: json['gender']?.toString() ?? 'Nam',
     bio: json['bio']?.toString() ?? '',
     avatarPrompt: json['avatar_prompt']?.toString() ?? json['avatarPrompt']?.toString() ?? '',
+    avatarUrl: json['avatar_url']?.toString() ?? json['avatarUrl']?.toString(),
+    externalDeviceAddress: json['external_device_address']?.toString(),
+    useExternalDevice: json['use_external_device'] == 1 || json['use_external_device'] == true,
+    avdName: json['avd_name']?.toString(),
+    deviceType: json['device_type']?.toString() ?? 'mobile',
+    agentInfo: json['agent_info']?.toString(),
   );
 }

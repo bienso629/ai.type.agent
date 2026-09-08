@@ -129,16 +129,17 @@ def handle_client(client_sock, socks_host, socks_port):
 
 def main():
     if len(sys.argv) < 4:
-        print("Usage: socks2http_bridge.py <http_listen_port> <socks_host> <socks_port>")
+        print("Usage: socks2http_bridge.py <http_listen_port> <socks_host> <socks_port> [listen_host]")
         sys.exit(1)
 
     listen_port = int(sys.argv[1])
     socks_host = sys.argv[2]
     socks_port = int(sys.argv[3])
+    listen_host = sys.argv[4] if len(sys.argv) > 4 else '127.0.0.1'
 
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_sock.bind(('127.0.0.1', listen_port))
+    server_sock.bind((listen_host, listen_port))
     server_sock.listen(128)
     print(f"READY {listen_port}", flush=True)
 

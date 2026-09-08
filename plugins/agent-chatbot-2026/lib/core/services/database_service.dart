@@ -124,6 +124,11 @@ class DatabaseService {
     return _db!;
   }
 
+  Future<Database?> getRawDatabase() async {
+    await init();
+    return _db;
+  }
+
   Future<List<ChatSessionModel>> getSessions() async {
     try {
       final db = await _getDb();

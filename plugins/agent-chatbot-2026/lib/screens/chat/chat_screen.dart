@@ -683,7 +683,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           ],
                         ),
                         const Text(
-                          'Có quyền thực thi lệnh bash an toàn trên máy chủ Linux',
+                          'AI Agent hiểu mục tiêu, lập kế hoạch cho công việc của bạn.',
                           style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       ],
@@ -742,7 +742,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 cacheExtent: 400.0,
                                 itemCount: chat.hasMoreMessages
                                     ? chat.messages.length + 1
-                                    : (chat.messages.isEmpty ? 1 : chat.messages.length + 1),
+                                    : chat.messages.length,
                                 findChildIndexCallback: (Key key) {
                                   if (key is ValueKey<String>) {
                                     final val = key.value;
@@ -751,20 +751,21 @@ class _ChatScreenState extends State<ChatScreen> {
                                       final id = int.tryParse(idStr);
                                       if (id != null) {
                                         final idx = chat.messages.indexWhere((m) => m.id == id);
-                                        if (idx != -1) return idx + 1;
+                                        if (idx != -1) return chat.hasMoreMessages ? idx + 1 : idx;
                                       }
                                     }
                                   }
                                   return null;
                                 },
                                 itemBuilder: (context, idx) {
-                                  if (idx == 0) {
-                                    if (chat.hasMoreMessages) {
+                                  if (chat.hasMoreMessages) {
+                                    if (idx == 0) {
                                       return _buildLoadMoreBanner(chat);
                                     }
-                                    return _buildGreetingBubble(chat, serverProvider);
+                                    final msg = chat.messages[idx - 1];
+                                    return _buildMessageItem(msg, chat);
                                   }
-                                  final msg = chat.messages[idx - 1];
+                                  final msg = chat.messages[idx];
                                   return _buildMessageItem(msg, chat);
                                 },
                               ),
@@ -865,116 +866,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildGreetingBubble(ChatProvider chat, ServerProvider serverProvider) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.borderDark),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Image.asset(
-                  'assets/logo.jpg',
-                  width: 32,
-                  height: 32,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Icon(Icons.cloud_sync_rounded, color: AppColors.primaryLight, size: 18),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Xin chào! Tôi là AI Chatbot Agent (${serverProvider.currentAiModel})',
-                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Tôi có thể giải đáp thắc mắc, phân tích hệ thống và tự động chạy lệnh Terminal khi bạn yêu cầu!',
-            style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
-          ),
-          const Divider(height: 20),
-          const Text(
-            'GỢI Ý CÂU LỆNH MẪU:',
-            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppColors.textDim, letterSpacing: 0.5),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildPromptChip(
-                icon: Icons.pie_chart_rounded,
-                iconColor: AppColors.accentCyan,
-                label: 'Kiểm tra RAM & Ổ đĩa',
-                prompt: 'Kiểm tra dung lượng ổ đĩa và RAM hiện tại',
-                chat: chat,
-              ),
-              _buildPromptChip(
-                icon: Icons.bolt_rounded,
-                iconColor: AppColors.warning,
-                label: 'Top tiến trình CPU',
-                prompt: 'Xem danh sách tiến trình đang chạy và chiếm nhiều CPU nhất',
-                chat: chat,
-              ),
-              _buildPromptChip(
-                icon: Icons.lan_rounded,
-                iconColor: AppColors.primaryLight,
-                label: 'Cổng đang mở',
-                prompt: 'Kiểm tra các cổng mạng đang mở (listening ports)',
-                chat: chat,
-              ),
-              _buildPromptChip(
-                icon: Icons.sync_rounded,
-                iconColor: AppColors.accent,
-                label: 'Trạng thái Services',
-                prompt: 'Kiểm tra trạng thái service nginx và uvicorn',
-                chat: chat,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPromptChip({
-    required IconData icon,
-    required Color iconColor,
-    required String label,
-    required String prompt,
-    required ChatProvider chat,
-  }) {
-    return OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: AppColors.borderDark),
-        backgroundColor: AppColors.inputBg,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
-      ),
-      icon: Icon(icon, size: 14, color: iconColor),
-      label: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
-      onPressed: () {
-        chat.sendMessage(prompt);
-        _safeScrollToBottom();
-      },
-    );
-  }
 
   Widget _buildMessageItem(ChatMessageModel msg, ChatProvider chat) {
     return _MessageItemWidget(

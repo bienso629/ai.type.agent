@@ -86,6 +86,8 @@ class DatabaseService {
             gender TEXT DEFAULT 'Nam',
             bio TEXT,
             avatar_prompt TEXT,
+            external_device_address TEXT,
+            use_external_device INTEGER DEFAULT 0,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         ''');
@@ -101,9 +103,30 @@ class DatabaseService {
         gender TEXT DEFAULT 'Nam',
         bio TEXT,
         avatar_prompt TEXT,
+        external_device_address TEXT,
+        use_external_device INTEGER DEFAULT 0,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+    // Migration: Thêm cột nếu bảng cũ chưa có
+    try {
+      await _db!.execute('ALTER TABLE persona_profiles ADD COLUMN external_device_address TEXT');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE persona_profiles ADD COLUMN use_external_device INTEGER DEFAULT 0');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE persona_profiles ADD COLUMN avatar_url TEXT');
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE persona_profiles ADD COLUMN avd_name TEXT');
+    } catch (_) {}
+    try {
+      await _db!.execute("ALTER TABLE persona_profiles ADD COLUMN device_type TEXT DEFAULT 'mobile'");
+    } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE persona_profiles ADD COLUMN agent_info TEXT');
+    } catch (_) {}
   }
 
   Future<String> _resolveDbPath({String? userKey}) async {
@@ -506,6 +529,18 @@ class DatabaseService {
             gender: r['gender']?.toString() ?? 'Nam',
             bio: _enc.decryptValue(r['bio']?.toString() ?? ''),
             avatarPrompt: _enc.decryptValue(r['avatar_prompt']?.toString() ?? ''),
+            avatarUrl: r['avatar_url'] != null && r['avatar_url'].toString().isNotEmpty
+                ? _enc.decryptValue(r['avatar_url'].toString())
+                : null,
+            externalDeviceAddress: r['external_device_address'] != null && r['external_device_address'].toString().isNotEmpty
+                ? _enc.decryptValue(r['external_device_address'].toString())
+                : null,
+            useExternalDevice: r['use_external_device'] == 1,
+            avdName: r['avd_name']?.toString(),
+            deviceType: r['device_type']?.toString() ?? 'mobile',
+            agentInfo: r['agent_info'] != null && r['agent_info'].toString().isNotEmpty
+                ? _enc.decryptValue(r['agent_info'].toString())
+                : null,
           );
         }
       }
@@ -526,6 +561,18 @@ class DatabaseService {
         'gender': profile.gender,
         'bio': _enc.encryptValue(profile.bio),
         'avatar_prompt': _enc.encryptValue(profile.avatarPrompt),
+        'avatar_url': profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty
+            ? _enc.encryptValue(profile.avatarUrl!)
+            : null,
+        'external_device_address': profile.externalDeviceAddress != null && profile.externalDeviceAddress!.isNotEmpty
+            ? _enc.encryptValue(profile.externalDeviceAddress!)
+            : null,
+        'use_external_device': profile.useExternalDevice ? 1 : 0,
+        'avd_name': profile.avdName,
+        'device_type': profile.deviceType,
+        'agent_info': profile.agentInfo != null && profile.agentInfo!.isNotEmpty
+            ? _enc.encryptValue(profile.agentInfo!)
+            : null,
         'updated_at': DateTime.now().toIso8601String(),
       };
       await db.insert(
@@ -554,6 +601,18 @@ class DatabaseService {
             'gender': p.gender,
             'bio': _enc.encryptValue(p.bio),
             'avatar_prompt': _enc.encryptValue(p.avatarPrompt),
+            'avatar_url': p.avatarUrl != null && p.avatarUrl!.isNotEmpty
+                ? _enc.encryptValue(p.avatarUrl!)
+                : null,
+            'external_device_address': p.externalDeviceAddress != null && p.externalDeviceAddress!.isNotEmpty
+                ? _enc.encryptValue(p.externalDeviceAddress!)
+                : null,
+            'use_external_device': p.useExternalDevice ? 1 : 0,
+            'avd_name': p.avdName,
+            'device_type': p.deviceType,
+            'agent_info': p.agentInfo != null && p.agentInfo!.isNotEmpty
+                ? _enc.encryptValue(p.agentInfo!)
+                : null,
             'updated_at': DateTime.now().toIso8601String(),
           },
           conflictAlgorithm: ConflictAlgorithm.replace,

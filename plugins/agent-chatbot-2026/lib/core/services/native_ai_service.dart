@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import 'database_service.dart';
+import 'document_service.dart';
 import 'local_config_service.dart';
 
 class NativeAiService {
@@ -15,6 +16,7 @@ class NativeAiService {
 
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
+  final DocumentService _docService = DocumentService();
 
   static const String systemPromptBase = '''Bạn là AI Agent Chatbot - Trợ lý thông minh đa năng cấp cao.
 Bạn hỗ trợ phân tích dữ liệu, viết mã lập trình, giải quyết kỹ thuật và tương tác trực tiếp với hệ thống qua công cụ `execute_terminal_command`.
@@ -72,6 +74,11 @@ CÁC QUY TẮC BẮT BUỘC:
         String sysPrompt = systemPromptBase;
         if (workingDir != null && workingDir.isNotEmpty) {
           sysPrompt += '\n\n🎯 THƯ MỤC LÀM VIỆC MỤC TIÊU: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
+        }
+
+        final knowledgeCtx = await _docService.getRelevantKnowledgeContext(message);
+        if (knowledgeCtx.isNotEmpty) {
+          sysPrompt += knowledgeCtx;
         }
 
         final messages = <Map<String, dynamic>>[
