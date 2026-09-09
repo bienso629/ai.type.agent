@@ -180,4 +180,25 @@ class UserService {
     );
     return rows.isNotEmpty;
   }
+
+  /// Kiểm tra xem email có phải là tài khoản đầu tiên (Admin tối cao) được tạo trong hệ thống không
+  Future<bool> isFirstUser(String? email) async {
+    if (email == null || email.trim().isEmpty) return false;
+    final cleanEmail = email.trim().toLowerCase();
+
+    // Tài khoản cục bộ mặc định cũng là admin
+    if (cleanEmail == 'local.admin@agent.chatbot') return true;
+
+    final db = await _getDb();
+    final rows = await db.query(
+      'users',
+      columns: ['email'],
+      orderBy: 'id ASC',
+      limit: 1,
+    );
+
+    if (rows.isEmpty) return false;
+    final firstEmail = rows.first['email']?.toString().toLowerCase();
+    return firstEmail == cleanEmail;
+  }
 }

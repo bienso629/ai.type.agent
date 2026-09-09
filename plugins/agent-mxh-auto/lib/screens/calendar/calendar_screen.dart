@@ -19,6 +19,7 @@ class CalendarScreen extends StatefulWidget {
 
 class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  String _viewMode = 'month'; // 'month' | 'day'
   final PersonaService _personaService = PersonaService();
   Map<String, PersonaProfile> _personasMap = {};
 
@@ -40,16 +41,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  void _prevMonth() {
-    setState(() {
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
-    });
+  void _prevPeriod() {
+    final provider = context.read<ScheduleProvider>();
+    if (_viewMode == 'month') {
+      setState(() {
+        _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
+      });
+    } else if (_viewMode == 'week') {
+      final prevWeek = provider.selectedDate.subtract(const Duration(days: 7));
+      provider.setSelectedDate(prevWeek);
+      setState(() {
+        _currentMonth = DateTime(prevWeek.year, prevWeek.month, 1);
+      });
+    } else {
+      final prevDay = provider.selectedDate.subtract(const Duration(days: 1));
+      provider.setSelectedDate(prevDay);
+      setState(() {
+        _currentMonth = DateTime(prevDay.year, prevDay.month, 1);
+      });
+    }
   }
 
-  void _nextMonth() {
-    setState(() {
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
-    });
+  void _nextPeriod() {
+    final provider = context.read<ScheduleProvider>();
+    if (_viewMode == 'month') {
+      setState(() {
+        _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
+      });
+    } else if (_viewMode == 'week') {
+      final nextWeek = provider.selectedDate.add(const Duration(days: 7));
+      provider.setSelectedDate(nextWeek);
+      setState(() {
+        _currentMonth = DateTime(nextWeek.year, nextWeek.month, 1);
+      });
+    } else {
+      final nextDay = provider.selectedDate.add(const Duration(days: 1));
+      provider.setSelectedDate(nextDay);
+      setState(() {
+        _currentMonth = DateTime(nextDay.year, nextDay.month, 1);
+      });
+    }
   }
 
   void _goToToday() {
@@ -58,6 +89,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _currentMonth = DateTime(now.year, now.month, 1);
     });
     context.read<ScheduleProvider>().setSelectedDate(DateTime(now.year, now.month, now.day));
+  }
+
+  String _formatFullDateVN(DateTime date) {
+    const weekdayNames = {
+      1: 'Thứ 2',
+      2: 'Thứ 3',
+      3: 'Thứ 4',
+      4: 'Thứ 5',
+      5: 'Thứ 6',
+      6: 'Thứ 7',
+      7: 'Chủ Nhật',
+    };
+    final dayName = weekdayNames[date.weekday] ?? 'Thứ ${date.weekday}';
+    final formattedDate = DateFormat('dd/MM/yyyy').format(date);
+    return '$dayName, $formattedDate';
   }
 
   void _showCreateTaskDialog(BuildContext context, {DateTime? initialDate}) {
@@ -528,186 +574,166 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final scheduleProvider = context.watch<ScheduleProvider>();
     final serverProvider = context.watch<ServerProvider>();
 
+    String headerTitle = '';
+    if (_viewMode == 'month') {
+      headerTitle = 'Lịch Kế Hoạch MXH (Tháng ${DateFormat('MM/yyyy').format(_currentMonth)})';
+    } else if (_viewMode == 'week') {
+      final monday = scheduleProvider.selectedDate.subtract(Duration(days: scheduleProvider.selectedDate.weekday - 1));
+      final sunday = monday.add(const Duration(days: 6));
+      headerTitle = 'Lịch Tuần: ${DateFormat('dd/MM').format(monday)} - ${DateFormat('dd/MM/yyyy').format(sunday)}';
+    } else {
+      headerTitle = 'Lịch Trình Chi Tiết: ${_formatFullDateVN(scheduleProvider.selectedDate)}';
+    }
+
     return Scaffold(
       backgroundColor: AppColors.bgDark,
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Bên trái: Calendar Grid & Điều hướng tháng
-          Expanded(
-            flex: 6,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header Lịch
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
+      body: Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Lịch
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      _viewMode == 'month'
+                          ? Icons.calendar_month_rounded
+                          : (_viewMode == 'week' ? Icons.view_week_rounded : Icons.view_day_rounded),
+                      color: AppColors.primaryLight,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      headerTitle,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    // Nút chuyển đổi 3 chế độ: Tháng, Tuần, Ngày
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.borderDark),
+                      ),
+                      child: Row(
                         children: [
-                          const Icon(Icons.calendar_month_rounded, color: AppColors.primaryLight, size: 22),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Lịch Lên Kế Hoạch MXH (Tháng ${DateFormat('MM/yyyy').format(_currentMonth)})',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                          ),
+                          _buildViewModeButton('month', 'Tháng', Icons.calendar_view_month_rounded),
+                          const SizedBox(width: 2),
+                          _buildViewModeButton('week', 'Tuần', Icons.view_week_rounded),
+                          const SizedBox(width: 2),
+                          _buildViewModeButton('day', 'Ngày', Icons.view_day_rounded),
                         ],
                       ),
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textBody),
-                            onPressed: _prevMonth,
-                            tooltip: 'Tháng trước',
-                          ),
-                          OutlinedButton(
-                            onPressed: _goToToday,
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: AppColors.borderDark),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                            child: const Text('Hôm nay', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right_rounded, color: AppColors.textBody),
-                            onPressed: _nextMonth,
-                            tooltip: 'Tháng sau',
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton.icon(
-                            onPressed: () => _showCreateTaskDialog(context),
-                            icon: const Icon(Icons.add_rounded, size: 16),
-                            label: const Text('Tạo Kế Hoạch Mới', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                          ),
-                        ],
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textBody),
+                      onPressed: _prevPeriod,
+                      tooltip: _viewMode == 'month' ? 'Tháng trước' : (_viewMode == 'week' ? 'Tuần trước' : 'Ngày trước'),
+                    ),
+                    OutlinedButton(
+                      onPressed: _goToToday,
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.borderDark),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Bảng ngày trong tuần (T2 - CN)
-                  Container(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
+                      child: const Text('Hôm nay', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
                     ),
-                    child: Row(
-                      children: ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((dayName) {
-                        return Expanded(
-                          child: Center(
-                            child: Text(
-                              dayName,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textMuted),
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right_rounded, color: AppColors.textBody),
+                      onPressed: _nextPeriod,
+                      tooltip: _viewMode == 'month' ? 'Tháng sau' : (_viewMode == 'week' ? 'Tuần sau' : 'Ngày sau'),
                     ),
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _showCreateTaskDialog(context, initialDate: scheduleProvider.selectedDate),
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: const Text('Tạo Kế Hoạch Mới', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
 
-                  // Lưới ngày (Month Days Grid)
-                  Expanded(
-                    child: _buildMonthCalendarGrid(scheduleProvider),
-                  ),
-                ],
+            if (_viewMode == 'month') ...[
+              // Bảng ngày trong tuần (T2 - CN)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.borderDark),
+                ),
+                child: Row(
+                  children: ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((dayName) {
+                    return Expanded(
+                      child: Center(
+                        child: Text(
+                          dayName,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textMuted),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Lưới ngày (Month Days Grid full width)
+              Expanded(
+                child: _buildMonthCalendarGrid(scheduleProvider),
+              ),
+            ] else if (_viewMode == 'week') ...[
+              // Chế độ xem theo Tuần (Week View Timeline)
+              Expanded(
+                child: _buildWeekCalendarView(scheduleProvider),
+              ),
+            ] else ...[
+              // Chế độ xem theo ngày với Timeline 24h
+              Expanded(
+                child: _buildDayTimelineView(scheduleProvider, serverProvider),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildViewModeButton(String mode, String label, IconData icon) {
+    final isSelected = _viewMode == mode;
+    return InkWell(
+      onTap: () => setState(() => _viewMode = mode),
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          border: isSelected ? Border.all(color: AppColors.primaryLight) : null,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: isSelected ? AppColors.primaryLight : AppColors.textMuted),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? AppColors.primaryLight : AppColors.textMuted,
               ),
             ),
-          ),
-
-          // Đường phân cách
-          Container(width: 1, color: AppColors.borderDark),
-
-          // Bên phải: Danh sách công việc chi tiết của ngày đang chọn
-          Expanded(
-            flex: 4,
-            child: Container(
-              color: AppColors.sidebarBg,
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Tiêu đề ngày chọn
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Kế hoạch ngày ${DateFormat('dd/MM/yyyy').format(scheduleProvider.selectedDate)}',
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${scheduleProvider.tasksForSelectedDate.length} tác vụ được lên lịch',
-                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        onPressed: () => _showCreateTaskDialog(context, initialDate: scheduleProvider.selectedDate),
-                        icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primaryLight, size: 22),
-                        tooltip: 'Thêm tác vụ vào ngày này',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Bộ lọc nhanh
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildFilterChip('all', 'Tất cả', scheduleProvider.filterType, (v) => scheduleProvider.setFilterType(v)),
-                        const SizedBox(width: 6),
-                        _buildFilterChip('like', 'Like/Tim', scheduleProvider.filterType, (v) => scheduleProvider.setFilterType(v)),
-                        const SizedBox(width: 6),
-                        _buildFilterChip('comment', 'Bình luận', scheduleProvider.filterType, (v) => scheduleProvider.setFilterType(v)),
-                        const SizedBox(width: 6),
-                        _buildFilterChip('livestream', 'Livestream', scheduleProvider.filterType, (v) => scheduleProvider.setFilterType(v)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Danh sách các thẻ công việc
-                  Expanded(
-                    child: scheduleProvider.tasksForSelectedDate.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.event_available_rounded, size: 42, color: AppColors.textDim),
-                                const SizedBox(height: 12),
-                                const Text('Chưa có lịch trình cho ngày này', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
-                                const SizedBox(height: 8),
-                                OutlinedButton.icon(
-                                  onPressed: () => _showCreateTaskDialog(context, initialDate: scheduleProvider.selectedDate),
-                                  icon: const Icon(Icons.add_rounded, size: 14),
-                                  label: const Text('Tạo lịch ngay', style: TextStyle(fontSize: 12)),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: scheduleProvider.tasksForSelectedDate.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 10),
-                            itemBuilder: (context, idx) {
-                              final task = scheduleProvider.tasksForSelectedDate[idx];
-                              return _buildTaskCard(context, task, scheduleProvider, serverProvider);
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -726,7 +752,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         crossAxisCount: 7,
         crossAxisSpacing: 6,
         mainAxisSpacing: 6,
-        childAspectRatio: 1.3,
+        childAspectRatio: 0.88,
       ),
       itemCount: totalSlots,
       itemBuilder: (context, index) {
@@ -780,7 +806,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     Text(
                       '$dayNumber',
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 12,
                         fontWeight: (isSelected || isToday) ? FontWeight.bold : FontWeight.w500,
                         color: isSelected
                             ? AppColors.primaryLight
@@ -801,24 +827,78 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                   ],
                 ),
-                const Spacer(),
+                const SizedBox(height: 4),
                 if (dayTasks.isNotEmpty) ...[
-                  Wrap(
-                    spacing: 3,
-                    children: dayTasks.take(3).map((t) {
-                      Color dotColor = AppColors.primaryLight;
-                      if (t.taskType == 'comment') dotColor = AppColors.accentCyan;
-                      if (t.taskType == 'livestream') dotColor = Colors.purpleAccent;
-                      if (t.taskType == 'post') dotColor = AppColors.accent;
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ...dayTasks.take(2).map((t) {
+                          Color tagColor = AppColors.primaryLight;
+                          if (t.taskType == 'comment') tagColor = AppColors.accentCyan;
+                          if (t.taskType == 'livestream') tagColor = Colors.purpleAccent;
+                          if (t.taskType == 'post') tagColor = AppColors.accent;
 
-                      return Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
-                      );
-                    }).toList(),
+                          final timeStr = DateFormat('HH:mm').format(t.scheduledTime);
+                          final taskLabel = t.title.trim().isNotEmpty ? t.title.trim() : t.taskType;
+
+                          return InkWell(
+                            onTap: () => _showTaskDetailDialog(context, t),
+                            borderRadius: BorderRadius.circular(3),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: tagColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(3),
+                                border: Border.all(color: tagColor.withValues(alpha: 0.35), width: 0.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    timeStr,
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.bold,
+                                      color: tagColor,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Expanded(
+                                    child: Text(
+                                      taskLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.textWhite.withValues(alpha: 0.9),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        if (dayTasks.length > 2)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 2, top: 1),
+                            child: Text(
+                              '+${dayTasks.length - 2} tác vụ khác',
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                color: AppColors.textMuted,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ],
+                ] else
+                  const Spacer(),
               ],
             ),
           ),
@@ -827,26 +907,445 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildFilterChip(String type, String label, String currentType, Function(String) onSelect) {
-    final isSelected = currentType == type;
-    return InkWell(
-      onTap: () => onSelect(type),
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: isSelected ? AppColors.primaryLight : AppColors.borderDark),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? AppColors.primaryLight : AppColors.textMuted,
+  Widget _buildDayTimelineView(ScheduleProvider provider, ServerProvider serverProvider) {
+    final selectedDate = provider.selectedDate;
+    final allDayTasks = provider.tasks.where((t) {
+      return t.scheduledTime.year == selectedDate.year &&
+          t.scheduledTime.month == selectedDate.month &&
+          t.scheduledTime.day == selectedDate.day;
+    }).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.borderDark),
+      ),
+      child: Column(
+        children: [
+          // Header tóm tắt ngày
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.borderDark)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.access_time_rounded, size: 18, color: AppColors.primaryLight),
+                const SizedBox(width: 8),
+                Text(
+                  'Dòng thời gian 24 giờ (${allDayTasks.length} tác vụ)',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                ),
+                const Spacer(),
+                Text(
+                  'Nhấp vào khung giờ bất kỳ để tạo tác vụ mới',
+                  style: const TextStyle(fontSize: 11, color: AppColors.textDim),
+                ),
+              ],
+            ),
           ),
-        ),
+
+          // Danh sách 24 khung giờ
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              itemCount: 24,
+              itemBuilder: (context, hour) {
+                final hourTasks = allDayTasks.where((t) => t.scheduledTime.hour == hour).toList();
+                final hourStr = '${hour.toString().padLeft(2, '0')}:00';
+                final isCurrentHour = DateTime.now().year == selectedDate.year &&
+                    DateTime.now().month == selectedDate.month &&
+                    DateTime.now().day == selectedDate.day &&
+                    DateTime.now().hour == hour;
+
+                return InkWell(
+                  onTap: () {
+                    _showCreateTaskDialog(
+                      context,
+                      initialDate: DateTime(
+                        selectedDate.year,
+                        selectedDate.month,
+                        selectedDate.day,
+                        hour,
+                        0,
+                      ),
+                    );
+                  },
+                  hoverColor: AppColors.primary.withValues(alpha: 0.05),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isCurrentHour ? AppColors.primary.withValues(alpha: 0.05) : Colors.transparent,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: AppColors.borderDark.withValues(alpha: 0.5),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Cột mốc giờ
+                        SizedBox(
+                          width: 55,
+                          child: Text(
+                            hourStr,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              fontWeight: isCurrentHour ? FontWeight.bold : FontWeight.w500,
+                              color: isCurrentHour ? AppColors.primaryLight : AppColors.textMuted,
+                            ),
+                          ),
+                        ),
+
+                        // Cột hiển thị tác vụ trong khung giờ
+                        Expanded(
+                          child: hourTasks.isEmpty
+                              ? const SizedBox(
+                                  height: 24,
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      '-- trống --',
+                                      style: TextStyle(fontSize: 11, color: AppColors.textDim),
+                                    ),
+                                  ),
+                                )
+                              : Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: hourTasks.map((t) {
+                                    Color tagColor = AppColors.primaryLight;
+                                    IconData iconData = Icons.favorite_rounded;
+                                    if (t.taskType == 'comment') {
+                                      tagColor = AppColors.accentCyan;
+                                      iconData = Icons.mode_comment_rounded;
+                                    } else if (t.taskType == 'livestream') {
+                                      tagColor = Colors.purpleAccent;
+                                      iconData = Icons.live_tv_rounded;
+                                    } else if (t.taskType == 'post') {
+                                      tagColor = AppColors.accent;
+                                      iconData = Icons.post_add_rounded;
+                                    }
+
+                                    final timeStr = DateFormat('HH:mm').format(t.scheduledTime);
+                                    final isRunning = t.status == 'running';
+
+                                    return InkWell(
+                                      onTap: () => _showTaskDetailDialog(context, t),
+                                      borderRadius: BorderRadius.circular(5),
+                                      child: Container(
+                                        constraints: const BoxConstraints(maxWidth: 280),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: tagColor.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(5),
+                                          border: Border.all(
+                                            color: isRunning ? AppColors.primaryLight : tagColor.withValues(alpha: 0.4),
+                                            width: isRunning ? 1.5 : 1,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(iconData, size: 14, color: tagColor),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              timeStr,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontFamily: 'monospace',
+                                                fontWeight: FontWeight.bold,
+                                                color: tagColor,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                t.title.trim().isNotEmpty ? t.title.trim() : t.taskType,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 11.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.textWhite,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                              decoration: BoxDecoration(
+                                                color: (t.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan).withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(3),
+                                              ),
+                                              child: Icon(
+                                                t.executionMode == 'device' ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
+                                                size: 11,
+                                                color: t.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            _buildStatusBadge(t.status),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeekCalendarView(ScheduleProvider provider) {
+    final selectedDate = provider.selectedDate;
+    // Tính ngày Thứ 2 đầu tuần (weekday: 1=Mon, 7=Sun)
+    final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
+    final weekDays = List.generate(7, (i) => monday.add(Duration(days: i)));
+    final today = DateTime.now();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.borderDark),
+      ),
+      child: Column(
+        children: [
+          // Header các ngày trong tuần (T2 - CN kèm ngày tháng)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.borderDark)),
+            ),
+            child: Row(
+              children: [
+                // Khoảng trống căn chỉnh cột giờ
+                const SizedBox(width: 60),
+                ...weekDays.map((day) {
+                  const dayNames = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+                  final isToday = day.year == today.year && day.month == today.month && day.day == today.day;
+                  final isSelected = day.year == selectedDate.year && day.month == selectedDate.month && day.day == selectedDate.day;
+
+                  return Expanded(
+                    child: InkWell(
+                      onTap: () => provider.setSelectedDate(day),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                          border: isSelected ? Border.all(color: AppColors.primaryLight, width: 1) : null,
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              dayNames[day.weekday - 1],
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: isToday ? AppColors.primaryLight : AppColors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              DateFormat('dd/MM').format(day),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: (isToday || isSelected) ? FontWeight.bold : FontWeight.w500,
+                                color: (isToday || isSelected) ? AppColors.primaryLight : AppColors.textWhite,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+
+          // Lưới timeline 24 giờ của 7 ngày trong tuần
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              itemCount: 24,
+              itemBuilder: (context, hour) {
+                final hourStr = '${hour.toString().padLeft(2, '0')}:00';
+
+                return Container(
+                  constraints: const BoxConstraints(minHeight: 52),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: AppColors.borderDark.withValues(alpha: 0.5),
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Cột mốc giờ
+                      SizedBox(
+                        width: 60,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10, top: 8),
+                          child: Text(
+                            hourStr,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 7 cột tương ứng 7 ngày
+                      ...weekDays.map((day) {
+                        final cellTasks = provider.tasks.where((t) {
+                          return t.scheduledTime.year == day.year &&
+                              t.scheduledTime.month == day.month &&
+                              t.scheduledTime.day == day.day &&
+                              t.scheduledTime.hour == hour;
+                        }).toList();
+
+                        final isTodayCell = day.year == today.year &&
+                            day.month == today.month &&
+                            day.day == today.day &&
+                            today.hour == hour;
+
+                        return Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              _showCreateTaskDialog(
+                                context,
+                                initialDate: DateTime(day.year, day.month, day.day, hour, 0),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: isTodayCell ? AppColors.primary.withValues(alpha: 0.05) : Colors.transparent,
+                                border: Border(
+                                  left: BorderSide(
+                                    color: AppColors.borderDark.withValues(alpha: 0.3),
+                                    width: 0.5,
+                                  ),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: cellTasks.map((t) {
+                                  Color tagColor = AppColors.primaryLight;
+                                  if (t.taskType == 'comment') tagColor = AppColors.accentCyan;
+                                  if (t.taskType == 'livestream') tagColor = Colors.purpleAccent;
+                                  if (t.taskType == 'post') tagColor = AppColors.accent;
+
+                                  final timeStr = DateFormat('HH:mm').format(t.scheduledTime);
+                                  final label = t.title.trim().isNotEmpty ? t.title.trim() : t.taskType;
+
+                                  return InkWell(
+                                    onTap: () => _showTaskDetailDialog(context, t),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(bottom: 3),
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: tagColor.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: tagColor.withValues(alpha: 0.4), width: 0.5),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            timeStr,
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              fontFamily: 'monospace',
+                                              fontWeight: FontWeight.bold,
+                                              color: tagColor,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              label,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: AppColors.textWhite,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTaskDetailDialog(BuildContext context, ScheduleTaskModel task) {
+    final scheduleProvider = context.read<ScheduleProvider>();
+    final serverProvider = context.read<ServerProvider>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, _) {
+          return TaduDialog(
+            minWidth: 500,
+            maxWidth: 580,
+            title: const Row(
+              children: [
+                Icon(Icons.assignment_rounded, color: AppColors.primaryLight, size: 22),
+                SizedBox(width: 8),
+                Text('Chi Tiết Tác Vụ Lịch Trình'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: _buildTaskCard(dialogCtx, task, scheduleProvider, serverProvider),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Đóng', style: TextStyle(color: AppColors.textMuted)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

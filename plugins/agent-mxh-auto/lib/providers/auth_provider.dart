@@ -24,6 +24,7 @@ class AuthProvider extends ChangeNotifier {
   String? _selectedServer = 'vn.s3';
   String? _errorMessage;
   List<AccountProfile> _accounts = [];
+  List<String> _userGroups = [];
 
   bool get isLoading => _isLoading;
   bool get isCheckingAuth => _isCheckingAuth;
@@ -35,6 +36,42 @@ class AuthProvider extends ChangeNotifier {
   String get selectedServer => _selectedServer ?? 'vn.s3';
   String? get errorMessage => _errorMessage;
   List<AccountProfile> get accounts => _accounts;
+  List<String> get userGroups => _userGroups;
+
+  bool get isAdmin {
+    final email = (_userEmail ?? '').toLowerCase().trim();
+    final name = (_userName ?? '').toLowerCase().trim();
+    if (name == 'admin' ||
+        email.contains('admin') ||
+        email == 'local.admin@type.vn' ||
+        email == 'admin@type.vn' ||
+        email.startsWith('admin@') ||
+        email.contains('typing.vn')) {
+      return true;
+    }
+    for (final g in _userGroups) {
+      final slug = g.toLowerCase();
+      if (slug.contains('admin') || slug.contains('quan-tri') || slug == 'administrators' || slug.contains('lap-trinh')) {
+        return true;
+      }
+    }
+    // Kiểm tra trong danh sách accounts
+    final activeAcc = _accounts.where((a) => a.isActive).firstOrNull;
+    if (activeAcc != null) {
+      final accName = (activeAcc.name ?? '').toLowerCase().trim();
+      final accEmail = (activeAcc.email ?? '').toLowerCase().trim();
+      if (accName == 'admin' || accEmail.contains('admin') || accEmail.contains('typing.vn')) {
+        return true;
+      }
+      for (final g in activeAcc.groups) {
+        final slug = g.toLowerCase();
+        if (slug.contains('admin') || slug.contains('quan-tri') || slug == 'administrators' || slug.contains('lap-trinh')) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   set selectedServer(String server) {
     _selectedServer = server;
@@ -74,11 +111,17 @@ class AuthProvider extends ChangeNotifier {
                 payloadStr += '=';
               }
               final decodedJson = jsonDecode(utf8.decode(base64Url.decode(payloadStr)));
-              if (decodedJson is Map && decodedJson['user'] != null && decodedJson['user']['avatar'] != null) {
-                final tokenAvatar = decodedJson['user']['avatar'].toString();
-                if (tokenAvatar.isNotEmpty && tokenAvatar != 'null') {
-                  _avatar = tokenAvatar;
-                  await _storage.setUserAvatar(_avatar);
+              if (decodedJson is Map && decodedJson['user'] != null) {
+                final userObj = decodedJson['user'];
+                if (userObj['avatar'] != null) {
+                  final tokenAvatar = userObj['avatar'].toString();
+                  if (tokenAvatar.isNotEmpty && tokenAvatar != 'null') {
+                    _avatar = tokenAvatar;
+                    await _storage.setUserAvatar(_avatar);
+                  }
+                }
+                if (userObj['groups'] is List) {
+                  _userGroups = (userObj['groups'] as List).map((e) => e.toString()).toList();
                 }
               }
             }
@@ -195,6 +238,7 @@ class AuthProvider extends ChangeNotifier {
         _userEmail = cleanEmail;
         _userName = user['name']?.toString();
         _avatar = avatarUrl;
+        _userGroups = (user['groups'] as List?)?.map((e) => e.toString()).toList() ?? [];
         _isAuthenticated = true;
         _errorMessage = null;
         _isLoading = false;
@@ -237,6 +281,7 @@ class AuthProvider extends ChangeNotifier {
         _userEmail = email;
         _userName = name;
         _avatar = avatar;
+        _userGroups = (profile['groups'] as List?)?.map((e) => e.toString()).toList() ?? [];
         _isAuthenticated = true;
         _errorMessage = null;
 
@@ -266,6 +311,7 @@ class AuthProvider extends ChangeNotifier {
     _userEmail = 'local.admin@type.vn';
     _userName = 'Local Administrator';
     _authToken = 'native_local_token';
+    _userGroups = ['administrators'];
     await _storage.setLoggedIn(true);
     await _storage.setUserEmail(_userEmail!);
     await _storage.setUserName(_userName!);

@@ -55,7 +55,7 @@ CÁC QUY TẮC BẮT BUỘC:
           return;
         }
         final apiKey = cfg['proxy_api_key']?.toString() ?? '';
-        final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
+        final defaultModel = cfg['ai_model']?.toString() ?? 'gemini-2.5-flash';
         final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
 
         if (baseUrl.endsWith('/')) {

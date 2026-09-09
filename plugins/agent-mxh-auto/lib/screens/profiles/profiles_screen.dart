@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/persona_service.dart';
 import '../../core/services/socks5_proxy_service.dart';
+import '../../core/services/smspool_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../models/persona_profile_model.dart';
@@ -133,6 +135,14 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final promptCtrl = TextEditingController(text: persona.avatarPrompt);
     final externalDeviceCtrl = TextEditingController(text: persona.externalDeviceAddress ?? '192.168.1.227:38233');
     bool useExternalDevice = persona.useExternalDevice;
+    final phoneCtrl = TextEditingController(text: persona.phoneNumber ?? '');
+    bool autoSyncPhoneToDevice = persona.autoSyncPhoneToDevice;
+    bool isPurchasingPhone = false;
+    bool isTestingDevice = false;
+    Timer? otpTimer;
+    String? latestOtpCode;
+    int selectedSmsService = 924; // 924: TikTok, 395: Gmail/Google, 329: Facebook
+    String? currentOrderId = persona.smsOrderId;
     String selectedDeviceType = persona.deviceType; // 'mobile' | 'tablet'
     String? selectedAvd = persona.avdName;
     final agentInfoCtrl = TextEditingController(text: persona.agentInfo ?? '');
@@ -141,12 +151,44 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     bool didFetchAvds = false;
     bool isSaving = false;
 
+    void startOtpPolling(String orderId, StateSetter setDialogState, BuildContext dialogCtx) {
+      otpTimer?.cancel();
+      otpTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+        try {
+          final res = await SmsPoolService().checkSms(orderId: orderId);
+          final code = res['sms']?.toString() ?? res['code']?.toString() ?? '';
+          if (code.isNotEmpty && code != '0') {
+            timer.cancel();
+            otpTimer = null;
+            if (dialogCtx.mounted) {
+              setDialogState(() {
+                latestOtpCode = code;
+              });
+              // Tự động copy mã OTP vào Clipboard máy tính
+              Clipboard.setData(ClipboardData(text: code));
+              // Tự động bắn mã OTP vào Clipboard điện thoại ngoại vi nếu đang kết nối
+              if (useExternalDevice && externalDeviceCtrl.text.trim().isNotEmpty) {
+                try {
+                  final devAddr = externalDeviceCtrl.text.trim();
+                  _socks5Service.syncPhoneNumberToDevice(devAddr, code, ownerName: 'Mã OTP');
+                } catch (_) {}
+              }
+              AppToast.success(dialogCtx, 'Đã nhận mã OTP: $code (Đã copy vào bộ nhớ tạm)!');
+            }
+          }
+        } catch (_) {}
+      });
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) {
           if (!didFetchAvds) {
             didFetchAvds = true;
+            if (currentOrderId != null && currentOrderId!.isNotEmpty && latestOtpCode == null) {
+              startOtpPolling(currentOrderId!, setDialogState, dialogCtx);
+            }
             _socks5Service.getAvailableAvds().then((avds) {
               if (dialogCtx.mounted) {
                 setDialogState(() {
@@ -517,17 +559,74 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                       style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
                                     ),
                                     const SizedBox(height: 5),
-                                    SizedBox(
-                                      height: 38,
-                                      child: TextField(
-                                        controller: externalDeviceCtrl,
-                                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.accent),
-                                        decoration: const InputDecoration(
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                          prefixIcon: Icon(Icons.settings_ethernet_rounded, size: 16),
-                                          hintText: '192.168.1.227:38233',
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 36,
+                                            child: TextField(
+                                              controller: externalDeviceCtrl,
+                                              style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.accent),
+                                              decoration: const InputDecoration(
+                                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                                prefixIcon: Icon(Icons.settings_ethernet_rounded, size: 16),
+                                                hintText: '192.168.1.227:38233',
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        const SizedBox(width: 8),
+                                        Tooltip(
+                                          message: 'Kiểm tra kết nối ADB WiFi tới thiết bị ngoại vi',
+                                          child: ElevatedButton.icon(
+                                            onPressed: isTestingDevice
+                                                ? null
+                                                : () async {
+                                                    final devAddr = externalDeviceCtrl.text.trim();
+                                                    if (devAddr.isEmpty) {
+                                                      AppToast.warning(dialogCtx, 'Vui lòng nhập địa chỉ thiết bị ngoại vi (IP:Port)');
+                                                      return;
+                                                    }
+                                                    setDialogState(() {
+                                                      isTestingDevice = true;
+                                                    });
+                                                    try {
+                                                      await _socks5Service.connectRemoteDevice(devAddr);
+                                                      if (dialogCtx.mounted) {
+                                                        AppToast.success(dialogCtx, 'Kết nối thành công tới thiết bị ngoại vi ($devAddr)!');
+                                                      }
+                                                    } catch (e) {
+                                                      if (dialogCtx.mounted) {
+                                                        AppToast.error(dialogCtx, 'Không thể kết nối tới $devAddr: $e');
+                                                      }
+                                                    } finally {
+                                                      setDialogState(() {
+                                                        isTestingDevice = false;
+                                                      });
+                                                    }
+                                                  },
+                                            icon: isTestingDevice
+                                                ? const SizedBox(
+                                                    width: 12,
+                                                    height: 12,
+                                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
+                                                  )
+                                                : const Icon(Icons.network_check_rounded, size: 14),
+                                            label: Text(
+                                              isTestingDevice ? 'Đang test...' : 'Test kết nối',
+                                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                            ),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.primary,
+                                              foregroundColor: const Color(0xFF070B14),
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ] else ...[
                                     const SizedBox(height: 12),
@@ -743,6 +842,274 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                 ],
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            // Cấu hình Số điện thoại & Thuê số OTP
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBg,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.borderDark),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Row(
+                                        children: [
+                                          Icon(Icons.phone_android_rounded, size: 14, color: AppColors.accent),
+                                          SizedBox(width: 6),
+                                          Text(
+                                            'Gắn số điện thoại vào thiết bị',
+                                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                          ),
+                                        ],
+                                      ),
+                                      SizedBox(
+                                        height: 22,
+                                        child: Switch(
+                                          value: autoSyncPhoneToDevice,
+                                          activeThumbColor: AppColors.accent,
+                                          onChanged: (val) {
+                                            setDialogState(() {
+                                              autoSyncPhoneToDevice = val;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Tự động ghi số điện thoại vào User Profile thiết bị ngoại vi qua ADB khi kết nối',
+                                    style: TextStyle(fontSize: 10, color: AppColors.textDim),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Dropdown chọn dịch vụ SMSPool (không có nhãn Dịch vụ:)
+                                  Container(
+                                    height: 34,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.sidebarBg,
+                                      borderRadius: BorderRadius.circular(5),
+                                      border: Border.all(color: AppColors.borderDark),
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<int>(
+                                        value: selectedSmsService,
+                                        dropdownColor: AppColors.sidebarBg,
+                                        isDense: true,
+                                        isExpanded: true,
+                                        icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
+                                        style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
+                                        items: const [
+                                          DropdownMenuItem(value: 924, child: Text(r'TikTok ($0.07)')),
+                                          DropdownMenuItem(value: 395, child: Text(r'Google / Gmail ($0.30)')),
+                                          DropdownMenuItem(value: 329, child: Text(r'Facebook ($0.08)')),
+                                          DropdownMenuItem(value: 589, child: Text(r'Telegram ($0.15)')),
+                                        ],
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            setDialogState(() {
+                                              selectedSmsService = val;
+                                            });
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: 36,
+                                          child: TextField(
+                                            controller: phoneCtrl,
+                                            style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.textWhite),
+                                            decoration: const InputDecoration(
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                              prefixIcon: Icon(Icons.dialpad_rounded, size: 15),
+                                              hintText: '+84968661631',
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Tooltip(
+                                        message: 'Thuê số Việt Nam (+84) cho dịch vụ đã chọn',
+                                        child: ElevatedButton.icon(
+                                          onPressed: isPurchasingPhone
+                                              ? null
+                                              : () async {
+                                                  // BẮT BUỘC: Nếu bật chế độ thiết bị ngoại vi, kiểm tra kết nối thiết bị trước rồi mới cho thuê số
+                                                  if (useExternalDevice) {
+                                                    final devAddr = externalDeviceCtrl.text.trim();
+                                                    if (devAddr.isEmpty) {
+                                                      AppToast.warning(dialogCtx, 'Chưa nhập địa chỉ thiết bị ngoại vi! Vui lòng nhập IP:Port trước khi thuê số.');
+                                                      return;
+                                                    }
+                                                    setDialogState(() {
+                                                      isPurchasingPhone = true;
+                                                    });
+                                                    try {
+                                                      await _socks5Service.connectRemoteDevice(devAddr);
+                                                    } catch (e) {
+                                                      setDialogState(() {
+                                                        isPurchasingPhone = false;
+                                                      });
+                                                      if (dialogCtx.mounted) {
+                                                        AppToast.error(dialogCtx, 'Chưa kết nối được với Thiết bị ngoại vi ($devAddr)! Vui lòng kiểm tra WiFi ADB trên máy.');
+                                                      }
+                                                      return;
+                                                    }
+                                                  } else {
+                                                    setDialogState(() {
+                                                      isPurchasingPhone = true;
+                                                    });
+                                                  }
+
+                                                  try {
+                                                    // country: 11 là ID của Việt Nam trên SMSPool (đầu số quốc tế +84)
+                                                    final res = await SmsPoolService().orderSmsNumber(
+                                                      country: 11,
+                                                      service: selectedSmsService,
+                                                    );
+                                                    if (res['success'] == 1) {
+                                                      final rawNum = res['phonenumber']?.toString() ?? res['number']?.toString() ?? '';
+                                                      final formattedNum = rawNum.startsWith('+') ? rawNum : (rawNum.startsWith('84') ? '+$rawNum' : '+84$rawNum');
+                                                      phoneCtrl.text = formattedNum;
+                                                      currentOrderId = res['order_id']?.toString() ?? res['orderid']?.toString();
+                                                      autoSyncPhoneToDevice = true; // Tự động bật switch khi vừa mua số mới
+                                                      latestOtpCode = null;
+                                                      if (currentOrderId != null && currentOrderId!.isNotEmpty && dialogCtx.mounted) {
+                                                        startOtpPolling(currentOrderId!, setDialogState, dialogCtx);
+                                                      }
+
+                                                      // Nếu máy ngoại vi đang kết nối, đồng bộ ngay lập tức
+                                                      if (useExternalDevice && externalDeviceCtrl.text.trim().isNotEmpty) {
+                                                        try {
+                                                          await _socks5Service.syncPhoneNumberToDevice(
+                                                            externalDeviceCtrl.text.trim(),
+                                                            formattedNum,
+                                                            ownerName: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : 'Chủ Thiết Bị',
+                                                          );
+                                                        } catch (_) {}
+                                                      }
+
+                                                      if (dialogCtx.mounted) {
+                                                        AppToast.success(dialogCtx, 'Đã thuê số VN (+84): $formattedNum và gắn vào máy!');
+                                                      }
+                                                    } else {
+                                                      if (dialogCtx.mounted) {
+                                                        AppToast.error(dialogCtx, 'Chưa thể thuê đầu số này.');
+                                                      }
+                                                    }
+                                                  } catch (e) {
+                                                    if (dialogCtx.mounted) {
+                                                      AppToast.error(dialogCtx, 'Chưa thể thuê đầu số này.');
+                                                    }
+                                                  } finally {
+                                                    setDialogState(() {
+                                                      isPurchasingPhone = false;
+                                                    });
+                                                  }
+                                                },
+                                          icon: isPurchasingPhone
+                                              ? const SizedBox(
+                                                  width: 12,
+                                                  height: 12,
+                                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                                                )
+                                              : const Icon(Icons.shopping_cart_rounded, size: 13),
+                                          label: Text(
+                                            isPurchasingPhone ? 'Đang thuê...' : 'Thuê số VN',
+                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF0284C7),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  // Phần kiểm tra mã OTP khi đã có orderId từ SMSPool
+                                  if (currentOrderId != null && currentOrderId!.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF0F172A),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: latestOtpCode != null ? const Color(0xFF10B981) : AppColors.borderDark,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Đơn thuê: $currentOrderId',
+                                                  style: const TextStyle(fontSize: 10, color: AppColors.textDim, fontFamily: 'monospace'),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                if (latestOtpCode != null) ...[
+                                                  SelectableText(
+                                                    'Mã OTP: $latestOtpCode',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Color(0xFF10B981),
+                                                    ),
+                                                  ),
+                                                ] else ...[
+                                                  const Row(
+                                                    children: [
+                                                      SizedBox(
+                                                        width: 10,
+                                                        height: 10,
+                                                        child: CircularProgressIndicator(
+                                                          strokeWidth: 1.5,
+                                                          color: Color(0xFFF59E0B),
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 6),
+                                                      Text(
+                                                        'Đang chờ tin nhắn OTP tự động...',
+                                                        style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B)),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          if (latestOtpCode != null)
+                                            IconButton(
+                                              tooltip: 'Sao chép OTP',
+                                              icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF10B981)),
+                                              onPressed: () {
+                                                Clipboard.setData(ClipboardData(text: latestOtpCode!));
+                                                AppToast.info(dialogCtx, 'Đã sao chép: $latestOtpCode');
+                                              },
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -782,6 +1149,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     avdName: selectedAvd,
                                     deviceType: selectedDeviceType,
                                     agentInfo: agentInfoCtrl.text.trim(),
+                                    phoneNumber: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
+                                    autoSyncPhoneToDevice: autoSyncPhoneToDevice,
+                                    smsOrderId: currentOrderId,
                                   );
 
                                   setDialogState(() {
@@ -839,7 +1209,10 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
           );
         },
       ),
-    );
+    ).then((_) {
+      otpTimer?.cancel();
+      otpTimer = null;
+    });
   }
 
 
@@ -1302,6 +1675,31 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         ),
                                       ),
                                     ],
+                                    if (persona.phoneNumber != null && persona.phoneNumber!.isNotEmpty) ...[
+                                      const SizedBox(width: 4),
+                                      Tooltip(
+                                        message: 'Số điện thoại: ${persona.phoneNumber}${persona.autoSyncPhoneToDevice ? ' (Đã bật tự động gắn vào máy)' : ''}',
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(3),
+                                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5), width: 0.6),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.phone_rounded, size: 9, color: Color(0xFF34D399)),
+                                              const SizedBox(width: 2),
+                                              Text(
+                                                persona.phoneNumber!,
+                                                style: const TextStyle(fontSize: 8.5, color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ],
                               ),
@@ -1669,6 +2067,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                   remoteDeviceAddress: targetRemoteDevice,
                                   avdName: persona?.avdName,
                                   deviceType: persona?.deviceType ?? 'mobile',
+                                  phoneNumber: persona?.phoneNumber,
+                                  autoSyncPhone: persona?.autoSyncPhoneToDevice ?? false,
                                 );
                                 if (mounted) {
                                   AppToast.success(

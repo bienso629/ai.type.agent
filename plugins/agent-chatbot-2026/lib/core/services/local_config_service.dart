@@ -37,7 +37,7 @@ class LocalConfigService {
     'ssh_port': 22,
     'proxy_api_key': '',
     'proxy_base_url': 'https://api.mitom.ai/v1',
-    'ai_model': 'glm-5.3',
+    'ai_model': 'gemini-2.5-flash',
     'remote_work_dir': '/root',
     'api_port': 8000,
     'secret_token': 'super_secret_token_123',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
+import '../core/services/cli_scanner_service.dart';
 import '../core/services/native_ssh_service.dart';
 import '../core/services/storage_service.dart';
 import '../models/server_model.dart';
@@ -8,18 +9,26 @@ class ServerProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
   final StorageService _storage = StorageService();
   final NativeSshService _ssh = NativeSshService();
+  final CliScannerService _cliScanner = CliScannerService();
 
   List<ServerModel> _servers = [];
   ServerModel? _selectedServer;
-  String _globalAiModel = 'glm-5.3';
+  String _cloudAiModel = 'glm-5.3';
+  String _activeAgent = 'glm-5.3';
+  List<LocalCliAgent> _installedCliAgents = [];
   bool _isLoading = false;
+  bool _isScanningCliAgents = false;
   String? _error;
   final Map<String, List<String>> _serverIpsMap = {};
   final Set<String> _loadingIpsServerIds = {};
 
   List<ServerModel> get servers => _servers;
   ServerModel? get selectedServer => _selectedServer;
-  String get globalAiModel => _globalAiModel;
+  String get globalAiModel => _cloudAiModel;
+  String get cloudAiModel => _cloudAiModel;
+  String get activeAgent => _activeAgent;
+  List<LocalCliAgent> get installedCliAgents => _installedCliAgents;
+  bool get isScanningCliAgents => _isScanningCliAgents;
   Map<String, List<String>> get serverIpsMap => _serverIpsMap;
 
   List<String> getIpsForServer(ServerModel server) {
@@ -33,38 +42,88 @@ class ServerProvider extends ChangeNotifier {
   }
 
   bool isLoadingIps(String serverId) => _loadingIpsServerIds.contains(serverId);
+
   String get currentAiModel {
-    if (_globalAiModel.isNotEmpty) {
-      return _globalAiModel;
+    if (_activeAgent.isNotEmpty) {
+      return _activeAgent;
+    }
+    if (_cloudAiModel.isNotEmpty) {
+      return _cloudAiModel;
     }
     if (_selectedServer != null && _selectedServer!.aiModel.isNotEmpty) {
       return _selectedServer!.aiModel;
     }
     return 'glm-5.3';
   }
+
   bool get isLoading => _isLoading;
   String? get error => _error;
 
   ServerProvider() {
     loadServers();
     loadGlobalConfig();
+    scanCliAgents();
+  }
+
+  bool _isCli(String name) {
+    final n = name.toLowerCase();
+    return n.contains('cli') || n == 'agy' || n == 'claude' || n == 'gemini';
+  }
+
+  Future<void> scanCliAgents({bool forceRefresh = false}) async {
+    if (_installedCliAgents.isNotEmpty && !forceRefresh) return;
+    _isScanningCliAgents = true;
+    notifyListeners();
+
+    try {
+      _installedCliAgents = await _cliScanner.scanInstalledAgents();
+    } catch (_) {} finally {
+      _isScanningCliAgents = false;
+      notifyListeners();
+    }
   }
 
   Future<void> loadGlobalConfig() async {
     try {
       final cfg = await _api.getConfig();
       if (cfg['ai_model'] != null && cfg['ai_model'].toString().isNotEmpty) {
-        _globalAiModel = cfg['ai_model'].toString();
-        notifyListeners();
+        final m = cfg['ai_model'].toString();
+        if (_isCli(m)) {
+          _cloudAiModel = 'glm-5.3';
+          _activeAgent = m;
+        } else {
+          _cloudAiModel = m;
+        }
       }
+      if (cfg['active_agent_engine'] != null && cfg['active_agent_engine'].toString().isNotEmpty) {
+        _activeAgent = cfg['active_agent_engine'].toString();
+      } else {
+        _activeAgent = _cloudAiModel;
+      }
+      notifyListeners();
     } catch (_) {}
   }
 
-  void setGlobalAiModel(String model) {
-    if (model.isNotEmpty) {
-      _globalAiModel = model;
+  Future<void> setActiveAgent(String agent) async {
+    if (agent.isNotEmpty) {
+      _activeAgent = agent;
+      if (!_isCli(agent)) {
+        _cloudAiModel = agent;
+      }
       notifyListeners();
+      try {
+        await _storage.setDefaultModel(agent);
+        if (_isCli(agent)) {
+          await _api.saveConfig({'active_agent_engine': agent});
+        } else {
+          await _api.saveConfig({'active_agent_engine': agent, 'ai_model': agent});
+        }
+      } catch (_) {}
     }
+  }
+
+  void setGlobalAiModel(String model) {
+    setActiveAgent(model);
   }
 
   Future<void> loadServers() async {

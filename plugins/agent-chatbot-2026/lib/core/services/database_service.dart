@@ -335,7 +335,7 @@ class DatabaseService {
             sessionId: r['session_id']?.toString() ?? sessionId,
             role: r['role']?.toString() ?? 'assistant',
             content: decContent,
-            model: r['model']?.toString() ?? 'glm-5.3',
+            model: r['model']?.toString() ?? 'gemini-2.5-flash',
             createdAt: DateTime.tryParse(r['created_at']?.toString() ?? ''),
             toolExecutions: toolExecs,
             attachments: attachments,

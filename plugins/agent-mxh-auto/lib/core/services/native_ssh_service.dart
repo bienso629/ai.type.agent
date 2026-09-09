@@ -273,7 +273,7 @@ systemctl enable --now multi-ip-socks5.service
       await client.authenticated;
 
       final res = await client.run(
-        "ip -4 -o addr show scope global 2>/dev/null | awk '{print \$4}' | cut -d/ -f1"
+        r"ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1"
       ).timeout(const Duration(seconds: 8));
       client.close();
 

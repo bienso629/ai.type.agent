@@ -52,7 +52,7 @@ class AppLogoWidget extends StatelessWidget {
           height: height,
           fit: fit,
           errorBuilder: (context, error, stackTrace) => Image.asset(
-            'assets/logo.jpg',
+            'assets/icon.png',
             width: width,
             height: height,
             fit: fit,
@@ -61,7 +61,7 @@ class AppLogoWidget extends StatelessWidget {
         );
       } else {
         imageContent = Image.asset(
-          'assets/logo.jpg',
+          'assets/icon.png',
           width: width,
           height: height,
           fit: fit,
@@ -70,7 +70,7 @@ class AppLogoWidget extends StatelessWidget {
       }
     } else {
       imageContent = Image.asset(
-        'assets/logo.jpg',
+        'assets/icon.png',
         width: width,
         height: height,
         fit: fit,

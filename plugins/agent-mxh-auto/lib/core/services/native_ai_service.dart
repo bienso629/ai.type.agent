@@ -53,18 +53,8 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
     () async {
       try {
         final cfg = await _configService.loadConfig();
-        var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
-        if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
-          onError('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
-          return;
-        }
-        final apiKey = cfg['proxy_api_key']?.toString() ?? '';
         final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
         final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
-
-        if (baseUrl.endsWith('/')) {
-          baseUrl = baseUrl.substring(0, baseUrl.length - 1);
-        }
 
         // Save user message to database
         final userMsg = ChatMessageModel(
@@ -76,6 +66,45 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
           createdAt: DateTime.now(),
         );
         await _dbService.insertMessage(userMsg);
+
+        // If user selected a CLI agent (e.g. antigravity-cli, claude-cli, gemini-cli)
+        if (_isCliModel(targetModel)) {
+          await _runCliAgent(
+            sessionId: sessionId,
+            cliName: targetModel,
+            prompt: message,
+            history: history,
+            workingDir: workingDir,
+            onToken: onToken,
+            onStatus: onStatus,
+            onTool: onTool,
+            onDone: (reply) async {
+              final assistantMsg = ChatMessageModel(
+                sessionId: sessionId,
+                role: 'assistant',
+                content: reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.',
+                model: targetModel,
+                createdAt: DateTime.now(),
+              );
+              await _dbService.insertMessage(assistantMsg);
+              onDone(reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.');
+            },
+            onError: onError,
+            isCancelled: () => isCancelled,
+          );
+          return;
+        }
+
+        var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
+        if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
+          onError('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
+          return;
+        }
+        final apiKey = cfg['proxy_api_key']?.toString() ?? '';
+
+        if (baseUrl.endsWith('/')) {
+          baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+        }
 
         // Build System Prompt
         String sysPrompt = systemPromptBase;
@@ -631,5 +660,352 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
     };
 
     return controller.stream.listen((_) {});
+  }
+
+  bool _isCliModel(String model) {
+    final m = model.toLowerCase();
+    return m.contains('cli') || m == 'agy' || m == 'claude' || m == 'gemini';
+  }
+
+  String _findCliExecutable(String cliName) {
+    final home = Platform.environment['HOME'] ?? '';
+    final m = cliName.toLowerCase();
+
+    if (m.contains('antigravity') || m == 'agy') {
+      final userBin = '$home/.local/bin/agy';
+      if (File(userBin).existsSync()) return userBin;
+      final binDir = '$home/bin/agy';
+      if (File(binDir).existsSync()) return binDir;
+      final usrLocal = '/usr/local/bin/agy';
+      if (File(usrLocal).existsSync()) return usrLocal;
+      final snapBin = '/snap/bin/antigravity-cli';
+      if (File(snapBin).existsSync()) return snapBin;
+      return 'agy';
+    }
+
+    if (m.contains('claude')) {
+      final nvmDir = '$home/.nvm/versions/node';
+      if (Directory(nvmDir).existsSync()) {
+        try {
+          final entries = Directory(nvmDir).listSync();
+          for (final e in entries) {
+            final claudePath = '${e.path}/bin/claude';
+            if (File(claudePath).existsSync()) return claudePath;
+          }
+        } catch (_) {}
+      }
+      final localBin = '$home/.local/bin/claude';
+      if (File(localBin).existsSync()) return localBin;
+      final usrLocal = '/usr/local/bin/claude';
+      if (File(usrLocal).existsSync()) return usrLocal;
+      return 'claude';
+    }
+
+    if (m.contains('gemini')) {
+      final localBin = '$home/.local/bin/gemini';
+      if (File(localBin).existsSync()) return localBin;
+      final usrLocal = '/usr/local/bin/gemini';
+      if (File(usrLocal).existsSync()) return usrLocal;
+      return 'gemini';
+    }
+
+    return cliName;
+  }
+
+  Future<void> _runCliAgent({
+    required String sessionId,
+    required String cliName,
+    required String prompt,
+    List<Map<String, dynamic>>? history,
+    String? workingDir,
+    required void Function(String token) onToken,
+    required void Function(String status) onStatus,
+    required void Function(ToolExecutionItem tool) onTool,
+    required void Function(String fullReply) onDone,
+    required void Function(dynamic error) onError,
+    required bool Function() isCancelled,
+  }) async {
+    final exe = _findCliExecutable(cliName);
+    onStatus('Đang khởi chạy $cliName agent...');
+
+    final cfg = await _configService.loadConfig();
+    final customPromptTemplate = cfg['custom_prompt']?.toString();
+
+    // Check persistent conversation ID
+    String? cliConvId = await _dbService.getCliConversationId(sessionId);
+
+    try {
+      final workDir = (workingDir != null && Directory(workingDir).existsSync())
+          ? workingDir
+          : Directory.current.path;
+
+      final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
+          ? customPromptTemplate.trim()
+          : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
+      final cleanPrompt = '$prompt\n\n$promptSuffix';
+
+      final m = cliName.toLowerCase();
+
+      // Build contextual prompt for CLI models that do not support multi-turn session IDs
+      String contextualPrompt = cleanPrompt;
+      if (m.contains('gemini') || (!m.contains('agy') && !m.contains('antigravity') && !m.contains('claude'))) {
+        final recentHistory = (history != null && history.isNotEmpty)
+            ? history
+            : (await _dbService.getMessages(sessionId, limit: 10)).messages.map((e) => {'role': e.role, 'content': e.content}).toList();
+        final pastMessages = recentHistory.where((h) => (h['content']?.toString().trim().isNotEmpty ?? false) && h['content'] != prompt).toList();
+        if (pastMessages.isNotEmpty) {
+          final historyBuf = StringBuffer();
+          historyBuf.writeln('=== LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ ===');
+          for (final h in pastMessages) {
+            final roleName = (h['role'] == 'user') ? 'Người dùng' : 'Trợ lý AI';
+            historyBuf.writeln('[$roleName]: ${h['content']}');
+          }
+          historyBuf.writeln('=== KẾT THÚC LỊCH SỬ HỘI THOẠI ===\n');
+          contextualPrompt = '${historyBuf.toString()}\n[Câu hỏi / Yêu cầu mới nhất của Người dùng]:\n$prompt\n\n$promptSuffix';
+        }
+      }
+
+      // Augmented PATH environment so subprocesses are always found
+      final env = Map<String, String>.from(Platform.environment);
+      final home = Platform.environment['HOME'] ?? '';
+      final currentPath = env['PATH'] ?? '';
+      final extraPaths = <String>[
+        '$home/.local/bin',
+        '$home/bin',
+        '/usr/local/bin',
+        '/snap/bin',
+      ];
+      final nvmDir = Directory('$home/.nvm/versions/node');
+      if (nvmDir.existsSync()) {
+        try {
+          for (final dir in nvmDir.listSync()) {
+            final binPath = '${dir.path}/bin';
+            if (Directory(binPath).existsSync()) {
+              extraPaths.add(binPath);
+            }
+          }
+        } catch (_) {}
+      }
+      env['PATH'] = '${extraPaths.join(':')}:$currentPath';
+      if (home.isNotEmpty) env['HOME'] = home;
+
+      List<String> args;
+      if (m.contains('claude')) {
+        if (cliConvId != null && cliConvId.isNotEmpty) {
+          args = ['--session-id', cliConvId, '-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+        } else {
+          args = ['-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+        }
+      } else if (m.contains('antigravity') || m == 'agy') {
+        if (cliConvId != null && cliConvId.isNotEmpty) {
+          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+        } else {
+          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+        }
+      } else if (m.contains('gemini')) {
+        args = ['-p', contextualPrompt];
+      } else {
+        args = ['-p', contextualPrompt, '--dangerously-skip-permissions'];
+      }
+
+      onStatus('AI Agent $cliName đang phân tích và thực thi tác vụ...');
+      final process = await Process.start(
+        exe,
+        args,
+        workingDirectory: workDir,
+        environment: env,
+        runInShell: false,
+      );
+
+      final fullOutput = StringBuffer();
+      final rawStdout = StringBuffer();
+      final errOutput = StringBuffer();
+      bool hasFinished = false;
+
+      void finishSession([String? fallbackReply]) {
+        if (hasFinished) return;
+        hasFinished = true;
+        final result = fullOutput.toString().trim();
+        onDone(result.isNotEmpty ? result : (fallbackReply ?? 'Đã hoàn tất tác vụ với $cliName.'));
+        try {
+          process.kill();
+        } catch (_) {}
+      }
+
+      // Close stdin asynchronously
+      process.stdin.close().catchError((_) {});
+
+      process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        if (isCancelled() || hasFinished) return;
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return;
+        rawStdout.writeln(line);
+
+        try {
+          final json = jsonDecode(trimmed);
+          if (json is Map<String, dynamic>) {
+            final emittedConvId = json['conversation_id']?.toString() ??
+                (json['result'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
+                (json['step_update'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
+                json['session_id']?.toString();
+            if (emittedConvId != null && emittedConvId.isNotEmpty && emittedConvId != cliConvId) {
+              cliConvId = emittedConvId;
+              _dbService.setCliConversationId(sessionId, emittedConvId);
+            }
+
+            // 1. Antigravity CLI (agy) streaming protocol
+            if (json.containsKey('event')) {
+              final event = json['event'];
+              if (event == 'step_update') {
+                final step = json['step_update'] as Map<String, dynamic>?;
+                final stepType = step?['step_type']?.toString();
+                final textDelta = step?['text_delta']?.toString() ?? step?['content']?.toString() ?? step?['text']?.toString();
+                final errorMsg = step?['error']?.toString();
+
+                if (textDelta != null && textDelta.isNotEmpty) {
+                  fullOutput.write(textDelta);
+                  onToken(textDelta);
+                } else if (errorMsg != null && errorMsg.isNotEmpty) {
+                  fullOutput.write('\n[Lỗi]: $errorMsg\n');
+                  onToken('\n[Lỗi]: $errorMsg\n');
+                } else if (stepType == 'tool' || stepType == 'tool_call') {
+                  final state = step?['state']?.toString();
+                  final toolInfo = step?['tool_info'] as Map<String, dynamic>?;
+                  final toolParams = toolInfo?['parameters'] as Map<String, dynamic>? ??
+                      step?['tool_args'] as Map<String, dynamic>? ??
+                      step?['parameters'] as Map<String, dynamic>? ??
+                      step?['args'] as Map<String, dynamic>?;
+                  final toolName = step?['tool_name']?.toString() ?? toolInfo?['name']?.toString() ?? 'công cụ';
+
+                  String cmdDesc = '';
+                  if (toolParams != null) {
+                    if (toolParams['CommandLine'] != null) {
+                      cmdDesc = toolParams['CommandLine'].toString();
+                    } else if (toolParams['TargetFile'] != null) {
+                      cmdDesc = '${toolParams['Instruction'] ?? 'Sửa file'}: ${toolParams['TargetFile']}';
+                    } else if (toolParams['AbsolutePath'] != null) {
+                      cmdDesc = 'Đọc file: ${toolParams['AbsolutePath']}';
+                    } else if (toolParams['Query'] != null) {
+                      cmdDesc = 'Tìm "${toolParams['Query']}" trong ${toolParams['SearchPath'] ?? ''}';
+                    } else if (toolParams['DirectoryPath'] != null) {
+                      cmdDesc = 'Xem thư mục: ${toolParams['DirectoryPath']}';
+                    } else if (toolParams['toolAction'] != null) {
+                      cmdDesc = toolParams['toolAction'].toString();
+                    } else if (toolParams['command'] != null) {
+                      cmdDesc = toolParams['command'].toString();
+                    }
+                  }
+                  if (cmdDesc.isEmpty) {
+                    cmdDesc = toolName;
+                  }
+
+                  if (state == 'ACTIVE') {
+                    onStatus('Đang thực thi $toolName: $cmdDesc...');
+                  } else {
+                    final output = toolInfo?['output']?.toString() ?? step?['output']?.toString() ?? step?['tool_result']?.toString() ?? '';
+                    onTool(ToolExecutionItem(
+                      tool: toolName,
+                      command: cmdDesc,
+                      output: output,
+                    ));
+                  }
+                } else if (stepType == 'thought' || stepType == 'thinking') {
+                  onStatus('AI đang suy nghĩ và lập kế hoạch...');
+                }
+              } else if (event == 'result') {
+                final res = json['result'] as Map<String, dynamic>?;
+                final resp = res?['response']?.toString();
+                final status = res?['status']?.toString();
+                final errorMsg = res?['error']?.toString();
+                if (resp != null && resp.isNotEmpty && fullOutput.isEmpty) {
+                  fullOutput.write(resp);
+                  onToken(resp);
+                } else if (status == 'ERROR' && errorMsg != null && errorMsg.isNotEmpty && fullOutput.isEmpty) {
+                  fullOutput.write('\n[Lỗi Antigravity]: $errorMsg\n');
+                  onToken('\n[Lỗi Antigravity]: $errorMsg\n');
+                }
+              } else if (event == 'error') {
+                final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
+                if (err.isNotEmpty && fullOutput.isEmpty) {
+                  fullOutput.write('\n[Lỗi Antigravity]: $err\n');
+                  onToken('\n[Lỗi Antigravity]: $err\n');
+                }
+              }
+              return;
+            }
+
+            // 2. Claude Code CLI streaming protocol
+            if (json.containsKey('type')) {
+              final type = json['type'];
+              if (type == 'content_block_delta') {
+                final delta = json['delta'] as Map<String, dynamic>?;
+                final text = delta?['text']?.toString();
+                if (text != null && text.isNotEmpty) {
+                  fullOutput.write(text);
+                  onToken(text);
+                }
+              } else if (type == 'result') {
+                final result = json['result']?.toString();
+                if (result != null && fullOutput.isEmpty) {
+                  fullOutput.write(result);
+                  onToken(result);
+                }
+              } else if (type == 'error') {
+                final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
+                if (err.isNotEmpty) {
+                  fullOutput.write('\n[Lỗi Claude]: $err\n');
+                  onToken('\n[Lỗi Claude]: $err\n');
+                }
+              } else if (type == 'assistant') {
+                final msg = json['message'] as Map<String, dynamic>?;
+                final contents = msg?['content'] as List<dynamic>?;
+                if (contents != null) {
+                  for (final c in contents) {
+                    if (c is Map && c['type'] == 'text') {
+                      final t = c['text']?.toString();
+                      if (t != null && fullOutput.isEmpty) {
+                        fullOutput.write(t);
+                        onToken(t);
+                      }
+                    }
+                  }
+                }
+              }
+              return;
+            }
+          }
+        } catch (_) {
+          // Plain text fallback
+        }
+
+        fullOutput.writeln(line);
+        onToken('$line\n');
+      });
+
+      process.stderr.transform(utf8.decoder).listen((data) {
+        if (!isCancelled() && !hasFinished) {
+          errOutput.write(data);
+        }
+      });
+
+      final exitCode = await process.exitCode;
+      if (!hasFinished) {
+        if (exitCode == 0 || fullOutput.isNotEmpty) {
+          finishSession();
+        } else {
+          final errStr = errOutput.toString().trim();
+          final rawStr = rawStdout.toString().trim();
+          final displayErr = errStr.isNotEmpty
+              ? errStr
+              : (rawStr.isNotEmpty ? rawStr : 'Không có phản hồi từ tiến trình (Mã thoát: $exitCode)');
+          onError('Agent $cliName báo lỗi (mã $exitCode): $displayErr');
+        }
+      }
+    } catch (e) {
+      onError('Không thể chạy CLI $cliName: $e. Hãy kiểm tra đường dẫn hoặc quyền thực thi.');
+    }
   }
 }

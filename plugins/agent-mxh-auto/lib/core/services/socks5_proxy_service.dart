@@ -126,6 +126,7 @@ class Socks5ProxyService extends ChangeNotifier {
       final port = session?.emulatorPort;
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final needleProfile = 'device_profiles/ip_$sanitizedIp';
+      final needlePersonaAvd = 'persona_$sanitizedIp';
       final needlePort = port != null ? '-port\x00$port' : null;
       final procDir = Directory('/proc');
       if (procDir.existsSync()) {
@@ -139,7 +140,7 @@ class Socks5ProxyService extends ChangeNotifier {
             if (cmdFile.existsSync()) {
               final bytes = cmdFile.readAsBytesSync();
               final cmd = String.fromCharCodes(bytes);
-              final matchesProfile = cmd.contains(needleProfile);
+              final matchesProfile = cmd.contains(needleProfile) || cmd.contains(needlePersonaAvd);
               final matchesPort = needlePort != null && cmd.contains(needlePort);
               if ((matchesProfile || matchesPort) && !cmd.contains('python') && !cmd.contains('pgrep')) {
                 return true;
@@ -482,6 +483,98 @@ class Socks5ProxyService extends ChangeNotifier {
     return [];
   }
 
+  /// Tìm binary qemu-img đi kèm SDK Emulator
+  String? _findQemuImgExecutable() {
+    final home = Platform.environment['HOME'] ?? '';
+    final candidates = [
+      '$home/Android/Sdk/emulator/qemu-img',
+      '$home/android-sdk/emulator/qemu-img',
+      '/opt/android-sdk/emulator/qemu-img',
+      '/usr/bin/qemu-img',
+      '/usr/local/bin/qemu-img',
+      '$home/.android-sdk/emulator/qemu-img',
+    ];
+    for (final c in candidates) {
+      if (File(c).existsSync()) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  /// Tự động tạo hoặc kiểm tra AVD Clone riêng biệt cho từng IP nhân vật (Copy-on-Write overlay)
+  /// Giúp nhiều thiết bị chạy đồng thời từ 1 base AVD mà không bị lỗi file lock hoặc ngốn dung lượng đĩa
+  Future<String> _ensurePersonaCloneAvd(String baseAvd, String ip) async {
+    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final cloneAvdName = '${baseAvd}_persona_$sanitizedIp';
+
+    final baseAvdDir = Directory('$homeDir/.android/avd/$baseAvd.avd');
+    final cloneAvdDir = Directory('$homeDir/.android/avd/$cloneAvdName.avd');
+    final cloneIniFile = File('$homeDir/.android/avd/$cloneAvdName.ini');
+
+    // 1. Tạo thư mục AVD clone nếu chưa có
+    if (!cloneAvdDir.existsSync()) {
+      cloneAvdDir.createSync(recursive: true);
+    }
+
+    // 2. Tạo hoặc ghi đè file .ini trong ~/.android/avd/
+    if (!cloneIniFile.existsSync()) {
+      cloneIniFile.writeAsStringSync(
+        'avd.ini.encoding=UTF-8\n'
+        'path=${cloneAvdDir.path}\n'
+        'path.rel=avd/$cloneAvdName.avd\n'
+        'target=android-37.0\n',
+      );
+    }
+
+    // 3. Sao chép các file cấu hình quan trọng từ baseAvd sang cloneAvd
+    if (baseAvdDir.existsSync()) {
+      final configFiles = ['config.ini', 'user-settings.ini', 'emulator-user.ini', 'netsim.ini'];
+      for (final cfg in configFiles) {
+        final src = File('${baseAvdDir.path}/$cfg');
+        final dst = File('${cloneAvdDir.path}/$cfg');
+        if (src.existsSync() && !dst.existsSync()) {
+          try {
+            src.copySync(dst.path);
+          } catch (_) {}
+        }
+      }
+
+      // 4. Tạo QCOW2 overlay cho userdata nếu chưa có
+      final cloneUserdata = File('${cloneAvdDir.path}/userdata-qemu.img.qcow2');
+      final baseUserdata = File('${baseAvdDir.path}/userdata-qemu.img.qcow2');
+      if (!cloneUserdata.existsSync() && baseUserdata.existsSync()) {
+        final qemuImgBin = _findQemuImgExecutable();
+        if (qemuImgBin != null) {
+          await Process.run(qemuImgBin, [
+            'create',
+            '-f',
+            'qcow2',
+            '-b',
+            baseUserdata.path,
+            '-F',
+            'qcow2',
+            cloneUserdata.path,
+          ]);
+        }
+      }
+    }
+
+    // Dọn dẹp lock file cũ nếu có trong thư mục clone
+    try {
+      for (final f in cloneAvdDir.listSync()) {
+        if (f.path.endsWith('.lock')) {
+          try {
+            f.deleteSync();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    return cloneAvdName;
+  }
+
   /// Khởi chạy thiết bị Android (Emulator chuẩn Android Studio hoặc Kết nối Ngoại vi ADB WiFi)
   /// Tự động kết nối proxy SOCKS5 nếu có server, hoặc khởi chạy thiết bị độc lập nếu server null
   Future<bool> launchPersonaDevice({
@@ -491,6 +584,8 @@ class Socks5ProxyService extends ChangeNotifier {
     String? startUrl,
     String? remoteDeviceAddress,
     String deviceType = 'mobile',
+    String? phoneNumber,
+    bool autoSyncPhone = false,
   }) async {
     Socks5Session? session;
     int? httpProxyPort;
@@ -520,6 +615,13 @@ class Socks5ProxyService extends ChangeNotifier {
       try {
         await connectRemoteDevice(addr);
         session.remoteDeviceAddress = addr;
+
+        // Tự động đồng bộ số điện thoại vào User Profile của thiết bị ngoại vi nếu được bật switch
+        if (autoSyncPhone && phoneNumber != null && phoneNumber.trim().isNotEmpty) {
+          try {
+            await syncPhoneNumberToDevice(addr, phoneNumber.trim());
+          } catch (_) {}
+        }
 
         if (session.localPort > 0) {
           // 1. Khởi tạo HTTP Bridge cho phép truy cập từ mạng LAN (0.0.0.0) chuyển tiếp vào SOCKS5 của IP này
@@ -591,7 +693,10 @@ class Socks5ProxyService extends ChangeNotifier {
       targetAvd = avds.first;
     }
 
-    // 3. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP nếu có socks5
+    // 3. Tự động tạo AVD riêng biệt (Clone Copy-on-Write) cho IP này nếu cần chạy song song nhiều nhân vật
+    final actualAvd = await _ensurePersonaCloneAvd(targetAvd, ip);
+
+    // 4. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP nếu có socks5
     if (session.localPort > 0) {
       final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
       if (bridgeScript.existsSync()) {
@@ -630,36 +735,6 @@ class Socks5ProxyService extends ChangeNotifier {
       }
     }
 
-    // 4. Tạo thư mục dữ liệu (datadir) riêng biệt cho từng nhân vật theo IP
-    // Đảm bảo mỗi nhân vật có một thiết bị Android độc lập, không dùng chung session, app, hay data
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final personaDeviceDir = Directory('$homeDir/.tadu_ai_agent/device_profiles/ip_$sanitizedIp');
-    if (!personaDeviceDir.existsSync()) {
-      personaDeviceDir.createSync(recursive: true);
-    }
-
-    // Dọn dẹp các file lock rác trong AVD gốc và trong persona profile (nếu phiên trước bị tắt đột ngột)
-    try {
-      final avdDir = Directory('$homeDir/.android/avd/$targetAvd.avd');
-      if (avdDir.existsSync()) {
-        for (final f in avdDir.listSync()) {
-          if (f.path.endsWith('.lock')) {
-            try {
-              f.deleteSync();
-            } catch (_) {}
-          }
-        }
-      }
-      for (final f in personaDeviceDir.listSync()) {
-        if (f.path.endsWith('.lock')) {
-          try {
-            f.deleteSync();
-          } catch (_) {}
-        }
-      }
-    } catch (_) {}
-
     // 5. Cấp phát console port (chẵn) cho emulator từ 5554 đến 5584 riêng cho từng nhân vật
     int consolePort = 5554;
     for (int p = 5554; p <= 5584; p += 2) {
@@ -671,8 +746,7 @@ class Socks5ProxyService extends ChangeNotifier {
     session.emulatorPort = consolePort;
 
     final emulatorArgs = [
-      '-avd', targetAvd,
-      '-datadir', personaDeviceDir.path,
+      '-avd', actualAvd,
       if (httpProxyPort != null) ...[
         '-http-proxy', 'http://127.0.0.1:$httpProxyPort',
       ],
@@ -715,6 +789,8 @@ class Socks5ProxyService extends ChangeNotifier {
     String? startUrl,
     String? remoteDeviceAddress,
     String deviceType = 'mobile',
+    String? phoneNumber,
+    bool autoSyncPhone = false,
   }) async {
     return launchPersonaDevice(
       server: server,
@@ -723,6 +799,8 @@ class Socks5ProxyService extends ChangeNotifier {
       startUrl: startUrl,
       remoteDeviceAddress: remoteDeviceAddress,
       deviceType: deviceType,
+      phoneNumber: phoneNumber,
+      autoSyncPhone: autoSyncPhone,
     );
   }
 
@@ -831,6 +909,7 @@ class Socks5ProxyService extends ChangeNotifier {
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       await Process.run('pkill', ['-f', 'device_profiles/ip_$sanitizedIp']);
+      await Process.run('pkill', ['-f', 'persona_$sanitizedIp']);
       // Dừng emulator của port đó qua adb nếu có
       if (session?.emulatorPort != null) {
         final adbBin = await _findAdbExecutable();
@@ -969,5 +1048,87 @@ class Socks5ProxyService extends ChangeNotifier {
       }
     }
     return devices;
+  }
+
+  /// Đồng bộ số điện thoại vào thiết bị Android qua ADB (Profile chủ máy, Danh bạ chính, và Bộ nhớ tạm Clipboard)
+  Future<bool> syncPhoneNumberToDevice(String serial, String phoneNumber, {String ownerName = 'Chủ Thiết Bị'}) async {
+    try {
+      final adbBin = await _findAdbExecutable();
+      final cleanSerial = serial.trim();
+      final cleanPhone = phoneNumber.trim();
+      if (cleanPhone.isEmpty) return false;
+
+      // 1. Tự động kết nối ADB WiFi nếu chưa kết nối
+      if (cleanSerial.contains(':')) {
+        await Process.run(adbBin, ['connect', cleanSerial]);
+      }
+
+      // 2. Set số điện thoại trực tiếp vào Clipboard của điện thoại Android để người dùng dán ngay vào ô đăng ký
+      await Process.run(adbBin, [
+        '-s', cleanSerial, 'shell',
+        'cmd', 'clipboard', 'set', cleanPhone,
+      ]);
+
+      // 3. Chèn vào Danh bạ thông thường (Contacts Contract) để bất kỳ ứng dụng nào quét danh bạ cũng thấy ngay
+      await Process.run(adbBin, [
+        '-s', cleanSerial, 'shell',
+        'am', 'start', '-a', 'android.intent.action.INSERT',
+        '-t', 'vnd.android.cursor.dir/contact',
+        '-e', 'name', ownerName,
+        '-e', 'phone', cleanPhone,
+      ]);
+      // Nhấn nút BACK tự động lưu danh bạ và thoát form lưu nếu có popup
+      await Future.delayed(const Duration(milliseconds: 600));
+      await Process.run(adbBin, ['-s', cleanSerial, 'shell', 'input', 'keyevent', '4']);
+
+      // 4. Đồng bộ User Profile (Hồ sơ chủ máy) thông qua Content Provider
+      try {
+        await Process.run(adbBin, [
+          '-s', cleanSerial, 'shell',
+          'content', 'insert',
+          '--uri', 'content://com.android.contacts/profile/raw_contacts',
+          '--bind', 'account_name:s:null',
+          '--bind', 'account_type:s:null',
+        ]);
+
+        final queryRes = await Process.run(adbBin, [
+          '-s', cleanSerial, 'shell',
+          'content', 'query',
+          '--uri', 'content://com.android.contacts/profile/raw_contacts',
+          '--projection', '_id',
+        ]);
+        final queryOut = queryRes.stdout.toString();
+        String? rawContactId;
+        final match = RegExp(r'_id=(\d+)').firstMatch(queryOut);
+        if (match != null) {
+          rawContactId = match.group(1);
+        }
+        rawContactId ??= '9223372034707292161';
+
+        await Process.run(adbBin, [
+          '-s', cleanSerial, 'shell',
+          'content', 'insert',
+          '--uri', 'content://com.android.contacts/profile/data',
+          '--bind', 'raw_contact_id:l:$rawContactId',
+          '--bind', 'mimetype:s:vnd.android.cursor.item/phone_v2',
+          '--bind', 'data1:s:$cleanPhone',
+          '--bind', 'data2:i:2',
+        ]);
+
+        await Process.run(adbBin, [
+          '-s', cleanSerial, 'shell',
+          'content', 'insert',
+          '--uri', 'content://com.android.contacts/profile/data',
+          '--bind', 'raw_contact_id:l:$rawContactId',
+          '--bind', 'mimetype:s:vnd.android.cursor.item/name',
+          '--bind', 'data1:s:$ownerName',
+          '--bind', 'data2:s:$ownerName',
+        ]);
+      } catch (_) {}
+
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }

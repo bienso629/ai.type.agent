@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart' as sf_pdf;
 import 'database_service.dart';
 import 'encryption_service.dart';
 import 'local_config_service.dart';
@@ -37,7 +38,7 @@ class KnowledgeDocument {
 
   bool get isScannedPdf {
     final ext = extension.toLowerCase();
-    return ext == 'pdf' && (content.contains('OCR & Thị giác Vision AI') || content.contains('Trang PDF Scan') || content.contains('PDF DẠNG SCAN'));
+    return ext == 'pdf' && (content.contains('OCR & Thị giác Vision AI') || content.contains('Trang PDF Scan') || content.contains('PDF DẠNG SCAN') || content.contains('TÀI LIỆU PDF SCAN'));
   }
 
   String get formattedSize {
@@ -140,7 +141,7 @@ class DocumentService {
       if (db == null) return 0;
       await _ensureTable(db);
 
-      final ext = p.extension(filePath).replaceAll('.', '').toLowerCase();
+      final ext = p.extension(filePath.isNotEmpty ? filePath : name).replaceAll('.', '').toLowerCase();
       int size = 0;
       String content = '';
 
@@ -249,30 +250,186 @@ class DocumentService {
     String? filePath,
     void Function(String status)? onProgress,
   }) async {
-    if (onProgress != null) {
-      onProgress('Đang dùng AI Trí tuệ tài liệu phân tích & trích xuất $filename...');
-    }
+    int pageCount = 1;
+    String pureDartText = '';
 
-    // 1. Ưu tiên 100% dùng AI Document & Vision để trích xuất sạch sẽ, chuẩn xác cho cả Web & Online
-    final aiContent = await _analyzeDocumentWithAi(bytes, 'pdf', filename);
-    if (aiContent != null && aiContent.isNotEmpty) {
-      return '=== [TÀI LIỆU PDF: $filename (ĐÃ ĐƯỢC AI TRÍCH XUẤT CHÍNH XÁC)] ===\n$aiContent\n=== [HẾT TÀI LIỆU PDF] ===';
-    }
+    // 1. Thử trích xuất văn bản kỹ thuật số bằng Syncfusion PDF (Pure Dart - Chạy mọi nền tảng)
+    try {
+      final doc = sf_pdf.PdfDocument(inputBytes: bytes);
+      pageCount = max(1, doc.pages.count);
+      final extractor = sf_pdf.PdfTextExtractor(doc);
+      pureDartText = extractor.extractText().trim();
+      doc.dispose();
+    } catch (_) {}
 
-    // 2. Dự phòng môi trường Desktop nếu AI tạm thời mất mạng: Thử dùng công cụ hệ thống nếu có
-    if (!kIsWeb && filePath != null && filePath.isNotEmpty) {
+    // 2. Dự phòng bằng pdftotext trên Desktop nếu Syncfusion chưa bóc tách được
+    String systemText = '';
+    if (!kIsWeb && pureDartText.isEmpty) {
+      String? tempFilePath;
       try {
-        final f = File(filePath);
-        if (await f.exists()) {
-          final result = await Process.run('pdftotext', [filePath, '-']);
-          if (result.exitCode == 0) {
-            final text = result.stdout.toString().trim();
-            if (text.isNotEmpty) {
-              return '=== [TÀI LIỆU PDF: $filename] ===\n$text\n=== [HẾT TÀI LIỆU PDF] ===';
-            }
+        String targetPath = filePath ?? '';
+        if (targetPath.isEmpty || !await File(targetPath).exists()) {
+          final tempFile = File('${Directory.systemTemp.path}/doc_${DateTime.now().millisecondsSinceEpoch}_$filename');
+          await tempFile.writeAsBytes(bytes);
+          tempFilePath = tempFile.path;
+          targetPath = tempFilePath;
+        }
+
+        final result = await Process.run('pdftotext', ['-layout', targetPath, '-']);
+        if (result.exitCode == 0) {
+          systemText = result.stdout.toString().trim();
+        }
+      } catch (_) {
+      } finally {
+        if (tempFilePath != null) {
+          try {
+            await File(tempFilePath).delete();
+          } catch (_) {}
+        }
+      }
+    }
+
+    final rawBestText = pureDartText.length >= systemText.length ? pureDartText : systemText;
+
+    // 3. KIỂM TRA ĐIỀU KIỆN PDF SCAN / ẢNH CHỤP:
+    // Tài liệu PDF thông thường có văn bản đầy đủ luôn đạt ít nhất 80-150 ký tự mỗi trang.
+    // Nếu tổng số ký tự trích xuất < pageCount * 60 ký tự (ví dụ: file 14 trang mà chỉ có 100 ký tự chữ ký số):
+    // RÕ RÀNG ĐÂY LÀ PDF DẠNG SCAN (các trang chính là hình ảnh chụp, không có text layer).
+    final minExpectedChars = max(150, pageCount * 60);
+    final isScannedDocument = rawBestText.length < minExpectedChars;
+
+    if (!isScannedDocument) {
+      // Đây là tài liệu PDF có text layer đầy đủ 100%
+      return '=== [TÀI LIỆU PDF: $filename (TRÍCH XUẤT ĐẦY ĐỦ NGUYÊN VĂN TẤT CẢ CÁC TRANG)] ===\n$rawBestText\n=== [HẾT TÀI LIỆU PDF] ===';
+    }
+
+    // 4. XỬ LÝ PDF SCAN: Render từng trang thành ảnh sắc nét và chạy Vision OCR
+    if (onProgress != null) {
+      onProgress('Phát hiện PDF dạng Scan ($pageCount trang). Đang trích xuất ảnh từng trang để OCR...');
+    }
+
+    List<Uint8List> pageImages = [];
+    if (!kIsWeb) {
+      String targetPath = filePath ?? '';
+      String? tempPdfPath;
+      Directory? tempImgDir;
+      try {
+        if (targetPath.isEmpty || !await File(targetPath).exists()) {
+          final tempFile = File('${Directory.systemTemp.path}/scan_${DateTime.now().millisecondsSinceEpoch}_$filename');
+          await tempFile.writeAsBytes(bytes);
+          tempPdfPath = tempFile.path;
+          targetPath = tempPdfPath;
+        }
+
+        tempImgDir = await Directory.systemTemp.createTemp('pdf_pages_');
+        final ppmResult = await Process.run('pdftoppm', [
+          '-jpeg',
+          '-r',
+          '150',
+          targetPath,
+          p.join(tempImgDir.path, 'page'),
+        ]);
+
+        if (ppmResult.exitCode == 0) {
+          final files = tempImgDir
+              .listSync()
+              .whereType<File>()
+              .where((f) => f.path.endsWith('.jpg') || f.path.endsWith('.jpeg'))
+              .toList();
+          files.sort((a, b) => a.path.compareTo(b.path));
+          for (final f in files) {
+            pageImages.add(await f.readAsBytes());
           }
         }
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        if (tempPdfPath != null) {
+          try {
+            await File(tempPdfPath).delete();
+          } catch (_) {}
+        }
+        if (tempImgDir != null) {
+          try {
+            await tempImgDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 4.1. OCR từng trang ảnh qua AI Vision (hỗ trợ Concurrency pool 2 trang cùng lúc để xử lý nhanh)
+    if (pageImages.isNotEmpty) {
+      final buffer = StringBuffer();
+      buffer.writeln('=== [TÀI LIỆU PDF SCAN: $filename (ĐÃ ĐƯỢC THỊ GIÁC AI OCR CHI TIẾT TOÀN BỘ ${pageImages.length} TRANG)] ===\n');
+
+      if (rawBestText.isNotEmpty) {
+        buffer.writeln('--- [THÔNG TIN CHỮ KÝ SỐ / LỚP TEXT GỐC] ---');
+        buffer.writeln(rawBestText);
+        buffer.writeln();
+      }
+
+      final pageResults = List<String?>.filled(pageImages.length, null);
+      int completed = 0;
+      const concurrency = 2;
+
+      for (int i = 0; i < pageImages.length; i += concurrency) {
+        final end = min(i + concurrency, pageImages.length);
+        final batchFutures = <Future<void>>[];
+
+        for (int j = i; j < end; j++) {
+          final pageNum = j + 1;
+          batchFutures.add(() async {
+            if (onProgress != null) {
+              onProgress('Đang OCR trang $pageNum/${pageImages.length}: $filename...');
+            }
+            final pageOcr = await _analyzeImageWithVision(
+              pageImages[j],
+              'jpg',
+              '$filename (Trang $pageNum/${pageImages.length})',
+            );
+            pageResults[j] = pageOcr;
+            completed++;
+            if (onProgress != null) {
+              onProgress('Đã OCR xong $completed/${pageImages.length} trang: $filename');
+            }
+          }());
+        }
+
+        await Future.wait(batchFutures);
+      }
+
+      int successCount = 0;
+      for (int i = 0; i < pageResults.length; i++) {
+        final pageNum = i + 1;
+        buffer.writeln('--- [TRANG $pageNum/${pageResults.length}] ---');
+        final text = pageResults[i];
+        if (text != null && text.trim().isNotEmpty) {
+          buffer.writeln(text.trim());
+          successCount++;
+        } else {
+          buffer.writeln('[Không nhận diện được nội dung chữ trên trang này]');
+        }
+        buffer.writeln();
+      }
+
+      buffer.writeln('=== [HẾT TÀI LIỆU PDF SCAN: $filename] ===');
+
+      if (successCount > 0) {
+        return buffer.toString();
+      }
+    }
+
+    // 4.2. Dự phòng môi trường Web: Gửi toàn bộ PDF cho AI giải mã
+    if (onProgress != null) {
+      onProgress('Đang gửi toàn bộ tệp PDF $filename cho AI bóc tách...');
+    }
+
+    final aiContent = await _analyzeDocumentWithAi(bytes, 'pdf', filename);
+    if (aiContent != null && aiContent.isNotEmpty) {
+      return '=== [TÀI LIỆU PDF: $filename (ĐÃ ĐƯỢC AI OCR TRÍCH XUẤT ĐẦY ĐỦ)] ===\n$aiContent\n=== [HẾT TÀI LIỆU PDF] ===';
+    }
+
+    if (rawBestText.isNotEmpty) {
+      return '=== [TÀI LIỆU PDF: $filename] ===\n$rawBestText\n=== [HẾT TÀI LIỆU PDF] ===';
     }
 
     return '[Tài liệu PDF: $filename (Đã nạp vào hệ thống)]';
@@ -309,7 +466,7 @@ class DocumentService {
               'content': [
                 {
                   'type': 'text',
-                  'text': 'Bạn là chuyên gia thị giác AI phân tích tài liệu và OCR chính xác cao. Hãy đọc toàn bộ chữ viết, các con số, số liệu bảng biểu, tiêu đề, nội dung ghi chú và giải thích cấu trúc có trong trang/bức ảnh "$filename" này. Trình bày chi tiết, chuẩn xác bằng tiếng Việt để nạp vào cơ sở tri thức cho hệ thống.'
+                  'text': 'Bạn là chuyên gia thị giác AI phân tích tài liệu và OCR chính xác cao. Hãy đọc toàn bộ chữ viết, các con số, số liệu bảng biểu, tiêu đề, nội dung ghi chú có trong trang/bức ảnh "$filename" này. TUYỆT ĐỐI KHÔNG TÓM TẮT, hãy chép lại đầy đủ, chuẩn xác bằng tiếng Việt để nạp vào cơ sở tri thức cho hệ thống.'
                 },
                 {
                   'type': 'image_url',
@@ -374,7 +531,7 @@ class DocumentService {
               'content': [
                 {
                   'type': 'text',
-                  'text': 'Bạn là hệ thống AI phân tích tài liệu (Document Intelligence) cao cấp. Hãy đọc toàn bộ văn bản, số liệu, bảng biểu, thông tin chi tiết và tóm tắt cấu trúc có trong tệp tài liệu "$filename" (định dạng $ext) này. Bóc tách và xuất ra toàn bộ nội dung chữ tiếng Việt chi tiết, chuẩn xác 100% để lưu vào cơ sở tri thức hệ thống.'
+                  'text': 'Bạn là hệ thống AI phân tích tài liệu (Document Intelligence) cao cấp. Hãy đọc và chép lại nguyên văn 100% toàn bộ văn bản, số liệu, bảng biểu, danh sách, từng trang có trong tệp tài liệu "$filename" (định dạng $ext). TUYỆT ĐỐI KHÔNG ĐƯỢC TÓM TẮT, KHÔNG RÚT GỌN, KHÔNG BỎ QUA BẤT KỲ DÒNG NÀO. Xuất ra toàn bộ nội dung chữ tiếng Việt chi tiết, chuẩn xác 100% để lưu vào cơ sở tri thức hệ thống.'
                 },
                 {
                   'type': 'image_url',
@@ -385,7 +542,7 @@ class DocumentService {
           ],
           'temperature': 0.1,
         }),
-      ).timeout(const Duration(seconds: 60));
+      ).timeout(const Duration(seconds: 90));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(utf8.decode(res.bodyBytes));

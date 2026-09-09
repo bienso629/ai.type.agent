@@ -19,6 +19,9 @@ class StorageService {
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyRememberMe = 'remember_me';
   static const String _keyCustomLogoPath = 'custom_logo_path';
+  static const String _keyVoiceEnabled = 'voice_enabled';
+  static const String _keyVoiceName = 'voice_name';
+  static const String _keyVoiceRate = 'voice_rate';
 
   Future<void> init() async {
     if (_isInitialized) return;
@@ -66,7 +69,7 @@ class StorageService {
   // Default AI Model
   Future<String> getDefaultModel() async {
     await init();
-    return _prefs.getString(_keyDefaultModel) ?? 'glm-5.3';
+    return _prefs.getString(_keyDefaultModel) ?? 'gemini-2.5-flash';
   }
 
   Future<void> setDefaultModel(String model) async {
@@ -98,6 +101,37 @@ class StorageService {
     } else {
       await _prefs.setString(_keyCustomLogoPath, path.trim());
     }
+  }
+
+  // Voice TTS (Edge TTS)
+  Future<bool> getVoiceEnabled() async {
+    await init();
+    return _prefs.getBool(_keyVoiceEnabled) ?? false;
+  }
+
+  Future<void> setVoiceEnabled(bool enabled) async {
+    await init();
+    await _prefs.setBool(_keyVoiceEnabled, enabled);
+  }
+
+  Future<String> getVoiceName() async {
+    await init();
+    return _prefs.getString(_keyVoiceName) ?? 'vi-VN-HoaiMyNeural';
+  }
+
+  Future<void> setVoiceName(String name) async {
+    await init();
+    await _prefs.setString(_keyVoiceName, name);
+  }
+
+  Future<String> getVoiceRate() async {
+    await init();
+    return _prefs.getString(_keyVoiceRate) ?? '+0%';
+  }
+
+  Future<void> setVoiceRate(String rate) async {
+    await init();
+    await _prefs.setString(_keyVoiceRate, rate);
   }
 
   // App Authentication

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
+import '../core/services/tts_service.dart';
 import '../models/attachment_item.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
@@ -44,6 +45,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> initChat() async {
+    await TtsService().init();
     await loadSessions(silent: true);
     if (_sessions.isNotEmpty) {
       final target = (_currentSession != null && _sessions.any((s) => s.id == _currentSession!.id))
@@ -256,7 +258,7 @@ class ChatProvider extends ChangeNotifier {
       sessionId: sessionId,
       role: 'user',
       content: query.isNotEmpty ? query : 'Đã đính kèm ${attachments?.length ?? 0} tệp',
-      model: model ?? 'glm-5.3',
+      model: model ?? 'gemini-2.5-flash',
       attachments: attachments,
     );
     _messages.add(userMsg);
@@ -266,7 +268,7 @@ class ChatProvider extends ChangeNotifier {
       sessionId: sessionId,
       role: 'assistant',
       content: '',
-      model: model ?? 'glm-5.3',
+      model: model ?? 'gemini-2.5-flash',
       isStreaming: true,
       statusMessage: 'Đang kết nối AI...',
     );
@@ -283,6 +285,8 @@ class ChatProvider extends ChangeNotifier {
         .toList();
 
     _streamSub?.cancel();
+    TtsService().startStreamSession();
+
     _streamSub = _api.streamChatMessage(
       sessionId: sessionId,
       message: query.isNotEmpty ? query : 'Vui lòng đọc và phân tích các tệp đính kèm.',
@@ -294,6 +298,9 @@ class ChatProvider extends ChangeNotifier {
         assistantMsg.content += token;
         assistantMsg.statusMessage = null;
         notifyListeners();
+
+        // Nạp token vào bộ xử lý đọc thời gian thực
+        TtsService().feedStreamToken(token);
       },
       onStatus: (status) {
         _currentStatus = status;
@@ -315,6 +322,9 @@ class ChatProvider extends ChangeNotifier {
         _currentStatus = '';
         notifyListeners();
         loadSessions(silent: true); // Refresh session list & titles
+
+        // Kết thúc luồng stream và đọc nốt phần đuôi còn lại
+        TtsService().finishStreamSession();
       },
       onError: (err) {
         assistantMsg.isStreaming = false;
@@ -333,6 +343,7 @@ class ChatProvider extends ChangeNotifier {
     if (!_isGenerating) return;
     _streamSub?.cancel();
     _streamSub = null;
+    TtsService().stop();
     _isGenerating = false;
     _currentStatus = '';
     if (_messages.isNotEmpty && _messages.last.role == 'assistant') {
@@ -348,6 +359,7 @@ class ChatProvider extends ChangeNotifier {
   @override
   void dispose() {
     _streamSub?.cancel();
+    TtsService().stop();
     super.dispose();
   }
 }

@@ -84,6 +84,28 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
+  gtk_window_set_default_icon_name(APPLICATION_ID);
+  gtk_window_set_icon_name(window, APPLICATION_ID);
+
+  // Set window and taskbar/dock application icon from assets
+  g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe_path != nullptr) {
+    g_autofree gchar* dir = g_path_get_dirname(exe_path);
+    g_autofree gchar* icon_path1 = g_build_filename(dir, "data", "flutter_assets", "assets", "icon.png", nullptr);
+    g_autofree gchar* icon_path2 = g_build_filename(dir, "data", "flutter_assets", "assets", "logo.jpg", nullptr);
+    const gchar* chosen_icon = nullptr;
+    if (g_file_test(icon_path1, G_FILE_TEST_EXISTS)) {
+      chosen_icon = icon_path1;
+    } else if (g_file_test(icon_path2, G_FILE_TEST_EXISTS)) {
+      chosen_icon = icon_path2;
+    }
+    if (chosen_icon != nullptr) {
+      g_autoptr(GError) icon_error = nullptr;
+      gtk_window_set_icon_from_file(window, chosen_icon, &icon_error);
+      gtk_window_set_default_icon_from_file(chosen_icon, nullptr);
+    }
+  }
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
@@ -171,6 +193,7 @@ MyApplication* my_application_new() {
   // corresponding .desktop file. This ensures better integration by allowing
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
+  g_set_application_name("AI Agent Chatbot");
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",

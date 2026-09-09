@@ -1250,37 +1250,35 @@ class _ChatScreenState extends State<ChatScreen> {
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
             ),
             child: _isSearchingSessions
-                ? Container(
-                    height: 34,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.inputBg,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                ? SizedBox(
+                    height: 24,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const Icon(Icons.search_rounded, size: 15, color: AppColors.primaryLight),
-                        const SizedBox(width: 6),
+                        const Icon(Icons.search_rounded, size: 16, color: AppColors.primaryLight),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
                             controller: _sessionSearchController,
                             autofocus: true,
-                            style: const TextStyle(fontSize: 12, color: AppColors.textBody),
+                            style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
                             decoration: const InputDecoration(
                               hintText: 'Tìm kiếm hội thoại...',
                               hintStyle: TextStyle(fontSize: 12, color: AppColors.textDim),
                               border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              filled: false,
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 8),
+                              contentPadding: EdgeInsets.zero,
                             ),
                             onChanged: (_) => setState(() {}),
                           ),
                         ),
                         IconButton(
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                          icon: const Icon(Icons.close_rounded, size: 15, color: AppColors.textDim),
+                          constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                          icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.textDim),
                           tooltip: 'Đóng tìm kiếm',
                           onPressed: () {
                             setState(() {

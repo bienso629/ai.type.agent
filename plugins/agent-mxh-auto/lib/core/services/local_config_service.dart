@@ -257,11 +257,14 @@ class LocalConfigService {
 
   Future<bool> saveConfig(Map<String, dynamic> newConfig, {String? userKey}) async {
     try {
+      final currentConfig = await loadConfig(userKey: userKey);
+      final mergedConfig = Map<String, dynamic>.from(currentConfig)..addAll(newConfig);
+
       final filePath = await _resolveConfigPath(userKey: userKey);
       final file = File(filePath);
 
       final toSave = <String, dynamic>{};
-      for (final entry in newConfig.entries) {
+      for (final entry in mergedConfig.entries) {
         final k = entry.key;
         final v = entry.value;
 
@@ -277,11 +280,11 @@ class LocalConfigService {
       }
 
       // Also persist encrypted vault for backward compatibility
-      final rawJson = jsonEncode(newConfig);
+      final rawJson = jsonEncode(mergedConfig);
       toSave['_encrypted_vault'] = _enc.encryptValue(rawJson);
 
       await file.writeAsString(const JsonEncoder.withIndent('  ').convert(toSave));
-      _cachedConfig = Map<String, dynamic>.from(newConfig);
+      _cachedConfig = Map<String, dynamic>.from(mergedConfig);
       return true;
     } catch (e) {
       return false;

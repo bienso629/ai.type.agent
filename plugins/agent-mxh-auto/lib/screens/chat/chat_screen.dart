@@ -9,6 +9,7 @@ import '../../core/services/api_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/model_picker_dialog.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
@@ -413,6 +414,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
     final serverProvider = context.watch<ServerProvider>();
+    final auth = context.watch<AuthProvider>();
 
     if (_lastSessionId != chat.currentSession?.id) {
       _lastSessionId = chat.currentSession?.id;
@@ -489,15 +491,38 @@ class _ChatScreenState extends State<ChatScreen> {
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                             ),
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                serverProvider.currentAiModel,
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () => ModelPickerDialog.show(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: AppColors.primary.withValues(alpha: 0.4),
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (serverProvider.currentAiModel.contains('cli') ||
+                                        serverProvider.currentAiModel == 'agy' ||
+                                        serverProvider.currentAiModel == 'claude') ...[
+                                      const Icon(Icons.terminal_rounded, size: 10, color: AppColors.accentCyan),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    Text(
+                                      serverProvider.currentAiModel,
+                                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                    ),
+                                    if (auth.isAdmin) ...[
+                                      const SizedBox(width: 3),
+                                      const Icon(Icons.keyboard_arrow_down_rounded, size: 12, color: AppColors.primaryLight),
+                                    ],
+                                  ],
+                                ),
                               ),
                             ),
                           ],
@@ -1235,6 +1260,32 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                       onPressed: _pickFiles,
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.borderDark),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      ),
+                      icon: Icon(
+                        (serverProvider.currentAiModel.contains('cli') ||
+                                serverProvider.currentAiModel == 'agy' ||
+                                serverProvider.currentAiModel == 'claude')
+                            ? Icons.terminal_rounded
+                            : Icons.memory_rounded,
+                        size: 14,
+                        color: AppColors.primaryLight,
+                      ),
+                      label: Text(
+                        serverProvider.currentAiModel,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.primaryLight,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onPressed: () => ModelPickerDialog.show(context),
                     ),
                   ],
                 ),

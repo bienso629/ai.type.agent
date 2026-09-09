@@ -9,7 +9,7 @@ class ServerProvider extends ChangeNotifier {
 
   List<ServerModel> _servers = [];
   ServerModel? _selectedServer;
-  String _globalAiModel = 'glm-5.3';
+  String _globalAiModel = 'gemini-2.5-flash';
   String? _customLogoPath;
   bool _isLoading = false;
   String? _error;
@@ -19,13 +19,13 @@ class ServerProvider extends ChangeNotifier {
   String get globalAiModel => _globalAiModel;
   String? get customLogoPath => _customLogoPath;
   String get currentAiModel {
-    if (_globalAiModel.isNotEmpty) {
-      return _globalAiModel;
-    }
     if (_selectedServer != null && _selectedServer!.aiModel.isNotEmpty) {
       return _selectedServer!.aiModel;
     }
-    return 'glm-5.3';
+    if (_globalAiModel.isNotEmpty) {
+      return _globalAiModel;
+    }
+    return 'gemini-2.5-flash';
   }
   bool get isLoading => _isLoading;
   String? get error => _error;

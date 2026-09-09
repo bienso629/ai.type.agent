@@ -13,6 +13,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isCheckingAuth = true;
   bool _isAuthenticated = false;
+  bool _isAdmin = false;
   String? _userEmail;
   String? _userName;
   String? _authToken;
@@ -21,6 +22,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isCheckingAuth => _isCheckingAuth;
   bool get isAuthenticated => _isAuthenticated;
+  bool get isAdmin => _isAdmin;
   String? get userEmail => _userEmail;
   String? get userName => _userName;
   String? get authToken => _authToken;
@@ -42,14 +44,17 @@ class AuthProvider extends ChangeNotifier {
         _userEmail = await _storage.getUserEmail();
         _userName = await _storage.getUserName();
         _authToken = await _storage.getAuthToken();
+        _isAdmin = await _userService.isFirstUser(_userEmail);
         final userKey = await _storage.getUserKey();
         await _db.switchUser(userKey);
         await _localConfig.switchUser(userKey);
       } else {
         _isAuthenticated = false;
+        _isAdmin = false;
       }
     } catch (_) {
       _isAuthenticated = false;
+      _isAdmin = false;
     } finally {
       _isCheckingAuth = false;
       notifyListeners();
@@ -101,6 +106,7 @@ class AuthProvider extends ChangeNotifier {
       _userEmail = user.email;
       _userName = user.name;
       _isAuthenticated = true;
+      _isAdmin = await _userService.isFirstUser(user.email);
       _errorMessage = null;
       _isLoading = false;
 
@@ -162,6 +168,7 @@ class AuthProvider extends ChangeNotifier {
       _userEmail = user.email;
       _userName = user.name;
       _isAuthenticated = true;
+      _isAdmin = await _userService.isFirstUser(user.email);
       _errorMessage = null;
       _isLoading = false;
 
@@ -181,6 +188,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> loginStandaloneMode() async {
     _isAuthenticated = true;
+    _isAdmin = true;
     _userEmail = 'local.admin@agent.chatbot';
     _userName = 'Local Administrator';
     _authToken = 'native_local_token';
@@ -198,6 +206,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _storage.clearAuth();
     _isAuthenticated = false;
+    _isAdmin = false;
     _authToken = null;
     _userEmail = null;
     _userName = null;

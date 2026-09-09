@@ -43,7 +43,7 @@ class ChatMessageModel {
     required this.sessionId,
     required this.role,
     required this.content,
-    this.model = 'glm-5.3',
+    this.model = 'gemini-2.5-flash',
     DateTime? createdAt,
     List<ToolExecutionItem>? toolExecutions,
     List<AttachmentItem>? attachments,
@@ -67,7 +67,7 @@ class ChatMessageModel {
       sessionId: json['session_id']?.toString() ?? '',
       role: json['role']?.toString() ?? 'assistant',
       content: json['content']?.toString() ?? '',
-      model: json['model']?.toString() ?? 'glm-5.3',
+      model: json['model']?.toString() ?? 'gemini-2.5-flash',
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() : DateTime.now(),
       toolExecutions: ((json['tool_calls'] ?? json['tools']) as List<dynamic>?)
           ?.map((e) => ToolExecutionItem.fromJson(e as Map<String, dynamic>))
