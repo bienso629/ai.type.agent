@@ -75,6 +75,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget _buildDesktopLayout() {
     final metricsProvider = context.watch<MetricsProvider>();
     final auth = context.watch<AuthProvider>();
+    final serverProvider = context.watch<ServerProvider>();
     final m = metricsProvider.metrics;
     final isAgentActive = m.serviceStatus == 'active';
 
@@ -107,28 +108,32 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         borderRadius: 6,
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'AI Agent',
-                              style: TextStyle(
+                              serverProvider.brandTitle,
+                              style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.textWhite,
                                 height: 1.2,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              'AI AGENT CHATBOT',
-                              style: TextStyle(
+                              serverProvider.brandSubtitle,
+                              style: const TextStyle(
                                 fontSize: 9.5,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 0.5,
                                 color: AppColors.textMuted,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),

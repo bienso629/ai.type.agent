@@ -19,6 +19,9 @@ class StorageService {
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyRememberMe = 'remember_me';
   static const String _keyCustomLogoPath = 'custom_logo_path';
+  static const String _keyAppTitle = 'app_title';
+  static const String _keyBrandTitle = 'brand_title';
+  static const String _keyBrandSubtitle = 'brand_subtitle';
   static const String _keyVoiceEnabled = 'voice_enabled';
   static const String _keyVoiceName = 'voice_name';
   static const String _keyVoiceRate = 'voice_rate';
@@ -100,6 +103,49 @@ class StorageService {
       await _prefs.remove(_keyCustomLogoPath);
     } else {
       await _prefs.setString(_keyCustomLogoPath, path.trim());
+    }
+  }
+
+  // Custom App & Brand Titles
+  Future<String?> getAppTitle() async {
+    await init();
+    return _prefs.getString(_keyAppTitle);
+  }
+
+  Future<void> setAppTitle(String? title) async {
+    await init();
+    if (title == null || title.trim().isEmpty) {
+      await _prefs.remove(_keyAppTitle);
+    } else {
+      await _prefs.setString(_keyAppTitle, title.trim());
+    }
+  }
+
+  Future<String?> getBrandTitle() async {
+    await init();
+    return _prefs.getString(_keyBrandTitle);
+  }
+
+  Future<void> setBrandTitle(String? title) async {
+    await init();
+    if (title == null || title.trim().isEmpty) {
+      await _prefs.remove(_keyBrandTitle);
+    } else {
+      await _prefs.setString(_keyBrandTitle, title.trim());
+    }
+  }
+
+  Future<String?> getBrandSubtitle() async {
+    await init();
+    return _prefs.getString(_keyBrandSubtitle);
+  }
+
+  Future<void> setBrandSubtitle(String? subtitle) async {
+    await init();
+    if (subtitle == null || subtitle.trim().isEmpty) {
+      await _prefs.remove(_keyBrandSubtitle);
+    } else {
+      await _prefs.setString(_keyBrandSubtitle, subtitle.trim());
     }
   }
 

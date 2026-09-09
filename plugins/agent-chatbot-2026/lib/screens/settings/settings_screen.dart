@@ -26,6 +26,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://api.mitom.ai/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
   final TextEditingController _logoCtrl = TextEditingController();
+  final TextEditingController _appTitleCtrl = TextEditingController(text: 'AI Agent Chatbot');
+  final TextEditingController _brandTitleCtrl = TextEditingController(text: 'AI Agent');
+  final TextEditingController _brandSubtitleCtrl = TextEditingController(text: 'AI AGENT CHATBOT');
 
   bool _voiceEnabled = false;
   String _selectedVoice = 'vi-VN-HoaiMyNeural';
@@ -43,6 +46,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _baseUrlCtrl.dispose();
     _apiKeyCtrl.dispose();
     _logoCtrl.dispose();
+    _appTitleCtrl.dispose();
+    _brandTitleCtrl.dispose();
+    _brandSubtitleCtrl.dispose();
     super.dispose();
   }
 
@@ -61,12 +67,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (savedLogo != null && savedLogo.isNotEmpty) {
         _logoCtrl.text = savedLogo;
       }
+      final savedAppTitle = await StorageService().getAppTitle();
+      if (savedAppTitle != null && savedAppTitle.isNotEmpty) {
+        _appTitleCtrl.text = savedAppTitle;
+      }
+      final savedBrandTitle = await StorageService().getBrandTitle();
+      if (savedBrandTitle != null && savedBrandTitle.isNotEmpty) {
+        _brandTitleCtrl.text = savedBrandTitle;
+      }
+      final savedBrandSubtitle = await StorageService().getBrandSubtitle();
+      if (savedBrandSubtitle != null && savedBrandSubtitle.isNotEmpty) {
+        _brandSubtitleCtrl.text = savedBrandSubtitle;
+      }
       final cfg = await _api.getConfig();
       if (cfg['ai_model'] != null) _modelCtrl.text = cfg['ai_model'].toString();
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
       if (cfg['custom_logo_path'] != null && cfg['custom_logo_path'].toString().isNotEmpty) {
         _logoCtrl.text = cfg['custom_logo_path'].toString();
+      }
+      if (cfg['app_title'] != null && cfg['app_title'].toString().isNotEmpty) {
+        _appTitleCtrl.text = cfg['app_title'].toString();
+      }
+      if (cfg['brand_title'] != null && cfg['brand_title'].toString().isNotEmpty) {
+        _brandTitleCtrl.text = cfg['brand_title'].toString();
+      }
+      if (cfg['brand_subtitle'] != null && cfg['brand_subtitle'].toString().isNotEmpty) {
+        _brandSubtitleCtrl.text = cfg['brand_subtitle'].toString();
       }
     } catch (_) {}
   }
@@ -204,6 +231,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _saveBrandTitles() async {
+    try {
+      final appTitle = _appTitleCtrl.text.trim().isEmpty ? 'AI Agent Chatbot' : _appTitleCtrl.text.trim();
+      final brandTitle = _brandTitleCtrl.text.trim().isEmpty ? 'AI Agent' : _brandTitleCtrl.text.trim();
+      final brandSubtitle = _brandSubtitleCtrl.text.trim().isEmpty ? 'AI AGENT CHATBOT' : _brandSubtitleCtrl.text.trim();
+
+      final serverProv = context.read<ServerProvider>();
+      await serverProv.setAppTitle(appTitle);
+      await serverProv.setBrandTitle(brandTitle);
+      await serverProv.setBrandSubtitle(brandSubtitle);
+
+      final cfg = await _api.getConfig();
+      cfg['app_title'] = appTitle;
+      cfg['brand_title'] = brandTitle;
+      cfg['brand_subtitle'] = brandSubtitle;
+      await _api.saveConfig(cfg);
+
+      if (mounted) {
+        AppToast.success(context, 'Đã cập nhật tiêu đề thương hiệu thành công!');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Không thể lưu tiêu đề: $e');
+      }
+    }
+  }
+
+  Future<void> _resetBrandTitles() async {
+    setState(() {
+      _appTitleCtrl.text = 'AI Agent Chatbot';
+      _brandTitleCtrl.text = 'AI Agent';
+      _brandSubtitleCtrl.text = 'AI AGENT CHATBOT';
+    });
+    await _saveBrandTitles();
+    if (mounted) {
+      AppToast.info(context, 'Đã khôi phục tiêu đề mặc định');
+    }
+  }
+
   Future<void> _saveAISettings() async {
     final rawBaseUrl = _baseUrlCtrl.text.trim();
     if (rawBaseUrl.isNotEmpty && !LocalConfigService.isValidMitomProxyUrl(rawBaseUrl)) {
@@ -217,6 +283,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       cfg['proxy_base_url'] = rawBaseUrl;
       cfg['proxy_api_key'] = _apiKeyCtrl.text.trim();
       cfg['custom_logo_path'] = _logoCtrl.text.trim();
+      cfg['app_title'] = _appTitleCtrl.text.trim().isEmpty ? 'AI Agent Chatbot' : _appTitleCtrl.text.trim();
+      cfg['brand_title'] = _brandTitleCtrl.text.trim().isEmpty ? 'AI Agent' : _brandTitleCtrl.text.trim();
+      cfg['brand_subtitle'] = _brandSubtitleCtrl.text.trim().isEmpty ? 'AI AGENT CHATBOT' : _brandSubtitleCtrl.text.trim();
+
       final ok = await _api.saveConfig(cfg);
       if (mounted) {
         if (ok) {
@@ -224,6 +294,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           serverProv.setGlobalAiModel(_modelCtrl.text.trim());
           final logoPath = _logoCtrl.text.trim();
           await StorageService().setCustomLogoPath(logoPath.isEmpty ? null : logoPath);
+          await serverProv.setAppTitle(cfg['app_title']);
+          await serverProv.setBrandTitle(cfg['brand_title']);
+          await serverProv.setBrandSubtitle(cfg['brand_subtitle']);
           if (mounted) {
             serverProv.setCustomLogo(logoPath.isEmpty ? null : logoPath);
             AppToast.success(context, 'Đã lưu cấu hình hệ thống thành công!');
@@ -460,7 +533,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         ],
                                       ],
                                     )
-                                  else
+                                   else
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                       decoration: BoxDecoration(
@@ -485,6 +558,125 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 20),
+                        const Divider(height: 1),
+                        const SizedBox(height: 16),
+                        // Sub-section: Text Branding Titles
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Tiêu Đề Thương Hiệu & Tên Hiển Thị Ứng Dụng',
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            ),
+                            if (auth.isAdmin)
+                              Row(
+                                children: [
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppColors.textMuted,
+                                      side: const BorderSide(color: AppColors.borderDark),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                    ),
+                                    icon: const Icon(Icons.restart_alt_rounded, size: 14),
+                                    label: const Text('Mặc định', style: TextStyle(fontSize: 11)),
+                                    onPressed: _resetBrandTitles,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primary,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      elevation: 0,
+                                    ),
+                                    icon: const Icon(Icons.save_rounded, size: 14),
+                                    label: const Text('Lưu Tiêu Đề', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    onPressed: _saveBrandTitles,
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Tiêu đề chính Menu ("AI Agent")', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _brandTitleCtrl,
+                                    enabled: auth.isAdmin,
+                                    decoration: InputDecoration(
+                                      hintText: 'AI Agent',
+                                      filled: true,
+                                      fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Phụ đề Menu ("AI AGENT CHATBOT")', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _brandSubtitleCtrl,
+                                    enabled: auth.isAdmin,
+                                    decoration: InputDecoration(
+                                      hintText: 'AI AGENT CHATBOT',
+                                      filled: true,
+                                      fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Tiêu đề cửa sổ ứng dụng (Title)', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: _appTitleCtrl,
+                                    enabled: auth.isAdmin,
+                                    decoration: InputDecoration(
+                                      hintText: 'AI Agent Chatbot',
+                                      filled: true,
+                                      fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (!auth.isAdmin) ...[
+                          const SizedBox(height: 10),
+                          const Row(
+                            children: [
+                              Icon(Icons.lock_rounded, size: 13, color: AppColors.warning),
+                              SizedBox(width: 6),
+                              Text(
+                                'Chỉ Admin đầu tiên mới có quyền đổi các tiêu đề thương hiệu này.',
+                                style: TextStyle(fontSize: 11, color: AppColors.warning),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),

@@ -42,6 +42,9 @@ class LocalConfigService {
     'api_port': 8000,
     'secret_token': 'super_secret_token_123',
     'custom_logo_path': '',
+    'app_title': 'AI Agent Chatbot',
+    'brand_title': 'AI Agent',
+    'brand_subtitle': 'AI AGENT CHATBOT',
     'servers': [],
   };
 
