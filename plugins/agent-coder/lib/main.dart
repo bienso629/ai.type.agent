@@ -80,6 +80,9 @@ class AiTypeAgentApp extends StatelessWidget {
         title: 'AI Type Agent',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          scrollbars: true,
+        ),
         home: const CustomWindowFrame(
           title: 'AI Type Agent - Coding & Infrastructure Management',
           child: MainNavigationScreen(),

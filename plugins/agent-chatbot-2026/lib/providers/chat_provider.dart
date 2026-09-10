@@ -40,20 +40,33 @@ class ChatProvider extends ChangeNotifier {
     '🔍 Xem 20 dòng log lỗi mới nhất',
   ];
 
+  Completer<void>? _initCompleter;
+
   ChatProvider() {
-    initChat();
+    // Không tự ý gọi initChat() ở constructor vì lúc này chưa xác định auth token
   }
 
   Future<void> initChat() async {
-    await TtsService().init();
-    await loadSessions(silent: true);
-    if (_sessions.isNotEmpty) {
-      final target = (_currentSession != null && _sessions.any((s) => s.id == _currentSession!.id))
-          ? _sessions.firstWhere((s) => s.id == _currentSession!.id)
-          : _sessions.first;
-      await selectSession(target);
-    } else {
-      await createNewSession();
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+    _initCompleter = Completer<void>();
+    try {
+      await TtsService().init();
+      await loadSessions(silent: true);
+      if (_sessions.isNotEmpty) {
+        final target = (_currentSession != null && _sessions.any((s) => s.id == _currentSession!.id))
+            ? _sessions.firstWhere((s) => s.id == _currentSession!.id)
+            : _sessions.first;
+        await selectSession(target);
+      } else {
+        await createNewSession();
+      }
+      _initCompleter?.complete();
+    } catch (e) {
+      _initCompleter?.completeError(e);
+    } finally {
+      _initCompleter = null;
     }
   }
 
@@ -88,6 +101,9 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> reloadForUser() async {
+    if (_initCompleter != null) {
+      await _initCompleter!.future;
+    }
     _currentSession = null;
     _messages = [];
     _sessions = [];
@@ -95,8 +111,18 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> createNewSession({String title = 'Cuộc hội thoại mới'}) async {
+    // Nếu session hiện tại hoặc session đầu tiên chưa có tin nhắn nào, tái sử dụng không tạo mới trùng lặp
+    if (_sessions.isNotEmpty) {
+      final first = _sessions.first;
+      if (first.messageCount == 0 && (_currentSession?.id != first.id || _messages.isEmpty)) {
+        await selectSession(first);
+        return;
+      }
+    }
+
     try {
       final newSess = await _api.createChatSession(title: title);
+      _sessions.removeWhere((s) => s.id == newSess.id);
       _sessions.insert(0, newSess);
       await selectSession(newSess);
     } catch (_) {
@@ -104,6 +130,7 @@ class ChatProvider extends ChangeNotifier {
         id: 'sess_${DateTime.now().millisecondsSinceEpoch}',
         title: title,
       );
+      _sessions.removeWhere((s) => s.id == fallbackSess.id);
       _sessions.insert(0, fallbackSess);
       await selectSession(fallbackSess);
     }

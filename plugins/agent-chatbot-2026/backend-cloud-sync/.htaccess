@@ -1,7 +1,27 @@
-Options -Indexes +FollowSymLinks
+RewriteEngine On
 
+# Allow CORS preflight requests
 <IfModule mod_headers.c>
     Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, X-Secret-Token, X-User-Email, X-User-Name"
 </IfModule>
+
+# Handle OPTIONS preflight
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+# Rewrite /api/chat/sessions/* (e.g. /api/chat/sessions/sess_123 or /api/chat/sessions/sess_123/pin)
+RewriteRule ^api/chat/sessions/([^/]+)/pin/?$ api/chat/sessions.php?id=$1&action=pin [QSA,L]
+RewriteRule ^api/chat/sessions/([^/]+)/?$ api/chat/sessions.php?id=$1 [QSA,L]
+
+# Rewrite /api/chat/history -> api/chat/history.php
+RewriteRule ^api/chat/history/?$ api/chat/history.php [QSA,L]
+
+# Rewrite /api/chat/clear -> api/chat/messages.php?action=clear
+RewriteRule ^api/chat/clear/?$ api/chat/messages.php?action=clear [QSA,L]
+
+# Auto append .php if file exists
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.*)$ $1.php [QSA,L]

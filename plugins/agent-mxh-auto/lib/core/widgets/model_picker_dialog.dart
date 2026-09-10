@@ -78,8 +78,12 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
   @override
   void initState() {
     super.initState();
-    // Khởi tạo tab theo engine đang kích hoạt: nếu đang dùng CLI thì mở sẵn tab 1
-    _selectedTab = widget.initialTab != 0 ? widget.initialTab : (widget.serverProvider.isCliMode ? 1 : 0);
+    // Mặc định hiển thị Tất cả (-1) để nhìn thấy cả CLI và Cloud cùng lúc, hoặc theo initialTab nếu được truyền vào
+    _selectedTab = widget.initialTab != 0 ? widget.initialTab : -1;
+    // Luôn chủ động quét lại Local CLI Agents để đảm bảo danh sách mới nhất
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.serverProvider.scanCliAgents(forceRefresh: true);
+    });
   }
 
   @override
@@ -162,23 +166,20 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _selectedTab == 0
-                            ? 'Mô hình Cloud API (gọi qua proxy api.mitom.ai)'
-                            : 'Local CLI Agent (chạy trực tiếp trên máy local qua terminal nhị phân)',
+                        'Chuyển đổi giữa Local CLI Agents (trực tiếp trên máy) và Cloud API Models',
                         style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                       ),
                     ],
                   ),
                 ),
-                if (_selectedTab == 1)
-                  IconButton(
-                    icon: const Icon(Icons.radar_rounded, size: 18, color: AppColors.accent),
-                    tooltip: 'Quét lại Local CLI Agents',
-                    onPressed: () {
-                      serverProvider.scanCliAgents(forceRefresh: true);
-                      AppToast.info(context, 'Đang quét lại các CLI Agent trên máy local...');
-                    },
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.radar_rounded, size: 18, color: AppColors.accentCyan),
+                  tooltip: 'Quét lại Local CLI Agents trên máy',
+                  onPressed: () {
+                    serverProvider.scanCliAgents(forceRefresh: true);
+                    AppToast.info(context, 'Đang quét lại các CLI Agent trên máy local...');
+                  },
+                ),
                 const SizedBox(width: 4),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textDim),
@@ -188,9 +189,9 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
               ],
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
 
-            // Tab Selector: Cloud API vs Local CLI
+            // Tab Filter: Tất cả, Local CLI Agent, Cloud API
             Container(
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
@@ -203,38 +204,29 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                   Expanded(
                     child: InkWell(
                       borderRadius: BorderRadius.circular(4),
-                      onTap: () => setState(() => _selectedTab = 0),
+                      onTap: () => setState(() => _selectedTab = -1),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
                         decoration: BoxDecoration(
-                          color: _selectedTab == 0
+                          color: _selectedTab == -1
                               ? AppColors.primary.withValues(alpha: 0.25)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                            color: _selectedTab == 0
+                            color: _selectedTab == -1
                                 ? AppColors.primaryLight
                                 : Colors.transparent,
                           ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.cloud_queue_rounded,
-                              size: 14,
-                              color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textDim,
+                        child: Center(
+                          child: Text(
+                            'Tất cả',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: _selectedTab == -1 ? FontWeight.bold : FontWeight.normal,
+                              color: _selectedTab == -1 ? AppColors.primaryLight : AppColors.textMuted,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Cloud API',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: _selectedTab == 0 ? FontWeight.bold : FontWeight.normal,
-                                color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textMuted,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -245,7 +237,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                       borderRadius: BorderRadius.circular(4),
                       onTap: () => setState(() => _selectedTab = 1),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
                         decoration: BoxDecoration(
                           color: _selectedTab == 1
                               ? AppColors.accentCyan.withValues(alpha: 0.2)
@@ -262,16 +254,56 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           children: [
                             Icon(
                               Icons.terminal_rounded,
-                              size: 14,
+                              size: 13,
                               color: _selectedTab == 1 ? AppColors.accentCyan : AppColors.textDim,
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 5),
                             Text(
                               'Local CLI Agent',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11.5,
                                 fontWeight: _selectedTab == 1 ? FontWeight.bold : FontWeight.normal,
                                 color: _selectedTab == 1 ? AppColors.accentCyan : AppColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => setState(() => _selectedTab = 0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _selectedTab == 0
+                              ? AppColors.primary.withValues(alpha: 0.25)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _selectedTab == 0
+                                ? AppColors.primaryLight
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.cloud_queue_rounded,
+                              size: 13,
+                              color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textDim,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Cloud API',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: _selectedTab == 0 ? FontWeight.bold : FontWeight.normal,
+                                color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textMuted,
                               ),
                             ),
                           ],
@@ -282,22 +314,20 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
             // 2. Search Input
             SizedBox(
               height: 38,
               child: TextField(
                 controller: _searchCtrl,
-                autofocus: true,
+                autofocus: false,
                 textAlignVertical: TextAlignVertical.center,
                 style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
                 onChanged: (val) => setState(() => _searchQuery = val.trim()),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: _selectedTab == 0
-                      ? 'Tìm kiếm nhanh model Cloud (glm-5.3, gpt-4o, deepseek...)...'
-                      : 'Tìm kiếm nhanh CLI Agent (claude, gemini, ollama...)...',
+                  hintText: 'Tìm kiếm Agent CLI (agy, claude...) hoặc Cloud model...',
                   hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                   prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textMuted),
                   suffixIcon: _searchQuery.isNotEmpty
@@ -331,29 +361,37 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
               ),
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
 
             // 3. Scrollable List of Models & Agents
             Expanded(
               child: ListView(
                 children: [
-                  // --- TAB 1: LOCAL CLI AGENTS (Chỉ hiển thị khi đang đứng ở tab Local CLI) ---
-                  if (_selectedTab == 1) ...[
+                  // --- SECTION 1: LOCAL CLI AGENTS ---
+                  if (_selectedTab == -1 || _selectedTab == 1) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(
                         children: [
-                          const Icon(Icons.terminal_rounded, size: 13, color: AppColors.accentCyan),
+                          const Icon(Icons.terminal_rounded, size: 14, color: AppColors.accentCyan),
                           const SizedBox(width: 6),
                           const Text(
-                            'LOCAL CLI AGENTS (CÀI TRÊN MÁY TÍNH)',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentCyan, letterSpacing: 0.5),
+                            'LOCAL CLI AGENTS (CHẠY TRÊN MÁY LOCAL)',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.accentCyan, letterSpacing: 0.5),
                           ),
                           const Spacer(),
-                          Text(
-                            '${filteredCliAgents.length} agents',
-                            style: const TextStyle(fontSize: 10, color: AppColors.textDim),
-                          ),
+                          if (filteredCliAgents.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.accentCyan.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${filteredCliAgents.length} agents sẵn sàng',
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -364,7 +402,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           child: SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
                           ),
                         ),
                       )
@@ -378,43 +416,44 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           border: Border.all(color: AppColors.borderDark),
                         ),
                         child: const Text(
-                          'Chưa tìm thấy CLI Agent nào khả dụng trên máy (claude-cli, gemini-cli, ollama...). Bấm icon radar góc trên để quét lại.',
+                          'Chưa tìm thấy CLI Agent nào khớp trên máy tính.',
                           style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       )
                     else
                       ...filteredCliAgents.map((agent) {
                         final isSel = serverProvider.isCliMode && serverProvider.activeCliAgent == agent.id;
-                        final icon = agent.id.contains('claude')
-                            ? Icons.code_rounded
-                            : Icons.terminal_rounded;
+                        final icon = agent.id.contains('antigravity') || agent.binary.contains('agy')
+                            ? Icons.rocket_launch_rounded
+                            : (agent.id.contains('claude') ? Icons.code_rounded : Icons.terminal_rounded);
                         final verStr = agent.version != null ? ' • v${agent.version}' : '';
 
                         return _buildModelCard(
-                          title: agent.id,
-                          subtitle: '${agent.label}$verStr',
+                          title: agent.label,
+                          subtitle: '${agent.id} (${agent.path}$verStr)',
                           icon: icon,
                           isSelected: isSel,
                           onTap: () {
                             serverProvider.setActiveCliAgent(agent.id);
                             Navigator.pop(context);
-                            AppToast.success(context, 'Đã chuyển sang Local CLI Agent: ${agent.id}');
+                            AppToast.success(context, 'Đã kích hoạt Local CLI Agent: ${agent.label}');
                           },
                         );
                       }),
+                    const SizedBox(height: 14),
                   ],
 
-                  // --- TAB 0: CLOUD LLM MODELS (Chỉ hiển thị khi đang đứng ở tab Cloud API) ---
-                  if (_selectedTab == 0) ...[
+                  // --- SECTION 2: CLOUD LLM MODELS ---
+                  if (_selectedTab == -1 || _selectedTab == 0) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(
                         children: [
-                          const Icon(Icons.cloud_queue_rounded, size: 13, color: AppColors.primaryLight),
+                          const Icon(Icons.cloud_queue_rounded, size: 14, color: AppColors.primaryLight),
                           const SizedBox(width: 6),
                           const Text(
                             'CLOUD LLM MODELS (API BASE URL)',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight, letterSpacing: 0.5),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight, letterSpacing: 0.5),
                           ),
                           const Spacer(),
                           Text(
@@ -443,7 +482,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
 
                         return _buildModelCard(
                           title: m,
-                          subtitle: 'Cloud API Model (Proxy)',
+                          subtitle: 'Cloud API Model (Proxy qua api.mitom.ai)',
                           icon: icon,
                           isSelected: isSel,
                           onTap: () {

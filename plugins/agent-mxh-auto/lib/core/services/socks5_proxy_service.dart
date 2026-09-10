@@ -411,10 +411,19 @@ class Socks5ProxyService extends ChangeNotifier {
       ];
     }
 
+    final browserEnv = Map<String, String>.from(Platform.environment);
+    if (!browserEnv.containsKey('DISPLAY') || browserEnv['DISPLAY']!.isEmpty) {
+      browserEnv['DISPLAY'] = ':0';
+    }
+    if (homeDir.isNotEmpty) {
+      browserEnv['HOME'] = homeDir;
+    }
+
     try {
       final proc = await Process.start(
         executable,
         args,
+        environment: browserEnv,
         mode: ProcessStartMode.detached,
       );
 

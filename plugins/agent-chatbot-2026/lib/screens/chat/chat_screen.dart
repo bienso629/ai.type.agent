@@ -59,17 +59,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final chat = context.read<ChatProvider>();
       final server = context.read<ServerProvider>();
       server.loadServers();
-      chat.loadSessions().then((_) {
-        if (chat.currentSession != null) {
-          chat.selectSession(chat.currentSession!).then((_) {
-            _safeScrollToBottom(instant: true);
-          });
-        } else if (chat.sessions.isNotEmpty) {
-          chat.selectSession(chat.sessions.first).then((_) {
-            _safeScrollToBottom(instant: true);
-          });
-        }
-      });
+      if (chat.currentSession != null) {
+        _safeScrollToBottom(instant: true);
+      } else if (chat.sessions.isNotEmpty) {
+        chat.selectSession(chat.sessions.first).then((_) {
+          _safeScrollToBottom(instant: true);
+        });
+      }
     });
   }
 

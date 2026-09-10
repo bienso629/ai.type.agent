@@ -30,6 +30,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadGlobalConfig();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ServerProvider>().scanCliAgents(forceRefresh: true);
+      }
+    });
   }
 
   @override
@@ -52,13 +57,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (aiModel.isNotEmpty && !isCli(aiModel)) {
         _modelCtrl.text = aiModel;
-      } else if (aiModel.contains('antigravity') || aiModel == 'agy') {
-        _modelCtrl.text = 'glm-5.3';
       }
-      if (activeEngine.isNotEmpty && isCli(activeEngine) && !activeEngine.contains('antigravity') && activeEngine != 'agy') {
+      if (activeEngine.isNotEmpty && isCli(activeEngine)) {
         _aiEngineTab = 'cli';
-      } else {
-        _aiEngineTab = 'cloud';
+        _modelCtrl.text = activeEngine;
+      } else if (cfg['active_cli_agent'] != null && cfg['active_cli_agent'].toString().isNotEmpty) {
+        if (cfg['engine_mode'] == 'cli') {
+          _aiEngineTab = 'cli';
+          _modelCtrl.text = cfg['active_cli_agent'].toString();
+        }
       }
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
@@ -1057,18 +1064,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         ),
                                       ],
                                     ),
-                                    OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: AppColors.accentCyan,
-                                        side: const BorderSide(color: AppColors.accentCyan),
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      ),
-                                      icon: const Icon(Icons.radar_rounded, size: 14),
-                                      label: const Text('Quét lại CLI', style: TextStyle(fontSize: 11)),
-                                      onPressed: () {
-                                        serverProvider.scanCliAgents(forceRefresh: true);
-                                        AppToast.info(context, 'Đang quét lại các CLI Agent...');
-                                      },
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: AppColors.accentCyan,
+                                            side: const BorderSide(color: AppColors.accentCyan),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          ),
+                                          icon: const Icon(Icons.list_alt_rounded, size: 14),
+                                          label: const Text('Bảng chọn CLI', style: TextStyle(fontSize: 11)),
+                                          onPressed: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (ctx) => ModelPickerDialog(
+                                                serverProvider: serverProvider,
+                                                isAdmin: auth.isAdmin,
+                                                initialTab: 1,
+                                              ),
+                                            ).then((_) {
+                                              if (mounted) {
+                                                setState(() {
+                                                  _modelCtrl.text = serverProvider.activeCliAgent;
+                                                });
+                                              }
+                                            });
+                                          },
+                                        ),
+                                        const SizedBox(width: 8),
+                                        OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: AppColors.accentCyan,
+                                            side: const BorderSide(color: AppColors.accentCyan),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          ),
+                                          icon: const Icon(Icons.radar_rounded, size: 14),
+                                          label: const Text('Quét lại CLI', style: TextStyle(fontSize: 11)),
+                                          onPressed: () {
+                                            serverProvider.scanCliAgents(forceRefresh: true);
+                                            AppToast.info(context, 'Đang quét lại các CLI Agent...');
+                                          },
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -1078,34 +1116,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                                 ),
                                 const SizedBox(height: 14),
-                                Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: [
-                                    ActionChip(
-                                      avatar: const Icon(Icons.code_rounded, size: 14, color: AppColors.accentCyan),
-                                      label: Text(
-                                        'claude-cli (${_modelCtrl.text == 'claude-cli' ? 'Đang chọn' : 'Chọn'})',
-                                        style: const TextStyle(fontSize: 11.5),
-                                      ),
-                                      backgroundColor: _modelCtrl.text == 'claude-cli' || _modelCtrl.text == 'claude'
-                                          ? AppColors.accentCyan.withValues(alpha: 0.25)
-                                          : AppColors.cardBg,
-                                      side: BorderSide(
-                                        color: _modelCtrl.text == 'claude-cli' || _modelCtrl.text == 'claude'
-                                            ? AppColors.accentCyan
-                                            : AppColors.borderDark,
-                                      ),
-                                      onPressed: () {
-                                        setState(() {
-                                          _modelCtrl.text = 'claude-cli';
-                                        });
-                                        serverProvider.setActiveAgent('claude-cli');
-                                        AppToast.success(context, 'Đã chọn Claude CLI Agent');
-                                      },
+                                if (serverProvider.installedCliAgents.isEmpty)
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 8),
+                                    child: Text(
+                                      'Chưa tìm thấy CLI Agent nào. Nhấn "Quét lại CLI" để dò tìm.',
+                                      style: TextStyle(fontSize: 11, color: AppColors.textDim),
                                     ),
-                                  ],
-                                ),
+                                  )
+                                else
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: serverProvider.installedCliAgents.map((agent) {
+                                      final isCurrent = _modelCtrl.text == agent.id ||
+                                          _modelCtrl.text == agent.binary ||
+                                          (serverProvider.isCliMode && serverProvider.activeCliAgent == agent.id);
+                                      final icon = agent.id.contains('antigravity') || agent.binary.contains('agy')
+                                          ? Icons.rocket_launch_rounded
+                                          : (agent.id.contains('claude') ? Icons.code_rounded : Icons.terminal_rounded);
+                                      final verStr = agent.version != null ? ' v${agent.version}' : '';
+
+                                      return ActionChip(
+                                        avatar: Icon(icon, size: 14, color: isCurrent ? AppColors.accentCyan : AppColors.textDim),
+                                        label: Text(
+                                          '${agent.label} ($verStr${isCurrent ? ' • Đang chọn' : ''})'.trim(),
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                            color: isCurrent ? AppColors.accentCyan : AppColors.textWhite,
+                                          ),
+                                        ),
+                                        backgroundColor: isCurrent
+                                            ? AppColors.accentCyan.withValues(alpha: 0.25)
+                                            : AppColors.cardBg,
+                                        side: BorderSide(
+                                          color: isCurrent
+                                              ? AppColors.accentCyan
+                                              : AppColors.borderDark,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _modelCtrl.text = agent.id;
+                                          });
+                                          serverProvider.setActiveAgent(agent.id);
+                                          AppToast.success(context, 'Đã chọn ${agent.label}');
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
                                 const SizedBox(height: 14),
                                 Row(
                                   children: [

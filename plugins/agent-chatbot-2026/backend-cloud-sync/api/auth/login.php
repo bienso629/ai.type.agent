@@ -35,6 +35,10 @@ if (!hash_equals($user['password_hash'], $testHash)) {
 
 $token = AuthMiddleware::generateToken($user);
 
+$firstUserStmt = $db->query('SELECT id FROM users ORDER BY id ASC LIMIT 1');
+$firstUserId = (int)$firstUserStmt->fetchColumn();
+$isAdmin = ($user['role'] === 'admin') || ((int)$user['id'] === $firstUserId);
+
 Response::success([
     'token' => $token,
     'user' => [
@@ -43,5 +47,5 @@ Response::success([
         'name' => $user['name'],
         'role' => $user['role'],
     ],
-    'is_admin' => ($user['role'] === 'admin'),
+    'is_admin' => $isAdmin,
 ], 'Đăng nhập thành công!');

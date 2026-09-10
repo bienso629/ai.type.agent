@@ -1275,6 +1275,60 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       onPressed: _pickFiles,
                     ),
+                    const SizedBox(width: 8),
+                    // Nút chọn AI Model / Local CLI Agent trực tiếp tại thanh nhập
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                          width: 0.8,
+                        ),
+                        backgroundColor: serverProvider.isCliMode
+                            ? AppColors.accentCyan.withValues(alpha: 0.12)
+                            : AppColors.primary.withValues(alpha: 0.12),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      ),
+                      icon: Icon(
+                        serverProvider.isCliMode ? Icons.terminal_rounded : Icons.smart_toy_rounded,
+                        size: 14,
+                        color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                      ),
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            serverProvider.isCliMode ? 'CLI: ' : 'Cloud: ',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                            ),
+                          ),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 140),
+                            child: Text(
+                              serverProvider.currentAiModel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_drop_down_rounded,
+                            size: 14,
+                            color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                          ),
+                        ],
+                      ),
+                      onPressed: () => ModelPickerDialog.show(context),
+                    ),
                   ],
                 ),
                 if (chat.isGenerating)

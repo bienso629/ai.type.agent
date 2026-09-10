@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../core/services/database_service.dart';
 import '../core/services/local_config_service.dart';
 import '../core/services/storage_service.dart';
@@ -40,14 +40,25 @@ class AuthProvider extends ChangeNotifier {
       await _userService.init();
       final loggedIn = await _storage.isLoggedIn();
       if (loggedIn) {
-        _isAuthenticated = true;
         _userEmail = await _storage.getUserEmail();
         _userName = await _storage.getUserName();
         _authToken = await _storage.getAuthToken();
-        _isAdmin = await _userService.isFirstUser(_userEmail);
-        final userKey = await _storage.getUserKey();
-        await _db.switchUser(userKey);
-        await _localConfig.switchUser(userKey);
+
+        // Trên nền tảng Web, nếu token là session cũ không hợp lệ hoặc đã hỏng định dạng thì đăng xuất
+        if (kIsWeb && (_authToken == null || _authToken!.isEmpty || !_authToken!.contains('.'))) {
+          await _storage.clearAuth();
+          _isAuthenticated = false;
+          _isAdmin = false;
+          _authToken = null;
+          _userEmail = null;
+          _userName = null;
+        } else {
+          _isAuthenticated = true;
+          _isAdmin = await _userService.isFirstUser(_userEmail);
+          final userKey = await _storage.getUserKey();
+          await _db.switchUser(userKey);
+          await _localConfig.switchUser(userKey);
+        }
       } else {
         _isAuthenticated = false;
         _isAdmin = false;
@@ -94,10 +105,13 @@ class AuthProvider extends ChangeNotifier {
         name: cleanName,
       );
 
-      final token = 'local_session_${DateTime.now().millisecondsSinceEpoch}_${user.id}';
+      String? token = await _storage.getAuthToken();
+      if (token == null || token.isEmpty) {
+        token = 'local_session_${DateTime.now().millisecondsSinceEpoch}_${user.id}';
+        await _storage.setAuthToken(token);
+      }
 
       await _storage.setRememberMe(rememberMe);
-      await _storage.setAuthToken(token);
       await _storage.setUserEmail(user.email);
       await _storage.setUserName(user.name);
       await _storage.setLoggedIn(true);
@@ -156,10 +170,13 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
 
-      final token = 'local_session_${DateTime.now().millisecondsSinceEpoch}_${user.id}';
+      String? token = await _storage.getAuthToken();
+      if (token == null || token.isEmpty) {
+        token = 'local_session_${DateTime.now().millisecondsSinceEpoch}_${user.id}';
+        await _storage.setAuthToken(token);
+      }
 
       await _storage.setRememberMe(rememberMe);
-      await _storage.setAuthToken(token);
       await _storage.setUserEmail(user.email);
       await _storage.setUserName(user.name);
       await _storage.setLoggedIn(true);

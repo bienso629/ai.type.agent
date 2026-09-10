@@ -167,20 +167,20 @@ export function UserProfileModal({
                 setShowChangePassword(!showChangePassword)
                 setPasswordMsg(null)
               }}
-              className="w-full flex items-center justify-between p-4 text-left text-xs font-semibold text-foreground hover:bg-secondary/50 transition-colors"
+              className="w-full flex items-center justify-between p-4 text-left text-sm font-semibold text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
             >
               <span className="flex items-center gap-2">
-                <Lock size={14} className="text-primary" />
+                <Lock size={16} className="text-primary" />
                 Thay đổi mật khẩu
               </span>
-              {showChangePassword ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {showChangePassword ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </button>
 
             {showChangePassword && (
-              <form onSubmit={handleChangePassword} className="p-4 pt-0 border-t border-border/50 space-y-3 mt-3">
+              <form onSubmit={handleChangePassword} className="p-4 pt-2 border-t border-border/50 space-y-4">
                 {passwordMsg && (
                   <div
-                    className={`rounded-lg p-2.5 text-xs font-medium ${
+                    className={`rounded-lg p-3 text-xs font-medium ${
                       passwordMsg.type === 'success'
                         ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
                         : 'border border-rose-500/30 bg-rose-500/10 text-rose-400'
@@ -192,54 +192,70 @@ export function UserProfileModal({
 
                 {user.authProvider === 'local' && (
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                       Mật khẩu hiện tại
                     </label>
-                    <input
-                      type="password"
-                      required
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full rounded-md border border-border bg-background/80 py-2 px-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
+                    <div className="relative">
+                      <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="password"
+                        required
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full rounded-md border border-border bg-secondary/40 py-2.5 pl-10 pr-3.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                     Mật khẩu mới (tối thiểu 6 ký tự)
                   </label>
-                  <input
-                    type="password"
-                    required
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full rounded-md border border-border bg-background/80 py-2 px-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+                  <div className="relative">
+                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="password"
+                      required
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-md border border-border bg-secondary/40 py-2.5 pl-10 pr-3.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                     Xác nhận mật khẩu mới
                   </label>
-                  <input
-                    type="password"
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full rounded-md border border-border bg-background/80 py-2 px-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+                  <div className="relative">
+                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-md border border-border bg-secondary/40 py-2.5 pl-10 pr-3.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
                 </div>
 
                 <button
                   type="submit"
                   disabled={passwordLoading}
-                  className="glow-button w-full py-2 rounded-md text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                  className="glow-button flex w-full items-center justify-center gap-2 rounded-md py-3 text-sm font-bold transition-all disabled:opacity-50 cursor-pointer mt-2"
                 >
-                  {passwordLoading ? 'Đang cập nhật...' : 'Lưu mật khẩu mới'}
+                  {passwordLoading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                      Đang cập nhật...
+                    </span>
+                  ) : (
+                    'Lưu mật khẩu mới'
+                  )}
                 </button>
               </form>
             )}

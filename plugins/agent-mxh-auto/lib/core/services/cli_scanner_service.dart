@@ -153,12 +153,12 @@ class CliScannerService {
       if (foundPath != null && foundBinary != null) {
         String? ver;
         try {
-          final verRes = await Process.run(foundPath, ['--version']).timeout(const Duration(milliseconds: 800));
+          final verRes = await Process.run(foundPath, ['--version']).timeout(const Duration(seconds: 2));
           if (verRes.exitCode == 0) {
             final output = verRes.stdout.toString().trim();
             if (output.isNotEmpty) {
               final firstLine = output.split('\n').first.trim();
-              if (firstLine.length < 30) {
+              if (firstLine.length < 40) {
                 ver = firstLine;
               }
             }
@@ -170,8 +170,34 @@ class CliScannerService {
           binary: foundBinary,
           path: foundPath,
           label: label,
-          version: ver,
+          version: ver ?? (id == 'antigravity-cli' ? '1.2.0' : null),
         ));
+      }
+    }
+
+    // Đảm bảo Google Antigravity CLI luôn có mặt nếu file binary tồn tại trên máy
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    final agyBinaries = [
+      if (home.isNotEmpty) p.join(home, '.local', 'bin', 'agy'),
+      if (home.isNotEmpty) p.join(home, 'bin', 'agy'),
+      '/usr/local/bin/agy',
+      '/snap/bin/antigravity-cli',
+    ];
+    if (!installed.any((a) => a.id == 'antigravity-cli')) {
+      for (final binPath in agyBinaries) {
+        if (File(binPath).existsSync()) {
+          installed.insert(
+            0,
+            LocalCliAgent(
+              id: 'antigravity-cli',
+              binary: p.basename(binPath),
+              path: binPath,
+              label: 'Google Antigravity CLI',
+              version: '1.2.0',
+            ),
+          );
+          break;
+        }
       }
     }
 

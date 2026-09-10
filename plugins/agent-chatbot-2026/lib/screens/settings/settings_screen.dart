@@ -11,6 +11,7 @@ import '../../core/services/user_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_logo_widget.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/tadu_dialog.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/server_provider.dart';
 
@@ -35,10 +36,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedVoice = 'vi-VN-HoaiMyNeural';
   bool _isTestingVoice = false;
 
+  List<String> _availableModels = [];
+  bool _isLoadingModels = false;
+
   @override
   void initState() {
     super.initState();
     _loadGlobalConfig();
+    _fetchModelsList();
   }
 
   @override
@@ -97,6 +102,282 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _brandSubtitleCtrl.text = cfg['brand_subtitle'].toString();
       }
     } catch (_) {}
+  }
+
+  Future<void> _fetchModelsList({bool forceRefresh = false}) async {
+    if (_isLoadingModels) return;
+    setState(() {
+      _isLoadingModels = true;
+    });
+
+    try {
+      final baseUrl = _baseUrlCtrl.text.trim();
+      final apiKey = _apiKeyCtrl.text.trim();
+      final models = await _api.fetchAvailableModels(
+        customBaseUrl: baseUrl.isNotEmpty ? baseUrl : null,
+        apiKey: apiKey.isNotEmpty ? apiKey : null,
+      );
+
+      if (mounted) {
+        setState(() {
+          if (models.isNotEmpty) {
+            _availableModels = models;
+          }
+          // Nếu model hiện tại chưa nằm trong danh sách, thêm vào đầu
+          final current = _modelCtrl.text.trim();
+          if (current.isNotEmpty && !_availableModels.contains(current)) {
+            _availableModels.insert(0, current);
+          }
+          _isLoadingModels = false;
+        });
+
+        if (forceRefresh && models.isNotEmpty) {
+          AppToast.success(context, 'Đã cập nhật ${models.length} model từ API!');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingModels = false;
+        });
+        if (forceRefresh) {
+          AppToast.error(context, 'Không thể tải danh sách model: $e');
+        }
+      }
+    }
+  }
+
+  void _openModelSelectorDialog() {
+    final searchCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final query = searchCtrl.text.trim().toLowerCase();
+            final filtered = _availableModels.where((m) {
+              if (query.isEmpty) return true;
+              return m.toLowerCase().contains(query);
+            }).toList();
+
+            return TaduDialog(
+              minWidth: 480,
+              maxWidth: 580,
+              maxHeight: 620,
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Icon(Icons.psychology_rounded, size: 18, color: AppColors.primaryLight),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Chọn AI Model', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                        SizedBox(height: 2),
+                        Text('Danh sách đồng bộ thời gian thực từ API', style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.normal)),
+                      ],
+                    ),
+                  ),
+                  if (_isLoadingModels)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                    )
+                  else
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded, size: 18, color: AppColors.accentCyan),
+                      tooltip: 'Làm mới danh sách model',
+                      onPressed: () async {
+                        await _fetchModelsList(forceRefresh: true);
+                        setModalState(() {});
+                      },
+                    ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: searchCtrl,
+                    autofocus: false,
+                    onChanged: (_) => setModalState(() {}),
+                    style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                    decoration: InputDecoration(
+                      hintText: 'Tìm kiếm model (vd: deepseek, glm, qwen...)...',
+                      prefixIcon: const Icon(Icons.search_rounded, size: 18, color: AppColors.textDim),
+                      suffixIcon: searchCtrl.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear_rounded, size: 16, color: AppColors.textDim),
+                              onPressed: () {
+                                searchCtrl.clear();
+                                setModalState(() {});
+                              },
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Tổng số: ${filtered.length} model khả dụng',
+                        style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                      ),
+                      if (_modelCtrl.text.trim().isNotEmpty)
+                        Text(
+                          'Đang dùng: ${_modelCtrl.text.trim()}',
+                          style: const TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 360,
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.search_off_rounded, size: 36, color: AppColors.textDim),
+                                const SizedBox(height: 8),
+                                Text(
+                                  query.isNotEmpty ? 'Không tìm thấy model nào khớp với "$query"' : 'Chưa có danh sách model',
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                                ),
+                                if (query.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primary,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    ),
+                                    icon: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+                                    label: Text('Dùng model "$query"', style: const TextStyle(fontSize: 12, color: Colors.white)),
+                                    onPressed: () {
+                                      setState(() {
+                                        _modelCtrl.text = query;
+                                        if (!_availableModels.contains(query)) {
+                                          _availableModels.insert(0, query);
+                                        }
+                                      });
+                                      Navigator.pop(dialogCtx);
+                                      AppToast.success(context, 'Đã chọn: $query');
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 4),
+                            itemBuilder: (context, idx) {
+                              final m = filtered[idx];
+                              final isSelected = _modelCtrl.text.trim().toLowerCase() == m.toLowerCase();
+
+                              IconData icon = Icons.psychology_outlined;
+                              Color iconColor = AppColors.primaryLight;
+                              if (m.contains('deepseek')) {
+                                icon = Icons.terminal_rounded;
+                                iconColor = AppColors.accentCyan;
+                              } else if (m.contains('glm')) {
+                                icon = Icons.auto_awesome_rounded;
+                                iconColor = Colors.amber;
+                              } else if (m.contains('qwen')) {
+                                icon = Icons.smart_toy_outlined;
+                                iconColor = Colors.tealAccent;
+                              } else if (m.contains('doubao') || m.contains('seed')) {
+                                icon = Icons.bolt_rounded;
+                                iconColor = Colors.orangeAccent;
+                              } else if (m.contains('minimax') || m.contains('MiniMax')) {
+                                icon = Icons.view_in_ar_rounded;
+                                iconColor = Colors.purpleAccent;
+                              } else if (m.contains('wan') || m.contains('image') || m.contains('video')) {
+                                icon = Icons.video_collection_outlined;
+                                iconColor = Colors.pinkAccent;
+                              }
+
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(6),
+                                onTap: () {
+                                  setState(() {
+                                    _modelCtrl.text = m;
+                                  });
+                                  Navigator.pop(dialogCtx);
+                                  AppToast.success(context, 'Đã chọn model: $m');
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.inputBg,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: isSelected ? AppColors.primaryLight : AppColors.borderDark,
+                                      width: isSelected ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: iconColor.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Icon(icon, size: 16, color: iconColor),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          m,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                            color: isSelected ? AppColors.primaryLight : AppColors.textWhite,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text('ĐANG CHỌN', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white)),
+                                        )
+                                      else
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppColors.textDim),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _toggleVoiceEnabled(bool val) async {
@@ -359,12 +640,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Text(
                         'Tài khoản: $userEmail',
-                        style: const TextStyle(fontSize: 12, color: AppColors.primaryLight, fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontSize: 13, color: AppColors.primaryLight, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 16),
                       if (dialogError != null) ...[
                         Container(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           margin: const EdgeInsets.only(bottom: 14),
                           decoration: BoxDecoration(
                             color: AppColors.danger.withValues(alpha: 0.12),
@@ -373,30 +654,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.error_outline_rounded, color: AppColors.danger, size: 16),
+                              const Icon(Icons.error_outline_rounded, color: AppColors.danger, size: 18),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   dialogError!,
-                                  style: const TextStyle(color: AppColors.danger, fontSize: 12),
+                                  style: const TextStyle(color: AppColors.danger, fontSize: 13),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ],
-                      const Text('Mật khẩu hiện tại', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                      const Text('Mật khẩu hiện tại', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 6),
                       TextField(
                         controller: currentPassCtrl,
                         obscureText: obscureCurrent,
-                        style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                        style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                         decoration: InputDecoration(
                           hintText: 'Nhập mật khẩu hiện tại...',
                           suffixIcon: IconButton(
                             icon: Icon(
                               obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              size: 18,
+                              size: 20,
                               color: AppColors.textDim,
                             ),
                             onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
@@ -404,18 +685,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      const Text('Mật khẩu mới', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                      const Text('Mật khẩu mới', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 6),
                       TextField(
                         controller: newPassCtrl,
                         obscureText: obscureNew,
-                        style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                        style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                         decoration: InputDecoration(
                           hintText: 'Tối thiểu 6 ký tự...',
                           suffixIcon: IconButton(
                             icon: Icon(
                               obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              size: 18,
+                              size: 20,
                               color: AppColors.textDim,
                             ),
                             onPressed: () => setDialogState(() => obscureNew = !obscureNew),
@@ -423,18 +704,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      const Text('Xác nhận mật khẩu mới', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                      const Text('Xác nhận mật khẩu mới', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 6),
                       TextField(
                         controller: confirmPassCtrl,
                         obscureText: obscureConfirm,
-                        style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                        style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                         decoration: InputDecoration(
                           hintText: 'Nhập lại mật khẩu mới...',
                           suffixIcon: IconButton(
                             icon: Icon(
                               obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              size: 18,
+                              size: 20,
                               color: AppColors.textDim,
                             ),
                             onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
@@ -448,10 +729,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               actions: [
                 TextButton(
                   onPressed: isSubmitting ? null : () => Navigator.pop(dialogCtx),
-                  child: const Text('Huỷ Bỏ', style: TextStyle(color: AppColors.textDim)),
+                  child: const Text('Huỷ Bỏ', style: TextStyle(color: AppColors.textDim, fontSize: 13)),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
                   onPressed: isSubmitting
                       ? null
                       : () async {
@@ -483,7 +767,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                           try {
                             await UserService().changePassword(
-                              email: userEmail,
+                               email: userEmail,
                               currentPassword: curPass,
                               newPassword: newPass,
                             );
@@ -508,7 +792,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Cập Nhật Mật Khẩu', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      : const Text('Cập Nhật Mật Khẩu', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -617,11 +901,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('AI Model Name', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  Row(
+                                    children: [
+                                      const Text('AI Model Name', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
+                                      const Spacer(),
+                                      if (_isLoadingModels)
+                                        const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                        )
+                                      else
+                                        InkWell(
+                                          onTap: () => _fetchModelsList(forceRefresh: true),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.refresh_rounded, size: 13, color: AppColors.accentCyan),
+                                              SizedBox(width: 4),
+                                              Text('Cập nhật API', style: TextStyle(fontSize: 11, color: AppColors.accentCyan, fontWeight: FontWeight.w500)),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                   const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _modelCtrl,
-                                    decoration: const InputDecoration(hintText: 'gemini-2.5-flash'),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(6),
+                                    onTap: _openModelSelectorDialog,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.inputBg,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: AppColors.borderDark),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.psychology_rounded, size: 18, color: AppColors.primaryLight),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              _modelCtrl.text.trim().isEmpty ? 'Chọn AI Model...' : _modelCtrl.text.trim(),
+                                              style: TextStyle(
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: _modelCtrl.text.trim().isEmpty ? AppColors.textDim : AppColors.textWhite,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          if (_availableModels.isNotEmpty)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primary.withValues(alpha: 0.2),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                '${_availableModels.length}',
+                                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                              ),
+                                            ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.textMuted),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -631,11 +979,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Proxy Base URL', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  const Text('Proxy Base URL', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 6),
                                   TextField(
                                     controller: _baseUrlCtrl,
                                     obscureText: true,
+                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                                     decoration: const InputDecoration(hintText: 'https://api.mitom.ai/v1'),
                                   ),
                                 ],
@@ -644,11 +993,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        const Text('Proxy API Key', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                        const Text('Proxy API Key', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 6),
                         TextField(
                           controller: _apiKeyCtrl,
                           obscureText: true,
+                          style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                           decoration: const InputDecoration(hintText: 'sk-... hoặc mitom key'),
                         ),
                       ],
@@ -814,11 +1164,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Tiêu đề chính Menu ("AI Agent")', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  const Text('Tiêu đề chính Menu ("AI Agent")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 6),
                                   TextField(
                                     controller: _brandTitleCtrl,
                                     enabled: auth.isAdmin,
+                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                                     decoration: InputDecoration(
                                       hintText: 'AI Agent',
                                       filled: true,
@@ -834,11 +1185,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Phụ đề Menu ("AI AGENT CHATBOT")', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  const Text('Phụ đề Menu ("AI AGENT CHATBOT")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 6),
                                   TextField(
                                     controller: _brandSubtitleCtrl,
                                     enabled: auth.isAdmin,
+                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                                     decoration: InputDecoration(
                                       hintText: 'AI AGENT CHATBOT',
                                       filled: true,
@@ -854,11 +1206,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Tiêu đề cửa sổ ứng dụng (Title)', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                                  const Text('Tiêu đề cửa sổ ứng dụng (Title)', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 6),
                                   TextField(
                                     controller: _appTitleCtrl,
                                     enabled: auth.isAdmin,
+                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
                                     decoration: InputDecoration(
                                       hintText: 'AI Agent Chatbot',
                                       filled: true,
@@ -1118,7 +1471,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildInfoBox(String title, String desc) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.inputBg,
         borderRadius: BorderRadius.circular(6),
@@ -1127,9 +1480,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
-          const SizedBox(height: 4),
-          Text(desc, style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+          const SizedBox(height: 6),
+          Text(desc, style: const TextStyle(fontSize: 12, color: AppColors.textBody, height: 1.4)),
         ],
       ),
     );

@@ -818,6 +818,18 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
       }
       env['PATH'] = '${extraPaths.join(':')}:$currentPath';
       if (home.isNotEmpty) env['HOME'] = home;
+      if (!env.containsKey('DISPLAY') || env['DISPLAY']!.isEmpty) {
+        env['DISPLAY'] = Platform.environment['DISPLAY'] ?? ':0';
+      }
+      if (Platform.environment.containsKey('WAYLAND_DISPLAY')) {
+        env['WAYLAND_DISPLAY'] = Platform.environment['WAYLAND_DISPLAY']!;
+      }
+      if (Platform.environment.containsKey('XDG_RUNTIME_DIR')) {
+        env['XDG_RUNTIME_DIR'] = Platform.environment['XDG_RUNTIME_DIR']!;
+      }
+      if (Platform.environment.containsKey('XDG_CURRENT_DESKTOP')) {
+        env['XDG_CURRENT_DESKTOP'] = Platform.environment['XDG_CURRENT_DESKTOP']!;
+      }
 
       List<String> args;
       if (m.contains('claude')) {

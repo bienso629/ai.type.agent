@@ -18,7 +18,12 @@ if (!$user) {
     Response::error('Người dùng không tồn tại.', 404);
 }
 
+$firstUserStmt = $db->query('SELECT id FROM users ORDER BY id ASC LIMIT 1');
+$firstUserId = (int)$firstUserStmt->fetchColumn();
+
+$isAdmin = ($user['role'] === 'admin') || ((int)$user['id'] === $firstUserId);
+
 Response::success([
     'user' => $user,
-    'is_admin' => ($user['role'] === 'admin'),
+    'is_admin' => $isAdmin,
 ]);

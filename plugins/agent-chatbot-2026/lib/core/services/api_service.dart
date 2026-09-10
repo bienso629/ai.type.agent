@@ -42,7 +42,9 @@ class ApiService {
   }
 
   Future<Map<String, String>> _getHeaders({bool isJson = true}) async {
-    final token = await _storage.getSecretToken();
+    final authToken = await _storage.getAuthToken();
+    final secretToken = await _storage.getSecretToken();
+    final token = (authToken != null && authToken.isNotEmpty) ? authToken : secretToken;
     final userEmail = await _storage.getUserEmail();
     final headers = <String, String>{
       if (isJson) 'Content-Type': 'application/json; charset=utf-8',
@@ -108,6 +110,52 @@ class ApiService {
       body: jsonEncode(config),
     );
     return res.statusCode == 200;
+  }
+
+  // Fetch available AI models list from models API
+  Future<List<String>> fetchAvailableModels({String? customBaseUrl, String? apiKey}) async {
+    final targetUrl = (customBaseUrl != null && customBaseUrl.trim().isNotEmpty)
+        ? (customBaseUrl.trim().endsWith('/models')
+            ? customBaseUrl.trim()
+            : '${customBaseUrl.trim().replaceAll(RegExp(r"/+$"), "")}/models')
+        : 'https://api-vn-sg.mitom.ai/v1/models';
+
+    try {
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      };
+      if (apiKey != null && apiKey.trim().isNotEmpty) {
+        headers['Authorization'] = 'Bearer ${apiKey.trim()}';
+      }
+
+      final res = await _client.get(Uri.parse(targetUrl), headers: headers).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+        final List<dynamic> data = decoded is Map && decoded['data'] is List
+            ? decoded['data']
+            : (decoded is List ? decoded : []);
+
+        final models = <String>[];
+        for (final item in data) {
+          if (item is Map && item['id'] != null) {
+            final id = item['id'].toString().trim();
+            if (id.isNotEmpty && !models.contains(id)) {
+              models.add(id);
+            }
+          } else if (item is String && item.trim().isNotEmpty) {
+            if (!models.contains(item.trim())) {
+              models.add(item.trim());
+            }
+          }
+        }
+        if (models.isNotEmpty) {
+          return models;
+        }
+      }
+    } catch (_) {}
+
+    return [];
   }
 
   // 3. Servers Management APIs
@@ -332,9 +380,14 @@ class ApiService {
         final data = jsonDecode(utf8.decode(res.bodyBytes));
         if (data is List) {
           return data.map((e) => ChatSessionModel.fromJson(e as Map<String, dynamic>)).toList();
-        } else if (data is Map<String, dynamic> && data['sessions'] is List) {
-          final list = data['sessions'] as List;
-          return list.map((e) => ChatSessionModel.fromJson(e as Map<String, dynamic>)).toList();
+        } else if (data is Map<String, dynamic>) {
+          var list = data['sessions'];
+          if (list == null && data['data'] is Map<String, dynamic>) {
+            list = data['data']['sessions'];
+          }
+          if (list is List) {
+            return list.map((e) => ChatSessionModel.fromJson(e as Map<String, dynamic>)).toList();
+          }
         }
       }
     } catch (_) {}

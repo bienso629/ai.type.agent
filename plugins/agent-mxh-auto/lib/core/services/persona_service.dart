@@ -389,72 +389,20 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
       }
     } catch (_) {}
 
-    // 2. Fallback: Nếu proxy chỉ mở endpoint chat, gọi chat/completions yêu cầu trả về direct link hoặc avatar phù hợp
-    try {
-      final chatUri = Uri.parse('$baseUrl/chat/completions');
-      final chatRes = await http.post(
-        chatUri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode({
-          'model': cfg['ai_model']?.toString() ?? 'glm-5.3',
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'Bạn là trợ lý AI chuyên tạo ảnh chân dung mạng xã hội. Dựa vào cá tính và vai trò, hãy cung cấp 1 direct link URL ảnh chân dung phù hợp nhất.',
-            },
-            {
-              'role': 'user',
-              'content': 'Hãy cho tôi 1 direct link URL ảnh chân dung phù hợp với mô tả chi tiết cá tính và vai trò này: "$effectivePrompt". Chỉ trả về URL duy nhất, không kèm bất kỳ ký tự nào khác.',
-            }
-          ],
-        }),
-      ).timeout(const Duration(seconds: 20));
-
-      if (chatRes.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(chatRes.bodyBytes));
-        final text = (data['choices']?[0]?['message']?['content']?.toString() ?? '').trim();
-        final match = RegExp(r'https?:\/\/[^\s\)\"]+').firstMatch(text);
-        if (match != null) {
-          final foundUrl = match.group(0)!;
-          try {
-            final dlRes = await http.get(Uri.parse(foundUrl)).timeout(const Duration(seconds: 15));
-            if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 500) {
-              await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
-              final updated = persona.copyWith(avatarUrl: localImagePath);
-              await updatePersona(updated);
-              return localImagePath;
-            }
-          } catch (_) {}
-          final updated = persona.copyWith(avatarUrl: foundUrl);
-          await updatePersona(updated);
-          return foundUrl;
-        }
-      }
-    } catch (_) {}
-
-    // 3. Fallback đảm bảo luôn có ảnh avatar độc nhất: Sử dụng kho ảnh chân dung người thật đa dạng (150+ nhân vật) kết hợp seed từ IP + Name + Age + Timestamp
-    final isFemale = persona.gender.toLowerCase() == 'nữ';
-    final genderDir = isFemale ? 'female' : 'male';
-    // Tính hash duy nhất từ IP + Tên + Giới tính + Thời gian
-    final uniqueSeed = '${persona.ip}_${persona.name}_${persona.gender}_$timestamp'.hashCode.abs();
-    final photoIndex = (uniqueSeed % 75); // 0 đến 74
-
-    // Danh sách nguồn fallback có thứ tự ưu tiên
-    final candidateUrls = [
-      'https://xsgames.co/randomusers/assets/avatars/$genderDir/$photoIndex.jpg',
-      'https://api.dicebear.com/7.x/personas/png?seed=${Uri.encodeComponent("${persona.name}_${persona.ip}_$timestamp")}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf',
-      'https://api.dicebear.com/7.x/avataaars/png?seed=${Uri.encodeComponent("${persona.name}_${persona.ip}_$timestamp")}',
-    ];
-
-    for (final fallbackUrl in candidateUrls) {
+    // 2. Tạo ảnh trực tiếp chuẩn 1:1 theo đúng avatarPrompt bằng AI Image Synthesis (Primary Engine)
+    final aiModels = ['flux', 'turbo', 'unity'];
+    for (final aiModelName in aiModels) {
       try {
-        final dlRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 12));
-        if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 500) {
-          await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
+        final promptForGen = Uri.encodeComponent(effectivePrompt);
+        final seed = '${persona.ip}_${persona.name}_${persona.gender}_$timestamp'.hashCode.abs();
+        final aiGenUrl = 'https://image.pollinations.ai/prompt/$promptForGen?width=512&height=512&nologo=true&seed=$seed&model=$aiModelName';
+        final genRes = await http.get(
+          Uri.parse(aiGenUrl),
+          headers: {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)'},
+        ).timeout(const Duration(seconds: 20));
+
+        if (genRes.statusCode == 200 && genRes.bodyBytes.length > 3000) {
+          await File(localImagePath).writeAsBytes(genRes.bodyBytes);
           final updated = persona.copyWith(avatarUrl: localImagePath);
           await updatePersona(updated);
           return localImagePath;
@@ -462,7 +410,20 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
       } catch (_) {}
     }
 
-    final ultimateFallback = candidateUrls.first;
+    // 3. Dự phòng AI Synthesis: Endpoint AI tạo avatar tự động qua Dicebear AI vector persona
+    try {
+      final safeSeed = Uri.encodeComponent('${persona.name}_${persona.ip}_$timestamp');
+      final dicebearUrl = 'https://api.dicebear.com/7.x/personas/png?seed=$safeSeed&size=512&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf';
+      final dlRes = await http.get(Uri.parse(dicebearUrl)).timeout(const Duration(seconds: 15));
+      if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 500) {
+        await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
+        final updated = persona.copyWith(avatarUrl: localImagePath);
+        await updatePersona(updated);
+        return localImagePath;
+      }
+    } catch (_) {}
+
+    final ultimateFallback = 'https://api.dicebear.com/7.x/personas/png?seed=${Uri.encodeComponent("${persona.name}_${persona.ip}")}&size=512';
     final updated = persona.copyWith(avatarUrl: ultimateFallback);
     await updatePersona(updated);
     return ultimateFallback;

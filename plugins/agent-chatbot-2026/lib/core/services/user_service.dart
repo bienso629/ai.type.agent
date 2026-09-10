@@ -140,6 +140,10 @@ class UserService {
           final u = (payload['user'] is Map<String, dynamic>)
               ? payload['user'] as Map<String, dynamic>
               : payload;
+          final token = payload['token']?.toString() ?? data['token']?.toString() ?? '';
+          if (token.isNotEmpty) {
+            await StorageService().setAuthToken(token);
+          }
           return UserModel(
             id: u['id'] is int ? u['id'] : int.tryParse(u['id']?.toString() ?? '0'),
             email: u['email'] ?? cleanEmail,
@@ -328,23 +332,28 @@ class UserService {
     if (kIsWeb) {
       final token = await StorageService().getAuthToken();
       final backendUrl = await _getBackendUrl();
-      final res = await http.post(
-        Uri.parse('$backendUrl/api/auth/change_password.php'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'current_password': currentPassword,
-          'new_password': newPassword,
-        }),
-      );
+      try {
+        final res = await http.post(
+          Uri.parse('$backendUrl/api/auth/change_password.php'),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'current_password': currentPassword,
+            'new_password': newPassword,
+          }),
+        ).timeout(const Duration(seconds: 15));
 
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      if (res.statusCode == 200 && data['success'] == true) {
-        return;
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        if (res.statusCode == 200 && data['success'] == true) {
+          return;
+        }
+        throw Exception(data['error'] ?? data['message'] ?? 'Đổi mật khẩu thất bại trên máy chủ');
+      } catch (e) {
+        if (e is Exception) rethrow;
+        throw Exception('Không thể kết nối đến máy chủ: $e');
       }
-      throw Exception(data['error'] ?? data['message'] ?? 'Đổi mật khẩu thất bại trên máy chủ');
     }
 
     final db = await _getDb();

@@ -128,6 +128,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final phoneCtrl = TextEditingController(text: persona.phoneNumber ?? '');
     bool autoSyncPhoneToDevice = persona.autoSyncPhoneToDevice;
     bool isPurchasingPhone = false;
+    bool isRefunding = false;
     bool isTestingDevice = false;
     Timer? otpTimer;
     String? latestOtpCode;
@@ -225,7 +226,17 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             child: InkWell(
                               onTap: isGen
                                   ? null
-                                  : () => _handleGenerateAvatar(currentP, setModalState: setDialogState),
+                                  : () {
+                                      final currentPWithForm = currentP.copyWith(
+                                        name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
+                                        age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
+                                        gender: selectedGender,
+                                        bio: bioCtrl.text.trim(),
+                                        avatarPrompt: promptCtrl.text.trim(),
+                                        agentInfo: agentInfoCtrl.text.trim(),
+                                      );
+                                      _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
+                                    },
                               borderRadius: BorderRadius.circular(8),
                               child: Stack(
                                 clipBehavior: Clip.none,
@@ -457,19 +468,51 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text('Prompt tạo Avatar AI', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
-                                InkWell(
-                                  onTap: () => _copyToClipboard(promptCtrl.text, 'Avatar Prompt'),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.copy_rounded, size: 12, color: AppColors.primaryLight),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Sao chép prompt',
-                                        style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    InkWell(
+                                      onTap: () {
+                                        final currentP = _personas[persona.ip] ?? persona;
+                                        if (_generatingAvatarIps.contains(currentP.ip)) return;
+                                        final currentPWithForm = currentP.copyWith(
+                                          name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
+                                          age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
+                                          gender: selectedGender,
+                                          bio: bioCtrl.text.trim(),
+                                          avatarPrompt: promptCtrl.text.trim(),
+                                          agentInfo: agentInfoCtrl.text.trim(),
+                                        );
+                                        _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
+                                      },
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.auto_awesome_rounded, size: 12, color: AppColors.accentCyan),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Vẽ lại ảnh theo prompt này',
+                                            style: TextStyle(fontSize: 11, color: AppColors.accentCyan, fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    InkWell(
+                                      onTap: () => _copyToClipboard(promptCtrl.text, 'Avatar Prompt'),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.copy_rounded, size: 12, color: AppColors.primaryLight),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Sao chép prompt',
+                                            style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1095,6 +1138,97 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                 AppToast.info(dialogCtx, 'Đã sao chép: $latestOtpCode');
                                               },
                                             ),
+                                          IconButton(
+                                            tooltip: 'Hoàn tiền / Hủy đơn (Refund)',
+                                            icon: isRefunding
+                                                ? const SizedBox(
+                                                    width: 14,
+                                                    height: 14,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 1.5,
+                                                      color: Color(0xFFEF4444),
+                                                    ),
+                                                  )
+                                                : const Icon(Icons.replay_rounded, size: 16, color: Color(0xFFEF4444)),
+                                            onPressed: isRefunding
+                                                ? null
+                                                : () async {
+                                                    final confirm = await showDialog<bool>(
+                                                      context: dialogCtx,
+                                                      builder: (ctx) => AlertDialog(
+                                                        backgroundColor: AppColors.cardBg,
+                                                        shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(10),
+                                                          side: const BorderSide(color: AppColors.borderDark),
+                                                        ),
+                                                        title: const Text('Xác nhận hoàn tiền', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                                                        content: Text(
+                                                          'Bạn có chắc chắn muốn hủy đơn #$currentOrderId và yêu cầu hoàn tiền (Refund) từ SMSPool không?',
+                                                          style: const TextStyle(fontSize: 12, color: AppColors.textDim),
+                                                        ),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed: () => Navigator.of(ctx).pop(false),
+                                                            child: const Text('Đóng', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                                                          ),
+                                                          ElevatedButton(
+                                                            style: ElevatedButton.styleFrom(
+                                                              backgroundColor: const Color(0xFFEF4444),
+                                                              foregroundColor: Colors.white,
+                                                            ),
+                                                            onPressed: () => Navigator.of(ctx).pop(true),
+                                                            child: const Text('Hoàn tiền', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+
+                                                    if (confirm != true) return;
+
+                                                    setDialogState(() {
+                                                      isRefunding = true;
+                                                    });
+
+                                                    try {
+                                                      final ok = await SmsPoolService().cancelOrder(orderId: currentOrderId!);
+                                                      if (ok) {
+                                                        otpTimer?.cancel();
+                                                        otpTimer = null;
+                                                        final canceledOrderId = currentOrderId;
+                                                        setDialogState(() {
+                                                          currentOrderId = null;
+                                                          latestOtpCode = null;
+                                                        });
+
+                                                        // Cập nhật lưu trữ database/json
+                                                        final currentP = _personas[persona.ip] ?? persona;
+                                                        final updated = currentP.copyWith(smsOrderId: null);
+                                                        await _personaService.updatePersona(updated);
+                                                        if (mounted) {
+                                                          setState(() {
+                                                            _personas[persona.ip] = updated;
+                                                          });
+                                                        }
+
+                                                        if (dialogCtx.mounted) {
+                                                          AppToast.success(dialogCtx, 'Đã hủy đơn #$canceledOrderId và hoàn tiền thành công!');
+                                                        }
+                                                      } else {
+                                                        if (dialogCtx.mounted) {
+                                                          AppToast.error(dialogCtx, 'Không thể hủy đơn. Đơn có thể đã hoàn thành hoặc hết hạn.');
+                                                        }
+                                                      }
+                                                    } catch (e) {
+                                                      if (dialogCtx.mounted) {
+                                                        AppToast.error(dialogCtx, 'Lỗi khi yêu cầu hoàn tiền: $e');
+                                                      }
+                                                    } finally {
+                                                      setDialogState(() {
+                                                        isRefunding = false;
+                                                      });
+                                                    }
+                                                  },
+                                          ),
                                         ],
                                       ),
                                     ),

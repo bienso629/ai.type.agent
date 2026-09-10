@@ -24,9 +24,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     Response::success(['messages' => $messages]);
 }
 
-// POST: Thêm hoặc đồng bộ tin nhắn
+// POST: Thêm hoặc đồng bộ tin nhắn, hoặc dọn dẹp lịch sử
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = Response::getJsonInput();
+    $action = $_GET['action'] ?? '';
+
+    // Xóa/dọn dẹp phiên chat qua POST /api/chat/clear
+    if ($action === 'clear' || (isset($input['session_id']) && count($input) === 1)) {
+        $sessionId = $input['session_id'] ?? $_GET['session_id'] ?? '';
+        if (empty($sessionId)) {
+            Response::error('Thiếu session_id để xóa tin nhắn.');
+        }
+        $stmt = $db->prepare('DELETE FROM chat_messages WHERE session_id = ? AND user_id = ?');
+        $stmt->execute([$sessionId, $userId]);
+        Response::success([], 'Đã dọn dẹp lịch sử tin nhắn của phiên chat');
+    }
 
     // Đồng bộ danh sách nhiều tin nhắn (Sync array)
     if (isset($input['messages']) && is_array($input['messages'])) {
