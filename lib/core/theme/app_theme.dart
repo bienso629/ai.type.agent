@@ -182,6 +182,30 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
+      scrollbarTheme: ScrollbarThemeData(
+        thumbVisibility: WidgetStateProperty.all(true),
+        trackVisibility: WidgetStateProperty.all(false),
+        interactive: true,
+        thickness: WidgetStateProperty.resolveWith<double>((states) {
+          if (states.contains(WidgetState.hovered) || states.contains(WidgetState.dragged)) {
+            return 4.0;
+          }
+          return 2.5;
+        }),
+        radius: Radius.zero,
+        thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+          if (states.contains(WidgetState.dragged)) {
+            return const Color(0xFF000000);
+          }
+          if (states.contains(WidgetState.hovered)) {
+            return const Color(0xFF000000).withValues(alpha: 0.90);
+          }
+          return const Color(0xFF000000).withValues(alpha: 0.70);
+        }),
+        trackColor: WidgetStateProperty.all(Colors.transparent),
+        crossAxisMargin: 0.0,
+        mainAxisMargin: 0.0,
+      ),
     );
   }
 }

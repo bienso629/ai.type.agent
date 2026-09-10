@@ -29,6 +29,7 @@ class TerminalPaneItem {
   ServerModel? server;
   late final Terminal terminal;
   late final TerminalController controller;
+  late final ScrollController scrollController;
   late final FocusNode focusNode;
   Pty? pty;
   Process? fallbackProcess;
@@ -55,6 +56,7 @@ class TerminalPaneItem {
       maxLines: 10000,
     );
     controller = TerminalController();
+    scrollController = ScrollController();
   }
 
   Map<String, dynamic> toJson() {
@@ -125,6 +127,7 @@ class TerminalPaneItem {
 
   void dispose() {
     controller.dispose();
+    scrollController.dispose();
     focusNode.dispose();
     cleanup();
     childPane?.dispose();
@@ -1052,7 +1055,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
           // Window Tabs Bar & Actions (Tối giản, phẳng, không chiếm diện tích)
           Container(
             height: 38,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.only(left: 10, right: 10),
             decoration: const BoxDecoration(
               color: AppColors.cardBg,
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
@@ -1081,6 +1084,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
                         return Container(
                           margin: const EdgeInsets.only(right: 4, top: 4, bottom: 0),
+                          height: 34,
                           child: Material(
                             color: isWinActive ? AppColors.bgDark : AppColors.sidebarBg.withValues(alpha: 0.6),
                             borderRadius: const BorderRadius.only(
@@ -1101,6 +1105,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                               },
                               onDoubleTap: () => _showRenameTabDialog(index),
                               child: Container(
+                                height: 34,
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 alignment: Alignment.center,
                                 child: Row(
@@ -1168,117 +1173,78 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   ),
                 ),
 
-                // Nút tạo Tab Cửa Sổ Mới
+                // Nút tạo Tab Cửa Sổ Mới (Đồng bộ height 34px, sát bottom = 0)
                 if (_panes.length < 6)
-                  PopupMenuButton<String>(
-                    tooltip: 'Mở thêm Tab Cửa Sổ Terminal mới',
-                    offset: const Offset(0, 30),
-                    color: AppColors.cardBg,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                      side: const BorderSide(color: AppColors.borderDark),
-                    ),
-                    onSelected: (val) {
-                      if (val == 'new_local') {
-                        _addWindow(isSsh: false);
-                      } else if (val.startsWith('new_ssh_')) {
-                        final srvId = val.replaceFirst('new_ssh_', '');
-                        final srv = serverProvider.servers.firstWhere((s) => s.id == srvId, orElse: () => serverProvider.servers.first);
-                        _addWindow(isSsh: true, srv: srv);
-                      }
-                    },
-                    itemBuilder: (ctx) => [
-                      const PopupMenuItem<String>(
-                        value: 'new_local',
-                        child: Row(
-                          children: [
-                            Icon(Icons.laptop_chromebook_rounded, size: 14, color: AppColors.accent),
-                            SizedBox(width: 8),
-                            Text('Thêm Tab Local Machine', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
-                          ],
-                        ),
+                  Container(
+                    margin: const EdgeInsets.only(top: 4, bottom: 0),
+                    height: 34,
+                    child: PopupMenuButton<String>(
+                      tooltip: 'Mở thêm Tab Cửa Sổ Terminal mới',
+                      offset: const Offset(0, 34),
+                      color: AppColors.cardBg,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        side: const BorderSide(color: AppColors.borderDark),
                       ),
-                      for (final s in serverProvider.servers)
-                        PopupMenuItem<String>(
-                          value: 'new_ssh_${s.id}',
+                      onSelected: (val) {
+                        if (val == 'new_local') {
+                          _addWindow(isSsh: false);
+                        } else if (val.startsWith('new_ssh_')) {
+                          final srvId = val.replaceFirst('new_ssh_', '');
+                          final srv = serverProvider.servers.firstWhere((s) => s.id == srvId, orElse: () => serverProvider.servers.first);
+                          _addWindow(isSsh: true, srv: srv);
+                        }
+                      },
+                      itemBuilder: (ctx) => [
+                        const PopupMenuItem<String>(
+                          value: 'new_local',
                           child: Row(
                             children: [
-                              const Icon(Icons.dns_rounded, size: 14, color: AppColors.primaryLight),
-                              const SizedBox(width: 8),
-                              Text('Thêm Tab SSH: ${s.name}', style: const TextStyle(fontSize: 12, color: AppColors.textWhite)),
+                              Icon(Icons.laptop_chromebook_rounded, size: 14, color: AppColors.accent),
+                              SizedBox(width: 8),
+                              Text('Thêm Tab Local Machine', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
                             ],
                           ),
                         ),
-                    ],
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.add_rounded, size: 14, color: AppColors.primaryLight),
-                          SizedBox(width: 4),
-                          Text('Tab mới', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
-                        ],
+                        for (final s in serverProvider.servers)
+                          PopupMenuItem<String>(
+                            value: 'new_ssh_${s.id}',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.dns_rounded, size: 14, color: AppColors.primaryLight),
+                                const SizedBox(width: 8),
+                                Text('Thêm Tab SSH: ${s.name}', style: const TextStyle(fontSize: 12, color: AppColors.textWhite)),
+                              ],
+                            ),
+                          ),
+                      ],
+                      child: Container(
+                        height: 34,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(6),
+                            topRight: Radius.circular(6),
+                          ),
+                          border: const Border(
+                            top: BorderSide(color: Color(0x660D9488), width: 0.8),
+                            left: BorderSide(color: Color(0x660D9488), width: 0.8),
+                            right: BorderSide(color: Color(0x660D9488), width: 0.8),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.add_rounded, size: 14, color: AppColors.primaryLight),
+                            SizedBox(width: 4),
+                            Text('Tab mới', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-
-                const SizedBox(width: 8),
-                Container(width: 1, height: 16, color: AppColors.borderDark),
-                const SizedBox(width: 4),
-
-                // Tiện ích phím ảo
-                IconButton(
-                  icon: Icon(
-                    _showVirtualKeyboard ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
-                    color: _showVirtualKeyboard ? AppColors.accentCyan : AppColors.textDim,
-                    size: 16,
-                  ),
-                  tooltip: _showVirtualKeyboard ? 'Ẩn phím ảo' : 'Hiện phím ảo',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: () {
-                    setState(() {
-                      _showVirtualKeyboard = !_showVirtualKeyboard;
-                    });
-                  },
-                ),
-
-                // Tiện ích kết nối lại / reload pane
-                IconButton(
-                  icon: (activePane?.isConnecting == true)
-                      ? const SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                        )
-                      : Icon(
-                          (activePane?.isConnected ?? false) ? Icons.refresh_rounded : Icons.play_arrow_rounded,
-                          color: (activePane?.isConnected ?? false) ? AppColors.accent : AppColors.warning,
-                          size: 16,
-                        ),
-                  tooltip: 'Khởi động lại Terminal đang chọn',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: activePane != null ? () => _connectPane(activePane) : null,
-                ),
-
-                // Tiện ích xóa sạch màn hình console
-                IconButton(
-                  icon: const Icon(Icons.delete_sweep_rounded, size: 16, color: AppColors.textDim),
-                  tooltip: 'Xoá màn hình',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: () {
-                    _activePane?.terminal.eraseDisplay();
-                    _activePane?.terminal.setCursor(0, 0);
-                  },
-                ),
               ],
             ),
           ),
@@ -1319,6 +1285,95 @@ class _TerminalScreenState extends State<TerminalScreen> {
               color: AppColors.bgDark,
               padding: EdgeInsets.zero,
               child: _buildSplitWorkspace(serverProvider),
+            ),
+          ),
+
+          // 5. TERMINAL FOOTER BAR (Chứa 3 nút tiện ích: Phím ảo, Khởi động lại, Xóa màn hình)
+          Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: const BoxDecoration(
+              color: AppColors.cardBg,
+              border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
+            ),
+            child: Row(
+              children: [
+                // Thông tin nhanh shell hoặc trạng thái
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: (activePane?.isConnected ?? false) ? AppColors.accent : (activePane?.isConnecting == true ? AppColors.warning : AppColors.danger),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      (activePane?.isRemoteSsh == true)
+                          ? 'SSH: ${activePane?.server?.name ?? 'Server'}'
+                          : 'Local Shell (${Platform.operatingSystem})',
+                      style: const TextStyle(fontSize: 11, color: AppColors.textDim, fontFamily: 'monospace'),
+                    ),
+                  ],
+                ),
+
+                const Spacer(),
+
+                // 1. Phím ảo
+                IconButton(
+                  icon: Icon(
+                    _showVirtualKeyboard ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
+                    color: _showVirtualKeyboard ? AppColors.accentCyan : AppColors.textDim,
+                    size: 16,
+                  ),
+                  tooltip: _showVirtualKeyboard ? 'Ẩn phím ảo' : 'Hiện phím ảo',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: () {
+                    setState(() {
+                      _showVirtualKeyboard = !_showVirtualKeyboard;
+                    });
+                  },
+                ),
+
+                const SizedBox(width: 4),
+
+                // 2. Khởi động lại
+                IconButton(
+                  icon: (activePane?.isConnecting == true)
+                      ? const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                        )
+                      : Icon(
+                          (activePane?.isConnected ?? false) ? Icons.refresh_rounded : Icons.play_arrow_rounded,
+                          color: (activePane?.isConnected ?? false) ? AppColors.accent : AppColors.warning,
+                          size: 16,
+                        ),
+                  tooltip: 'Khởi động lại Terminal đang chọn',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: activePane != null ? () => _connectPane(activePane) : null,
+                ),
+
+                const SizedBox(width: 4),
+
+                // 3. Xoá màn hình
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_rounded, size: 16, color: AppColors.textDim),
+                  tooltip: 'Xoá màn hình',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: () {
+                    _activePane?.terminal.eraseDisplay();
+                    _activePane?.terminal.setCursor(0, 0);
+                  },
+                ),
+              ],
             ),
           ),
         ],
@@ -1640,15 +1695,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
               // Terminal View (Chuẩn cấu hình hiển thị và con trỏ Ubuntu Terminal)
               Expanded(
-                child: Padding(
-                  padding: EdgeInsets.zero,
+                child: Scrollbar(
+                  controller: pane.scrollController,
+                  thumbVisibility: true,
+                  trackVisibility: false,
+                  interactive: true,
                   child: TerminalView(
                     pane.terminal,
                     controller: pane.controller,
+                    scrollController: pane.scrollController,
                     focusNode: pane.focusNode,
                     theme: _terminalTheme,
                     cursorType: TerminalCursorType.block,
-                    padding: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.only(left: 8, top: 6, bottom: 6, right: 6),
                     textStyle: const TerminalStyle(
                       fontSize: 13.5,
                       fontFamily: 'Ubuntu Mono',

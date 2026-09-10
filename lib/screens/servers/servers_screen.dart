@@ -457,8 +457,14 @@ class _ServersScreenState extends State<ServersScreen> {
                         InkWell(
                           onTap: () => setDialogState(() => selectedAgentMode = 'systemd'),
                           borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                          child: Padding(
+                          child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: selectedAgentMode == 'systemd'
+                                  ? AppColors.primary.withValues(alpha: 0.08)
+                                  : Colors.transparent,
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -754,25 +760,25 @@ class _ServersScreenState extends State<ServersScreen> {
                           ),
                         ),
                         // Tùy chọn 2: Chế độ CLI Agent (agy, claude, gemini)
-                        InkWell(
-                          onTap: () => setDialogState(() => selectedAgentMode = 'cli'),
-                          borderRadius: BorderRadius.circular(4),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: selectedAgentMode == 'cli'
-                                  ? AppColors.accent.withValues(alpha: 0.15)
-                                  : AppColors.inputBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: selectedAgentMode == 'cli' ? AppColors.accent : AppColors.borderDark,
-                                width: selectedAgentMode == 'cli' ? 1.2 : 1.0,
+                        Container(
+                          decoration: const BoxDecoration(
+                            border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
+                          ),
+                          child: InkWell(
+                            onTap: () => setDialogState(() => selectedAgentMode = 'cli'),
+                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(6)),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: selectedAgentMode == 'cli'
+                                    ? AppColors.accent.withValues(alpha: 0.12)
+                                    : Colors.transparent,
+                                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(6)),
                               ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
                                   children: [
                                     Radio<String>(
                                       value: 'cli',
@@ -830,10 +836,11 @@ class _ServersScreenState extends State<ServersScreen> {
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ],
               ),
             ),
             actions: [

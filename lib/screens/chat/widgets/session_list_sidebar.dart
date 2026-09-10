@@ -899,12 +899,14 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
 
         // 3. Footer with count and Clear All Button
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: const BoxDecoration(
             border: Border(top: BorderSide(color: AppColors.borderDark, width: 0.8)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
                 query.isNotEmpty ? '${displaySessions.length}/${chat.sessions.length} hội thoại' : '${chat.sessions.length} hội thoại',
@@ -912,6 +914,11 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
               ),
               if (chat.sessions.isNotEmpty)
                 TextButton(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   onPressed: () => _showClearAllSessionsDialog(chat),
                   child: const Text('Xoá tất cả', style: TextStyle(fontSize: 11, color: AppColors.danger)),
                 ),
