@@ -107,38 +107,53 @@ class AttachmentItem {
       String content = '';
       Uint8List? rawBytes = fileBytes;
 
-      // Chỉ đọc toàn bộ bytes vào RAM nếu file nhỏ hơn 2MB để tránh OOM khi file 5-10GB
-      if (fileBytes != null) {
-        rawBytes = fileBytes;
-        if (isImg) {
-          final ext = name.split('.').last.toLowerCase();
-          final mime = (ext == 'jpg' || ext == 'jpeg') ? 'image/jpeg' : 'image/$ext';
+      if (isImg) {
+        final ext = name.split('.').last.toLowerCase();
+        final mime = (ext == 'jpg' || ext == 'jpeg') ? 'image/jpeg' : 'image/$ext';
+        if (fileBytes != null) {
           final b64 = base64Encode(fileBytes);
           content = 'data:$mime;base64,$b64';
-        } else if (size <= 2 * 1024 * 1024) {
+        } else if (size <= 2 * 1024 * 1024 && file.existsSync()) {
+          final bytes = await file.readAsBytes();
+          rawBytes = bytes;
+          final b64 = base64Encode(bytes);
+          content = 'data:$mime;base64,$b64';
+        }
+      } else if (name.toLowerCase().endsWith('.pdf')) {
+        // Trích xuất văn bản từ file PDF nếu có thể
+        String extracted = '';
+        if (file.existsSync()) {
+          try {
+            final res = await Process.run('pdftotext', [file.path, '-']);
+            if (res.exitCode == 0 && res.stdout.toString().trim().isNotEmpty) {
+              extracted = res.stdout.toString().trim();
+            }
+          } catch (_) {}
+        }
+        if (extracted.isNotEmpty) {
+          content = extracted;
+        } else {
+          content = '[Tệp tài liệu PDF: ${file.path}]';
+        }
+      } else if (fileBytes != null) {
+        if (size <= 2 * 1024 * 1024) {
           try {
             content = utf8.decode(fileBytes);
           } catch (_) {
-            content = base64Encode(fileBytes);
+            content = '[Tệp nhị phân: $name, dung lượng: $size bytes]';
           }
+        } else {
+          content = '[Tệp dung lượng lớn: ${file.path}]';
         }
-      } else if (size <= 2 * 1024 * 1024) {
+      } else if (size <= 2 * 1024 * 1024 && file.existsSync()) {
         final bytes = await file.readAsBytes();
         rawBytes = bytes;
-        if (isImg) {
-          final ext = name.split('.').last.toLowerCase();
-          final mime = (ext == 'jpg' || ext == 'jpeg') ? 'image/jpeg' : 'image/$ext';
-          final b64 = base64Encode(bytes);
-          content = 'data:$mime;base64,$b64';
-        } else {
-          try {
-            content = utf8.decode(bytes);
-          } catch (_) {
-            content = base64Encode(bytes);
-          }
+        try {
+          content = utf8.decode(bytes);
+        } catch (_) {
+          content = '[Tệp nhị phân $name, đường dẫn: ${file.path}]';
         }
       } else {
-        // File lớn > 2MB: Không cache toàn bộ bytes vào RAM, truyền qua stream đường dẫn file
         content = '[Tệp dung lượng lớn: ${file.path}]';
       }
 

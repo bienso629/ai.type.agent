@@ -431,6 +431,13 @@ class ApiService {
     return ChatHistoryResult(messages: [], hasMore: false, oldestId: 0);
   }
 
+  Future<int> insertChatMessage(ChatMessageModel message) async {
+    if (await _isNativeMode()) {
+      return await _db.insertMessage(message);
+    }
+    return 0;
+  }
+
   Future<bool> clearChatHistory(String sessionId) async {
     if (await _isNativeMode()) {
       return await _db.clearChat(sessionId);

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 
@@ -25,7 +26,7 @@ class CliScannerService {
   static const List<Map<String, dynamic>> _candidateAgents = [
     {
       'id': 'antigravity-cli',
-      'binaries': ['agy', 'antigravity'],
+      'binaries': ['agy', 'antigravity-cli'],
       'label': 'Google Antigravity CLI',
     },
     {
@@ -174,6 +175,92 @@ class CliScannerService {
       }
     }
 
+    // Nạp thêm hoặc override cấu hình agent từ file ~/.tadu_ai_agent/cli_agents.json nếu người dùng tùy biến
+    try {
+      final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+      if (home.isNotEmpty) {
+        final customFile = File(p.join(home, '.tadu_ai_agent', 'cli_agents.json'));
+        if (customFile.existsSync()) {
+          final raw = customFile.readAsStringSync();
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            for (final item in decoded) {
+              if (item is Map<String, dynamic>) {
+                final cId = item['id']?.toString() ?? '';
+                final cPath = item['path']?.toString() ?? '';
+                final cBinary = item['binary']?.toString() ?? p.basename(cPath);
+                final cLabel = item['label']?.toString() ?? cId;
+                final cVer = item['version']?.toString();
+                if (cId.isNotEmpty && (cPath.isEmpty || File(cPath).existsSync())) {
+                  final existingIdx = installed.indexWhere((a) => a.id == cId);
+                  final newAgent = LocalCliAgent(
+                    id: cId,
+                    binary: cBinary,
+                    path: cPath.isNotEmpty ? cPath : cBinary,
+                    label: cLabel,
+                    version: cVer,
+                  );
+                  if (existingIdx != -1) {
+                    installed[existingIdx] = newAgent;
+                  } else {
+                    installed.add(newAgent);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
     return installed;
+  }
+
+  /// Thực thi prompt thông qua Local CLI Agent (antigravity, claude, ollama...)
+  Future<String> executeAgentPrompt(String agentId, String prompt) async {
+    final agents = await scanInstalledAgents();
+    LocalCliAgent? targetAgent;
+    for (final a in agents) {
+      if (a.id == agentId || a.binary == agentId) {
+        targetAgent = a;
+        break;
+      }
+    }
+    targetAgent ??= agents.isNotEmpty ? agents.first : null;
+    if (targetAgent == null) {
+      throw Exception('Không tìm thấy Local CLI Agent "$agentId" được cài đặt trên máy tính.');
+    }
+
+    final executable = targetAgent.path;
+    final binary = targetAgent.binary.toLowerCase();
+
+    List<String> args = [];
+    if (binary.contains('agy') || binary.contains('antigravity')) {
+      args = ['--print', prompt];
+    } else if (binary.contains('claude')) {
+      args = ['-p', prompt];
+    } else if (binary.contains('ollama')) {
+      args = ['run', 'llama3', prompt];
+    } else if (binary.contains('sgpt')) {
+      args = ['--no-md', prompt];
+    } else if (binary.contains('aichat')) {
+      args = [prompt];
+    } else {
+      args = [prompt];
+    }
+
+    final result = await Process.run(
+      executable,
+      args,
+      environment: Platform.environment,
+      runInShell: true,
+    ).timeout(const Duration(minutes: 3));
+
+    if (result.exitCode != 0) {
+      final err = result.stderr.toString().trim();
+      throw Exception('Lỗi thực thi Local CLI Agent ($binary): ${err.isNotEmpty ? err : result.stdout}');
+    }
+
+    return result.stdout.toString().trim();
   }
 }

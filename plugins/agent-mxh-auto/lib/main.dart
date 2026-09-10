@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'core/services/adb_manager_service.dart';
 import 'core/services/database_service.dart';
 import 'core/services/local_config_service.dart';
 import 'core/services/socks5_proxy_service.dart';
@@ -21,14 +20,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Storage Service
-  await StorageService().init();
+  try {
+    await StorageService().init();
+  } catch (_) {}
 
   // Initialize Database and Local Config (Desktop & Mobile)
   try {
     await DatabaseService().init();
     await LocalConfigService().loadConfig();
-    // Tự động kiểm tra và cấu hình bộ công cụ ADB ngầm (Windows, macOS, Linux)
-    AdbManagerService().resolveAdbPath().catchError((e) => 'adb');
   } catch (_) {}
 
   // Setup System UI Overlay styles

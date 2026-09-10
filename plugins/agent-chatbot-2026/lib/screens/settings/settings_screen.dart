@@ -7,6 +7,7 @@ import '../../core/services/api_service.dart';
 import '../../core/services/local_config_service.dart';
 import '../../core/services/storage_service.dart';
 import '../../core/services/tts_service.dart';
+import '../../core/services/user_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_logo_widget.dart';
 import '../../core/widgets/app_toast.dart';
@@ -310,6 +311,211 @@ class _SettingsScreenState extends State<SettingsScreen> {
         AppToast.error(context, 'Lỗi: $e');
       }
     }
+  }
+
+  void _showChangePasswordDialog(String? userEmail) {
+    if (userEmail == null || userEmail.isEmpty) {
+      AppToast.error(context, 'Bạn chưa đăng nhập');
+      return;
+    }
+
+    final currentPassCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool isSubmitting = false;
+    String? dialogError;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.cardBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppColors.borderDark),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.lock_reset_rounded, color: AppColors.primaryLight, size: 22),
+                  SizedBox(width: 10),
+                  Text(
+                    'Đổi Mật Khẩu Tài Khoản',
+                    style: TextStyle(color: AppColors.textWhite, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tài khoản: $userEmail',
+                        style: const TextStyle(fontSize: 12, color: AppColors.primaryLight, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 16),
+                      if (dialogError != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded, color: AppColors.danger, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  dialogError!,
+                                  style: const TextStyle(color: AppColors.danger, fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const Text('Mật khẩu hiện tại', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: currentPassCtrl,
+                        obscureText: obscureCurrent,
+                        style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                        decoration: InputDecoration(
+                          hintText: 'Nhập mật khẩu hiện tại...',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              size: 18,
+                              color: AppColors.textDim,
+                            ),
+                            onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text('Mật khẩu mới', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: newPassCtrl,
+                        obscureText: obscureNew,
+                        style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                        decoration: InputDecoration(
+                          hintText: 'Tối thiểu 6 ký tự...',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              size: 18,
+                              color: AppColors.textDim,
+                            ),
+                            onPressed: () => setDialogState(() => obscureNew = !obscureNew),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text('Xác nhận mật khẩu mới', style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: confirmPassCtrl,
+                        obscureText: obscureConfirm,
+                        style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                        decoration: InputDecoration(
+                          hintText: 'Nhập lại mật khẩu mới...',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              size: 18,
+                              color: AppColors.textDim,
+                            ),
+                            onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(dialogCtx),
+                  child: const Text('Huỷ Bỏ', style: TextStyle(color: AppColors.textDim)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final curPass = currentPassCtrl.text;
+                          final newPass = newPassCtrl.text;
+                          final confirmPass = confirmPassCtrl.text;
+
+                          if (curPass.isEmpty || newPass.isEmpty || confirmPass.isEmpty) {
+                            setDialogState(() => dialogError = 'Vui lòng nhập đầy đủ các thông tin mật khẩu');
+                            return;
+                          }
+                          if (newPass.length < 6) {
+                            setDialogState(() => dialogError = 'Mật khẩu mới phải có tối thiểu 6 ký tự');
+                            return;
+                          }
+                          if (newPass != confirmPass) {
+                            setDialogState(() => dialogError = 'Mật khẩu xác nhận không khớp');
+                            return;
+                          }
+                          if (newPass == curPass) {
+                            setDialogState(() => dialogError = 'Mật khẩu mới phải khác mật khẩu hiện tại');
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isSubmitting = true;
+                            dialogError = null;
+                          });
+
+                          try {
+                            await UserService().changePassword(
+                              email: userEmail,
+                              currentPassword: curPass,
+                              newPassword: newPass,
+                            );
+
+                            if (dialogCtx.mounted) {
+                              Navigator.pop(dialogCtx);
+                            }
+                            if (mounted) {
+                              AppToast.success(context, 'Đổi mật khẩu tài khoản thành công!');
+                            }
+                          } catch (err) {
+                            final msg = err.toString().replaceFirst('Exception: ', '');
+                            setDialogState(() {
+                              isSubmitting = false;
+                              dialogError = msg;
+                            });
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Cập Nhật Mật Khẩu', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -811,14 +1017,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(Icons.person_rounded, size: 20, color: AppColors.primaryLight),
-                            SizedBox(width: 10),
-                            Text(
-                              '4. Thông Tin Tài Khoản & Bản Quyền',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            const Row(
+                              children: [
+                                Icon(Icons.person_rounded, size: 20, color: AppColors.primaryLight),
+                                SizedBox(width: 10),
+                                Text(
+                                  '4. Thông Tin Tài Khoản & Bản Quyền',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                ),
+                              ],
                             ),
+                            if (auth.isAuthenticated && auth.userEmail != null && auth.userEmail != 'local.admin@agent.chatbot')
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.cardBg,
+                                  side: const BorderSide(color: AppColors.primaryLight),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                ),
+                                icon: const Icon(Icons.lock_reset_rounded, size: 16, color: AppColors.primaryLight),
+                                label: const Text(
+                                  'Đổi Mật Khẩu',
+                                  style: TextStyle(color: AppColors.primaryLight, fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                                onPressed: () => _showChangePasswordDialog(auth.userEmail),
+                              ),
                           ],
                         ),
                         const Divider(height: 24),

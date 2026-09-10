@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
 import '../../models/server_model.dart';
@@ -28,6 +28,9 @@ class ApiService {
   final NativeAiService _ai = NativeAiService();
 
   Future<bool> _isNativeMode() async {
+    if (kIsWeb) {
+      return false;
+    }
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
       return true;
     }
@@ -194,7 +197,7 @@ class ApiService {
         diskAvail: 'Cục bộ',
         serviceStatus: 'active',
         procs: '0',
-        os: Platform.operatingSystem,
+        os: kIsWeb ? 'Web Browser' : Platform.operatingSystem,
         netRxSpeed: '0 KB/s',
         netTxSpeed: '0 KB/s',
       );

@@ -96,17 +96,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       final avatarPathOrUrl = await _personaService.generateAvatarImage(persona);
       if (mounted) {
         final current = _personas[persona.ip] ?? persona;
-        final updated = PersonaProfile(
-          ip: current.ip,
-          name: current.name,
-          age: current.age,
-          gender: current.gender,
-          bio: current.bio,
-          avatarPrompt: current.avatarPrompt,
-          avatarUrl: avatarPathOrUrl,
-          externalDeviceAddress: current.externalDeviceAddress,
-          useExternalDevice: current.useExternalDevice,
-        );
+        final updated = current.copyWith(avatarUrl: avatarPathOrUrl);
         setState(() {
           _personas[persona.ip] = updated;
         });
@@ -257,11 +247,13 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                           ? (currentP.avatarUrl!.startsWith('http')
                                               ? Image.network(
                                                   currentP.avatarUrl!,
+                                                  key: ValueKey(currentP.avatarUrl),
                                                   fit: BoxFit.cover,
                                                   errorBuilder: (ctx, err, stack) => const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
                                                 )
                                               : Image.file(
                                                   File(currentP.avatarUrl!),
+                                                  key: ValueKey(currentP.avatarUrl),
                                                   fit: BoxFit.cover,
                                                   errorBuilder: (ctx, err, stack) => const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
                                                 ))
@@ -1552,11 +1544,13 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         ? (persona.avatarUrl!.startsWith('http')
                                             ? Image.network(
                                                 persona.avatarUrl!,
+                                                key: ValueKey(persona.avatarUrl),
                                                 fit: BoxFit.cover,
                                                 errorBuilder: (ctx, err, stack) => _buildFallbackAvatarIcon(persona, isAnyRunning, isAlias, item.isMain),
                                               )
                                             : Image.file(
                                                 File(persona.avatarUrl!),
+                                                key: ValueKey(persona.avatarUrl),
                                                 fit: BoxFit.cover,
                                                 errorBuilder: (ctx, err, stack) => _buildFallbackAvatarIcon(persona, isAnyRunning, isAlias, item.isMain),
                                               ))

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw, X } from 'lucide-react'
+import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp } from 'lucide-react'
 
 export function UserProfileModal({
   isOpen,
@@ -16,7 +16,57 @@ export function UserProfileModal({
   const { user, logout, refreshUser } = useAuth()
   const [refreshing, setRefreshing] = useState(false)
 
+  // State đổi mật khẩu
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   if (!isOpen || !user) return null
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordMsg(null)
+
+    if (newPassword.length < 6) {
+      setPasswordMsg({ type: 'error', text: 'Mật khẩu mới phải có tối thiểu 6 ký tự.' })
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMsg({ type: 'error', text: 'Mật khẩu xác nhận không khớp.' })
+      return
+    }
+
+    setPasswordLoading(true)
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        setPasswordMsg({ type: 'error', text: data.message || 'Đổi mật khẩu thất bại.' })
+      } else {
+        setPasswordMsg({ type: 'success', text: 'Đổi mật khẩu thành công!' })
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setTimeout(() => {
+          setShowChangePassword(false)
+          setPasswordMsg(null)
+        }, 1500)
+      }
+    } catch (err: any) {
+      setPasswordMsg({ type: 'error', text: err.message || 'Lỗi mạng khi đổi mật khẩu.' })
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -107,6 +157,92 @@ export function UserProfileModal({
             <p className="text-[11px] text-muted-foreground mt-2">
               Base URL tích hợp hệ thống: <code className="text-primary font-mono font-bold">https://api-vn-sg.mitom.ai/v1</code>
             </p>
+          </div>
+
+          {/* Khu vực Đổi mật khẩu */}
+          <div className="rounded-xl border border-border bg-secondary/30 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setShowChangePassword(!showChangePassword)
+                setPasswordMsg(null)
+              }}
+              className="w-full flex items-center justify-between p-4 text-left text-xs font-semibold text-foreground hover:bg-secondary/50 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Lock size={14} className="text-primary" />
+                Thay đổi mật khẩu
+              </span>
+              {showChangePassword ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            {showChangePassword && (
+              <form onSubmit={handleChangePassword} className="p-4 pt-0 border-t border-border/50 space-y-3 mt-3">
+                {passwordMsg && (
+                  <div
+                    className={`rounded-lg p-2.5 text-xs font-medium ${
+                      passwordMsg.type === 'success'
+                        ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                        : 'border border-rose-500/30 bg-rose-500/10 text-rose-400'
+                    }`}
+                  >
+                    {passwordMsg.text}
+                  </div>
+                )}
+
+                {user.authProvider === 'local' && (
+                  <div>
+                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                      Mật khẩu hiện tại
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-md border border-border bg-background/80 py-2 px-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                    Mật khẩu mới (tối thiểu 6 ký tự)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full rounded-md border border-border bg-background/80 py-2 px-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                    Xác nhận mật khẩu mới
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full rounded-md border border-border bg-background/80 py-2 px-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="glow-button w-full py-2 rounded-md text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {passwordLoading ? 'Đang cập nhật...' : 'Lưu mật khẩu mới'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
 

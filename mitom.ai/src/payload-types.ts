@@ -147,6 +147,8 @@ export interface User {
   customerCode?: string | null;
   apiKey?: string | null;
   role?: ('admin' | 'user') | null;
+  resetOtp?: string | null;
+  resetOtpExpiration?: string | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -390,6 +392,8 @@ export interface UsersSelect<T extends boolean = true> {
   customerCode?: T;
   apiKey?: T;
   role?: T;
+  resetOtp?: T;
+  resetOtpExpiration?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;

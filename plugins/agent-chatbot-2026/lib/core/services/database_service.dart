@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -25,16 +26,11 @@ class DatabaseService {
   Future<void> switchUser(String userKey) async {
     final sanitized = StorageService.sanitizeUserKey(userKey);
     if (_currentUserKey == sanitized && _db != null && _db!.isOpen) return;
-    _currentUserKey = sanitized;
-    if (_db != null && _db!.isOpen) {
-      await _db!.close();
-      _db = null;
-    }
-    _resolvedPath = null;
-    await init(userKey: _currentUserKey);
+    await init(userKey: sanitized);
   }
 
   Future<void> init({String? userKey}) async {
+    if (kIsWeb) return;
     if (userKey != null && userKey.isNotEmpty) {
       final sanitized = StorageService.sanitizeUserKey(userKey);
       if (_currentUserKey != sanitized && _db != null && _db!.isOpen) {
@@ -46,7 +42,7 @@ class DatabaseService {
 
     if (_db != null && _db!.isOpen) return;
 
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
@@ -85,7 +81,7 @@ class DatabaseService {
     final key = userKey ?? _currentUserKey ?? await StorageService().getUserKey();
     final dbFileName = key.isNotEmpty ? 'chat_history_$key.db' : 'chat_history.db';
 
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       final currentDir = Directory.current.path;
       final appDataDir = p.join(Platform.environment['HOME'] ?? '', '.agent_chatbot_2026');
       final dir = Directory(appDataDir);

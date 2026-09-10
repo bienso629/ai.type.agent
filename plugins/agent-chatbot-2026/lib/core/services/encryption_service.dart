@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 
@@ -15,7 +15,7 @@ class EncryptionService {
     if (_cachedKey != null) return _cachedKey!;
     String machineId = "tadu-cloud-ai-agent-control-center-secret-salt-2026";
     try {
-      if (Platform.isLinux || Platform.isAndroid) {
+      if (!kIsWeb && (Platform.isLinux || Platform.isAndroid)) {
         for (final p in ["/etc/machine-id", "/var/lib/dbus/machine-id"]) {
           final f = File(p);
           if (f.existsSync()) {

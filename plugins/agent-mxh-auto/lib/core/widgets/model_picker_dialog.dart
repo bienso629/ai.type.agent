@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/cli_scanner_service.dart';
 import '../theme/app_theme.dart';
 import 'app_toast.dart';
 import '../../providers/auth_provider.dart';
@@ -42,7 +41,7 @@ class ModelPickerDialog extends StatefulWidget {
           controller: ctrl,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: 'Nhập tên model (VD: glm-5.3, gpt-4o, claude-cli, antigravity-cli...)',
+            hintText: 'Nhập tên model (VD: glm-5.3, gpt-4o, claude-cli, ollama...)',
           ),
         ),
         actions: [
@@ -79,10 +78,8 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
   @override
   void initState() {
     super.initState();
-    _selectedTab = widget.initialTab;
-    if (!widget.isAdmin && _selectedTab == 1) {
-      _selectedTab = 0;
-    }
+    // Khởi tạo tab theo engine đang kích hoạt: nếu đang dùng CLI thì mở sẵn tab 1
+    _selectedTab = widget.initialTab != 0 ? widget.initialTab : (widget.serverProvider.isCliMode ? 1 : 0);
   }
 
   @override
@@ -93,41 +90,37 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final serverProvider = widget.serverProvider;
-    final currentModel = serverProvider.currentAiModel;
-    final isAdmin = widget.isAdmin;
+    return Consumer<ServerProvider>(
+      builder: (context, serverProvider, child) {
+        final q = _searchQuery.toLowerCase();
 
-    final q = _searchQuery.toLowerCase();
+        // CLI Agents: Luôn hiển thị đầy đủ các local agents đã quét được
+        final filteredCliAgents = serverProvider.installedCliAgents.where((a) {
+          if (q.isEmpty) return true;
+          return a.id.toLowerCase().contains(q) || a.label.toLowerCase().contains(q);
+        }).toList();
 
-    // CLI Agents (Chỉ hiển thị cho tài khoản Admin)
-    final filteredCliAgents = isAdmin
-        ? serverProvider.installedCliAgents.where((a) {
-            if (q.isEmpty) return true;
-            return a.id.toLowerCase().contains(q) || a.label.toLowerCase().contains(q);
-          }).toList()
-        : <LocalCliAgent>[];
+        // Cloud Models
+        const defaultCloudModels = ['glm-5.3', 'gpt-4o', 'deepseek-chat', 'claude-3-7-sonnet'];
+        final filteredCloudModels = defaultCloudModels.where((m) {
+          if (q.isEmpty) return true;
+          return m.toLowerCase().contains(q);
+        }).toList();
 
-    // Cloud Models
-    const defaultCloudModels = ['glm-5.3', 'gpt-4o', 'deepseek-chat', 'claude-3-7-sonnet'];
-    final filteredCloudModels = defaultCloudModels.where((m) {
-      if (q.isEmpty) return true;
-      return m.toLowerCase().contains(q);
-    }).toList();
-
-    return Dialog(
-      backgroundColor: AppColors.cardBg,
-      elevation: 24,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
-        side: const BorderSide(color: AppColors.borderDark, width: 1),
-      ),
-      child: Container(
-        width: 560,
-        height: 640,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        return Dialog(
+          backgroundColor: AppColors.cardBg,
+          elevation: 24,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+            side: const BorderSide(color: AppColors.borderDark, width: 1),
+          ),
+          child: Container(
+            width: 560,
+            height: 640,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             // 1. Header
             Row(
               children: [
@@ -150,7 +143,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                             'Chọn AI Agent & Model',
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                           ),
-                          if (isAdmin) ...[
+                          if (widget.isAdmin) ...[
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -177,7 +170,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                     ],
                   ),
                 ),
-                if (isAdmin && _selectedTab == 1)
+                if (_selectedTab == 1)
                   IconButton(
                     icon: const Icon(Icons.radar_rounded, size: 18, color: AppColors.accent),
                     tooltip: 'Quét lại Local CLI Agents',
@@ -198,100 +191,98 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
             const SizedBox(height: 14),
 
             // Tab Selector: Cloud API vs Local CLI
-            if (isAdmin) ...[
-              Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: AppColors.sidebarBg,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.borderDark),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(4),
-                        onTap: () => setState(() => _selectedTab = 0),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 7),
-                          decoration: BoxDecoration(
-                            color: _selectedTab == 0
-                                ? AppColors.primary.withValues(alpha: 0.25)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: _selectedTab == 0
-                                  ? AppColors.primaryLight
-                                  : Colors.transparent,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.cloud_queue_rounded,
-                                size: 14,
-                                color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textDim,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Cloud API',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: _selectedTab == 0 ? FontWeight.bold : FontWeight.normal,
-                                  color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(4),
-                        onTap: () => setState(() => _selectedTab = 1),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 7),
-                          decoration: BoxDecoration(
-                            color: _selectedTab == 1
-                                ? AppColors.accentCyan.withValues(alpha: 0.2)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: _selectedTab == 1
-                                  ? AppColors.accentCyan
-                                  : Colors.transparent,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.terminal_rounded,
-                                size: 14,
-                                color: _selectedTab == 1 ? AppColors.accentCyan : AppColors.textDim,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Local CLI Agent (Admin)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: _selectedTab == 1 ? FontWeight.bold : FontWeight.normal,
-                                  color: _selectedTab == 1 ? AppColors.accentCyan : AppColors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: AppColors.sidebarBg,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.borderDark),
               ),
-              const SizedBox(height: 12),
-            ],
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => setState(() => _selectedTab = 0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _selectedTab == 0
+                              ? AppColors.primary.withValues(alpha: 0.25)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _selectedTab == 0
+                                ? AppColors.primaryLight
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.cloud_queue_rounded,
+                              size: 14,
+                              color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textDim,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Cloud API',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: _selectedTab == 0 ? FontWeight.bold : FontWeight.normal,
+                                color: _selectedTab == 0 ? AppColors.primaryLight : AppColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => setState(() => _selectedTab = 1),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _selectedTab == 1
+                              ? AppColors.accentCyan.withValues(alpha: 0.2)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _selectedTab == 1
+                                ? AppColors.accentCyan
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.terminal_rounded,
+                              size: 14,
+                              color: _selectedTab == 1 ? AppColors.accentCyan : AppColors.textDim,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Local CLI Agent',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: _selectedTab == 1 ? FontWeight.bold : FontWeight.normal,
+                                color: _selectedTab == 1 ? AppColors.accentCyan : AppColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
 
             // 2. Search Input
             SizedBox(
@@ -306,7 +297,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                   isDense: true,
                   hintText: _selectedTab == 0
                       ? 'Tìm kiếm nhanh model Cloud (glm-5.3, gpt-4o, deepseek...)...'
-                      : 'Tìm kiếm nhanh CLI Agent (antigravity, claude...)...',
+                      : 'Tìm kiếm nhanh CLI Agent (claude, gemini, ollama...)...',
                   hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                   prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textMuted),
                   suffixIcon: _searchQuery.isNotEmpty
@@ -347,7 +338,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
               child: ListView(
                 children: [
                   // --- TAB 1: LOCAL CLI AGENTS (Chỉ hiển thị khi đang đứng ở tab Local CLI) ---
-                  if (isAdmin && _selectedTab == 1) ...[
+                  if (_selectedTab == 1) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(
@@ -355,7 +346,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           const Icon(Icons.terminal_rounded, size: 13, color: AppColors.accentCyan),
                           const SizedBox(width: 6),
                           const Text(
-                            'LOCAL CLI AGENTS (CÀI TRÊN MÁY TÍNH - ADMIN)',
+                            'LOCAL CLI AGENTS (CÀI TRÊN MÁY TÍNH)',
                             style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.accentCyan, letterSpacing: 0.5),
                           ),
                           const Spacer(),
@@ -387,16 +378,16 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           border: Border.all(color: AppColors.borderDark),
                         ),
                         child: const Text(
-                          'Chưa tìm thấy CLI Agent nào khả dụng trên máy (antigravity-cli, claude-cli). Bấm icon radar góc trên để quét lại.',
+                          'Chưa tìm thấy CLI Agent nào khả dụng trên máy (claude-cli, gemini-cli, ollama...). Bấm icon radar góc trên để quét lại.',
                           style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                       )
                     else
                       ...filteredCliAgents.map((agent) {
-                        final isSel = currentModel == agent.id;
-                        final icon = agent.id.contains('antigravity')
-                            ? Icons.terminal_rounded
-                            : (agent.id.contains('claude') ? Icons.code_rounded : Icons.memory_rounded);
+                        final isSel = serverProvider.isCliMode && serverProvider.activeCliAgent == agent.id;
+                        final icon = agent.id.contains('claude')
+                            ? Icons.code_rounded
+                            : Icons.terminal_rounded;
                         final verStr = agent.version != null ? ' • v${agent.version}' : '';
 
                         return _buildModelCard(
@@ -405,7 +396,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           icon: icon,
                           isSelected: isSel,
                           onTap: () {
-                            serverProvider.setActiveAgent(agent.id);
+                            serverProvider.setActiveCliAgent(agent.id);
                             Navigator.pop(context);
                             AppToast.success(context, 'Đã chuyển sang Local CLI Agent: ${agent.id}');
                           },
@@ -436,7 +427,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
 
                     if (filteredCloudModels.isNotEmpty)
                       ...filteredCloudModels.map((m) {
-                        final isSel = currentModel == m;
+                        final isSel = !serverProvider.isCliMode && serverProvider.cloudAiModel == m;
                         IconData icon = Icons.memory_rounded;
                         if (m.contains('glm')) {
                           icon = Icons.auto_awesome_rounded;
@@ -456,7 +447,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           icon: icon,
                           isSelected: isSel,
                           onTap: () {
-                            serverProvider.setActiveAgent(m);
+                            serverProvider.setCloudAiModel(m);
                             Navigator.pop(context);
                             AppToast.success(context, 'Đã chọn Cloud Model: $m');
                           },
@@ -508,17 +499,14 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                if (isAdmin)
-                  TextButton.icon(
-                    icon: const Icon(Icons.edit_note_rounded, size: 16, color: AppColors.textDim),
-                    label: const Text('Nhập model tùy biến khác...', style: TextStyle(fontSize: 12, color: AppColors.textDim)),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      ModelPickerDialog.showCustomModelDialog(context, serverProvider);
-                    },
-                  )
-                else
-                  const SizedBox(),
+                TextButton.icon(
+                  icon: const Icon(Icons.edit_note_rounded, size: 16, color: AppColors.textDim),
+                  label: const Text('Nhập model tùy biến khác...', style: TextStyle(fontSize: 12, color: AppColors.textDim)),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    ModelPickerDialog.showCustomModelDialog(context, serverProvider);
+                  },
+                ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Đóng', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
@@ -528,6 +516,8 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
           ],
         ),
       ),
+    );
+      },
     );
   }
 

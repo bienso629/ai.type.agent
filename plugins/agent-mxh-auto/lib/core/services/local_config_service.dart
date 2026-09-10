@@ -24,7 +24,12 @@ class LocalConfigService {
     try {
       final uri = Uri.parse(trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : 'https://$trimmed');
       final host = uri.host.toLowerCase();
-      return host == 'mitom.ai' || host.endsWith('.mitom.ai');
+      return host == 'mitom.ai' ||
+          host.endsWith('.mitom.ai') ||
+          host == 'umodelverse.ai' ||
+          host.endsWith('.umodelverse.ai') ||
+          host == 'localhost' ||
+          host == '127.0.0.1';
     } catch (_) {
       return false;
     }
@@ -257,7 +262,7 @@ class LocalConfigService {
 
   Future<bool> saveConfig(Map<String, dynamic> newConfig, {String? userKey}) async {
     try {
-      final currentConfig = await loadConfig(userKey: userKey);
+      final currentConfig = _cachedConfig.isNotEmpty ? Map<String, dynamic>.from(_cachedConfig) : await loadConfig(userKey: userKey);
       final mergedConfig = Map<String, dynamic>.from(currentConfig)..addAll(newConfig);
 
       final filePath = await _resolveConfigPath(userKey: userKey);

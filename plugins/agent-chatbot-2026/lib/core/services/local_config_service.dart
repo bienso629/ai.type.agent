@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../models/server_model.dart';
@@ -61,7 +63,7 @@ class LocalConfigService {
     final key = userKey ?? _currentUserKey ?? await StorageService().getUserKey();
     final configFileName = key.isNotEmpty ? 'config_$key.json' : 'config.json';
 
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       final currentDir = Directory.current.path;
       final appDataDir = p.join(Platform.environment['HOME'] ?? '', '.agent_chatbot_2026');
       final dir = Directory(appDataDir);
@@ -108,6 +110,35 @@ class LocalConfigService {
   }
 
   Future<Map<String, dynamic>> loadConfig({String? userKey}) async {
+    if (kIsWeb) {
+      if (_cachedConfig.isNotEmpty) return _cachedConfig;
+      final token = await StorageService().getAuthToken();
+
+      // Thử tải từ Cloud Sync Backend nếu đã đăng nhập
+      if (token != null && token.isNotEmpty) {
+        try {
+          final res = await http.get(
+            Uri.parse('http://localhost:8888/api/config/index.php'),
+            headers: {'Authorization': 'Bearer $token'},
+          );
+          if (res.statusCode == 200) {
+            final data = jsonDecode(res.body);
+            if (data['success'] == true && data['data'] != null && data['data']['config'] != null) {
+              final remoteCfg = data['data']['config'];
+              if (remoteCfg is Map && remoteCfg.isNotEmpty) {
+                final merged = Map<String, dynamic>.from(defaultRawConfig)..addAll(Map<String, dynamic>.from(remoteCfg));
+                _cachedConfig = merged;
+                return merged;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      _cachedConfig = Map<String, dynamic>.from(defaultRawConfig);
+      return _cachedConfig;
+    }
+
     final filePath = await _resolveConfigPath(userKey: userKey);
     final file = File(filePath);
 
@@ -222,6 +253,10 @@ class LocalConfigService {
   }
 
   Future<bool> saveConfig(Map<String, dynamic> newConfig, {String? userKey}) async {
+    if (kIsWeb) {
+      _cachedConfig = Map<String, dynamic>.from(newConfig);
+      return true;
+    }
     try {
       final filePath = await _resolveConfigPath(userKey: userKey);
       final file = File(filePath);

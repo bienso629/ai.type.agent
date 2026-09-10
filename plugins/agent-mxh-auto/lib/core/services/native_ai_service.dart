@@ -67,12 +67,13 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
         );
         await _dbService.insertMessage(userMsg);
 
-        // If user selected a CLI agent (e.g. antigravity-cli, claude-cli, gemini-cli)
+        // If user selected a CLI agent (e.g. claude-cli, gemini-cli, ollama...)
         if (_isCliModel(targetModel)) {
           await _runCliAgent(
             sessionId: sessionId,
             cliName: targetModel,
             prompt: message,
+            attachments: attachments,
             history: history,
             workingDir: workingDir,
             onToken: onToken,
@@ -716,6 +717,7 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
     required String sessionId,
     required String cliName,
     required String prompt,
+    List<AttachmentItem>? attachments,
     List<Map<String, dynamic>>? history,
     String? workingDir,
     required void Function(String token) onToken,
@@ -739,10 +741,38 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
           ? workingDir
           : Directory.current.path;
 
+      // Xây dựng nội dung prompt đầy đủ bao gồm tệp/ảnh đính kèm nếu có
+      String fullPromptWithAttachments = prompt;
+      if (attachments != null && attachments.isNotEmpty) {
+        final attBuf = StringBuffer();
+        attBuf.writeln('\n\n=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===');
+        for (final att in attachments) {
+          final localInfo = (att.path != null && att.path!.isNotEmpty)
+              ? ' (Đường dẫn local: ${att.path} - Dung lượng: ${att.formattedSize})'
+              : ' (Dung lượng: ${att.formattedSize})';
+          if (att.isImage) {
+            attBuf.writeln('\n--- [Ảnh: ${att.name}$localInfo] ---');
+            if (att.path != null && att.path!.isNotEmpty) {
+              attBuf.writeln('Đường dẫn file ảnh trên hệ điều hành: ${att.path}');
+            }
+          } else {
+            attBuf.writeln('\n--- [Tệp: ${att.name}$localInfo] ---');
+            if (att.path != null && att.path!.isNotEmpty) {
+              attBuf.writeln('Đường dẫn file trên hệ điều hành: ${att.path}');
+            }
+            if (att.content.isNotEmpty) {
+              attBuf.writeln('Nội dung tệp:\n${att.content}');
+            }
+          }
+        }
+        attBuf.writeln('=== KẾT THÚC DANH SÁCH ĐÍNH KÈM ===');
+        fullPromptWithAttachments += attBuf.toString();
+      }
+
       final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
           ? customPromptTemplate.trim()
           : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
-      final cleanPrompt = '$prompt\n\n$promptSuffix';
+      final cleanPrompt = '$fullPromptWithAttachments\n\n$promptSuffix';
 
       final m = cliName.toLowerCase();
 
@@ -761,7 +791,7 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             historyBuf.writeln('[$roleName]: ${h['content']}');
           }
           historyBuf.writeln('=== KẾT THÚC LỊCH SỬ HỘI THOẠI ===\n');
-          contextualPrompt = '${historyBuf.toString()}\n[Câu hỏi / Yêu cầu mới nhất của Người dùng]:\n$prompt\n\n$promptSuffix';
+          contextualPrompt = '${historyBuf.toString()}\n[Câu hỏi / Yêu cầu mới nhất của Người dùng]:\n$fullPromptWithAttachments\n\n$promptSuffix';
         }
       }
 

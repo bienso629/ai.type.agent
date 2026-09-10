@@ -302,11 +302,13 @@ class ChatProvider extends ChangeNotifier {
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
         if (assistantMsg.content.isEmpty) {
-          assistantMsg.content = '❌ Lỗi: $err';
+          assistantMsg.content = 'Lỗi: $err';
         }
         _isGenerating = false;
         _currentStatus = '';
         notifyListeners();
+        // Persist error message to SQLite database so user always sees the status
+        _api.insertChatMessage(assistantMsg).catchError((_) => 0);
       },
     );
   }

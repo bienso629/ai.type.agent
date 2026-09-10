@@ -20,15 +20,19 @@ import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/attachment_hover_preview.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../core/widgets/chat_avatar.dart';
+import 'widgets/model_picker_dialog.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import '../../models/server_model.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/server_provider.dart';
+import '../terminal/terminal_screen.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final VoidCallback? onNavigateToServers;
+
+  const ChatScreen({super.key, this.onNavigateToServers});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -38,18 +42,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final ApiService _apiService = ApiService();
   ApiService get _api => _apiService;
   final TextEditingController _textController = TextEditingController();
-  final TextEditingController _sessionSearchCtrl = TextEditingController();
-  final FocusNode _sessionSearchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
-  bool _isRightSidebarOpen = true;
-  bool _isSessionSearchOpen = false;
   final List<AttachmentItem> _attachedFiles = [];
-  String _sessionSearchQuery = '';
-
-  // Active session recent questions state
-  final Map<String, List<String>> _sessionRecentQuestions = {};
-  final Set<String> _loadingSessionQuestions = {};
 
   // Prompt history navigation state
   int _promptHistoryIndex = -1;
@@ -68,102 +63,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, GlobalKey> _messageKeys = {};
   String? _highlightedMessageKey;
   Timer? _highlightTimer;
+  ChatMessageModel? _stickyUserQuestion;
 
   String _getMessageKey(ChatMessageModel msg, [int? index]) {
     if (msg.id != null) return 'msg_id_${msg.id}';
     return 'msg_${msg.createdAt.millisecondsSinceEpoch}_${msg.role}';
-  }
-
-  Future<void> _scrollToQuestion(String questionText, ChatSessionModel sess) async {
-    final chat = context.read<ChatProvider>();
-    final serverProvider = context.read<ServerProvider>();
-
-    if (sess.id != chat.currentSession?.id) {
-      await chat.selectSession(sess);
-      if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-        if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-          serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-        } else {
-          final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-          if (matches.isNotEmpty) {
-            serverProvider.selectServer(matches.first);
-          }
-        }
-      }
-    }
-
-    final trimmedTarget = questionText.trim();
-    int findIndex() {
-      return chat.messages.lastIndexWhere((m) => m.role == 'user' && m.content.trim() == trimmedTarget);
-    }
-
-    int targetIndex = findIndex();
-    int attempts = 0;
-    while (targetIndex == -1 && chat.hasMoreMessages && attempts < 15) {
-      attempts++;
-      await chat.loadMoreMessages();
-      targetIndex = findIndex();
-    }
-
-    if (targetIndex != -1) {
-      final msg = chat.messages[targetIndex];
-      final keyStr = _getMessageKey(msg, targetIndex);
-
-      setState(() {
-        _highlightedMessageKey = keyStr;
-      });
-      _highlightTimer?.cancel();
-      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
-        if (mounted) {
-          setState(() {
-            _highlightedMessageKey = null;
-          });
-        }
-      });
-
-      // Bắt đầu nhảy tới mỏ neo (Anchor)
-      if (!_scrollController.hasClients) return;
-
-      final key = _messageKeys[keyStr];
-      if (key?.currentContext != null) {
-        Scrollable.ensureVisible(
-          key!.currentContext!,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          alignment: 0.25,
-        );
-        return;
-      }
-
-      // Nếu widget chưa được render trong viewport, tính toán vị trí ước lượng và cuộn lặp tới khi context xuất hiện
-      final reverseIndex = chat.messages.length - 1 - targetIndex;
-      final maxOffset = _scrollController.position.maxScrollExtent;
-      final totalItems = chat.messages.length + (chat.hasMoreMessages ? 1 : 1);
-      final estimatedItemHeight = totalItems > 0 ? (maxOffset / totalItems) : 160.0;
-      final initialOffset = (reverseIndex * (estimatedItemHeight > 0 ? estimatedItemHeight : 160.0)).clamp(0.0, maxOffset);
-
-      _scrollController.jumpTo(initialOffset);
-
-      // Đợi frame tiếp theo để context được mount vào widget tree rồi căn chỉnh chính xác
-      for (int step = 0; step < 5; step++) {
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) return;
-        final currentKey = _messageKeys[keyStr];
-        if (currentKey?.currentContext != null) {
-          Scrollable.ensureVisible(
-            currentKey!.currentContext!,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            alignment: 0.25,
-          );
-          break;
-        }
-      }
-    } else {
-      if (mounted) {
-        AppToast.info(context, 'Không tìm thấy vị trí câu hỏi trong danh sách hiện tại');
-      }
-    }
   }
 
   @override
@@ -194,8 +98,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _highlightTimer?.cancel();
     _dirDebounceTimer?.cancel();
-    _sessionSearchFocusNode.dispose();
-    _sessionSearchCtrl.dispose();
     _textController.removeListener(_onTextChanged);
     _scrollController.removeListener(_onScroll);
     _inputFocusNode.dispose();
@@ -409,30 +311,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _loadRecentQuestionsForSession(String sessionId, {bool forceReload = false}) async {
-    if (!forceReload && _sessionRecentQuestions.containsKey(sessionId)) {
-      return;
-    }
-    if (_loadingSessionQuestions.contains(sessionId)) return;
-    _loadingSessionQuestions.add(sessionId);
-
-    try {
-      final questions = await _apiService.getRecentUserQuestions(sessionId, limit: 6);
-      if (mounted) {
-        setState(() {
-          _sessionRecentQuestions[sessionId] = questions;
-          _loadingSessionQuestions.remove(sessionId);
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _loadingSessionQuestions.remove(sessionId);
-        });
-      }
-    }
-  }
-
   Future<void> _handleLoadMore(ChatProvider chat) async {
     if (_isLoadingOlder || !chat.hasMoreMessages || chat.isLoadingMore || chat.isLoading) return;
     _isLoadingOlder = true;
@@ -443,8 +321,78 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _updateStickyQuestion() {
+    if (!_scrollController.hasClients) return;
+    final chat = context.read<ChatProvider>();
+    if (chat.messages.isEmpty) {
+      if (_stickyUserQuestion != null) {
+        setState(() => _stickyUserQuestion = null);
+      }
+      return;
+    }
+
+    // Nếu đang ở gần cuối (scroll offset < 50px), người dùng đang nhìn thấy tin nhắn mới nhất
+    // Chưa cần dính sticky header trừ khi tin nhắn câu hỏi đã bị cuộn khuất
+    final currentPixels = _scrollController.position.pixels;
+    if (currentPixels <= 30.0) {
+      if (_stickyUserQuestion != null) {
+        setState(() => _stickyUserQuestion = null);
+      }
+      return;
+    }
+
+    // Duyệt tìm câu hỏi người dùng gần nhất ở vị trí phía trên
+    // ListView reverse: true nghĩa là idx = 0 là tin nhắn cuối cùng (dưới đáy danh sách)
+    // idx tăng dần = đi ngược lên quá khứ
+    // Duyệt qua các câu hỏi role == 'user'
+    ChatMessageModel? targetStickyQuestion;
+    for (int i = 0; i < chat.messages.length; i++) {
+      final msg = chat.messages[chat.messages.length - 1 - i];
+      if (msg.role == 'user') {
+        final keyStr = _getMessageKey(msg, chat.messages.length - 1 - i);
+        final gKey = _messageKeys[keyStr];
+        if (gKey?.currentContext != null) {
+          final renderBox = gKey!.currentContext!.findRenderObject() as RenderBox?;
+          if (renderBox != null && renderBox.hasSize) {
+            final position = renderBox.localToGlobal(Offset.zero);
+            // Header topbar cao 66px. Nếu cạnh dưới của bubble câu hỏi nằm trên hoặc gần sát 66px (bị che khuất phía trên)
+            // hoặc đã cuộn vượt qua đỉnh màn hình:
+            if (position.dy + renderBox.size.height <= 80) {
+              targetStickyQuestion = msg;
+              break;
+            }
+          }
+        } else {
+          // Nếu RenderBox chưa sẵn sàng nhưng scroll đã vượt qua khá nhiều
+          if (currentPixels > 100.0 && targetStickyQuestion == null) {
+            targetStickyQuestion = msg;
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback: nếu scroll sâu mà không tính được vị trí, lấy user message gần nhất trước tin nhắn cuối
+    if (targetStickyQuestion == null && currentPixels > 120.0) {
+      for (int i = chat.messages.length - 1; i >= 0; i--) {
+        if (chat.messages[i].role == 'user') {
+          targetStickyQuestion = chat.messages[i];
+          break;
+        }
+      }
+    }
+
+    if (_stickyUserQuestion?.id != targetStickyQuestion?.id ||
+        _stickyUserQuestion?.content != targetStickyQuestion?.content) {
+      setState(() {
+        _stickyUserQuestion = targetStickyQuestion;
+      });
+    }
+  }
+
   void _onScroll() {
     if (!_scrollController.hasClients || _isLoadingOlder) return;
+    _updateStickyQuestion();
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 80) {
       final chat = context.read<ChatProvider>();
       if (chat.hasMoreMessages && !chat.isLoadingMore && !chat.isLoading) {
@@ -819,9 +767,6 @@ class _ChatScreenState extends State<ChatScreen> {
       workingDir: chat.currentSessionScope,
       targetServer: activeServerName,
     );
-    if (chat.currentSession?.id != null) {
-      _loadRecentQuestionsForSession(chat.currentSession!.id, forceReload: true);
-    }
     _safeScrollToBottom();
   }
 
@@ -843,6 +788,178 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildServerDropdown(ServerProvider serverProvider) {
+    final isLocal = serverProvider.selectedServer == null ||
+        serverProvider.selectedServer!.serverIp == '127.0.0.1' ||
+        serverProvider.selectedServer!.serverIp == 'localhost';
+    final currentServerName = isLocal ? 'Local Machine' : serverProvider.selectedServer!.name;
+    final currentServerIp = isLocal
+        ? '${Platform.operatingSystem.toUpperCase()} (Cục bộ)'
+        : serverProvider.selectedServer!.serverIp;
+
+    return PopupMenuButton<ServerModel>(
+      tooltip: 'Chuyển đổi Máy chủ / Local',
+      offset: const Offset(0, 44),
+      color: AppColors.cardBg,
+      constraints: const BoxConstraints(minWidth: 240, maxWidth: 290),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+        side: const BorderSide(color: AppColors.borderDark),
+      ),
+      onSelected: (srv) async {
+        if (srv.id == '__manage_servers__') {
+          widget.onNavigateToServers?.call();
+        } else if (srv.id == 'local' || srv.serverIp == '127.0.0.1' || srv.serverIp == 'localhost') {
+          await serverProvider.selectServer(ServerModel(
+            id: 'local',
+            name: 'Local Machine',
+            serverIp: '127.0.0.1',
+          ));
+          if (mounted) {
+            AppToast.success(context, 'Đã chuyển sang chế độ Local Machine');
+          }
+        } else {
+          await serverProvider.selectServer(srv);
+          if (mounted) {
+            AppToast.success(context, 'Đã chuyển sang máy chủ: ${srv.name}');
+          }
+        }
+      },
+      itemBuilder: (ctx) {
+        final list = <PopupMenuEntry<ServerModel>>[];
+
+        // 1. Local Machine item
+        list.add(
+          PopupMenuItem<ServerModel>(
+            value: ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'),
+            child: Row(
+              children: [
+                const Icon(Icons.laptop_chromebook_rounded, size: 16, color: AppColors.accent),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Local Machine', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                      Text('Thực thi trực tiếp trên máy', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                    ],
+                  ),
+                ),
+                if (isLocal) const Icon(Icons.check_rounded, size: 16, color: AppColors.accent),
+              ],
+            ),
+          ),
+        );
+
+        // 2. VPS Servers list
+        if (serverProvider.servers.isNotEmpty) {
+          list.add(const PopupMenuDivider());
+          for (final s in serverProvider.servers) {
+            final isSel = !isLocal &&
+                (s.id == serverProvider.selectedServer?.id || s.serverIp == serverProvider.selectedServer?.serverIp);
+            list.add(
+              PopupMenuItem<ServerModel>(
+                value: s,
+                child: Row(
+                  children: [
+                    const Icon(Icons.dns_rounded, size: 16, color: AppColors.primaryLight),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(s.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                          Text('${s.sshUser}@${s.serverIp}:${s.sshPort}', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                        ],
+                      ),
+                    ),
+                    if (isSel) const Icon(Icons.check_rounded, size: 16, color: AppColors.primaryLight),
+                  ],
+                ),
+              ),
+            );
+          }
+        }
+
+        // 3. Manage Servers item
+        if (widget.onNavigateToServers != null) {
+          list.add(const PopupMenuDivider());
+          list.add(
+            PopupMenuItem<ServerModel>(
+              value: ServerModel(id: '__manage_servers__', name: 'Quản lý máy chủ', serverIp: ''),
+              child: const Row(
+                children: [
+                  Icon(Icons.settings_suggest_outlined, size: 16, color: AppColors.textDim),
+                  SizedBox(width: 10),
+                  Text(
+                    'Quản lý máy chủ & Thêm mới...',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return list;
+      },
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: AppColors.borderDark),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: isLocal
+                    ? AppColors.accent.withValues(alpha: 0.15)
+                    : AppColors.primary.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(
+                isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
+                size: 14,
+                color: isLocal ? AppColors.accent : AppColors.primaryLight,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 160),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    currentServerName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.1),
+                  ),
+                  Text(
+                    currentServerIp,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted, height: 1.1),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.unfold_more_rounded, size: 14, color: AppColors.textDim),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
@@ -853,10 +970,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSessionId = chat.currentSession?.id;
       _promptHistoryIndex = -1;
       _draftPrompt = '';
+      _stickyUserQuestion = null;
       _wasGenerating = chat.isGenerating;
-      if (chat.currentSession?.id != null) {
-        _loadRecentQuestionsForSession(chat.currentSession!.id);
-      }
       _safeScrollToBottom(instant: true);
     }
     // 2. Chỉ cuộn xuống cuối khi Agent trả lời xong câu hỏi (chuyển từ generating sang done)
@@ -988,51 +1103,27 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
 
-                // Right: Sidebar Toggle & New Session
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.view_sidebar_rounded,
-                        color: _isRightSidebarOpen ? AppColors.primaryLight : AppColors.textDim,
-                        size: 20,
-                      ),
-                      tooltip: 'Đóng/Mở danh sách hộp hội thoại',
-                      onPressed: () {
-                        setState(() {
-                          _isRightSidebarOpen = !_isRightSidebarOpen;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      ),
-                      icon: const Icon(Icons.add_rounded, size: 16),
-                      label: const Text('Hội thoại mới', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      onPressed: () => chat.createNewSession(
-                        targetServer: serverProvider.selectedServer?.name ?? 'Local Machine',
-                      ),
-                    ),
-                  ],
-                ),
+                const SizedBox(width: 12),
+
+                // Right: Server Selector Dropdown
+                _buildServerDropdown(serverProvider),
               ],
             ),
           ),
 
-          // 2. Chat Center & Right Sidebar Split View
+          // 2. Main Content Split 50-50: Left is Chat Feed, Right is Terminal Screen
           Expanded(
             child: Row(
               children: [
-                // 2.1 Center View (Chat Feed)
+                // Left Column (50%): Chat Center Feed View & Input Bar
                 Expanded(
                   child: Column(
                     children: [
-                            // Message Stream
-                            Expanded(
+                      // Message Stream & Sticky Question Header
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
                               child: chat.isLoading
                                   ? const Center(child: CircularProgressIndicator())
                                   : ListView.builder(
@@ -1064,14 +1155,35 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                             ),
 
-                            // Input Bar
-                            _buildInputBar(chat, serverProvider),
+                            // Sticky Question Header
+                            if (_stickyUserQuestion != null)
+                              Positioned(
+                                top: 8,
+                                left: 20,
+                                right: 20,
+                                child: _buildStickyQuestionHeader(_stickyUserQuestion!, chat),
+                              ),
                           ],
                         ),
+                      ),
+
+                      // Input Bar
+                      _buildInputBar(chat, serverProvider),
+                    ],
+                  ),
                 ),
 
-                // 2.2 Right Sidebar: Sessions List
-                if (_isRightSidebarOpen) _buildRightSessionsSidebar(chat),
+                // Vertical Divider between Chat and Terminal
+                const VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: AppColors.borderDark,
+                ),
+
+                // Right Column (50%): Terminal Screen
+                const Expanded(
+                  child: TerminalScreen(),
+                ),
               ],
             ),
           ),
@@ -1079,6 +1191,131 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     ),
     ),
+    );
+  }
+
+  Widget _buildStickyQuestionHeader(ChatMessageModel question, ChatProvider chat) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF131920).withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.55), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            offset: const Offset(0, 4),
+            blurRadius: 14,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Icon(Icons.help_outline_rounded, size: 14, color: AppColors.primaryLight),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'CÂU HỎI ĐANG XEM',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.6,
+                        color: AppColors.primaryLight,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatSessionTime(question.createdAt),
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        color: AppColors.textDim,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  question.content.replaceAll('\n', ' ').trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textWhite,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Cuộn nhanh về vị trí câu hỏi
+          Tooltip(
+            message: 'Cuộn tới câu hỏi này',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: () {
+                final idx = chat.messages.indexOf(question);
+                if (idx != -1) {
+                  final keyStr = _getMessageKey(question, idx);
+                  final gKey = _messageKeys[keyStr];
+                  if (gKey?.currentContext != null) {
+                    Scrollable.ensureVisible(
+                      gKey!.currentContext!,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      alignment: 0.1,
+                    );
+                  }
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.arrow_upward_rounded, size: 12, color: AppColors.primaryLight),
+                    SizedBox(width: 4),
+                    Text('Về câu hỏi', style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          // Nút đóng sticky
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+            icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.textMuted),
+            tooltip: 'Ẩn thanh ghim',
+            onPressed: () {
+              setState(() {
+                _stickyUserQuestion = null;
+              });
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -2055,6 +2292,39 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         onPressed: _pickFiles,
                       ),
+                      const SizedBox(width: 8),
+                      // Model Selector Button
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.primaryLight, width: 0.8),
+                          backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        icon: const Icon(Icons.smart_toy_rounded, size: 14, color: AppColors.primaryLight),
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 140),
+                              child: Text(
+                                serverProvider.currentAiModel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primaryLight,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_drop_down_rounded, size: 14, color: AppColors.primaryLight),
+                          ],
+                        ),
+                        onPressed: () => ModelPickerDialog.show(context, serverProvider),
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Builder(
@@ -2119,798 +2389,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildRightSessionsSidebar(ChatProvider chat) {
-    final serverProvider = context.watch<ServerProvider>();
-    final query = _sessionSearchQuery.trim().toLowerCase();
-    final displaySessions = query.isEmpty
-        ? chat.sessions
-        : chat.sessions.where((s) {
-            final titleMatch = s.title.toLowerCase().contains(query);
-            final serverMatch = (s.targetServer ?? '').toLowerCase().contains(query);
-            final dirMatch = (s.workingDirScope ?? '').toLowerCase().contains(query);
-            return titleMatch || serverMatch || dirMatch;
-          }).toList();
-
-    return Container(
-      width: 270,
-      decoration: const BoxDecoration(
-        color: AppColors.sidebarBg,
-        border: Border(left: BorderSide(color: AppColors.borderDark, width: 1)),
-      ),
-      child: Column(
-        children: [
-          // Header with inline expandable Search Box
-          Container(
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
-              child: _isSessionSearchOpen
-                  ? Row(
-                      key: const ValueKey('search_open'),
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 28,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            decoration: BoxDecoration(
-                              color: AppColors.inputBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.7)),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.search_rounded, size: 13, color: AppColors.textMuted),
-                                const SizedBox(width: 5),
-                                Expanded(
-                                  child: TextField(
-                                    focusNode: _sessionSearchFocusNode,
-                                    controller: _sessionSearchCtrl,
-                                    onChanged: (val) => setState(() => _sessionSearchQuery = val),
-                                    textAlignVertical: TextAlignVertical.center,
-                                    style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
-                                    decoration: const InputDecoration(
-                                      hintText: 'Tìm kiếm hội thoại...',
-                                      hintStyle: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      errorBorder: InputBorder.none,
-                                      disabledBorder: InputBorder.none,
-                                      isCollapsed: true,
-                                      contentPadding: EdgeInsets.symmetric(vertical: 6),
-                                    ),
-                                  ),
-                                ),
-                                InkWell(
-                                  hoverColor: Colors.transparent,
-                                  splashColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(4),
-                                  onTap: () {
-                                    setState(() {
-                                      _sessionSearchCtrl.clear();
-                                      _sessionSearchQuery = '';
-                                      _isSessionSearchOpen = false;
-                                    });
-                                  },
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(2),
-                                    child: Icon(Icons.close_rounded, size: 13, color: AppColors.textDim),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-                          hoverColor: Colors.transparent,
-                          splashColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                          icon: const Icon(Icons.add_rounded, size: 18, color: AppColors.primaryLight),
-                          tooltip: 'Tạo hội thoại mới',
-                          onPressed: () => chat.createNewSession(
-                            targetServer: serverProvider.selectedServer?.name ?? 'Local Machine',
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      key: const ValueKey('search_closed'),
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.layers_rounded, size: 16, color: AppColors.primaryLight),
-                            SizedBox(width: 8),
-                            Text('Hộp Hội Thoại', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-                              hoverColor: Colors.transparent,
-                              splashColor: Colors.transparent,
-                              highlightColor: Colors.transparent,
-                              icon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textDim),
-                              tooltip: 'Tìm kiếm hội thoại',
-                              onPressed: () {
-                                setState(() {
-                                  _isSessionSearchOpen = true;
-                                  Future.delayed(const Duration(milliseconds: 60), () {
-                                    if (mounted) _sessionSearchFocusNode.requestFocus();
-                                  });
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-            ),
-          ),
-
-          // 3. Session List
-          Expanded(
-            child: chat.sessions.isEmpty
-                ? const Center(
-                    child: Text('Chưa có hội thoại nào', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  )
-                : displaySessions.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.search_off_rounded, size: 28, color: AppColors.textDim),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Không tìm thấy hội thoại nào khớp với "$_sessionSearchQuery"',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : Builder(
-                        builder: (context) {
-                          final now = DateTime.now();
-                          final today = DateTime(now.year, now.month, now.day);
-                          final yesterday = today.subtract(const Duration(days: 1));
-
-                          final todaySessions = <ChatSessionModel>[];
-                          final yesterdaySessions = <ChatSessionModel>[];
-                          final olderSessions = <ChatSessionModel>[];
-
-                          for (final sess in displaySessions) {
-                            final sessDate = DateTime(sess.updatedAt.year, sess.updatedAt.month, sess.updatedAt.day);
-                            if (sessDate.isAtSameMomentAs(today) || sessDate.isAfter(today)) {
-                              todaySessions.add(sess);
-                            } else if (sessDate.isAtSameMomentAs(yesterday)) {
-                              yesterdaySessions.add(sess);
-                            } else {
-                              olderSessions.add(sess);
-                            }
-                          }
-
-                          Widget buildSessionTile(ChatSessionModel sess) {
-                            final isSelected = sess.id == chat.currentSession?.id;
-                            final recentQuestions = _sessionRecentQuestions[sess.id] ?? [];
-                            final isLoadingQuestions = _loadingSessionQuestions.contains(sess.id);
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 4),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? AppColors.primary.withValues(alpha: 0.15)
-                                    : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.04) : Colors.transparent),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? AppColors.primary.withValues(alpha: 0.5)
-                                      : (sess.isPinned ? AppColors.warning.withValues(alpha: 0.25) : AppColors.borderDark.withValues(alpha: 0.3)),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: _SwipeableSessionItem(
-                                      key: ValueKey('swipe_${sess.id}'),
-                                      onEdit: () => _showEditSessionDialog(chat, sess),
-                                      onDelete: () => _showDeleteDialog(chat, sess),
-                                      backgroundColor: isSelected
-                                          ? const Color(0xFF132733)
-                                          : (sess.isPinned ? const Color(0xFF1B1A1E) : AppColors.sidebarBg),
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          borderRadius: BorderRadius.circular(4),
-                                          hoverColor: Colors.transparent,
-                                          splashColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          onTap: () {
-                                            if (chat.currentSession?.id == sess.id) return;
-                                            chat.selectSession(sess).then((_) {
-                                              _safeScrollToBottom(instant: true);
-                                            });
-                                            _loadRecentQuestionsForSession(sess.id);
-                                            if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                              if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                                if (serverProvider.selectedServer?.id != 'local') {
-                                                  serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                                }
-                                              } else {
-                                                final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                                if (matches.isNotEmpty && serverProvider.selectedServer?.id != matches.first.id) {
-                                                  serverProvider.selectServer(matches.first);
-                                                }
-                                              }
-                                            }
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                                            child: Row(
-                                              children: [
-                                                // Left Pin Button
-                                                IconButton(
-                                                  padding: EdgeInsets.zero,
-                                                  constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                                  hoverColor: Colors.transparent,
-                                                  splashColor: Colors.transparent,
-                                                  highlightColor: Colors.transparent,
-                                                  icon: Transform.rotate(
-                                                    angle: sess.isPinned ? -0.5 : 0,
-                                                    child: Icon(
-                                                      sess.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                                                      size: 12.5,
-                                                      color: sess.isPinned ? AppColors.warning : AppColors.textDim,
-                                                    ),
-                                                  ),
-                                                  tooltip: sess.isPinned ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu',
-                                                  onPressed: () async {
-                                                    final success = await chat.pinSession(sess);
-                                                    if (!success && context.mounted) {
-                                                      AppToast.warning(context, 'Chỉ được ghim tối đa 3 hộp hội thoại lên đầu');
-                                                    }
-                                                  },
-                                                ),
-                                                const SizedBox(width: 4),
-                                                // Session Details
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Row(
-                                                        children: [
-                                                          Expanded(
-                                                            child: Text(
-                                                              sess.title,
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: TextStyle(
-                                                                fontSize: 11.5,
-                                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                                                color: isSelected ? AppColors.primaryLight : AppColors.textBody,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          if (chat.isSessionGenerating(sess.id)) ...[
-                                                            const SizedBox(width: 4),
-                                                            const SizedBox(
-                                                              width: 9,
-                                                              height: 9,
-                                                              child: CircularProgressIndicator(
-                                                                strokeWidth: 1.5,
-                                                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ],
-                                                      ),
-                                                       const SizedBox(height: 3),
-                                                       Row(
-                                                         crossAxisAlignment: CrossAxisAlignment.center,
-                                                         children: [
-                                                           if (sess.isPinned)
-                                                             Container(
-                                                               height: 16,
-                                                               margin: const EdgeInsets.only(right: 6),
-                                                               padding: const EdgeInsets.symmetric(horizontal: 5),
-                                                               alignment: Alignment.center,
-                                                               decoration: BoxDecoration(
-                                                                 color: AppColors.warning.withValues(alpha: 0.15),
-                                                                 borderRadius: BorderRadius.circular(4),
-                                                                 border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                                                               ),
-                                                               child: const Text(
-                                                                 'Ghim',
-                                                                 style: TextStyle(fontSize: 8.5, height: 1.1, fontWeight: FontWeight.bold, color: AppColors.warning),
-                                                               ),
-                                                             ),
-                                                           // Target Server Badge
-                                                           Builder(
-                                                             builder: (context) {
-                                                               final serverName = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
-                                                                   ? sess.targetServer!
-                                                                   : 'Local Machine';
-                                                               final isLocal = serverName == 'Local Machine' ||
-                                                                   serverName == 'Local' ||
-                                                                   serverName == 'localhost' ||
-                                                                   serverName == '127.0.0.1';
-                                                               final badgeColor = isLocal ? AppColors.accent : const Color(0xFF38BDF8);
-
-                                                               return Container(
-                                                                 height: 16,
-                                                                 margin: const EdgeInsets.only(right: 6),
-                                                                 padding: const EdgeInsets.symmetric(horizontal: 5),
-                                                                 alignment: Alignment.center,
-                                                                 decoration: BoxDecoration(
-                                                                   color: badgeColor.withValues(alpha: 0.12),
-                                                                   borderRadius: BorderRadius.circular(4),
-                                                                   border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
-                                                                 ),
-                                                                 child: Row(
-                                                                   mainAxisSize: MainAxisSize.min,
-                                                                   crossAxisAlignment: CrossAxisAlignment.center,
-                                                                   children: [
-                                                                     Icon(
-                                                                       isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
-                                                                       size: 9.5,
-                                                                       color: badgeColor,
-                                                                     ),
-                                                                     const SizedBox(width: 3),
-                                                                     ConstrainedBox(
-                                                                       constraints: const BoxConstraints(maxWidth: 80),
-                                                                       child: Text(
-                                                                         serverName,
-                                                                         overflow: TextOverflow.ellipsis,
-                                                                         style: TextStyle(
-                                                                           fontSize: 8.5,
-                                                                           height: 1.1,
-                                                                           fontWeight: FontWeight.bold,
-                                                                           color: badgeColor,
-                                                                         ),
-                                                                       ),
-                                                                     ),
-                                                                   ],
-                                                                 ),
-                                                               );
-                                                             },
-                                                           ),
-                                                           // Q&A Count Badge
-                                                           Container(
-                                                             height: 16,
-                                                             margin: const EdgeInsets.only(right: 6),
-                                                             padding: const EdgeInsets.symmetric(horizontal: 5),
-                                                             alignment: Alignment.center,
-                                                             decoration: BoxDecoration(
-                                                               color: AppColors.primary.withValues(alpha: 0.15),
-                                                               borderRadius: BorderRadius.circular(4),
-                                                               border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.35)),
-                                                             ),
-                                                             child: Row(
-                                                               mainAxisSize: MainAxisSize.min,
-                                                               crossAxisAlignment: CrossAxisAlignment.center,
-                                                               children: [
-                                                                 Text(
-                                                                   '${sess.questionCount}',
-                                                                   style: const TextStyle(fontSize: 9, height: 1.1, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                                                 ),
-                                                                 const Padding(
-                                                                   padding: EdgeInsets.symmetric(horizontal: 3),
-                                                                   child: Text(
-                                                                     '/',
-                                                                     style: TextStyle(fontSize: 8.5, height: 1.1, color: AppColors.textDim),
-                                                                   ),
-                                                                 ),
-                                                                 Text(
-                                                                   '${sess.answerCount}',
-                                                                   style: const TextStyle(fontSize: 9, height: 1.1, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                                                                 ),
-                                                               ],
-                                                             ),
-                                                           ),
-                                                           Text(
-                                                             _formatSessionTime(sess.updatedAt),
-                                                             style: const TextStyle(fontSize: 9.5, color: AppColors.textDim),
-                                                           ),
-                                                         ],
-                                                       ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Expanded Section: Recent Questions List
-                                  if (isSelected) ...[
-                                    Container(
-                                      width: double.infinity,
-                                      margin: const EdgeInsets.only(left: 10, right: 8, top: 4, bottom: 8),
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.bgDark.withValues(alpha: 0.7),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.6)),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  const Icon(Icons.history_rounded, size: 12, color: AppColors.accentCyan),
-                                                  const SizedBox(width: 5),
-                                                  Text(
-                                                    'Câu hỏi gần đây (${sess.questionCount} câu)',
-                                                    style: const TextStyle(
-                                                      fontSize: 10.5,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: AppColors.accentCyan,
-                                                      letterSpacing: 0.3,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              if (isLoadingQuestions)
-                                                const SizedBox(
-                                                  width: 9,
-                                                  height: 9,
-                                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accentCyan),
-                                                ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          if (isLoadingQuestions && recentQuestions.isEmpty)
-                                            const Padding(
-                                              padding: EdgeInsets.symmetric(vertical: 4),
-                                              child: Text('Đang tải câu hỏi...', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
-                                            )
-                                          else if (recentQuestions.isEmpty)
-                                            const Padding(
-                                              padding: EdgeInsets.symmetric(vertical: 4),
-                                              child: Text('Chưa có câu hỏi nào trong hộp này.', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
-                                            )
-                                          else
-                                            ...recentQuestions.map((q) {
-                                              return _RecentQuestionItem(
-                                                question: q,
-                                                session: sess,
-                                                onTap: () => _scrollToQuestion(q, sess),
-                                                onCopy: () {
-                                                  Clipboard.setData(ClipboardData(text: q));
-                                                  AppToast.success(context, 'Đã sao chép câu hỏi vào bộ nhớ tạm!');
-                                                },
-                                                onReAsk: () async {
-                                                  if (sess.id != chat.currentSession?.id) {
-                                                    await chat.selectSession(sess);
-                                                  }
-                                                  if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                                    if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                                      serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                                    } else {
-                                                      final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                                      if (matches.isNotEmpty) {
-                                                        serverProvider.selectServer(matches.first);
-                                                      }
-                                                    }
-                                                  }
-                                                  _textController.text = q;
-                                                  _handleSend(chat, serverProvider);
-                                                },
-                                              );
-                                            }),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            );
-                          }
-
-                          Widget buildGroupSection(String title, List<ChatSessionModel> groupList) {
-                            if (groupList.isEmpty) return const SizedBox.shrink();
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 6, right: 6, top: 8, bottom: 4),
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        title.toUpperCase(),
-                                        style: const TextStyle(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.textDim,
-                                          letterSpacing: 0.8,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Container(
-                                          height: 1,
-                                          color: AppColors.borderDark.withValues(alpha: 0.5),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${groupList.length}',
-                                        style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                ...groupList.map(buildSessionTile),
-                              ],
-                            );
-                          }
-
-                          return ListView(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                            children: [
-                              buildGroupSection('Hôm nay', todaySessions),
-                              buildGroupSection('Hôm qua', yesterdaySessions),
-                              buildGroupSection('Lâu hơn', olderSessions),
-                            ],
-                          );
-                        },
-                      ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  query.isNotEmpty ? '${displaySessions.length}/${chat.sessions.length} hội thoại' : '${chat.sessions.length} hội thoại',
-                  style: const TextStyle(fontSize: 11, color: AppColors.textDim),
-                ),
-                if (chat.sessions.isNotEmpty)
-                  TextButton(
-                    onPressed: () => _showClearAllSessionsDialog(chat),
-                    child: const Text('Xoá tất cả', style: TextStyle(fontSize: 11, color: AppColors.danger)),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showClearAllSessionsDialog(ChatProvider chat) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 420,
-        maxWidth: 500,
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
-            SizedBox(width: 8),
-            Text('Xác Nhận Xóa Tất Cả'),
-          ],
-        ),
-        content: const Text(
-          'Bạn có chắc chắn muốn xóa toàn bộ danh sách hội thoại và lịch sử chat không?',
-          style: TextStyle(fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await chat.deleteAllSessions();
-              if (mounted) {
-                AppToast.success(context, 'Đã xóa toàn bộ các cuộc hội thoại!');
-              }
-            },
-            child: const Text('Xóa tất cả'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditSessionDialog(ChatProvider chat, ChatSessionModel sess) {
-    final serverProvider = context.read<ServerProvider>();
-    final titleCtrl = TextEditingController(text: sess.title);
-    String selectedServer = (sess.targetServer != null && sess.targetServer!.isNotEmpty)
-        ? sess.targetServer!
-        : 'Local Machine';
-
-    final serverOptions = <Map<String, dynamic>>[
-      {
-        'value': 'Local Machine',
-        'label': 'Local Machine (Máy tính cục bộ)',
-        'isLocal': true,
-      },
-    ];
-
-    for (final s in serverProvider.servers) {
-      if (s.serverIp != '127.0.0.1' && s.serverIp != 'localhost') {
-        serverOptions.add({
-          'value': s.name,
-          'label': '${s.name} (${s.serverIp})',
-          'isLocal': false,
-        });
-      }
-    }
-
-    if (!serverOptions.any((opt) => opt['value'] == selectedServer)) {
-      selectedServer = 'Local Machine';
-    }
-
-    void doSubmit(BuildContext ctx) async {
-      final newTitle = titleCtrl.text.trim();
-      Navigator.pop(ctx);
-      final finalTitle = newTitle.isNotEmpty ? newTitle : sess.title;
-      await chat.updateSession(
-        sess,
-        newTitle: finalTitle,
-        newTargetServer: selectedServer,
-      );
-      if (mounted) {
-        AppToast.success(context, 'Đã cập nhật hộp hội thoại!');
-      }
-    }
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => TaduDialog(
-          minWidth: 460,
-          maxWidth: 540,
-          title: const Row(
-            children: [
-              Icon(Icons.edit_note_rounded, color: AppColors.primaryLight, size: 22),
-              SizedBox(width: 8),
-              Text('Chỉnh Sửa Hộp Hội Thoại'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Tiêu đề cuộc trò chuyện:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: titleCtrl,
-                autofocus: true,
-                onSubmitted: (_) => doSubmit(ctx),
-                decoration: const InputDecoration(
-                  labelText: 'Tiêu đề cuộc hội thoại',
-                  prefixIcon: Icon(Icons.chat_bubble_outline_rounded, size: 16),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Máy chủ thực thi (Gắn kết phiên làm việc):', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                initialValue: selectedServer,
-                dropdownColor: AppColors.cardBg,
-                decoration: const InputDecoration(
-                  labelText: 'Chọn Máy Chủ',
-                  prefixIcon: Icon(Icons.dns_rounded, size: 16),
-                ),
-                items: serverOptions.map((opt) {
-                  final isLoc = opt['isLocal'] as bool;
-                  return DropdownMenuItem<String>(
-                    value: opt['value'] as String,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isLoc ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
-                          size: 15,
-                          color: isLoc ? AppColors.accent : const Color(0xFF38BDF8),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          opt['label'] as String,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: isLoc ? AppColors.accent : AppColors.textWhite,
-                            fontWeight: isLoc ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  if (val != null) {
-                    setDialogState(() {
-                      selectedServer = val;
-                    });
-                  }
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
-            ),
-            ElevatedButton(
-              onPressed: () => doSubmit(ctx),
-              child: const Text('Lưu thay đổi'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showDeleteDialog(ChatProvider chat, dynamic sess) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 420,
-        maxWidth: 500,
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
-            SizedBox(width: 8),
-            Text('Xác Nhận Xóa Hội Thoại'),
-          ],
-        ),
-        content: Text(
-          'Bạn có chắc chắn muốn xóa vĩnh viễn cuộc hội thoại "${sess.title}" và toàn bộ tin nhắn liên quan không?',
-          style: const TextStyle(fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await chat.deleteSession(sess.id);
-              if (mounted) {
-                AppToast.success(context, 'Đã xóa cuộc hội thoại thành công!');
-              }
-            },
-            child: const Text('Xóa vĩnh viễn'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ScopePickerDialog extends StatefulWidget {
@@ -4273,155 +3751,6 @@ class _RecentQuestionItemState extends State<_RecentQuestionItem> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SwipeableSessionItem extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final Color? backgroundColor;
-
-  const _SwipeableSessionItem({
-    super.key,
-    required this.child,
-    required this.onEdit,
-    required this.onDelete,
-    this.backgroundColor,
-  });
-
-  @override
-  State<_SwipeableSessionItem> createState() => _SwipeableSessionItemState();
-}
-
-class _SwipeableSessionItemState extends State<_SwipeableSessionItem> with SingleTickerProviderStateMixin {
-  late final AnimationController _animCtrl;
-  double _dragExtent = 0.0;
-  static const double _maxActionWidth = 68.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    )..addListener(() {
-        setState(() {
-          _dragExtent = _animCtrl.value * -_maxActionWidth;
-        });
-      });
-  }
-
-  @override
-  void dispose() {
-    _animCtrl.dispose();
-    super.dispose();
-  }
-
-  void _open() {
-    _animCtrl.animateTo(1.0, curve: Curves.easeOutCubic);
-  }
-
-  void _close() {
-    _animCtrl.animateTo(0.0, curve: Curves.easeOutCubic);
-  }
-
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    setState(() {
-      _dragExtent = (_dragExtent + details.primaryDelta!).clamp(-_maxActionWidth, 0.0);
-      _animCtrl.value = -_dragExtent / _maxActionWidth;
-    });
-  }
-
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    if (details.primaryVelocity! < -200 || _dragExtent < -(_maxActionWidth / 2)) {
-      _open();
-    } else {
-      _close();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bgColor = widget.backgroundColor ?? AppColors.sidebarBg;
-
-    return MouseRegion(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: _onHorizontalDragUpdate,
-        onHorizontalDragEnd: _onHorizontalDragEnd,
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            // Background Action Buttons (Edit & Delete) nằm cố định bên phải phía dưới
-            Positioned(
-              right: 4,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Edit Button
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.4)),
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.edit_outlined, size: 13, color: AppColors.primaryLight),
-                        tooltip: 'Chỉnh sửa hội thoại',
-                        onPressed: () {
-                          _close();
-                          widget.onEdit();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    // Delete Button
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: AppColors.danger.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.delete_outline_rounded, size: 13, color: AppColors.danger),
-                        tooltip: 'Xóa hội thoại',
-                        onPressed: () {
-                          _close();
-                          widget.onDelete();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Foreground Content (Slide to Left) che kín lớp dưới
-            Transform.translate(
-              offset: Offset(_dragExtent, 0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: widget.child,
-              ),
-            ),
-          ],
         ),
       ),
     );

@@ -14,7 +14,8 @@ class ServerProvider extends ChangeNotifier {
   List<ServerModel> _servers = [];
   ServerModel? _selectedServer;
   String _cloudAiModel = 'glm-5.3';
-  String _activeAgent = 'glm-5.3';
+  String _activeCliAgent = 'antigravity-cli';
+  String _engineMode = 'cloud'; // 'cloud' hoặc 'cli'
   List<LocalCliAgent> _installedCliAgents = [];
   bool _isLoading = false;
   bool _isScanningCliAgents = false;
@@ -26,7 +27,10 @@ class ServerProvider extends ChangeNotifier {
   ServerModel? get selectedServer => _selectedServer;
   String get globalAiModel => _cloudAiModel;
   String get cloudAiModel => _cloudAiModel;
-  String get activeAgent => _activeAgent;
+  String get activeCliAgent => _activeCliAgent;
+  String get engineMode => _engineMode;
+  bool get isCliMode => _engineMode == 'cli';
+  String get activeAgent => isCliMode ? _activeCliAgent : _cloudAiModel;
   List<LocalCliAgent> get installedCliAgents => _installedCliAgents;
   bool get isScanningCliAgents => _isScanningCliAgents;
   Map<String, List<String>> get serverIpsMap => _serverIpsMap;
@@ -44,8 +48,8 @@ class ServerProvider extends ChangeNotifier {
   bool isLoadingIps(String serverId) => _loadingIpsServerIds.contains(serverId);
 
   String get currentAiModel {
-    if (_activeAgent.isNotEmpty) {
-      return _activeAgent;
+    if (isCliMode) {
+      return _activeCliAgent.isNotEmpty ? _activeCliAgent : 'antigravity-cli';
     }
     if (_cloudAiModel.isNotEmpty) {
       return _cloudAiModel;
@@ -77,6 +81,17 @@ class ServerProvider extends ChangeNotifier {
 
     try {
       _installedCliAgents = await _cliScanner.scanInstalledAgents();
+      // Nếu _activeCliAgent chưa nằm trong danh sách hoặc rỗng, ưu tiên antigravity-cli rồi tới claude-cli
+      if (_installedCliAgents.isNotEmpty) {
+        final hasActive = _installedCliAgents.any((a) => a.id == _activeCliAgent);
+        if (!hasActive) {
+          final agy = _installedCliAgents.firstWhere(
+            (a) => a.id.contains('antigravity') || a.binary.contains('agy'),
+            orElse: () => _installedCliAgents.first,
+          );
+          _activeCliAgent = agy.id;
+        }
+      }
     } catch (_) {} finally {
       _isScanningCliAgents = false;
       notifyListeners();
@@ -88,42 +103,78 @@ class ServerProvider extends ChangeNotifier {
       final cfg = await _api.getConfig();
       if (cfg['ai_model'] != null && cfg['ai_model'].toString().isNotEmpty) {
         final m = cfg['ai_model'].toString();
-        if (_isCli(m)) {
-          _cloudAiModel = 'glm-5.3';
-          _activeAgent = m;
-        } else {
+        if (!_isCli(m)) {
           _cloudAiModel = m;
+        } else {
+          _activeCliAgent = m;
         }
       }
-      if (cfg['active_agent_engine'] != null && cfg['active_agent_engine'].toString().isNotEmpty) {
-        _activeAgent = cfg['active_agent_engine'].toString();
-      } else {
-        _activeAgent = _cloudAiModel;
+      if (cfg['active_cli_agent'] != null && cfg['active_cli_agent'].toString().isNotEmpty) {
+        _activeCliAgent = cfg['active_cli_agent'].toString();
+      }
+      if (cfg['engine_mode'] != null && cfg['engine_mode'].toString().isNotEmpty) {
+        _engineMode = cfg['engine_mode'].toString() == 'cli' ? 'cli' : 'cloud';
+      } else if (cfg['active_agent_engine'] != null) {
+        final eng = cfg['active_agent_engine'].toString();
+        if (_isCli(eng)) {
+          _engineMode = 'cli';
+          _activeCliAgent = eng;
+        } else {
+          _engineMode = 'cloud';
+          _cloudAiModel = eng;
+        }
       }
       notifyListeners();
     } catch (_) {}
   }
 
   Future<void> setActiveAgent(String agent) async {
-    if (agent.isNotEmpty) {
-      _activeAgent = agent;
-      if (!_isCli(agent)) {
-        _cloudAiModel = agent;
-      }
+    if (agent.isEmpty) return;
+    if (_isCli(agent)) {
+      await setActiveCliAgent(agent);
+    } else {
+      await setCloudAiModel(agent);
+    }
+  }
+
+  Future<void> setActiveCliAgent(String cliAgentId) async {
+    if (cliAgentId.isNotEmpty) {
+      _activeCliAgent = cliAgentId;
+      _engineMode = 'cli';
       notifyListeners();
       try {
-        await _storage.setDefaultModel(agent);
-        if (_isCli(agent)) {
-          await _api.saveConfig({'active_agent_engine': agent});
-        } else {
-          await _api.saveConfig({'active_agent_engine': agent, 'ai_model': agent});
-        }
+        await _storage.setDefaultModel(cliAgentId);
+        await _api.saveConfig({
+          'active_cli_agent': cliAgentId,
+          'engine_mode': 'cli',
+          'active_agent_engine': cliAgentId,
+        });
+      } catch (_) {}
+    }
+  }
+
+  Future<void> setCloudAiModel(String model) async {
+    if (model.isNotEmpty) {
+      _cloudAiModel = model;
+      _engineMode = 'cloud';
+      notifyListeners();
+      try {
+        await _storage.setDefaultModel(model);
+        await _api.saveConfig({
+          'ai_model': model,
+          'engine_mode': 'cloud',
+          'active_agent_engine': model,
+        });
       } catch (_) {}
     }
   }
 
   void setGlobalAiModel(String model) {
-    setActiveAgent(model);
+    if (_isCli(model)) {
+      setActiveCliAgent(model);
+    } else {
+      setCloudAiModel(model);
+    }
   }
 
   Future<void> loadServers() async {

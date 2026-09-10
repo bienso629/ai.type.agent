@@ -33,6 +33,42 @@ class PersonaProfile {
     this.smsOrderId,
   });
 
+  PersonaProfile copyWith({
+    String? ip,
+    String? name,
+    int? age,
+    String? gender,
+    String? bio,
+    String? avatarPrompt,
+    String? avatarUrl,
+    String? externalDeviceAddress,
+    bool? useExternalDevice,
+    String? avdName,
+    String? deviceType,
+    String? agentInfo,
+    String? phoneNumber,
+    bool? autoSyncPhoneToDevice,
+    String? smsOrderId,
+  }) {
+    return PersonaProfile(
+      ip: ip ?? this.ip,
+      name: name ?? this.name,
+      age: age ?? this.age,
+      gender: gender ?? this.gender,
+      bio: bio ?? this.bio,
+      avatarPrompt: avatarPrompt ?? this.avatarPrompt,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      externalDeviceAddress: externalDeviceAddress ?? this.externalDeviceAddress,
+      useExternalDevice: useExternalDevice ?? this.useExternalDevice,
+      avdName: avdName ?? this.avdName,
+      deviceType: deviceType ?? this.deviceType,
+      agentInfo: agentInfo ?? this.agentInfo,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      autoSyncPhoneToDevice: autoSyncPhoneToDevice ?? this.autoSyncPhoneToDevice,
+      smsOrderId: smsOrderId ?? this.smsOrderId,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'ip': ip,
     'name': name,

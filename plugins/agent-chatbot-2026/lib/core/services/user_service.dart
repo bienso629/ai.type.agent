@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../models/user_model.dart';
+import 'storage_service.dart';
 
 class UserService {
   static final UserService _instance = UserService._internal();
@@ -14,10 +17,12 @@ class UserService {
 
   Database? _db;
   String? _resolvedDbPath;
+  static const String _defaultBackendUrl = 'http://localhost:8888';
 
   String? get resolvedDbPath => _resolvedDbPath;
 
   Future<void> init() async {
+    if (kIsWeb) return;
     if (_db != null && _db!.isOpen) return;
 
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
@@ -52,7 +57,7 @@ class UserService {
   Future<String> _resolveUsersDbPath() async {
     const dbFileName = 'app_users.db';
 
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       final currentDir = Directory.current.path;
       final appDataDir = p.join(Platform.environment['HOME'] ?? '', '.agent_chatbot_2026');
       final dir = Directory(appDataDir);
@@ -95,6 +100,14 @@ class UserService {
     return sha256.convert(bytes).toString();
   }
 
+  Future<String> _getBackendUrl() async {
+    final gw = await StorageService().getGatewayUrl();
+    if (gw.isNotEmpty && !gw.contains('mitom.ai')) {
+      return gw;
+    }
+    return _defaultBackendUrl;
+  }
+
   Future<UserModel> register({
     required String email,
     required String password,
@@ -105,6 +118,43 @@ class UserService {
 
     if (cleanEmail.isEmpty || password.isEmpty) {
       throw Exception('Email và mật khẩu không được để trống');
+    }
+
+    if (kIsWeb) {
+      final backendUrl = await _getBackendUrl();
+      try {
+        final res = await http.post(
+          Uri.parse('$backendUrl/api/auth/register.php'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': cleanEmail,
+            'password': password,
+            'name': cleanName,
+          }),
+        );
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        if (res.statusCode == 200 && data['success'] == true) {
+          final payload = (data['data'] is Map<String, dynamic>)
+              ? data['data'] as Map<String, dynamic>
+              : data;
+          final u = (payload['user'] is Map<String, dynamic>)
+              ? payload['user'] as Map<String, dynamic>
+              : payload;
+          return UserModel(
+            id: u['id'] is int ? u['id'] : int.tryParse(u['id']?.toString() ?? '0'),
+            email: u['email'] ?? cleanEmail,
+            name: u['name'] ?? cleanName,
+            passwordHash: '',
+            salt: '',
+            createdAt: DateTime.now().toIso8601String(),
+          );
+        } else {
+          throw Exception(data['message'] ?? 'Đăng ký thất bại trên Cloud Server');
+        }
+      } catch (e) {
+        if (e is Exception) rethrow;
+        throw Exception('Không thể kết nối đến Cloud Server: $e');
+      }
     }
 
     final db = await _getDb();
@@ -150,6 +200,45 @@ class UserService {
     final cleanEmail = email.trim().toLowerCase();
     if (cleanEmail.isEmpty || password.isEmpty) return null;
 
+    if (kIsWeb) {
+      final backendUrl = await _getBackendUrl();
+      try {
+        final res = await http.post(
+          Uri.parse('$backendUrl/api/auth/login.php'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': cleanEmail,
+            'password': password,
+          }),
+        );
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        if (res.statusCode == 200 && data['success'] == true) {
+          final payload = (data['data'] is Map<String, dynamic>)
+              ? data['data'] as Map<String, dynamic>
+              : data;
+          final u = (payload['user'] is Map<String, dynamic>)
+              ? payload['user'] as Map<String, dynamic>
+              : payload;
+          final token = payload['token']?.toString() ?? data['token']?.toString() ?? '';
+          if (token.isNotEmpty) {
+            await StorageService().setAuthToken(token);
+          }
+          return UserModel(
+            id: u['id'] is int ? u['id'] : int.tryParse(u['id']?.toString() ?? '0'),
+            email: u['email'] ?? cleanEmail,
+            name: u['name'] ?? cleanEmail.split('@')[0],
+            passwordHash: '',
+            salt: '',
+            createdAt: DateTime.now().toIso8601String(),
+          );
+        }
+        return null;
+      } catch (e) {
+        if (e is Exception) rethrow;
+        throw Exception('Không thể kết nối đến máy chủ xác thực: $e');
+      }
+    }
+
     final db = await _getDb();
     final rows = await db.query(
       'users',
@@ -170,6 +259,7 @@ class UserService {
   }
 
   Future<bool> userExists(String email) async {
+    if (kIsWeb) return false;
     final db = await _getDb();
     final rows = await db.query(
       'users',
@@ -189,6 +279,26 @@ class UserService {
     // Tài khoản cục bộ mặc định cũng là admin
     if (cleanEmail == 'local.admin@agent.chatbot') return true;
 
+    if (kIsWeb) {
+      final token = await StorageService().getAuthToken();
+      if (token != null && token.isNotEmpty) {
+        final backendUrl = await _getBackendUrl();
+        try {
+          final res = await http.get(
+            Uri.parse('$backendUrl/api/auth/me.php'),
+            headers: {'Authorization': 'Bearer $token'},
+          );
+          if (res.statusCode == 200) {
+            final data = jsonDecode(res.body) as Map<String, dynamic>;
+            if (data['success'] == true && data['data'] != null) {
+              return data['data']['is_admin'] == true;
+            }
+          }
+        } catch (_) {}
+      }
+      return false;
+    }
+
     final db = await _getDb();
     final rows = await db.query(
       'users',
@@ -200,5 +310,73 @@ class UserService {
     if (rows.isEmpty) return false;
     final firstEmail = rows.first['email']?.toString().toLowerCase();
     return firstEmail == cleanEmail;
+  }
+
+  Future<void> changePassword({
+    required String email,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (currentPassword.isEmpty || newPassword.isEmpty) {
+      throw Exception('Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới');
+    }
+    if (newPassword.length < 6) {
+      throw Exception('Mật khẩu mới phải có tối thiểu 6 ký tự');
+    }
+
+    if (kIsWeb) {
+      final token = await StorageService().getAuthToken();
+      final backendUrl = await _getBackendUrl();
+      final res = await http.post(
+        Uri.parse('$backendUrl/api/auth/change_password.php'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        }),
+      );
+
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && data['success'] == true) {
+        return;
+      }
+      throw Exception(data['error'] ?? data['message'] ?? 'Đổi mật khẩu thất bại trên máy chủ');
+    }
+
+    final db = await _getDb();
+    final rows = await db.query(
+      'users',
+      where: 'LOWER(email) = ?',
+      whereArgs: [cleanEmail],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      throw Exception('Không tìm thấy tài khoản người dùng');
+    }
+
+    final user = UserModel.fromMap(rows.first);
+    final testHash = _hashPassword(currentPassword, user.salt);
+
+    if (testHash != user.passwordHash) {
+      throw Exception('Mật khẩu hiện tại không chính xác');
+    }
+
+    final newSalt = _generateSalt();
+    final newHash = _hashPassword(newPassword, newSalt);
+
+    await db.update(
+      'users',
+      {
+        'password_hash': newHash,
+        'salt': newSalt,
+      },
+      where: 'id = ?',
+      whereArgs: [user.id],
+    );
   }
 }

@@ -43,7 +43,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadGlobalConfig() async {
     try {
       final cfg = await _api.getConfig();
-      if (cfg['ai_model'] != null) _modelCtrl.text = cfg['ai_model'].toString();
+      final aiModel = cfg['ai_model']?.toString() ?? '';
+      final activeEngine = cfg['active_agent_engine']?.toString() ?? '';
+      bool isCli(String name) {
+        final n = name.toLowerCase();
+        return n.contains('cli') || n == 'agy' || n == 'claude' || n == 'gemini';
+      }
+
+      if (aiModel.isNotEmpty && !isCli(aiModel)) {
+        _modelCtrl.text = aiModel;
+      } else if (aiModel.contains('antigravity') || aiModel == 'agy') {
+        _modelCtrl.text = 'glm-5.3';
+      }
+      if (activeEngine.isNotEmpty && isCli(activeEngine) && !activeEngine.contains('antigravity') && activeEngine != 'agy') {
+        _aiEngineTab = 'cli';
+      } else {
+        _aiEngineTab = 'cloud';
+      }
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
     } catch (_) {}
@@ -980,7 +996,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             ).then((_) {
                                               if (mounted) {
                                                 setState(() {
-                                                  _modelCtrl.text = serverProvider.currentAiModel;
+                                                  _modelCtrl.text = serverProvider.cloudAiModel;
                                                 });
                                               }
                                             });
@@ -1066,28 +1082,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   spacing: 10,
                                   runSpacing: 10,
                                   children: [
-                                    ActionChip(
-                                      avatar: const Icon(Icons.terminal_rounded, size: 14, color: AppColors.primaryLight),
-                                      label: Text(
-                                        'antigravity-cli (${_modelCtrl.text == 'antigravity-cli' ? 'Đang chọn' : 'Chọn'})',
-                                        style: const TextStyle(fontSize: 11.5),
-                                      ),
-                                      backgroundColor: _modelCtrl.text == 'antigravity-cli' || _modelCtrl.text == 'agy'
-                                          ? AppColors.primary.withValues(alpha: 0.25)
-                                          : AppColors.cardBg,
-                                      side: BorderSide(
-                                        color: _modelCtrl.text == 'antigravity-cli' || _modelCtrl.text == 'agy'
-                                            ? AppColors.primaryLight
-                                            : AppColors.borderDark,
-                                      ),
-                                      onPressed: () {
-                                        setState(() {
-                                          _modelCtrl.text = 'antigravity-cli';
-                                        });
-                                        serverProvider.setActiveAgent('antigravity-cli');
-                                        AppToast.success(context, 'Đã chọn Antigravity CLI Agent');
-                                      },
-                                    ),
                                     ActionChip(
                                       avatar: const Icon(Icons.code_rounded, size: 14, color: AppColors.accentCyan),
                                       label: Text(

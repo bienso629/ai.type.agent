@@ -151,17 +151,14 @@ class _ChatScreenState extends State<ChatScreen> {
       if (result != null && result.files.isNotEmpty) {
         for (final f in result.files) {
           AttachmentItem? item;
-          if (f.bytes != null) {
+          if (f.path != null && File(f.path!).existsSync()) {
+            item = await AttachmentItem.fromFile(File(f.path!), fileBytes: f.bytes, fileName: f.name);
+          } else if (f.bytes != null) {
             item = AttachmentItem.fromBytes(
               name: f.name,
               bytes: f.bytes!,
               path: f.path,
             );
-          } else if (f.path != null) {
-            final file = File(f.path!);
-            if (file.existsSync()) {
-              item = await AttachmentItem.fromFile(file, fileName: f.name);
-            }
           }
           if (item != null) {
             _attachedFiles.add(item);
@@ -507,19 +504,36 @@ class _ChatScreenState extends State<ChatScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    if (serverProvider.currentAiModel.contains('cli') ||
-                                        serverProvider.currentAiModel == 'agy' ||
-                                        serverProvider.currentAiModel == 'claude') ...[
+                                    if (serverProvider.isCliMode) ...[
                                       const Icon(Icons.terminal_rounded, size: 10, color: AppColors.accentCyan),
                                       const SizedBox(width: 4),
+                                      const Text(
+                                        'CLI: ',
+                                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
+                                      ),
+                                    ] else ...[
+                                      const Icon(Icons.cloud_queue_rounded, size: 10, color: AppColors.primaryLight),
+                                      const SizedBox(width: 4),
+                                      const Text(
+                                        'Cloud: ',
+                                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                      ),
                                     ],
                                     Text(
                                       serverProvider.currentAiModel,
-                                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                                      ),
                                     ),
                                     if (auth.isAdmin) ...[
                                       const SizedBox(width: 3),
-                                      const Icon(Icons.keyboard_arrow_down_rounded, size: 12, color: AppColors.primaryLight),
+                                      Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        size: 12,
+                                        color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                                      ),
                                     ],
                                   ],
                                 ),
@@ -1226,8 +1240,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       label: Text(
                         _selectedPersonasScope.isNotEmpty
-                            ? 'Scope (${_selectedPersonasScope.length})'
-                            : 'Scope Personas',
+                            ? 'Personas (${_selectedPersonasScope.length})'
+                            : 'Personas',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: _selectedPersonasScope.isNotEmpty ? FontWeight.bold : FontWeight.normal,
@@ -1260,32 +1274,6 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                       onPressed: _pickFiles,
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      ),
-                      icon: Icon(
-                        (serverProvider.currentAiModel.contains('cli') ||
-                                serverProvider.currentAiModel == 'agy' ||
-                                serverProvider.currentAiModel == 'claude')
-                            ? Icons.terminal_rounded
-                            : Icons.memory_rounded,
-                        size: 14,
-                        color: AppColors.primaryLight,
-                      ),
-                      label: Text(
-                        serverProvider.currentAiModel,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.primaryLight,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      onPressed: () => ModelPickerDialog.show(context),
                     ),
                   ],
                 ),
@@ -1709,7 +1697,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
           SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Chọn Scope Nhân Vật (Profiles)',
+              'Chọn Nhân Vật (Profiles)',
               overflow: TextOverflow.ellipsis,
             ),
           ),

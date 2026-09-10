@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../../models/persona_profile_model.dart';
 import 'database_service.dart';
 import 'local_config_service.dart';
+import 'cli_scanner_service.dart';
 
 class PersonaService {
   static final PersonaService _instance = PersonaService._internal();
@@ -13,6 +14,7 @@ class PersonaService {
 
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
+  final CliScannerService _cliScanner = CliScannerService();
   final Map<String, PersonaProfile> _cachedPersonas = {};
   bool _isLoaded = false;
 
@@ -119,16 +121,8 @@ class PersonaService {
     if (ips.isEmpty) return {};
 
     final cfg = await _configService.loadConfig();
-    var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
-    if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
-      throw Exception('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
-    }
-    if (baseUrl.endsWith('/')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 1);
-    }
-    final apiKey = cfg['proxy_api_key']?.toString() ?? '';
-    final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
-    final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
+    final activeEngine = cfg['active_agent_engine']?.toString().toLowerCase() ?? '';
+    final isCliActive = activeEngine.contains('cli') || activeEngine == 'agy' || activeEngine == 'claude' || activeEngine == 'gemini';
 
     final prompt = '''Bạn là một chuyên gia sáng tạo danh tính số (Digital Persona Creator) cho hệ thống mạng xã hội tự động.
 Dưới đây là danh sách các địa chỉ IP:
@@ -140,8 +134,9 @@ Mỗi nhân vật phải gồm:
 - name: Họ và tên nhân vật (ví dụ: Nguyễn Hoàng Nam, Trần Thu Hà, Lê Minh Triết...)
 - age: Tuổi (từ 18 đến 45)
 - gender: Giới tính ("Nam" hoặc "Nữ")
-- bio: Mô tả cá tính, nghề nghiệp, sở thích, tính cách ngắn gọn (khoảng 1 - 2 câu súc tích)
-- avatar_prompt: Một prompt chi tiết bằng tiếng Anh chuyên dùng cho AI vẽ ảnh (Midjourney/Stable Diffusion) để tạo chân dung cận cảnh avatar cho nhân vật này (ví dụ: "Close-up portrait of a 24-year-old Vietnamese woman, warm smile, barista outfit in a cozy cafe, cinematic natural sunlight, hyperrealistic 8k").
+- bio: Mô tả cá tính, tính cách, sở thích và phong cách sống (khoảng 1 - 2 câu súc tích)
+- agent_info: Vai trò, nhiệm vụ chính của nhân vật này trong hệ thống MXH (ví dụ: "Seeding bài viết ẩm thực, bình luận chia sẻ kinh nghiệm quán ăn, tạo tương tác tự nhiên với khách hàng", hoặc "Review đồ công nghệ, trả lời giải đáp thắc mắc người xem livestream", hoặc "Chăm sóc khách hàng, tương tác thân thiện trong group cộng đồng"...)
+- avatar_prompt: Một prompt chi tiết bằng tiếng Anh chuyên dùng cho AI vẽ ảnh (Midjourney/FLUX/Stable Diffusion) để tạo chân dung cận cảnh avatar cho nhân vật này. ĐẶC BIỆT: Prompt ảnh BẮT BUỘC PHẢI THỂ HIỆN RÕ CÁ TÍNH, VAI TRÒ VÀ NHIỆM VỤ của nhân vật từ bio và agent_info (ví dụ về trang phục, biểu cảm khuôn mặt, ánh mắt, bối cảnh làm việc hoặc môi trường phù hợp với vai trò của họ). Ví dụ: "Close-up portrait of a 24-year-old Vietnamese female food reviewer, vibrant cheerful expression, stylish casual hoodie, holding a subtle coffee cup, blurred modern cafe background with warm bokeh lights, cinematic sunlight, hyperrealistic 8k".
 
 BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markdown hoặc chỉ bọc trong ```json ... ```):
 [
@@ -151,47 +146,68 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
     "age": 25,
     "gender": "Nam",
     "bio": "...",
+    "agent_info": "...",
     "avatar_prompt": "..."
   }
 ]''';
 
-    final uri = Uri.parse('$baseUrl/chat/completions');
-    final response = await http.post(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
-      },
-      body: jsonEncode({
-        'model': targetModel,
-        'messages': [
-          {
-            'role': 'system',
-            'content': 'Bạn là trợ lý AI chuyên tạo dữ liệu nhân vật chuẩn JSON. Chỉ trả về mảng JSON hợp lệ.',
-          },
-          {
-            'role': 'user',
-            'content': prompt,
-          }
-        ],
-        'temperature': 0.7,
-      }),
-    );
+    String rawReply = '';
 
-    if (response.statusCode != 200) {
-      throw Exception('Lỗi gọi AI API (${response.statusCode}): ${response.body}');
+    if (isCliActive) {
+      // 1. NHÁNH LOCAL CLI AGENT: Gọi trực tiếp binary cài trên máy local qua terminal
+      final targetCli = (model != null && model.isNotEmpty) ? model : activeEngine;
+      rawReply = await _cliScanner.executeAgentPrompt(targetCli, prompt);
+    } else {
+      // 2. NHÁNH CLOUD API: Gọi qua Proxy Base URL và API Key
+      var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
+      if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
+        throw Exception('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
+      }
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+      }
+      final apiKey = cfg['proxy_api_key']?.toString() ?? '';
+      final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
+      final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
+
+      final uri = Uri.parse('$baseUrl/chat/completions');
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': targetModel,
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Bạn là trợ lý AI chuyên tạo dữ liệu nhân vật chuẩn JSON. Chỉ trả về mảng JSON hợp lệ.',
+            },
+            {
+              'role': 'user',
+              'content': prompt,
+            }
+          ],
+          'temperature': 0.7,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Lỗi gọi AI API (${response.statusCode}): ${response.body}');
+      }
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      final choices = data['choices'] as List<dynamic>?;
+      if (choices == null || choices.isEmpty) {
+        throw Exception('Phản hồi AI trống');
+      }
+
+      rawReply = choices[0]['message']?['content']?.toString() ?? '';
     }
 
-    final data = jsonDecode(utf8.decode(response.bodyBytes));
-    final choices = data['choices'] as List<dynamic>?;
-    if (choices == null || choices.isEmpty) {
-      throw Exception('Phản hồi AI trống');
-    }
-
-    final rawReply = choices[0]['message']?['content']?.toString() ?? '';
     final parsedProfiles = _parseAiJson(rawReply, ips);
-
     await savePersonas(parsedProfiles);
     return parsedProfiles;
   }
@@ -235,6 +251,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
                 age: (item['age'] is num) ? (item['age'] as num).toInt() : 25,
                 gender: item['gender']?.toString() ?? 'Nam',
                 bio: item['bio']?.toString() ?? 'Người dùng mạng xã hội',
+                agentInfo: item['agent_info']?.toString() ?? item['agentInfo']?.toString() ?? 'Tương tác mạng xã hội tự nhiên',
                 avatarPrompt: item['avatar_prompt']?.toString() ?? item['avatarPrompt']?.toString() ?? 'Portrait photo, photorealistic 8k',
               );
             }
@@ -255,6 +272,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
           age: 25,
           gender: 'Nam',
           bio: 'Thành viên mạng xã hội năng động',
+          agentInfo: 'Tương tác mạng xã hội tự nhiên, seeding nội dung đời thực',
           avatarPrompt: 'Portrait of a young creative professional, cinematic lighting, 8k',
         );
       }
@@ -283,11 +301,44 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
     }
 
     final sanitizedIp = persona.ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final localImagePath = p.join(avatarDir.path, 'avatar_$sanitizedIp.png');
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final localImagePath = p.join(avatarDir.path, 'avatar_${sanitizedIp}_$timestamp.png');
 
-    final prompt = persona.avatarPrompt.trim().isNotEmpty
-        ? persona.avatarPrompt.trim()
-        : 'Professional close-up portrait of ${persona.name}, ${persona.age} years old, ${persona.gender}, photorealistic, 8k resolution, cinematic lighting';
+    // Xóa các avatar cũ của IP này nếu có để không bị đầy ổ đĩa
+    try {
+      if (avatarDir.existsSync()) {
+        final existingFiles = avatarDir.listSync();
+        for (final file in existingFiles) {
+          if (file is File && p.basename(file.path).startsWith('avatar_$sanitizedIp')) {
+            try {
+              file.deleteSync();
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Xây dựng prompt avatar gắn liền với Cá tính (bio), Vai trò và Nhiệm vụ (agentInfo)
+    String effectivePrompt;
+    if (persona.avatarPrompt.trim().isNotEmpty) {
+      effectivePrompt = persona.avatarPrompt.trim();
+      final extraDetails = <String>[];
+      if (persona.bio.trim().isNotEmpty && !effectivePrompt.toLowerCase().contains(persona.bio.toLowerCase().split(' ').first)) {
+        extraDetails.add('Personality context: ${persona.bio.trim()}');
+      }
+      if (persona.agentInfo != null && persona.agentInfo!.trim().isNotEmpty && !effectivePrompt.toLowerCase().contains(persona.agentInfo!.toLowerCase().split(' ').first)) {
+        extraDetails.add('Role & duty: ${persona.agentInfo!.trim()}');
+      }
+      if (extraDetails.isNotEmpty) {
+        effectivePrompt = '$effectivePrompt, ${extraDetails.join(", ")}, photorealistic, high quality, cinematic lighting';
+      }
+    } else {
+      final roleContext = (persona.agentInfo != null && persona.agentInfo!.trim().isNotEmpty)
+          ? ', role: ${persona.agentInfo!.trim()}'
+          : '';
+      final bioContext = persona.bio.trim().isNotEmpty ? ', personality: ${persona.bio.trim()}' : '';
+      effectivePrompt = 'Professional close-up portrait of ${persona.name}, ${persona.age} years old, ${persona.gender}$bioContext$roleContext, photorealistic, 8k resolution, cinematic lighting';
+    }
 
     // 1. Thử gọi endpoint chuẩn tạo ảnh /images/generations (DALL-E / Midjourney / FLUX)
     try {
@@ -300,7 +351,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
           if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
         },
         body: jsonEncode({
-          'prompt': prompt,
+          'prompt': effectivePrompt,
           'n': 1,
           'size': '512x512',
           'response_format': 'b64_json',
@@ -315,17 +366,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
           if (first['b64_json'] != null) {
             final bytes = base64Decode(first['b64_json'].toString());
             await File(localImagePath).writeAsBytes(bytes);
-            final updated = PersonaProfile(
-              ip: persona.ip,
-              name: persona.name,
-              age: persona.age,
-              gender: persona.gender,
-              bio: persona.bio,
-              avatarPrompt: persona.avatarPrompt,
-              avatarUrl: localImagePath,
-              externalDeviceAddress: persona.externalDeviceAddress,
-              useExternalDevice: persona.useExternalDevice,
-            );
+            final updated = persona.copyWith(avatarUrl: localImagePath);
             await updatePersona(updated);
             return localImagePath;
           } else if (first['url'] != null) {
@@ -335,32 +376,12 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
               final dlRes = await http.get(Uri.parse(imgUrl)).timeout(const Duration(seconds: 20));
               if (dlRes.statusCode == 200) {
                 await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
-                final updated = PersonaProfile(
-                  ip: persona.ip,
-                  name: persona.name,
-                  age: persona.age,
-                  gender: persona.gender,
-                  bio: persona.bio,
-                  avatarPrompt: persona.avatarPrompt,
-                  avatarUrl: localImagePath,
-                  externalDeviceAddress: persona.externalDeviceAddress,
-                  useExternalDevice: persona.useExternalDevice,
-                );
+                final updated = persona.copyWith(avatarUrl: localImagePath);
                 await updatePersona(updated);
                 return localImagePath;
               }
             } catch (_) {}
-            final updated = PersonaProfile(
-              ip: persona.ip,
-              name: persona.name,
-              age: persona.age,
-              gender: persona.gender,
-              bio: persona.bio,
-              avatarPrompt: persona.avatarPrompt,
-              avatarUrl: imgUrl,
-              externalDeviceAddress: persona.externalDeviceAddress,
-              useExternalDevice: persona.useExternalDevice,
-            );
+            final updated = persona.copyWith(avatarUrl: imgUrl);
             await updatePersona(updated);
             return imgUrl;
           }
@@ -368,7 +389,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
       }
     } catch (_) {}
 
-    // 2. Fallback: Nếu proxy chỉ mở endpoint chat, gọi chat/completions yêu cầu trả về base64 hoặc đường dẫn ảnh
+    // 2. Fallback: Nếu proxy chỉ mở endpoint chat, gọi chat/completions yêu cầu trả về direct link hoặc avatar phù hợp
     try {
       final chatUri = Uri.parse('$baseUrl/chat/completions');
       final chatRes = await http.post(
@@ -383,11 +404,11 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
           'messages': [
             {
               'role': 'system',
-              'content': 'Bạn là trợ lý AI. Hãy sinh link ảnh chân dung trực tuyến chất lượng cao hoặc hướng dẫn placeholder phù hợp.',
+              'content': 'Bạn là trợ lý AI chuyên tạo ảnh chân dung mạng xã hội. Dựa vào cá tính và vai trò, hãy cung cấp 1 direct link URL ảnh chân dung phù hợp nhất.',
             },
             {
               'role': 'user',
-              'content': 'Hãy cho tôi 1 direct link URL ảnh chân dung phù hợp với mô tả này: "$prompt". Chỉ trả về URL duy nhất, không kèm text nào khác.',
+              'content': 'Hãy cho tôi 1 direct link URL ảnh chân dung phù hợp với mô tả chi tiết cá tính và vai trò này: "$effectivePrompt". Chỉ trả về URL duy nhất, không kèm bất kỳ ký tự nào khác.',
             }
           ],
         }),
@@ -403,88 +424,47 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
             final dlRes = await http.get(Uri.parse(foundUrl)).timeout(const Duration(seconds: 15));
             if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 500) {
               await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
-              final updated = PersonaProfile(
-                ip: persona.ip,
-                name: persona.name,
-                age: persona.age,
-                gender: persona.gender,
-                bio: persona.bio,
-                avatarPrompt: persona.avatarPrompt,
-                avatarUrl: localImagePath,
-                externalDeviceAddress: persona.externalDeviceAddress,
-                useExternalDevice: persona.useExternalDevice,
-              );
+              final updated = persona.copyWith(avatarUrl: localImagePath);
               await updatePersona(updated);
               return localImagePath;
             }
           } catch (_) {}
-          final updated = PersonaProfile(
-            ip: persona.ip,
-            name: persona.name,
-            age: persona.age,
-            gender: persona.gender,
-            bio: persona.bio,
-            avatarPrompt: persona.avatarPrompt,
-            avatarUrl: foundUrl,
-            externalDeviceAddress: persona.externalDeviceAddress,
-            useExternalDevice: persona.useExternalDevice,
-          );
+          final updated = persona.copyWith(avatarUrl: foundUrl);
           await updatePersona(updated);
           return foundUrl;
         }
       }
     } catch (_) {}
 
-    // 3. Fallback đảm bảo luôn có ảnh avatar độc nhất: Sử dụng kho ảnh avatar chất lượng cao ngẫu nhiên theo giới tính/seed
+    // 3. Fallback đảm bảo luôn có ảnh avatar độc nhất: Sử dụng kho ảnh chân dung người thật đa dạng (150+ nhân vật) kết hợp seed từ IP + Name + Age + Timestamp
     final isFemale = persona.gender.toLowerCase() == 'nữ';
-    final femaleAvatars = [
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80',
-    ];
-    final maleAvatars = [
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=300&q=80',
-      'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=300&q=80',
-    ];
-    final list = isFemale ? femaleAvatars : maleAvatars;
-    final seed = sanitizedIp.hashCode.abs() % list.length;
-    final fallbackUrl = list[seed];
+    final genderDir = isFemale ? 'female' : 'male';
+    // Tính hash duy nhất từ IP + Tên + Giới tính + Thời gian
+    final uniqueSeed = '${persona.ip}_${persona.name}_${persona.gender}_$timestamp'.hashCode.abs();
+    final photoIndex = (uniqueSeed % 75); // 0 đến 74
 
-    try {
-      final dlRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 10));
-      if (dlRes.statusCode == 200) {
-        await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
-        final updated = PersonaProfile(
-          ip: persona.ip,
-          name: persona.name,
-          age: persona.age,
-          gender: persona.gender,
-          bio: persona.bio,
-          avatarPrompt: persona.avatarPrompt,
-          avatarUrl: localImagePath,
-          externalDeviceAddress: persona.externalDeviceAddress,
-          useExternalDevice: persona.useExternalDevice,
-        );
-        await updatePersona(updated);
-        return localImagePath;
-      }
-    } catch (_) {}
+    // Danh sách nguồn fallback có thứ tự ưu tiên
+    final candidateUrls = [
+      'https://xsgames.co/randomusers/assets/avatars/$genderDir/$photoIndex.jpg',
+      'https://api.dicebear.com/7.x/personas/png?seed=${Uri.encodeComponent("${persona.name}_${persona.ip}_$timestamp")}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf',
+      'https://api.dicebear.com/7.x/avataaars/png?seed=${Uri.encodeComponent("${persona.name}_${persona.ip}_$timestamp")}',
+    ];
 
-    final updated = PersonaProfile(
-      ip: persona.ip,
-      name: persona.name,
-      age: persona.age,
-      gender: persona.gender,
-      bio: persona.bio,
-      avatarPrompt: persona.avatarPrompt,
-      avatarUrl: fallbackUrl,
-      externalDeviceAddress: persona.externalDeviceAddress,
-      useExternalDevice: persona.useExternalDevice,
-    );
+    for (final fallbackUrl in candidateUrls) {
+      try {
+        final dlRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 12));
+        if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 500) {
+          await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
+          final updated = persona.copyWith(avatarUrl: localImagePath);
+          await updatePersona(updated);
+          return localImagePath;
+        }
+      } catch (_) {}
+    }
+
+    final ultimateFallback = candidateUrls.first;
+    final updated = persona.copyWith(avatarUrl: ultimateFallback);
     await updatePersona(updated);
-    return fallbackUrl;
+    return ultimateFallback;
   }
 }

@@ -104,5 +104,19 @@ export const Users: CollectionConfig = {
       ],
       label: 'Vai trò',
     },
+    {
+      name: 'resetOtp',
+      type: 'text',
+      admin: {
+        readOnly: true,
+      },
+    },
+    {
+      name: 'resetOtpExpiration',
+      type: 'date',
+      admin: {
+        readOnly: true,
+      },
+    },
   ],
 }
