@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -143,6 +144,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   String? _activeSubPaneId;
   bool _showVirtualKeyboard = false;
   final StorageService _storage = StorageService();
+  final ScrollController _tabScrollController = ScrollController();
 
   // Chuẩn bảng màu và thuộc tính Ubuntu GNOME Terminal (Canonical Ubuntu palette)
   static final _terminalTheme = TerminalTheme(
@@ -255,6 +257,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   @override
   void dispose() {
+    _tabScrollController.dispose();
     for (final p in _panes) {
       p.dispose();
     }
@@ -1041,160 +1044,35 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
     final activePane = _activePane;
-    final activeRoot = _activeRootPane;
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
       body: Column(
         children: [
-          // 1. Clean Minimal Topbar Header (Height 66px)
+          // Window Tabs Bar & Actions (Tối giản, phẳng, không chiếm diện tích)
           Container(
-            height: 66,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: const BoxDecoration(
-              color: AppColors.bgDark,
+              color: AppColors.cardBg,
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Row(
-                    children: [
-                      Icon(
-                        (activePane?.isRemoteSsh == true) ? Icons.dns_rounded : Icons.terminal_rounded,
-                        color: (activePane?.isRemoteSsh == true) ? AppColors.primaryLight : AppColors.accent,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Text(
-                                  'Terminal Console',
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: ((activePane?.isConnected ?? false) ? AppColors.accent : AppColors.danger).withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: (activePane?.isConnected ?? false) ? AppColors.accent : AppColors.danger),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 5,
-                                        height: 5,
-                                        decoration: BoxDecoration(
-                                          color: (activePane?.isConnected ?? false) ? AppColors.accent : AppColors.danger,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        (activePane?.isConnected ?? false)
-                                            ? (activePane!.isRemoteSsh ? 'SSH CONNECTED' : 'LOCAL READY')
-                                            : (activePane?.isConnecting == true ? 'CONNECTING...' : 'OFFLINE'),
-                                        style: TextStyle(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: (activePane?.isConnected ?? false) ? AppColors.accent : AppColors.danger,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Text(
-                              activeRoot?.splitDirection != TerminalSplitDirection.none
-                                  ? 'Cửa sổ [${activeRoot?.title}] đang chia đôi (${activeRoot?.splitDirection == TerminalSplitDirection.horizontal ? 'Trái / Phải' : 'Trên / Dưới'}) • Nhấp chuột phải để đổi bố cục'
-                                  : (activePane?.isRemoteSsh == true
-                                      ? 'Phiên SSH với ${activePane?.server?.name ?? serverProvider.selectedServer?.name ?? 'Server'} • Nhấp chuột phải để chia màn hình'
-                                      : 'Thực thi toàn bộ lệnh shell cục bộ (${Platform.operatingSystem}) • Nhấp chuột phải để chia màn hình'),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        _showVirtualKeyboard ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
-                        color: _showVirtualKeyboard ? AppColors.accentCyan : AppColors.textDim,
-                        size: 18,
-                      ),
-                      tooltip: _showVirtualKeyboard ? 'Ẩn thanh phím tắt ảo' : 'Hiện thanh phím tắt ảo (ESC, TAB, CTRL...)',
-                      onPressed: () {
-                        setState(() {
-                          _showVirtualKeyboard = !_showVirtualKeyboard;
-                        });
+                  child: ScrollConfiguration(
+                    behavior: const MaterialScrollBehavior().copyWith(
+                      dragDevices: {
+                        PointerDeviceKind.mouse,
+                        PointerDeviceKind.touch,
+                        PointerDeviceKind.trackpad,
+                        PointerDeviceKind.stylus,
                       },
                     ),
-                    const SizedBox(width: 4),
-                    IconButton(
-                      icon: (activePane?.isConnecting == true)
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                            )
-                          : Icon(
-                              (activePane?.isConnected ?? false) ? Icons.refresh_rounded : Icons.play_arrow_rounded,
-                              color: (activePane?.isConnected ?? false) ? AppColors.accent : AppColors.warning,
-                              size: 18,
-                            ),
-                      tooltip: 'Khởi động lại Terminal đang chọn',
-                      onPressed: activePane != null ? () => _connectPane(activePane) : null,
-                    ),
-                    const SizedBox(width: 4),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.borderDark),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      ),
-                      icon: const Icon(Icons.delete_sweep_rounded, size: 14, color: AppColors.textDim),
-                      label: const Text('Xoá màn hình', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-                      onPressed: () {
-                        _activePane?.terminal.eraseDisplay();
-                        _activePane?.terminal.setCursor(0, 0);
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Window Tabs Bar (Khi có nhiều cửa sổ hoặc để tạo thêm cửa sổ)
-          if (_panes.length > 1 || true)
-            Container(
-              height: 38,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: const BoxDecoration(
-                color: AppColors.cardBg,
-                border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
                     child: ListView.builder(
+                      controller: _tabScrollController,
                       scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
                       itemCount: _panes.length,
                       itemBuilder: (ctx, index) {
                         final window = _panes[index];
@@ -1202,12 +1080,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
                         final isSplit = window.splitDirection != TerminalSplitDirection.none && window.childPane != null;
 
                         return Container(
-                          margin: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
+                          margin: const EdgeInsets.only(right: 4, top: 4, bottom: 0),
                           child: Material(
-                            color: isWinActive ? AppColors.bgDark : AppColors.sidebarBg,
-                            borderRadius: BorderRadius.circular(4),
+                            color: isWinActive ? AppColors.bgDark : AppColors.sidebarBg.withValues(alpha: 0.6),
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(6),
+                              topRight: Radius.circular(6),
+                            ),
                             child: InkWell(
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(6),
+                                topRight: Radius.circular(6),
+                              ),
                               onTap: () {
                                 setState(() {
                                   _activePaneIndex = index;
@@ -1217,14 +1101,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
                               },
                               onDoubleTap: () => _showRenameTabDialog(index),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: isWinActive ? AppColors.accent : AppColors.borderDark,
-                                    width: isWinActive ? 1.2 : 0.8,
-                                  ),
-                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                alignment: Alignment.center,
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -1288,104 +1166,124 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       },
                     ),
                   ),
+                ),
 
-                  // Nút tạo Tab Cửa Sổ Mới
-                  if (_panes.length < 6)
-                    PopupMenuButton<String>(
-                      tooltip: 'Mở thêm Tab Cửa Sổ Terminal mới',
-                      offset: const Offset(0, 30),
-                      color: AppColors.cardBg,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                        side: const BorderSide(color: AppColors.borderDark),
-                      ),
-                      onSelected: (val) {
-                        if (val == 'new_local') {
-                          _addWindow(isSsh: false);
-                        } else if (val.startsWith('new_ssh_')) {
-                          final srvId = val.replaceFirst('new_ssh_', '');
-                          final srv = serverProvider.servers.firstWhere((s) => s.id == srvId, orElse: () => serverProvider.servers.first);
-                          _addWindow(isSsh: true, srv: srv);
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        const PopupMenuItem<String>(
-                          value: 'new_local',
-                          child: Row(
-                            children: [
-                              Icon(Icons.laptop_chromebook_rounded, size: 14, color: AppColors.accent),
-                              SizedBox(width: 8),
-                              Text('Thêm Tab Local Machine', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
-                            ],
-                          ),
-                        ),
-                        for (final s in serverProvider.servers)
-                          PopupMenuItem<String>(
-                            value: 'new_ssh_${s.id}',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.dns_rounded, size: 14, color: AppColors.primaryLight),
-                                const SizedBox(width: 8),
-                                Text('Thêm Tab SSH: ${s.name}', style: const TextStyle(fontSize: 12, color: AppColors.textWhite)),
-                              ],
-                            ),
-                          ),
-                      ],
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
+                // Nút tạo Tab Cửa Sổ Mới
+                if (_panes.length < 6)
+                  PopupMenuButton<String>(
+                    tooltip: 'Mở thêm Tab Cửa Sổ Terminal mới',
+                    offset: const Offset(0, 30),
+                    color: AppColors.cardBg,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      side: const BorderSide(color: AppColors.borderDark),
+                    ),
+                    onSelected: (val) {
+                      if (val == 'new_local') {
+                        _addWindow(isSsh: false);
+                      } else if (val.startsWith('new_ssh_')) {
+                        final srvId = val.replaceFirst('new_ssh_', '');
+                        final srv = serverProvider.servers.firstWhere((s) => s.id == srvId, orElse: () => serverProvider.servers.first);
+                        _addWindow(isSsh: true, srv: srv);
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem<String>(
+                        value: 'new_local',
+                        child: Row(
                           children: [
-                            Icon(Icons.add_rounded, size: 14, color: AppColors.primaryLight),
-                            SizedBox(width: 4),
-                            Text('Tab mới', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
+                            Icon(Icons.laptop_chromebook_rounded, size: 14, color: AppColors.accent),
+                            SizedBox(width: 8),
+                            Text('Thêm Tab Local Machine', style: TextStyle(fontSize: 12, color: AppColors.textWhite)),
                           ],
                         ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-
-          // 2. Quick Command Bar (Applies to active pane)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: const BoxDecoration(
-              color: AppColors.sidebarBg,
-              border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
-            ),
-            child: Row(
-              children: [
-                const Text(
-                  'Lệnh nhanh: ',
-                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildQuickActionBtn('ls -la', 'ls -la', Icons.folder_open_rounded),
-                        _buildQuickActionBtn('pwd', 'pwd', Icons.location_on_outlined),
-                        _buildQuickActionBtn('df -h', 'df -h', Icons.storage_rounded),
-                        _buildQuickActionBtn('free -m', 'free -m', Icons.memory_rounded),
-                        _buildQuickActionBtn('top / htop', 'top', Icons.speed_rounded),
-                        _buildQuickActionBtn('git status', 'git status', Icons.commit_rounded),
-                        _buildQuickActionBtn('ps aux', 'ps aux', Icons.view_list_rounded),
-                        _buildQuickActionBtn('clear', 'clear', Icons.cleaning_services_rounded),
-                      ],
+                      for (final s in serverProvider.servers)
+                        PopupMenuItem<String>(
+                          value: 'new_ssh_${s.id}',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.dns_rounded, size: 14, color: AppColors.primaryLight),
+                              const SizedBox(width: 8),
+                              Text('Thêm Tab SSH: ${s.name}', style: const TextStyle(fontSize: 12, color: AppColors.textWhite)),
+                            ],
+                          ),
+                        ),
+                    ],
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_rounded, size: 14, color: AppColors.primaryLight),
+                          SizedBox(width: 4),
+                          Text('Tab mới', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
+                        ],
+                      ),
                     ),
                   ),
+
+                const SizedBox(width: 8),
+                Container(width: 1, height: 16, color: AppColors.borderDark),
+                const SizedBox(width: 4),
+
+                // Tiện ích phím ảo
+                IconButton(
+                  icon: Icon(
+                    _showVirtualKeyboard ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
+                    color: _showVirtualKeyboard ? AppColors.accentCyan : AppColors.textDim,
+                    size: 16,
+                  ),
+                  tooltip: _showVirtualKeyboard ? 'Ẩn phím ảo' : 'Hiện phím ảo',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  onPressed: () {
+                    setState(() {
+                      _showVirtualKeyboard = !_showVirtualKeyboard;
+                    });
+                  },
+                ),
+
+                // Tiện ích kết nối lại / reload pane
+                IconButton(
+                  icon: (activePane?.isConnecting == true)
+                      ? const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                        )
+                      : Icon(
+                          (activePane?.isConnected ?? false) ? Icons.refresh_rounded : Icons.play_arrow_rounded,
+                          color: (activePane?.isConnected ?? false) ? AppColors.accent : AppColors.warning,
+                          size: 16,
+                        ),
+                  tooltip: 'Khởi động lại Terminal đang chọn',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  onPressed: activePane != null ? () => _connectPane(activePane) : null,
+                ),
+
+                // Tiện ích xóa sạch màn hình console
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_rounded, size: 16, color: AppColors.textDim),
+                  tooltip: 'Xoá màn hình',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  onPressed: () {
+                    _activePane?.terminal.eraseDisplay();
+                    _activePane?.terminal.setCursor(0, 0);
+                  },
                 ),
               ],
             ),
           ),
+
+
 
           // 3. Virtual Key Bar (Optional)
           if (_showVirtualKeyboard)
@@ -1419,7 +1317,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
           Expanded(
             child: Container(
               color: AppColors.bgDark,
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.zero,
               child: _buildSplitWorkspace(serverProvider),
             ),
           ),
@@ -1456,7 +1354,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: mainCard),
-          const SizedBox(width: 8), // Gap 8px giữa 2 window ngang
+          const VerticalDivider(width: 1, thickness: 1, color: AppColors.borderDark),
           Expanded(child: childCard),
         ],
       );
@@ -1466,7 +1364,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: mainCard),
-        const SizedBox(height: 8), // Gap 8px giữa 2 window dọc
+        const Divider(height: 1, thickness: 1, color: AppColors.borderDark),
         Expanded(child: childCard),
       ],
     );
@@ -1514,26 +1412,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
           isChild: isChild,
         ),
         child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.bgDark,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              color: isThisPaneActive ? AppColors.accent : AppColors.borderDark,
-              width: isThisPaneActive ? 1.5 : 1,
-            ),
-          ),
+          color: AppColors.bgDark,
           child: Column(
             children: [
               // Sub-Header for each pane
               Container(
                 height: 38,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: isThisPaneActive ? AppColors.accent.withValues(alpha: 0.12) : AppColors.cardBg,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                decoration: const BoxDecoration(
+                  color: AppColors.cardBg,
                   border: Border(
                     bottom: BorderSide(
-                      color: isThisPaneActive ? AppColors.accent.withValues(alpha: 0.35) : AppColors.borderDark,
+                      color: AppColors.borderDark,
                       width: 1,
                     ),
                   ),
@@ -1776,37 +1666,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
-  Widget _buildQuickActionBtn(String label, String cmd, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Material(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(4),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(4),
-          onTap: () => _sendCmdToActive(cmd),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppColors.borderDark),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 12, color: AppColors.accentCyan),
-                const SizedBox(width: 5),
-                Text(
-                  label,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textWhite),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildKeyBtn(String label, String code, {bool isHighlight = false}) {
     return Padding(
