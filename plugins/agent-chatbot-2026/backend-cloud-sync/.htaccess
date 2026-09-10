@@ -1,4 +1,5 @@
 RewriteEngine On
+DirectorySlash Off
 
 # Allow CORS preflight requests
 <IfModule mod_headers.c>
@@ -17,6 +18,9 @@ RewriteRule ^api/chat/sessions/([^/]+)/?$ api/chat/sessions.php?id=$1 [QSA,L]
 
 # Rewrite /api/chat/history -> api/chat/history.php
 RewriteRule ^api/chat/history/?$ api/chat/history.php [QSA,L]
+
+# Rewrite /api/config -> api/config/index.php
+RewriteRule ^api/config/?$ api/config/index.php [QSA,L]
 
 # Rewrite /api/chat/clear -> api/chat/messages.php?action=clear
 RewriteRule ^api/chat/clear/?$ api/chat/messages.php?action=clear [QSA,L]
