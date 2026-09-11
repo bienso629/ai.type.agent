@@ -25,7 +25,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final ApiService _api = ApiService();
   final TextEditingController _modelCtrl = TextEditingController(text: 'gemini-2.5-flash');
-  final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://api.mitom.ai/v1');
+  final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://api-vn-sg.mitom.ai/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
   final TextEditingController _logoCtrl = TextEditingController();
   final TextEditingController _appTitleCtrl = TextEditingController(text: 'AI Agent Chatbot');
@@ -42,8 +42,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadGlobalConfig();
-    _fetchModelsList();
+    _initSettings();
+  }
+
+  Future<void> _initSettings() async {
+    await _loadGlobalConfig();
+    if (mounted) {
+      await _fetchModelsList();
+    }
   }
 
   @override

@@ -11,10 +11,10 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-set DIST_DIR=%~dp0\..\..\dist-flutter
+set DIST_DIR=%~dp0\..\dist
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 
 echo Packaging Windows release bundle...
-powershell -Command "Compress-Archive -Path 'build\windows\x64\runner\Release\*' -DestinationPath '%DIST_DIR%\agent-chatbot-2026-flutter-windows-x64.zip' -Force"
+powershell -Command "Compress-Archive -Path 'build\windows\x64\runner\Release\*' -DestinationPath '%DIST_DIR%\agent-chatbot-2026-windows-x64.zip' -Force"
 
-echo [SUCCESS] Windows package created at: %DIST_DIR%\agent-chatbot-2026-flutter-windows-x64.zip
+echo [SUCCESS] Windows package created at: %DIST_DIR%\agent-chatbot-2026-windows-x64.zip

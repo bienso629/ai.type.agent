@@ -17,8 +17,10 @@ class ServerProvider extends ChangeNotifier {
   String _activeCliAgent = 'antigravity-cli';
   String _engineMode = 'cloud'; // 'cloud' hoặc 'cli'
   List<LocalCliAgent> _installedCliAgents = [];
+  List<String> _mitomModels = [];
   bool _isLoading = false;
   bool _isScanningCliAgents = false;
+  bool _isLoadingMitomModels = false;
   String? _error;
   final Map<String, List<String>> _serverIpsMap = {};
   final Set<String> _loadingIpsServerIds = {};
@@ -32,7 +34,9 @@ class ServerProvider extends ChangeNotifier {
   bool get isCliMode => _engineMode == 'cli';
   String get activeAgent => isCliMode ? _activeCliAgent : _cloudAiModel;
   List<LocalCliAgent> get installedCliAgents => _installedCliAgents;
+  List<String> get mitomModels => _mitomModels;
   bool get isScanningCliAgents => _isScanningCliAgents;
+  bool get isLoadingMitomModels => _isLoadingMitomModels;
   Map<String, List<String>> get serverIpsMap => _serverIpsMap;
 
   List<String> getIpsForServer(ServerModel server) {
@@ -67,11 +71,28 @@ class ServerProvider extends ChangeNotifier {
     loadServers();
     loadGlobalConfig();
     scanCliAgents();
+    fetchMitomModels();
   }
 
   bool _isCli(String name) {
     final n = name.toLowerCase();
     return n.contains('cli') || n == 'agy' || n == 'claude' || n == 'gemini';
+  }
+
+  Future<void> fetchMitomModels({bool forceRefresh = false}) async {
+    if (_mitomModels.isNotEmpty && !forceRefresh) return;
+    _isLoadingMitomModels = true;
+    notifyListeners();
+
+    try {
+      final list = await _api.fetchMitomModels();
+      if (list.isNotEmpty) {
+        _mitomModels = list;
+      }
+    } catch (_) {} finally {
+      _isLoadingMitomModels = false;
+      notifyListeners();
+    }
   }
 
   Future<void> scanCliAgents({bool forceRefresh = false}) async {

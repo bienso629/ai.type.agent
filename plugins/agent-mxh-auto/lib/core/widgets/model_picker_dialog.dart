@@ -80,9 +80,10 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
     super.initState();
     // Mặc định hiển thị Tất cả (-1) để nhìn thấy cả CLI và Cloud cùng lúc, hoặc theo initialTab nếu được truyền vào
     _selectedTab = widget.initialTab != 0 ? widget.initialTab : -1;
-    // Luôn chủ động quét lại Local CLI Agents để đảm bảo danh sách mới nhất
+    // Luôn chủ động quét lại Local CLI Agents và tải danh sách Models từ mitom.ai
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.serverProvider.scanCliAgents(forceRefresh: true);
+      widget.serverProvider.fetchMitomModels();
     });
   }
 
@@ -104,9 +105,11 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
           return a.id.toLowerCase().contains(q) || a.label.toLowerCase().contains(q);
         }).toList();
 
-        // Cloud Models
-        const defaultCloudModels = ['glm-5.3', 'gpt-4o', 'deepseek-chat', 'claude-3-7-sonnet'];
-        final filteredCloudModels = defaultCloudModels.where((m) {
+        // Cloud Models: Lấy từ API https://api-vn-sg.mitom.ai/v1/models (fallback nếu chưa tải xong)
+        final cloudModelsSource = serverProvider.mitomModels.isNotEmpty
+            ? serverProvider.mitomModels
+            : const ['glm-5.3', 'gpt-4o', 'deepseek-chat', 'claude-3-7-sonnet'];
+        final filteredCloudModels = cloudModelsSource.where((m) {
           if (q.isEmpty) return true;
           return m.toLowerCase().contains(q);
         }).toList();
@@ -166,18 +169,19 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Chuyển đổi giữa Local CLI Agents (trực tiếp trên máy) và Cloud API Models',
+                        'Lựa chọn model AI tự động',
                         style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                       ),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.radar_rounded, size: 18, color: AppColors.accentCyan),
-                  tooltip: 'Quét lại Local CLI Agents trên máy',
+                  icon: const Icon(Icons.refresh_rounded, size: 18, color: AppColors.accentCyan),
+                  tooltip: 'Tải lại Models mitom.ai & quét Local CLI',
                   onPressed: () {
                     serverProvider.scanCliAgents(forceRefresh: true);
-                    AppToast.info(context, 'Đang quét lại các CLI Agent trên máy local...');
+                    serverProvider.fetchMitomModels(forceRefresh: true);
+                    AppToast.info(context, 'Đang làm mới danh sách Models & CLI Agents...');
                   },
                 ),
                 const SizedBox(width: 4),
@@ -452,10 +456,18 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                           const Icon(Icons.cloud_queue_rounded, size: 14, color: AppColors.primaryLight),
                           const SizedBox(width: 6),
                           const Text(
-                            'CLOUD LLM MODELS (API BASE URL)',
+                            'CLOUD LLM MODELS (API-VN-SG.MITOM.AI)',
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight, letterSpacing: 0.5),
                           ),
                           const Spacer(),
+                          if (serverProvider.isLoadingMitomModels) ...[
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
                           Text(
                             '${filteredCloudModels.length} models',
                             style: const TextStyle(fontSize: 10, color: AppColors.textDim),
@@ -464,7 +476,18 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                       ),
                     ),
 
-                    if (filteredCloudModels.isNotEmpty)
+                    if (serverProvider.isLoadingMitomModels && filteredCloudModels.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                          ),
+                        ),
+                      )
+                    else if (filteredCloudModels.isNotEmpty)
                       ...filteredCloudModels.map((m) {
                         final isSel = !serverProvider.isCliMode && serverProvider.cloudAiModel == m;
                         IconData icon = Icons.memory_rounded;
@@ -482,7 +505,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
 
                         return _buildModelCard(
                           title: m,
-                          subtitle: 'Cloud API Model (Proxy qua api.mitom.ai)',
+                          subtitle: 'Cloud API Model (mitom.ai)',
                           icon: icon,
                           isSelected: isSel,
                           onTap: () {

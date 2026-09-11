@@ -664,4 +664,32 @@ class ApiService {
     } catch (_) {}
     return null;
   }
+
+  Future<List<String>> fetchMitomModels() async {
+    try {
+      final res = await _client.get(
+        Uri.parse('https://api-vn-sg.mitom.ai/v1/models'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+        if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+          final list = decoded['data'] as List;
+          final models = <String>[];
+          for (final item in list) {
+            if (item is Map<String, dynamic> && item['id'] != null) {
+              final idStr = item['id'].toString().trim();
+              if (idStr.isNotEmpty && !models.contains(idStr)) {
+                models.add(idStr);
+              }
+            }
+          }
+          return models;
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
 }
+
+

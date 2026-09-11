@@ -2,16 +2,16 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-MOBILE_DIR="$ROOT_DIR/mobile"
-DIST_DIR="$ROOT_DIR/dist-flutter"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+MOBILE_DIR="$ROOT_DIR"
+DIST_DIR="$ROOT_DIR/dist"
 
 echo "=== [1/4] Building Flutter Linux Release ==="
 cd "$MOBILE_DIR"
 flutter build linux --release
 
 echo "=== [2/4] Preparing Debian package structure ==="
-PKG_NAME="tadu-cloud-ai-agent-flutter_1.3.0_amd64"
+PKG_NAME="agent-chatbot-2026_1.3.0_amd64"
 PKG_DIR="$DIST_DIR/$PKG_NAME"
 
 rm -rf "$PKG_DIR"
@@ -59,7 +59,7 @@ dpkg-deb --build "$PKG_DIR" "$DIST_DIR/$PKG_NAME.deb"
 
 echo "=== [4/4] Creating portable .tar.gz bundle ==="
 cd "$MOBILE_DIR/build/linux/x64/release/bundle"
-tar -czf "$DIST_DIR/tadu-cloud-ai-agent-flutter-linux-x64.tar.gz" .
+tar -czf "$DIST_DIR/agent-chatbot-2026-linux-x64.tar.gz" .
 
 echo "=== Done! Files generated in $DIST_DIR ==="
 ls -lh "$DIST_DIR"

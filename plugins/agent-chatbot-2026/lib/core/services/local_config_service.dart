@@ -38,7 +38,7 @@ class LocalConfigService {
     'ssh_pass': '',
     'ssh_port': 22,
     'proxy_api_key': '',
-    'proxy_base_url': 'https://api.mitom.ai/v1',
+    'proxy_base_url': 'https://api-vn-sg.mitom.ai/v1',
     'ai_model': 'gemini-2.5-flash',
     'remote_work_dir': '/root',
     'api_port': 8000,
@@ -118,7 +118,7 @@ class LocalConfigService {
       if (token != null && token.isNotEmpty) {
         try {
           final res = await http.get(
-            Uri.parse('http://localhost:8888/api/config/index.php'),
+            Uri.parse('/api/config/index.php'),
             headers: {'Authorization': 'Bearer $token'},
           );
           if (res.statusCode == 200) {

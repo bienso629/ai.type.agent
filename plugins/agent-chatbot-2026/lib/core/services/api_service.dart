@@ -94,7 +94,16 @@ class ApiService {
       headers: await _getHeaders(),
     );
     if (res.statusCode == 200) {
-      return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      if (decoded is Map<String, dynamic>) {
+        if (decoded['data'] is Map && (decoded['data'] as Map)['config'] is Map) {
+          return Map<String, dynamic>.from((decoded['data'] as Map)['config'] as Map);
+        } else if (decoded['data'] is Map) {
+          return Map<String, dynamic>.from(decoded['data'] as Map);
+        }
+        return decoded;
+      }
+      return {};
     }
     throw Exception('Failed to load config: ${res.statusCode}');
   }
@@ -114,46 +123,81 @@ class ApiService {
 
   // Fetch available AI models list from models API
   Future<List<String>> fetchAvailableModels({String? customBaseUrl, String? apiKey}) async {
-    final targetUrl = (customBaseUrl != null && customBaseUrl.trim().isNotEmpty)
-        ? (customBaseUrl.trim().endsWith('/models')
-            ? customBaseUrl.trim()
-            : '${customBaseUrl.trim().replaceAll(RegExp(r"/+$"), "")}/models')
-        : 'https://api-vn-sg.mitom.ai/v1/models';
-
-    try {
-      final headers = <String, String>{
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      };
-      if (apiKey != null && apiKey.trim().isNotEmpty) {
-        headers['Authorization'] = 'Bearer ${apiKey.trim()}';
+    String normalizeUrl(String? url) {
+      if (url == null || url.trim().isEmpty) {
+        return 'https://api-vn-sg.mitom.ai/v1/models';
       }
+      var clean = url.trim();
+      // Nếu là api.mitom.ai (không có phân vùng api-vn-sg), tự động thay thế
+      if (clean.contains('api.mitom.ai')) {
+        clean = clean.replaceAll('api.mitom.ai', 'api-vn-sg.mitom.ai');
+      }
+      return clean.endsWith('/models')
+          ? clean
+          : '${clean.replaceAll(RegExp(r"/+$"), "")}/models';
+    }
 
-      final res = await _client.get(Uri.parse(targetUrl), headers: headers).timeout(const Duration(seconds: 10));
-      if (res.statusCode == 200) {
-        final decoded = jsonDecode(utf8.decode(res.bodyBytes));
-        final List<dynamic> data = decoded is Map && decoded['data'] is List
-            ? decoded['data']
-            : (decoded is List ? decoded : []);
+    final targetUrl = normalizeUrl(customBaseUrl);
 
-        final models = <String>[];
-        for (final item in data) {
-          if (item is Map && item['id'] != null) {
-            final id = item['id'].toString().trim();
-            if (id.isNotEmpty && !models.contains(id)) {
-              models.add(id);
-            }
-          } else if (item is String && item.trim().isNotEmpty) {
-            if (!models.contains(item.trim())) {
-              models.add(item.trim());
+    Future<List<String>> tryFetch(String url) async {
+      try {
+        final headers = <String, String>{
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        };
+        if (apiKey != null && apiKey.trim().isNotEmpty) {
+          headers['Authorization'] = 'Bearer ${apiKey.trim()}';
+        }
+
+        final res = await _client.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) {
+          final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+          final List<dynamic> data = decoded is Map && decoded['data'] is List
+              ? decoded['data']
+              : (decoded is List ? decoded : []);
+
+          final models = <String>[];
+          for (final item in data) {
+            if (item is Map && item['id'] != null) {
+              final id = item['id'].toString().trim();
+              if (id.isNotEmpty && !models.contains(id)) {
+                models.add(id);
+              }
+            } else if (item is String && item.trim().isNotEmpty) {
+              final id = item.trim();
+              if (id.isNotEmpty && !models.contains(id)) {
+                models.add(id);
+              }
             }
           }
+          if (models.isNotEmpty) {
+            return models;
+          }
         }
-        if (models.isNotEmpty) {
-          return models;
-        }
+      } catch (_) {}
+      return [];
+    }
+
+    // 1. Thử gọi targetUrl
+    final list = await tryFetch(targetUrl);
+    if (list.isNotEmpty) {
+      return list;
+    }
+
+    // 2. Nếu chạy trên Web và bị chặn CORS, gọi qua Backend Proxy nội bộ
+    if (kIsWeb) {
+      final webProxyUrl = '/api/models';
+      final proxyList = await tryFetch(webProxyUrl);
+      if (proxyList.isNotEmpty) {
+        return proxyList;
       }
-    } catch (_) {}
+    }
+
+    // 3. Fallback cứu cánh sang endpoint chuẩn nếu targetUrl khác
+    const fallbackUrl = 'https://api-vn-sg.mitom.ai/v1/models';
+    if (targetUrl != fallbackUrl) {
+      return await tryFetch(fallbackUrl);
+    }
 
     return [];
   }

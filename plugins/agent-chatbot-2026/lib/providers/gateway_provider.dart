@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
 import '../core/services/storage_service.dart';
@@ -13,7 +14,7 @@ class GatewayProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
   final ApiService _api = ApiService();
 
-  String _gatewayUrl = 'http://127.0.0.1:8888';
+  String _gatewayUrl = kIsWeb ? '' : 'http://127.0.0.1:8888';
   String _secretToken = '';
   GatewayStatus _status = GatewayStatus.disconnected;
   String _errorMessage = '';

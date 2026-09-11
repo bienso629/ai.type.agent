@@ -2,9 +2,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-MOBILE_DIR="$ROOT_DIR/mobile"
-DIST_DIR="$ROOT_DIR/dist-flutter"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+MOBILE_DIR="$ROOT_DIR"
+DIST_DIR="$ROOT_DIR/dist"
 
 mkdir -p "$DIST_DIR"
 
@@ -14,6 +14,6 @@ flutter build macos --release
 
 echo "=== Packaging macOS App Bundle ==="
 cd "$MOBILE_DIR/build/macos/Build/Products/Release"
-zip -r -y "$DIST_DIR/tadu-cloud-ai-agent-flutter-macos.zip" "tadu_cloud_ai_agent_mobile.app"
+zip -r -y "$DIST_DIR/agent-chatbot-2026-macos.zip" "tadu_cloud_ai_agent_mobile.app"
 
-echo "=== [SUCCESS] macOS package created at: $DIST_DIR/tadu-cloud-ai-agent-flutter-macos.zip ==="
+echo "=== [SUCCESS] macOS package created at: $DIST_DIR/agent-chatbot-2026-macos.zip ==="

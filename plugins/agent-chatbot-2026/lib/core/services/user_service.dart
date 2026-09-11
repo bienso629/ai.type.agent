@@ -102,6 +102,12 @@ class UserService {
 
   Future<String> _getBackendUrl() async {
     final gw = await StorageService().getGatewayUrl();
+    if (kIsWeb) {
+      if (gw.contains('127.0.0.1') || gw.contains('localhost')) {
+        return '';
+      }
+      return gw;
+    }
     if (gw.isNotEmpty && !gw.contains('mitom.ai')) {
       return gw;
     }

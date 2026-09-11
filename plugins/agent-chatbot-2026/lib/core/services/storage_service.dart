@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StorageService {
@@ -35,7 +36,14 @@ class StorageService {
   // Gateway URL
   Future<String> getGatewayUrl() async {
     await init();
-    return _prefs.getString(_keyGatewayUrl) ?? 'http://127.0.0.1:8888';
+    final saved = _prefs.getString(_keyGatewayUrl);
+    if (kIsWeb) {
+      if (saved == null || saved.isEmpty || saved.contains('127.0.0.1') || saved.contains('localhost')) {
+        return '';
+      }
+      return saved;
+    }
+    return saved ?? 'http://127.0.0.1:8888';
   }
 
   Future<void> setGatewayUrl(String url) async {

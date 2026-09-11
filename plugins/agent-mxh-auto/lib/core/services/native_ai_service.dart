@@ -111,7 +111,9 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
         String sysPrompt = systemPromptBase;
         if (workingDir != null && workingDir.isNotEmpty) {
           if (workingDir.startsWith('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH') || workingDir.contains('👤 Nhân vật:')) {
-            sysPrompt += '\n\n$workingDir\n\n🎯 QUY TẮC BẮT BUỘC: Bạn CHỈ ĐƯỢC THAO TÁC / ĐÓNG VAI / ĐIỀU KHIỂN CÁC NHÂN VẬT TRÊN ĐÚNG VỚI IP TƯƠNG ỨNG ĐÃ ĐƯỢC CẤP.';
+            sysPrompt += '\n\n$workingDir\n\n🎯 QUY TẮC BẮT BUỘC VỀ ĐA NHÂN VẬT (MULTI-PERSONAS SCOPE):\n'
+                '- Bạn CHỈ ĐƯỢC THAO TÁC / ĐÓNG VAI / ĐIỀU KHIỂN CÁC NHÂN VẬT TRÊN ĐÚNG VỚI IP TƯƠNG ỨNG ĐÃ ĐƯỢC CẤP.\n'
+                '- KHI DANH SÁCH CÓ TỪ 2 NHÂN VẬT TRỞ LÊN: Nếu người dùng yêu cầu hành động chung (ví dụ: mở trình duyệt, truy cập trang web, mở thiết bị giả lập, nuôi nick, tương tác), bạn BẮT BUỘC PHẢI THỰC HIỆN CHO TOÀN BỘ TẤT CẢ CÁC NHÂN VẬT có trong danh sách trên bằng cách truyền toàn bộ danh sách IP vào tham số `ips` (hoặc gọi công cụ lần lượt cho từng IP). Tuyệt đối KHÔNG ĐƯỢC chỉ mở cho 1 nhân vật đầu tiên rồi dừng lại báo xong.';
           } else {
             sysPrompt += '\n\n🎯 PHẠM VI LÀM VIỆC MỤC TIÊU: `$workingDir`\nMọi tác vụ terminal/tài khoản phải tuân thủ phạm vi này.';
           }
@@ -177,20 +179,24 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'type': 'function',
             'function': {
               'name': 'open_profile_browser',
-              'description': 'Mở trình duyệt riêng biệt cho một nhân vật/hồ sơ theo IP để tự động hóa tương tác mạng xã hội trên web.',
+              'description': 'Mở trình duyệt riêng biệt cho một hoặc nhiều nhân vật/hồ sơ theo IP để tự động hóa tương tác mạng xã hội trên web. Khi có nhiều nhân vật cần mở đồng thời, truyền danh sách vào tham số "ips".',
               'parameters': {
                 'type': 'object',
                 'properties': {
                   'ip': {
                     'type': 'string',
-                    'description': 'Địa chỉ IP hoặc định danh của nhân vật'
+                    'description': 'Địa chỉ IP hoặc định danh của một nhân vật duy nhất.'
+                  },
+                  'ips': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                    'description': 'Danh sách các địa chỉ IP của toàn bộ nhân vật cần mở trình duyệt đồng loạt.'
                   },
                   'url': {
                     'type': 'string',
                     'description': 'Đường dẫn trang web mạng xã hội muốn mở (ví dụ: https://facebook.com, https://tiktok.com, https://youtube.com)'
                   }
-                },
-                'required': ['ip']
+                }
               }
             }
           },
@@ -198,16 +204,20 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'type': 'function',
             'function': {
               'name': 'close_profile_browser',
-              'description': 'Đóng cửa sổ trình duyệt của nhân vật theo IP.',
+              'description': 'Đóng cửa sổ trình duyệt của một hoặc nhiều nhân vật theo IP.',
               'parameters': {
                 'type': 'object',
                 'properties': {
                   'ip': {
                     'type': 'string',
                     'description': 'Địa chỉ IP của nhân vật cần đóng trình duyệt'
+                  },
+                  'ips': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                    'description': 'Danh sách IP của các nhân vật cần đóng trình duyệt đồng loạt'
                   }
-                },
-                'required': ['ip']
+                }
               }
             }
           },
@@ -215,13 +225,18 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'type': 'function',
             'function': {
               'name': 'open_profile_device',
-              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho nhân vật theo IP.',
+              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho một hoặc nhiều nhân vật theo IP.',
               'parameters': {
                 'type': 'object',
                 'properties': {
                   'ip': {
                     'type': 'string',
                     'description': 'Địa chỉ IP của nhân vật cần chạy thiết bị'
+                  },
+                  'ips': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                    'description': 'Danh sách IP của các nhân vật cần khởi chạy thiết bị Android đồng loạt'
                   },
                   'device_type': {
                     'type': 'string',
@@ -236,8 +251,7 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     'type': 'string',
                     'description': 'Địa chỉ IP:port của điện thoại thật nếu kết nối ngoại vi qua WiFi (ví dụ: 192.168.1.50:5555)'
                   }
-                },
-                'required': ['ip']
+                }
               }
             }
           },
@@ -467,9 +481,19 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     break;
 
                   case 'open_profile_browser':
-                    final ip = parsedArgs['ip']?.toString().trim() ?? '';
+                    final List<String> targetIps = [];
+                    if (parsedArgs['ips'] is List) {
+                      for (final item in parsedArgs['ips']) {
+                        final s = item?.toString().trim() ?? '';
+                        if (s.isNotEmpty && !targetIps.contains(s)) targetIps.add(s);
+                      }
+                    }
+                    final singleIp = parsedArgs['ip']?.toString().trim() ?? '';
+                    if (singleIp.isNotEmpty && !targetIps.contains(singleIp)) {
+                      targetIps.add(singleIp);
+                    }
                     final url = parsedArgs['url']?.toString().trim();
-                    if (ip.isEmpty) {
+                    if (targetIps.isEmpty) {
                       toolOutput = 'Lỗi: Thiếu tham số IP nhân vật.';
                       break;
                     }
@@ -480,32 +504,69 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                           ? servers.first
                           : ServerModel.fromJson(cfg),
                     );
-                    final success = await _socks5Service.launchBrowserWithSocks5(
-                      server: activeServer,
-                      ip: ip,
-                      startUrl: url,
-                    );
-                    toolOutput = success
-                        ? 'Đã mở trình duyệt thành công cho profile IP: $ip${url != null ? ' tại $url' : ''}.'
-                        : 'Không thể khởi chạy trình duyệt cho IP: $ip.';
+
+                    final List<String> successList = [];
+                    final List<String> failList = [];
+                    for (final tip in targetIps) {
+                      onStatus('Đang mở trình duyệt cho IP: $tip...');
+                      final success = await _socks5Service.launchBrowserWithSocks5(
+                        server: activeServer,
+                        ip: tip,
+                        startUrl: url,
+                      );
+                      if (success) {
+                        successList.add(tip);
+                      } else {
+                        failList.add(tip);
+                      }
+                    }
+                    if (failList.isEmpty) {
+                      toolOutput = 'Đã mở trình duyệt thành công cho toàn bộ ${successList.length} nhân vật (${successList.join(', ')})${url != null ? ' tại $url' : ''}.';
+                    } else if (successList.isEmpty) {
+                      toolOutput = 'Không thể khởi chạy trình duyệt cho các IP: ${failList.join(', ')}.';
+                    } else {
+                      toolOutput = 'Đã mở trình duyệt cho: ${successList.join(', ')}. Thất bại tại: ${failList.join(', ')}.';
+                    }
                     break;
 
                   case 'close_profile_browser':
-                    final ip = parsedArgs['ip']?.toString().trim() ?? '';
-                    if (ip.isEmpty) {
+                    final List<String> closeIps = [];
+                    if (parsedArgs['ips'] is List) {
+                      for (final item in parsedArgs['ips']) {
+                        final s = item?.toString().trim() ?? '';
+                        if (s.isNotEmpty && !closeIps.contains(s)) closeIps.add(s);
+                      }
+                    }
+                    final sCloseIp = parsedArgs['ip']?.toString().trim() ?? '';
+                    if (sCloseIp.isNotEmpty && !closeIps.contains(sCloseIp)) {
+                      closeIps.add(sCloseIp);
+                    }
+                    if (closeIps.isEmpty) {
                       toolOutput = 'Lỗi: Thiếu tham số IP nhân vật.';
                       break;
                     }
-                    await _socks5Service.closeBrowserForIp(ip);
-                    toolOutput = 'Đã đóng trình duyệt cho profile IP: $ip.';
+                    for (final tip in closeIps) {
+                      await _socks5Service.closeBrowserForIp(tip);
+                    }
+                    toolOutput = 'Đã đóng trình duyệt cho các profile IP: ${closeIps.join(', ')}.';
                     break;
 
                   case 'open_profile_device':
-                    final ip = parsedArgs['ip']?.toString().trim() ?? '';
+                    final List<String> targetDevIps = [];
+                    if (parsedArgs['ips'] is List) {
+                      for (final item in parsedArgs['ips']) {
+                        final s = item?.toString().trim() ?? '';
+                        if (s.isNotEmpty && !targetDevIps.contains(s)) targetDevIps.add(s);
+                      }
+                    }
+                    final singleDevIp = parsedArgs['ip']?.toString().trim() ?? '';
+                    if (singleDevIp.isNotEmpty && !targetDevIps.contains(singleDevIp)) {
+                      targetDevIps.add(singleDevIp);
+                    }
                     final devType = parsedArgs['device_type']?.toString().trim() ?? 'mobile';
                     final avdName = parsedArgs['avd_name']?.toString().trim();
                     final remoteAddr = parsedArgs['remote_address']?.toString().trim();
-                    if (ip.isEmpty) {
+                    if (targetDevIps.isEmpty) {
                       toolOutput = 'Lỗi: Thiếu tham số IP nhân vật.';
                       break;
                     }
@@ -516,26 +577,53 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                           ? serversDev.first
                           : ServerModel.fromJson(cfg),
                     );
-                    final success = await _socks5Service.launchDeviceWithSocks5(
-                      server: activeServerDev,
-                      ip: ip,
-                      deviceType: devType,
-                      avdName: avdName,
-                      remoteDeviceAddress: remoteAddr,
-                    );
-                    toolOutput = success
-                        ? 'Đã khởi chạy thiết bị Android thành công cho IP: $ip (loại: $devType).'
-                        : 'Không thể khởi chạy thiết bị Android cho IP: $ip.';
+
+                    final List<String> devSuccessList = [];
+                    final List<String> devFailList = [];
+                    for (final tip in targetDevIps) {
+                      onStatus('Đang khởi chạy thiết bị cho IP: $tip...');
+                      final success = await _socks5Service.launchDeviceWithSocks5(
+                        server: activeServerDev,
+                        ip: tip,
+                        deviceType: devType,
+                        avdName: avdName,
+                        remoteDeviceAddress: remoteAddr,
+                      );
+                      if (success) {
+                        devSuccessList.add(tip);
+                      } else {
+                        devFailList.add(tip);
+                      }
+                    }
+                    if (devFailList.isEmpty) {
+                      toolOutput = 'Đã khởi chạy thiết bị Android thành công cho toàn bộ ${devSuccessList.length} nhân vật (${devSuccessList.join(', ')}, loại: $devType).';
+                    } else if (devSuccessList.isEmpty) {
+                      toolOutput = 'Không thể khởi chạy thiết bị Android cho các IP: ${devFailList.join(', ')}.';
+                    } else {
+                      toolOutput = 'Đã mở thiết bị cho: ${devSuccessList.join(', ')}. Thất bại tại: ${devFailList.join(', ')}.';
+                    }
                     break;
 
                   case 'close_profile_device':
-                    final ip = parsedArgs['ip']?.toString().trim() ?? '';
-                    if (ip.isEmpty) {
+                    final List<String> closeDevIps = [];
+                    if (parsedArgs['ips'] is List) {
+                      for (final item in parsedArgs['ips']) {
+                        final s = item?.toString().trim() ?? '';
+                        if (s.isNotEmpty && !closeDevIps.contains(s)) closeDevIps.add(s);
+                      }
+                    }
+                    final sCloseDevIp = parsedArgs['ip']?.toString().trim() ?? '';
+                    if (sCloseDevIp.isNotEmpty && !closeDevIps.contains(sCloseDevIp)) {
+                      closeDevIps.add(sCloseDevIp);
+                    }
+                    if (closeDevIps.isEmpty) {
                       toolOutput = 'Lỗi: Thiếu tham số IP nhân vật.';
                       break;
                     }
-                    await _socks5Service.closeDeviceForIp(ip);
-                    toolOutput = 'Đã đóng thiết bị Android cho profile IP: $ip.';
+                    for (final tip in closeDevIps) {
+                      await _socks5Service.closeDeviceForIp(tip);
+                    }
+                    toolOutput = 'Đã đóng thiết bị Android cho các profile IP: ${closeDevIps.join(', ')}.';
                     break;
 
                   case 'get_connected_devices':

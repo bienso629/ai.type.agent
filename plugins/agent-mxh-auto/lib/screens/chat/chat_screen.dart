@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
-import '../../core/services/pdf_export_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/model_picker_dialog.dart';
@@ -983,21 +982,6 @@ class _ChatScreenState extends State<ChatScreen> {
       onRetry: (content) {
         chat.sendMessage(content);
         _safeScrollToBottom();
-      },
-      onExportPdf: (m) async {
-        final server = context.read<ServerProvider>().selectedServer;
-        final srvInfo = server != null ? '${server.sshUser}@${server.serverIp}' : null;
-        AppToast.info(context, 'Đang tạo và lưu tài liệu PDF chuẩn A4...');
-        try {
-          final path = await PdfExportService.exportMessageToPdf(m, serverInfo: srvInfo);
-          if (mounted) {
-            AppToast.success(context, 'Đã lưu PDF tại Downloads: ${path?.split('/').last ?? ''}');
-          }
-        } catch (e) {
-          if (mounted) {
-            AppToast.error(context, 'Lỗi xuất PDF: $e');
-          }
-        }
       },
     );
   }
@@ -2104,14 +2088,12 @@ class _MessageItemWidget extends StatelessWidget {
   final ChatMessageModel msg;
   final void Function(AttachmentItem) onDownloadAttachment;
   final void Function(String) onRetry;
-  final void Function(ChatMessageModel) onExportPdf;
 
   const _MessageItemWidget({
     super.key,
     required this.msg,
     required this.onDownloadAttachment,
     required this.onRetry,
-    required this.onExportPdf,
   });
 
   static final MarkdownStyleSheet _sharedStyleSheet = MarkdownStyleSheet(
@@ -2366,23 +2348,7 @@ class _MessageItemWidget extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (!isUser) ...[
-                          const SizedBox(width: 8),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(3),
-                            onTap: () => onExportPdf(msg),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.picture_as_pdf_outlined, size: 11, color: AppColors.primaryLight),
-                                  SizedBox(width: 3),
-                                  Text('Tải PDF A4', style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, fontWeight: FontWeight.w500)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
+
                         if (isUser) ...[
                           const SizedBox(width: 8),
                           InkWell(
