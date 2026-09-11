@@ -149,12 +149,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
   final StorageService _storage = StorageService();
   final ScrollController _tabScrollController = ScrollController();
 
-  // Chuẩn bảng màu và thuộc tính Ubuntu GNOME Terminal (Canonical Ubuntu palette)
+  // Bảng màu terminal đồng bộ màu nền ứng dụng (AppColors.bgDark)
   static final _terminalTheme = TerminalTheme(
     cursor: const Color(0xFFFFFFFF),
-    selection: const Color(0xFFE95420).withValues(alpha: 0.40),
+    selection: AppColors.primary.withValues(alpha: 0.40),
     foreground: const Color(0xFFFFFFFF),
-    background: const Color(0xFF300A24), // Màu tím đậm Dark Aubergine đặc trưng của Ubuntu Terminal
+    background: AppColors.bgDark, // Trùng với màu nền của ứng dụng
     black: const Color(0xFF2E3436),
     red: const Color(0xFFCC0000),
     green: const Color(0xFF4E9A06),
@@ -1220,7 +1220,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       ],
                       child: Container(
                         height: 34,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        width: 34,
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.15),
                           borderRadius: const BorderRadius.only(
@@ -1234,14 +1234,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                           ),
                         ),
                         alignment: Alignment.center,
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add_rounded, size: 14, color: AppColors.primaryLight),
-                            SizedBox(width: 4),
-                            Text('Tab mới', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
-                          ],
-                        ),
+                        child: const Icon(Icons.add_rounded, size: 16, color: AppColors.primaryLight),
                       ),
                     ),
                   ),
@@ -1566,13 +1559,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
                             return items;
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            height: 24,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             decoration: BoxDecoration(
                               color: pane.isRemoteSsh ? AppColors.primary.withValues(alpha: 0.2) : AppColors.accent.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
+                            alignment: Alignment.center,
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 Icon(
                                   pane.isRemoteSsh ? Icons.dns_rounded : Icons.laptop_chromebook_rounded,
@@ -1598,16 +1594,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
                           const SizedBox(width: 6),
                           InkWell(
                             onTap: () => _pickDirectoryForPane(pane),
-                            borderRadius: BorderRadius.circular(3),
+                            borderRadius: BorderRadius.circular(4),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              height: 24,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
                               decoration: BoxDecoration(
                                 color: AppColors.sidebarBg,
-                                borderRadius: BorderRadius.circular(3),
+                                borderRadius: BorderRadius.circular(4),
                                 border: Border.all(color: AppColors.borderDark, width: 0.8),
                               ),
+                              alignment: Alignment.center,
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   const Icon(Icons.folder_open_rounded, size: 11, color: AppColors.accentCyan),
                                   const SizedBox(width: 4),
@@ -1637,12 +1636,14 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       children: [
                         if (isThisPaneActive)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            height: 24,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             decoration: BoxDecoration(
                               color: AppColors.accent.withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(color: AppColors.accent.withValues(alpha: 0.6), width: 0.8),
                             ),
+                            alignment: Alignment.center,
                             child: const Text('ĐANG CHỌN', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accent)),
                           ),
                         const SizedBox(width: 4),

@@ -43,10 +43,36 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
    - Trình bày câu trả lời bằng văn bản kỹ thuật chuyên nghiệp, trực diện, mạch lạc.
    - Khi gặp câu hỏi quá khó, bất khả thi hoặc thiếu thông tin: Hãy giải thích rõ ràng tại sao không thể trả lời/thực hiện được, sau đó hướng dẫn người dùng cách cung cấp thêm ngữ cảnh hoặc tinh chỉnh prompt để Bot có thể xử lý chính xác.
    - Sử dụng định dạng Markdown chuẩn (tiêu đề, danh sách gạch đầu dòng, in đậm, bảng biểu, codeblock) thay cho biểu tượng.
+
+5. BẢO MẬT & PHÂN LẬP TÀI KHOẢN TUYỆT ĐỐI (SECURITY & PRIVACY):
+   - NGHIÊM CẤM truy cập, đọc nội dung, trích xuất, in ra màn hình hoặc giải mã bất kỳ file cấu hình tài khoản cá nhân nào (như config*.json, ~/.ai_type_agent/config*.json, ~/.tadu_ai_agent/config*.json, .env, chat_history*.db, file credential SSH/API key của hệ thống hoặc người dùng khác).
+   - Nếu người dùng yêu cầu đọc hoặc xem thông tin nhạy cảm từ các file config tài khoản trên máy, BẮT BUỘC từ chối thực hiện vì vi phạm chính sách bảo mật và an toàn thông tin người dùng.
 ''';
+
+  static bool _isCommandBlocked(String command) {
+    final lower = command.toLowerCase();
+    // Chặn các hành vi truy cập hoặc hiển thị file cấu hình người dùng nhạy cảm
+    final patterns = [
+      RegExp(r'(?:cat|more|less|head|tail|view|nano|vim|vi|sed|awk|grep|rg|python|python3|perl|ruby|cp|scp|rsync|base64|curl|wget)\b[^\n]*\bconfig[a-zA-Z0-9_\-\.]*\.json\b', caseSensitive: false),
+      RegExp(r'\.ai_type_agent[/\\]config', caseSensitive: false),
+      RegExp(r'\.tadu_ai_agent[/\\]config', caseSensitive: false),
+      RegExp(r'config_[a-zA-Z0-9_\-]+\.json', caseSensitive: false),
+      RegExp(r'(?:cat|less|more|head|tail|view|nano|vim|vi|grep|rg|sqlite3)\b[^\n]*\bchat_history[a-zA-Z0-9_\-\.]*\.db\b', caseSensitive: false),
+      RegExp(r'tadu-cloud-ai-agent-control-center-secret-salt', caseSensitive: false),
+    ];
+    for (final p in patterns) {
+      if (p.hasMatch(lower)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   Future<String> _executeCommand(String command, {String? workingDir, int timeoutSeconds = 60, ServerModel? server}) async {
     try {
+      if (_isCommandBlocked(command)) {
+        return 'LỖI BẢO MẬT (SECURITY POLICY): Lệnh bị từ chối thực thi do vi phạm chính sách an toàn. Agent không được phép truy cập, đọc hoặc hiển thị file cấu hình tài khoản (config*.json, .env, credential DB).';
+      }
       if (server != null && server.serverIp != '127.0.0.1' && server.serverIp != 'localhost') {
         return await _sshService.executeCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds, server: server);
       }
@@ -65,6 +91,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
   }
 
   Future<String> _executeLocalCommand(String command, {String? workingDir, int timeoutSeconds = 60}) async {
+    if (_isCommandBlocked(command)) {
+      return 'LỖI BẢO MẬT (SECURITY POLICY): Lệnh bị từ chối thực thi do vi phạm chính sách an toàn. Agent không được phép truy cập, đọc hoặc hiển thị file cấu hình tài khoản (config*.json, .env, credential DB).';
+    }
     try {
       ProcessResult result;
       if (Platform.isWindows) {
@@ -567,7 +596,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       onStatus('Đang gửi lệnh tới $remoteBinary CLI trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp})...');
       final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
           ? customPromptTemplate.trim()
-          : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
+          : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn. Tuyệt đối không đọc, truy cập hoặc làm lộ các file cấu hình config*.json, .env hay credential của hệ thống và người dùng)';
       final cleanPrompt = '$prompt\n\n$promptSuffix';
       final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
 
@@ -634,6 +663,7 @@ fi
 - TUYỆT ĐỐI KHÔNG TỰ CHẠY LỆNH SERVER CHẠY NỀN VÔ TẬN (như `npm run dev`, `npm run start`, `node server.js`, `python manage.py runserver`, `flask run`). Hãy biên dịch kiểm tra lỗi bằng `npm run build` hoặc lệnh test tương tự, sau đó in rõ câu lệnh và hướng dẫn người dùng chạy server ở Terminal hoặc ngoài hệ thống.
 - Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn.
 - Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
+- TUYỆT ĐỐI CẤM TRUY CẬP, ĐỌC, IN RA MÀN HÌNH HOẶC GIẢI MÃ BẤT KỲ FILE CẤU HÌNH TÀI KHOẢN NÀO (như config*.json, ~/.ai_type_agent/config*.json, ~/.tadu_ai_agent/config*.json, .env, chat_history*.db, các khóa bảo mật hệ thống). Nếu người dùng yêu cầu đọc file config tài khoản, phải từ chối vì lý do bảo mật.
 - Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''';
       }
 
