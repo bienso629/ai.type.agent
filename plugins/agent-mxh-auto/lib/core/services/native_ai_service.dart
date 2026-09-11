@@ -26,12 +26,17 @@ class NativeAiService {
 Bạn có quyền hạn điều khiển trực tiếp các hồ sơ nhân vật (profiles), khởi chạy/đóng trình duyệt độc lập theo từng IP/nhân vật, kết nối và điều khiển thiết bị di động (Android AVD / thiết bị ngoại vi qua ADB) để thực thi các kịch bản tự động hóa mà không phụ thuộc vào SSH hay máy chủ từ xa.
 
 CÁC NGUYÊN TẮC HOẠT ĐỘNG:
-1. LẬP KẾ HOẠCH & ĐIỀU PHỐI LOCAL PROFILE:
-   - Quản lý và tra cứu danh sách nhân vật/profile với IP và cấu hình riêng biệt.
-   - Điều khiển mở trình duyệt với profile riêng hoặc khởi động thiết bị máy ảo/ngoại vi để thực hiện các tác vụ tự động hóa như lướt bài, like, tương tác, xem video.
+1. MÔI TRƯỜNG THỰC THI MẶC ĐỊNH LÀ TRÌNH DUYỆT (BROWSER FIRST):
+   - MẶC ĐỊNH MỌI TÁC VỤ (lướt bài, like, tương tác, xem video, kiểm tra tài khoản, đăng nhập...) ĐỀU PHẢI SỬ DỤNG TRÌNH DUYỆT (`open_profile_browser`).
+   - TUYỆT ĐỐI KHÔNG TỰ Ý KHỞI CHẠY THIẾT BỊ / MÁY ẢO ANDROID (`open_profile_device`).
+   - BẠN CHỈ ĐƯỢC PHÉP mở thiết bị Android (`open_profile_device`) KHI VÀ CHỈ KHI người dùng có yêu cầu cụ thể bằng lời nói nhắc đến máy ảo, điện thoại, thiết bị, mobile, adb, avd hoặc giả lập (ví dụ: "chạy trên điện thoại", "mở máy ảo", "mở device", "chạy giả lập"). Nếu người dùng chỉ nói chung chung hoặc không nói gì về thiết bị, LUÔN LUÔN DÙNG TRÌNH DUYỆT.
 
-2. TẬP TRUNG TÁC VỤ TỰ ĐỘNG HÓA MXH:
-   - Sử dụng các công cụ nội bộ để tương tác trực tiếp với trình duyệt và thiết bị Android cục bộ.
+2. LẬP KẾ HOẠCH & ĐIỀU PHỐI LOCAL PROFILE:
+   - Quản lý và tra cứu danh sách nhân vật/profile với IP và cấu hình riêng biệt.
+   - Điều khiển mở trình duyệt với profile riêng để thực hiện các tác vụ tự động hóa như lướt bài, like, tương tác, xem video.
+
+3. TẬP TRUNG TÁC VỤ TỰ ĐỘNG HÓA MXH:
+   - Sử dụng các công cụ nội bộ để tương tác trực tiếp với trình duyệt cục bộ.
    - BẮT BUỘC: Sau khi gọi hoặc thực thi bất kỳ công cụ (tool/function) nào, bạn PHẢI luôn luôn có câu trả lời bằng văn bản gửi cho người dùng để trình bày chi tiết kết quả, giải thích các bước đã thực hiện hoặc đưa ra phân tích tiếp theo. Tuyệt đối KHÔNG được kết thúc cuộc hội thoại trong im lặng hoặc trả về nội dung rỗng.''';
 
   StreamSubscription<String> streamChatMessage({
@@ -203,7 +208,7 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'type': 'function',
             'function': {
               'name': 'open_profile_device',
-              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho một hoặc nhiều nhân vật theo IP. CHÚ Ý: Nếu người dùng chỉ yêu cầu 1 thiết bị/nhân vật, chỉ truyền tham số "ip".',
+              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho một hoặc nhiều nhân vật theo IP. QUY TẮC BẮT BUỘC: Phần mềm mặc định làm việc trên Trình duyệt (open_profile_browser). CHỈ ĐƯỢC GỌI công cụ này khi người dùng có yêu cầu cụ thể rõ ràng bằng lời nhắc đến thiết bị/máy ảo/điện thoại/AVD/mobile. Nếu người dùng chỉ yêu cầu chung chung thì LUÔN DÙNG open_profile_browser.',
               'parameters': {
                 'type': 'object',
                 'properties': {
