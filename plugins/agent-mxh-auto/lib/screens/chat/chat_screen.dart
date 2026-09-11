@@ -47,6 +47,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _textController.addListener(_onTextChanged);
+    _inputFocusNode.addListener(_onFocusChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final chat = context.read<ChatProvider>();
       final server = context.read<ServerProvider>();
@@ -67,12 +68,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _inputFocusNode.removeListener(_onFocusChanged);
     _textController.removeListener(_onTextChanged);
     _scrollController.removeListener(_onScroll);
     _inputFocusNode.dispose();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _onTextChanged() {
@@ -206,12 +214,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   : '${(total / (1024 * 1024)).toStringAsFixed(1)} MB')
               : att.formattedSize;
 
-          return AlertDialog(
-            backgroundColor: AppColors.cardBg,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: const BorderSide(color: AppColors.borderDark),
-            ),
+          return TaduDialog(
+            minWidth: 420,
+            maxWidth: 500,
+            onClose: () => Navigator.pop(ctx),
             title: Row(
               children: [
                 Icon(
@@ -410,7 +416,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
     final serverProvider = context.watch<ServerProvider>();
-    final auth = context.watch<AuthProvider>();
 
     if (_lastSessionId != chat.currentSession?.id) {
       _lastSessionId = chat.currentSession?.id;
@@ -503,37 +508,26 @@ class _ChatScreenState extends State<ChatScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    if (serverProvider.isCliMode) ...[
-                                      const Icon(Icons.terminal_rounded, size: 10, color: AppColors.accentCyan),
-                                      const SizedBox(width: 4),
-                                      const Text(
-                                        'CLI: ',
-                                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
-                                      ),
-                                    ] else ...[
-                                      const Icon(Icons.cloud_queue_rounded, size: 10, color: AppColors.primaryLight),
-                                      const SizedBox(width: 4),
-                                      const Text(
-                                        'Cloud: ',
-                                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                                      ),
-                                    ],
+                                    const Icon(Icons.smart_toy_rounded, size: 10, color: AppColors.primaryLight),
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      'Model: ',
+                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                    ),
                                     Text(
                                       serverProvider.currentAiModel,
-                                      style: TextStyle(
+                                      style: const TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
-                                        color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                                        color: AppColors.primaryLight,
                                       ),
                                     ),
-                                    if (auth.isAdmin) ...[
-                                      const SizedBox(width: 3),
-                                      Icon(
-                                        Icons.keyboard_arrow_down_rounded,
-                                        size: 12,
-                                        color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
-                                      ),
-                                    ],
+                                    const SizedBox(width: 3),
+                                    const Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      size: 12,
+                                      color: AppColors.primaryLight,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -987,17 +981,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildInputBar(ChatProvider chat, ServerProvider serverProvider) {
+    final bool isFocused = _inputFocusNode.hasFocus;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
         color: AppColors.bgDark,
         border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
       ),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: AppColors.inputBg,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isFocused ? AppColors.primary : AppColors.borderDark,
+            width: isFocused ? 1.5 : 1.0,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1260,54 +1260,44 @@ class _ChatScreenState extends State<ChatScreen> {
                       onPressed: _pickFiles,
                     ),
                     const SizedBox(width: 8),
-                    // Nút chọn AI Model / Local CLI Agent trực tiếp tại thanh nhập
+                    // Nút chọn AI Model trực tiếp tại thanh nhập
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                        side: const BorderSide(
+                          color: AppColors.primaryLight,
                           width: 0.8,
                         ),
-                        backgroundColor: serverProvider.isCliMode
-                            ? AppColors.accentCyan.withValues(alpha: 0.12)
-                            : AppColors.primary.withValues(alpha: 0.12),
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      icon: Icon(
-                        serverProvider.isCliMode ? Icons.terminal_rounded : Icons.smart_toy_rounded,
+                      icon: const Icon(
+                        Icons.smart_toy_rounded,
                         size: 14,
-                        color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                        color: AppColors.primaryLight,
                       ),
                       label: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            serverProvider.isCliMode ? 'CLI: ' : 'Cloud: ',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
-                            ),
-                          ),
                           ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 140),
+                            constraints: const BoxConstraints(maxWidth: 160),
                             child: Text(
                               serverProvider.currentAiModel,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontFamily: 'monospace',
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                                color: AppColors.primaryLight,
                               ),
                             ),
                           ),
                           const SizedBox(width: 4),
-                          Icon(
+                          const Icon(
                             Icons.arrow_drop_down_rounded,
                             size: 14,
-                            color: serverProvider.isCliMode ? AppColors.accentCyan : AppColors.primaryLight,
+                            color: AppColors.primaryLight,
                           ),
                         ],
                       ),

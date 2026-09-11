@@ -11,6 +11,8 @@ class TaduDialog extends StatelessWidget {
   final double? maxHeight;
   final VoidCallback? onClose;
 
+  final EdgeInsetsGeometry? contentPadding;
+
   const TaduDialog({
     super.key,
     required this.title,
@@ -20,6 +22,7 @@ class TaduDialog extends StatelessWidget {
     this.minWidth = 500,
     this.maxWidth = 620,
     this.maxHeight,
+    this.contentPadding,
     this.onClose,
   });
 
@@ -27,10 +30,10 @@ class TaduDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: AppColors.cardBg,
-      elevation: 20,
+      elevation: 24,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: AppColors.borderDark, width: 1),
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: AppColors.borderLight, width: 1.2),
       ),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
@@ -43,13 +46,13 @@ class TaduDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. MODAL HEADER (Border Bottom Separator)
+            // 1. MODAL HEADER (Phân tách rõ rệt với nền riêng và border-bottom sắc nét)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: const BoxDecoration(
-                color: AppColors.cardBg,
+                color: Color(0xFF090F1E), // Nền xanh đen sâu riêng biệt cho header
                 border: Border(
-                  bottom: BorderSide(color: AppColors.borderDark, width: 1),
+                  bottom: BorderSide(color: AppColors.borderLight, width: 1.2),
                 ),
               ),
               child: Row(
@@ -65,12 +68,22 @@ class TaduDialog extends StatelessWidget {
                       child: title,
                     ),
                   ),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                    icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textDim),
-                    tooltip: 'Đóng',
-                    onPressed: onClose ?? () => Navigator.pop(context),
+                  const SizedBox(width: 12),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      hoverColor: AppColors.borderDark.withValues(alpha: 0.6),
+                      onTap: onClose ?? () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.borderDark, width: 1),
+                        ),
+                        child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textDim),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -79,19 +92,19 @@ class TaduDialog extends StatelessWidget {
             // 2. MODAL BODY (Scrollable if needed)
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
+                padding: contentPadding ?? const EdgeInsets.all(20),
                 child: content,
               ),
             ),
 
-            // 3. MODAL FOOTER (Border Top Separator)
+            // 3. MODAL FOOTER (Phân tách rõ rệt với nền sidebarBg và border-top)
             if ((actions != null && actions!.isNotEmpty) || (leadingActions != null && leadingActions!.isNotEmpty))
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 decoration: const BoxDecoration(
-                  color: AppColors.sidebarBg,
+                  color: Color(0xFF070C18), // Nền tối phân cách cho footer
                   border: Border(
-                    top: BorderSide(color: AppColors.borderDark, width: 1),
+                    top: BorderSide(color: AppColors.borderLight, width: 1.2),
                   ),
                 ),
                 child: Row(

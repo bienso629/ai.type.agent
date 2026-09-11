@@ -70,7 +70,7 @@ class DocsScreen extends StatelessWidget {
                   iconColor: AppColors.accentCyan,
                   title: '3. Kết nối thiết bị ngoại vi & Máy ảo',
                   content:
-                      '• Bật công tắc "Kết nối thiết bị ngoại vi" trong chi tiết hồ sơ để chuyển đổi linh hoạt giữa máy ảo Android Studio (Local AVD) và thiết bị thật cắm ngoài.\n'
+                      '• Bật công tắc "Kết nối thiết bị ngoại vi" trong chi tiết hồ sơ để chuyển đổi linh hoạt giữa máy ảo Local AVD và thiết bị thật cắm ngoài.\n'
                       '• Tự động map proxy SOCKS5 qua bridge cục bộ đảm bảo an toàn tuyệt đối.',
                 ),
                 const SizedBox(height: 16),

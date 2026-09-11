@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -268,9 +269,9 @@ class _ChatScreenState extends State<ChatScreen> {
             item = AttachmentItem.fromBytes(
               name: f.name,
               bytes: f.bytes!,
-              path: f.path,
+              path: kIsWeb ? null : f.path,
             );
-          } else if (f.path != null) {
+          } else if (!kIsWeb && f.path != null) {
             final file = File(f.path!);
             if (file.existsSync()) {
               item = await AttachmentItem.fromFile(file, fileName: f.name);

@@ -5,7 +5,6 @@ import 'package:path/path.dart' as p;
 import '../../models/persona_profile_model.dart';
 import 'database_service.dart';
 import 'local_config_service.dart';
-import 'cli_scanner_service.dart';
 
 class PersonaService {
   static final PersonaService _instance = PersonaService._internal();
@@ -14,7 +13,6 @@ class PersonaService {
 
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
-  final CliScannerService _cliScanner = CliScannerService();
   final Map<String, PersonaProfile> _cachedPersonas = {};
   bool _isLoaded = false;
 
@@ -121,9 +119,6 @@ class PersonaService {
     if (ips.isEmpty) return {};
 
     final cfg = await _configService.loadConfig();
-    final activeEngine = cfg['active_agent_engine']?.toString().toLowerCase() ?? '';
-    final isCliActive = activeEngine.contains('cli') || activeEngine == 'agy' || activeEngine == 'claude' || activeEngine == 'gemini';
-
     final prompt = '''Bạn là một chuyên gia sáng tạo danh tính số (Digital Persona Creator) cho hệ thống mạng xã hội tự động.
 Dưới đây là danh sách các địa chỉ IP:
 ${ips.map((ip) => "- $ip").join("\n")}
@@ -151,61 +146,53 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
   }
 ]''';
 
-    String rawReply = '';
-
-    if (isCliActive) {
-      // 1. NHÁNH LOCAL CLI AGENT: Gọi trực tiếp binary cài trên máy local qua terminal
-      final targetCli = (model != null && model.isNotEmpty) ? model : activeEngine;
-      rawReply = await _cliScanner.executeAgentPrompt(targetCli, prompt);
-    } else {
-      // 2. NHÁNH CLOUD API: Gọi qua Proxy Base URL và API Key
-      var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
-      if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
-        throw Exception('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
-      }
-      if (baseUrl.endsWith('/')) {
-        baseUrl = baseUrl.substring(0, baseUrl.length - 1);
-      }
-      final apiKey = cfg['proxy_api_key']?.toString() ?? '';
-      final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
-      final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
-
-      final uri = Uri.parse('$baseUrl/chat/completions');
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode({
-          'model': targetModel,
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'Bạn là trợ lý AI chuyên tạo dữ liệu nhân vật chuẩn JSON. Chỉ trả về mảng JSON hợp lệ.',
-            },
-            {
-              'role': 'user',
-              'content': prompt,
-            }
-          ],
-          'temperature': 0.7,
-        }),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Lỗi gọi AI API (${response.statusCode}): ${response.body}');
-      }
-
-      final data = jsonDecode(utf8.decode(response.bodyBytes));
-      final choices = data['choices'] as List<dynamic>?;
-      if (choices == null || choices.isEmpty) {
-        throw Exception('Phản hồi AI trống');
-      }
-
-      rawReply = choices[0]['message']?['content']?.toString() ?? '';
+    // Gọi Cloud API qua Proxy Base URL và API Key
+    var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
+    if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
+      throw Exception('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
     }
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+    }
+    final apiKey = cfg['proxy_api_key']?.toString() ?? '';
+    final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
+    final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
+
+    final uri = Uri.parse('$baseUrl/chat/completions');
+    final response = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+      },
+      body: jsonEncode({
+        'model': targetModel,
+        'messages': [
+          {
+            'role': 'system',
+            'content': 'Bạn là trợ lý AI chuyên tạo dữ liệu nhân vật chuẩn JSON. Chỉ trả về mảng JSON hợp lệ.',
+          },
+          {
+            'role': 'user',
+            'content': prompt,
+          }
+        ],
+        'temperature': 0.7,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Lỗi gọi AI API (${response.statusCode}): ${response.body}');
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    final choices = data['choices'] as List<dynamic>?;
+    if (choices == null || choices.isEmpty) {
+      throw Exception('Phản hồi AI trống');
+    }
+
+    final rawReply = choices[0]['message']?['content']?.toString() ?? '';
 
     final parsedProfiles = _parseAiJson(rawReply, ips);
     await savePersonas(parsedProfiles);
@@ -318,90 +305,101 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
       }
     } catch (_) {}
 
-    // Xây dựng prompt avatar gắn liền với Cá tính (bio), Vai trò và Nhiệm vụ (agentInfo)
+    // Xây dựng prompt avatar người thật chụp ảnh chân dung (Photorealistic Portrait Photo)
     String effectivePrompt;
     if (persona.avatarPrompt.trim().isNotEmpty) {
       effectivePrompt = persona.avatarPrompt.trim();
       final extraDetails = <String>[];
       if (persona.bio.trim().isNotEmpty && !effectivePrompt.toLowerCase().contains(persona.bio.toLowerCase().split(' ').first)) {
-        extraDetails.add('Personality context: ${persona.bio.trim()}');
+        extraDetails.add('personality: ${persona.bio.trim()}');
       }
       if (persona.agentInfo != null && persona.agentInfo!.trim().isNotEmpty && !effectivePrompt.toLowerCase().contains(persona.agentInfo!.toLowerCase().split(' ').first)) {
-        extraDetails.add('Role & duty: ${persona.agentInfo!.trim()}');
+        extraDetails.add('role: ${persona.agentInfo!.trim()}');
       }
       if (extraDetails.isNotEmpty) {
-        effectivePrompt = '$effectivePrompt, ${extraDetails.join(", ")}, photorealistic, high quality, cinematic lighting';
+        effectivePrompt = '$effectivePrompt, ${extraDetails.join(", ")}';
       }
+      effectivePrompt += ', authentic realistic human portrait photography, real person face, natural skin texture, 35mm photograph, DSLR, soft natural studio lighting, ultra-realistic, highly detailed, high quality photo, NO 3D render, NO cartoon, NO illustration, NO vector icon, NO drawing';
     } else {
       final roleContext = (persona.agentInfo != null && persona.agentInfo!.trim().isNotEmpty)
           ? ', role: ${persona.agentInfo!.trim()}'
           : '';
       final bioContext = persona.bio.trim().isNotEmpty ? ', personality: ${persona.bio.trim()}' : '';
-      effectivePrompt = 'Professional close-up portrait of ${persona.name}, ${persona.age} years old, ${persona.gender}$bioContext$roleContext, photorealistic, 8k resolution, cinematic lighting';
+      effectivePrompt = 'Authentic close-up photography portrait of a real ${persona.gender.toLowerCase() == "nữ" ? "Vietnamese woman" : "Vietnamese man"}, ${persona.age} years old, name ${persona.name}$bioContext$roleContext, beautiful natural facial features, real human skin pores and texture, natural casual outfit, cinematic bokeh background, captured on Canon EOS R5 85mm lens, photorealistic 8k, ultra-realistic photo, NO 3D render, NO cartoon, NO anime, NO vector graphics, NO CGI';
     }
 
-    // 1. Thử gọi endpoint chuẩn tạo ảnh /images/generations (DALL-E / Midjourney / FLUX)
-    try {
-      final imageUri = Uri.parse('$baseUrl/images/generations');
-      final res = await http.post(
-        imageUri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode({
-          'prompt': effectivePrompt,
-          'n': 1,
-          'size': '512x512',
-          'response_format': 'b64_json',
-        }),
-      ).timeout(const Duration(seconds: 45));
+    // 1. NHÁNH CLOUD API PROXY: Thử gọi Cloud Image Model qua mitom.ai (DALL-E / FLUX / Wan / Doubao Image)
+    if (apiKey.isNotEmpty) {
+      final imageModels = [
+        'qwen-image-3.0',
+        'wan2.7-image',
+        'doubao-seedream-5-0-260128',
+        'dall-e-3',
+      ];
 
-      if (res.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(res.bodyBytes));
-        final dataList = data['data'] as List<dynamic>?;
-        if (dataList != null && dataList.isNotEmpty) {
-          final first = dataList[0];
-          if (first['b64_json'] != null) {
-            final bytes = base64Decode(first['b64_json'].toString());
-            await File(localImagePath).writeAsBytes(bytes);
-            final updated = persona.copyWith(avatarUrl: localImagePath);
-            await updatePersona(updated);
-            return localImagePath;
-          } else if (first['url'] != null) {
-            final imgUrl = first['url'].toString();
-            // Tải ảnh từ URL về lưu local
-            try {
-              final dlRes = await http.get(Uri.parse(imgUrl)).timeout(const Duration(seconds: 20));
-              if (dlRes.statusCode == 200) {
-                await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
-                final updated = persona.copyWith(avatarUrl: localImagePath);
-                await updatePersona(updated);
-                return localImagePath;
+      for (final modelName in imageModels) {
+        try {
+          final imageUri = Uri.parse('$baseUrl/images/generations');
+          final res = await http.post(
+            imageUri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode({
+              'model': modelName,
+              'prompt': effectivePrompt,
+              'n': 1,
+              'size': '512x512',
+              'response_format': 'b64_json',
+            }),
+          ).timeout(const Duration(seconds: 40));
+
+          if (res.statusCode == 200) {
+            final data = jsonDecode(utf8.decode(res.bodyBytes));
+            final dataList = data['data'] as List<dynamic>?;
+            if (dataList != null && dataList.isNotEmpty) {
+              final first = dataList[0];
+              if (first['b64_json'] != null) {
+                final bytes = base64Decode(first['b64_json'].toString());
+                if (bytes.length > 3000) {
+                  await File(localImagePath).writeAsBytes(bytes);
+                  final updated = persona.copyWith(avatarUrl: localImagePath);
+                  await updatePersona(updated);
+                  return localImagePath;
+                }
+              } else if (first['url'] != null) {
+                final imgUrl = first['url'].toString();
+                final dlRes = await http.get(Uri.parse(imgUrl)).timeout(const Duration(seconds: 25));
+                if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 3000) {
+                  await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
+                  final updated = persona.copyWith(avatarUrl: localImagePath);
+                  await updatePersona(updated);
+                  return localImagePath;
+                }
               }
-            } catch (_) {}
-            final updated = persona.copyWith(avatarUrl: imgUrl);
-            await updatePersona(updated);
-            return imgUrl;
+            }
           }
-        }
+        } catch (_) {}
       }
-    } catch (_) {}
+    }
 
-    // 2. Tạo ảnh trực tiếp chuẩn 1:1 theo đúng avatarPrompt bằng AI Image Synthesis (Primary Engine)
-    final aiModels = ['flux', 'turbo', 'unity'];
-    for (final aiModelName in aiModels) {
+    // 2. ENGINE AI PHOTO SYNTHESIS (FLUX & TURBO PHOTOREALISTIC ENGINE)
+    // Tạo ảnh chân dung người thật bằng mô hình khuếch tán AI chuyên ảnh thực (FLUX / Turbo / Photo Real)
+    final aiPhotoModels = ['flux', 'turbo'];
+    final seed = '${persona.ip}_${persona.name}_${persona.gender}_$timestamp'.hashCode.abs();
+
+    for (final aiModelName in aiPhotoModels) {
       try {
         final promptForGen = Uri.encodeComponent(effectivePrompt);
-        final seed = '${persona.ip}_${persona.name}_${persona.gender}_$timestamp'.hashCode.abs();
-        final aiGenUrl = 'https://image.pollinations.ai/prompt/$promptForGen?width=512&height=512&nologo=true&seed=$seed&model=$aiModelName';
+        final aiGenUrl = 'https://image.pollinations.ai/prompt/$promptForGen?width=512&height=512&nologo=true&seed=$seed&model=$aiModelName&enhance=true';
         final genRes = await http.get(
           Uri.parse(aiGenUrl),
           headers: {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)'},
-        ).timeout(const Duration(seconds: 20));
+        ).timeout(const Duration(seconds: 35));
 
-        if (genRes.statusCode == 200 && genRes.bodyBytes.length > 3000) {
+        if (genRes.statusCode == 200 && genRes.bodyBytes.length > 5000) {
           await File(localImagePath).writeAsBytes(genRes.bodyBytes);
           final updated = persona.copyWith(avatarUrl: localImagePath);
           await updatePersona(updated);
@@ -410,22 +408,38 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
       } catch (_) {}
     }
 
-    // 3. Dự phòng AI Synthesis: Endpoint AI tạo avatar tự động qua Dicebear AI vector persona
+    // 3. DỰ PHÒNG CHÂN DUNG NGƯỜI THẬT CHUYÊN DỤNG (Tuyệt đối không dùng 3D vector cartoon)
+    // Sử dụng bộ sinh ảnh khuôn mặt người thật ngẫu nhiên từ kho ảnh chân dung thực tế
     try {
-      final safeSeed = Uri.encodeComponent('${persona.name}_${persona.ip}_$timestamp');
-      final dicebearUrl = 'https://api.dicebear.com/7.x/personas/png?seed=$safeSeed&size=512&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf';
-      final dlRes = await http.get(Uri.parse(dicebearUrl)).timeout(const Duration(seconds: 15));
-      if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 500) {
-        await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
+      final genderParam = persona.gender.toLowerCase() == 'nữ' ? 'female' : 'male';
+      final faceIndex = (seed % 90) + 1;
+      final realHumanFaceUrl = 'https://xsgames.co/randomusers/assets/avatars/$genderParam/$faceIndex.jpg';
+      final dlFace = await http.get(Uri.parse(realHumanFaceUrl)).timeout(const Duration(seconds: 15));
+      if (dlFace.statusCode == 200 && dlFace.bodyBytes.length > 3000) {
+        await File(localImagePath).writeAsBytes(dlFace.bodyBytes);
         final updated = persona.copyWith(avatarUrl: localImagePath);
         await updatePersona(updated);
         return localImagePath;
       }
     } catch (_) {}
 
-    final ultimateFallback = 'https://api.dicebear.com/7.x/personas/png?seed=${Uri.encodeComponent("${persona.name}_${persona.ip}")}&size=512';
-    final updated = persona.copyWith(avatarUrl: ultimateFallback);
+    // Fallback ảnh chân dung người thật Unsplash AI curated portrait
+    final isFemale = persona.gender.toLowerCase() == 'nữ';
+    final photoFallbackUrl = isFemale
+        ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=512&q=80'
+        : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=512&q=80';
+    try {
+      final dlPhoto = await http.get(Uri.parse(photoFallbackUrl)).timeout(const Duration(seconds: 15));
+      if (dlPhoto.statusCode == 200 && dlPhoto.bodyBytes.length > 3000) {
+        await File(localImagePath).writeAsBytes(dlPhoto.bodyBytes);
+        final updated = persona.copyWith(avatarUrl: localImagePath);
+        await updatePersona(updated);
+        return localImagePath;
+      }
+    } catch (_) {}
+
+    final updated = persona.copyWith(avatarUrl: photoFallbackUrl);
     await updatePersona(updated);
-    return ultimateFallback;
+    return photoFallbackUrl;
   }
 }

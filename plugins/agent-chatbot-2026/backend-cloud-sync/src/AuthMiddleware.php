@@ -59,4 +59,31 @@ class AuthMiddleware {
 
         return $data;
     }
+
+    public static function tryAuthenticate(): ?array {
+        try {
+            $authHeader = '';
+            if (function_exists('getallheaders')) {
+                $headers = getallheaders();
+                $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+            }
+            if (empty($authHeader) && isset($_SERVER['HTTP_AUTHORIZATION'])) {
+                $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
+            }
+            if (!preg_match('/Bearer\s(\S+)/i', $authHeader, $matches)) {
+                return null;
+            }
+            $token = $matches[1];
+            $parts = explode('.', $token);
+            if (count($parts) !== 3) return null;
+            [$header, $payload, $signature] = $parts;
+            $expectedSig = self::base64UrlEncode(hash_hmac('sha256', "$header.$payload", self::$jwtSecret, true));
+            if (!hash_equals($expectedSig, $signature)) return null;
+            $data = json_decode(self::base64UrlDecode($payload), true);
+            if (!$data || ($data['exp'] ?? 0) < time()) return null;
+            return $data;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
 }

@@ -8,6 +8,7 @@ import '../../core/services/socks5_proxy_service.dart';
 import '../../core/services/smspool_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/tadu_dialog.dart';
 import '../../models/persona_profile_model.dart';
 import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
@@ -202,19 +203,26 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             backgroundColor: AppColors.cardBg,
             insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppColors.borderDark),
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: AppColors.borderLight, width: 1.2),
             ),
+            clipBehavior: Clip.antiAlias,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520, maxHeight: 720),
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Header: Avatar có thể bấm để tạo hình trực tiếp + Tên & IP
-                    Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. MODAL HEADER (Nền tối riêng biệt và border bottom sắc nét)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF090F1E),
+                      border: Border(
+                        bottom: BorderSide(color: AppColors.borderLight, width: 1.2),
+                      ),
+                    ),
+                    child: Row(
                       children: [
                         () {
                           final currentP = _personas[persona.ip] ?? persona;
@@ -349,12 +357,13 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                  ),
 
-                    // Scrollable form fields
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Column(
+                  // 2. MODAL BODY (Scrollable with distinct padding)
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             // Row Tên + Tuổi + Giới tính
@@ -567,7 +576,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                           ),
                                           const SizedBox(width: 8),
                                           Text(
-                                            useExternalDevice ? 'Thiết bị ngoại vi (WiFi ADB)' : 'Máy ảo Local AVD (Android Studio)',
+                                            useExternalDevice ? 'Thiết bị ngoại vi (WiFi ADB)' : 'Máy ảo Local AVD',
                                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                           ),
                                         ],
@@ -1155,21 +1164,24 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                 : () async {
                                                     final confirm = await showDialog<bool>(
                                                       context: dialogCtx,
-                                                      builder: (ctx) => AlertDialog(
-                                                        backgroundColor: AppColors.cardBg,
-                                                        shape: RoundedRectangleBorder(
-                                                          borderRadius: BorderRadius.circular(10),
-                                                          side: const BorderSide(color: AppColors.borderDark),
+                                                      builder: (ctx) => TaduDialog(
+                                                        minWidth: 420,
+                                                        maxWidth: 500,
+                                                        title: const Row(
+                                                          children: [
+                                                            Icon(Icons.replay_rounded, color: AppColors.danger, size: 20),
+                                                            SizedBox(width: 8),
+                                                            Text('Xác Nhận Hoàn Tiền'),
+                                                          ],
                                                         ),
-                                                        title: const Text('Xác nhận hoàn tiền', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
                                                         content: Text(
                                                           'Bạn có chắc chắn muốn hủy đơn #$currentOrderId và yêu cầu hoàn tiền (Refund) từ SMSPool không?',
-                                                          style: const TextStyle(fontSize: 12, color: AppColors.textDim),
+                                                          style: const TextStyle(fontSize: 13, height: 1.4, color: AppColors.textBody),
                                                         ),
                                                         actions: [
                                                           TextButton(
                                                             onPressed: () => Navigator.of(ctx).pop(false),
-                                                            child: const Text('Đóng', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                                                            child: const Text('Đóng', style: TextStyle(color: AppColors.textMuted)),
                                                           ),
                                                           ElevatedButton(
                                                             style: ElevatedButton.styleFrom(
@@ -1238,12 +1250,19 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             ),
                           ],
                         ),
+                    ),
+                  ),
+
+                  // 3. MODAL FOOTER (Nền tối riêng biệt và border top sắc nét)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF070C18),
+                      border: Border(
+                        top: BorderSide(color: AppColors.borderLight, width: 1.2),
                       ),
                     ),
-                    const SizedBox(height: 14),
-
-                    // Actions
-                    Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
@@ -1328,8 +1347,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );

@@ -118,6 +118,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     TimeOfDay selectedTime = TimeOfDay.now();
     DateTime chosenDate = targetDate;
     final selectedIps = <String>{};
+    int personaCurrentPage = 1;
+    const int personaPageSize = 5;
 
     showDialog(
       context: context,
@@ -135,9 +137,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 Text('Lên Kế Hoạch Tác Vụ Cho Nhân Vật'),
               ],
             ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Tiêu đề
@@ -310,104 +311,266 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Chọn nhân vật thực hiện
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Phân bổ nhân vật thực hiện (${selectedIps.length}/${allPersonas.length}):',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setDialogState(() {
-                            if (selectedIps.length == allPersonas.length) {
-                              selectedIps.clear();
-                            } else {
-                              selectedIps.addAll(allPersonas.map((p) => p.ip));
-                            }
-                          });
-                        },
-                        child: Text(
-                          selectedIps.length == allPersonas.length ? 'Bỏ chọn hết' : 'Chọn tất cả',
-                          style: const TextStyle(fontSize: 11, color: AppColors.accentCyan),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 140),
-                    decoration: BoxDecoration(
-                      color: AppColors.inputBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: allPersonas.isEmpty
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text('Chưa có nhân vật nào trong hệ thống', style: TextStyle(color: AppColors.textDim, fontSize: 12)),
-                            ),
-                          )
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: allPersonas.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.borderDark),
-                            itemBuilder: (context, idx) {
-                              final p = allPersonas[idx];
-                              final isSelected = selectedIps.contains(p.ip);
-                              return InkWell(
-                                onTap: () {
-                                  setDialogState(() {
-                                    if (isSelected) {
-                                      selectedIps.remove(p.ip);
-                                    } else {
-                                      selectedIps.add(p.ip);
-                                    }
-                                  });
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                                        size: 16,
-                                        color: isSelected ? AppColors.primaryLight : AppColors.textDim,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      CircleAvatar(
-                                        radius: 9,
-                                        backgroundColor: p.gender.toLowerCase() == 'nữ'
-                                            ? Colors.pinkAccent.withValues(alpha: 0.3)
-                                            : AppColors.accentCyan.withValues(alpha: 0.3),
-                                        child: Text(
-                                          p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
-                                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
+                  // Chọn nhân vật thực hiện kèm phân trang dạng số và multi-select theo trang
+                  Builder(
+                    builder: (context) {
+                      final totalPersonas = allPersonas.length;
+                      final totalPages = (totalPersonas / personaPageSize).ceil();
+                      final safePage = totalPages == 0 ? 1 : personaCurrentPage.clamp(1, totalPages);
+                      final startIndex = (safePage - 1) * personaPageSize;
+                      final pagePersonas = allPersonas.skip(startIndex).take(personaPageSize).toList();
+                      final allInPageSelected = pagePersonas.isNotEmpty && pagePersonas.every((p) => selectedIps.contains(p.ip));
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Phân bổ nhân vật thực hiện (${selectedIps.length}/$totalPersonas):',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (pagePersonas.isNotEmpty) ...[
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(4),
+                                      onTap: () {
+                                        setDialogState(() {
+                                          if (allInPageSelected) {
+                                            for (final p in pagePersonas) {
+                                              selectedIps.remove(p.ip);
+                                            }
+                                          } else {
+                                            for (final p in pagePersonas) {
+                                              selectedIps.add(p.ip);
+                                            }
+                                          }
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: allInPageSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: allInPageSelected ? AppColors.primaryLight : AppColors.borderDark,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
                                         child: Text(
-                                          p.name,
+                                          allInPageSelected ? 'Bỏ chọn trang này' : 'Chọn trang này',
                                           style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                            color: isSelected ? AppColors.textWhite : AppColors.textBody,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: allInPageSelected ? AppColors.primaryLight : AppColors.textBody,
                                           ),
                                         ),
                                       ),
-                                    ],
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        if (selectedIps.length == totalPersonas) {
+                                          selectedIps.clear();
+                                        } else {
+                                          selectedIps.addAll(allPersonas.map((p) => p.ip));
+                                        }
+                                      });
+                                    },
+                                    child: Text(
+                                      selectedIps.length == totalPersonas ? 'Bỏ chọn hết' : 'Chọn tất cả',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.accentCyan),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.inputBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.borderDark),
+                            ),
+                            child: allPersonas.isEmpty
+                                ? const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: Text('Chưa có nhân vật nào trong hệ thống', style: TextStyle(color: AppColors.textDim, fontSize: 12)),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    itemCount: pagePersonas.length,
+                                    separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.borderDark),
+                                    itemBuilder: (context, idx) {
+                                      final p = pagePersonas[idx];
+                                      final isSelected = selectedIps.contains(p.ip);
+                                      return InkWell(
+                                        onTap: () {
+                                          setDialogState(() {
+                                            if (isSelected) {
+                                              selectedIps.remove(p.ip);
+                                            } else {
+                                              selectedIps.add(p.ip);
+                                            }
+                                          });
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                                size: 16,
+                                                color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              CircleAvatar(
+                                                radius: 9,
+                                                backgroundColor: p.gender.toLowerCase() == 'nữ'
+                                                    ? Colors.pinkAccent.withValues(alpha: 0.3)
+                                                    : AppColors.accentCyan.withValues(alpha: 0.3),
+                                                child: Text(
+                                                  p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
+                                                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Row(
+                                                  children: [
+                                                    Flexible(
+                                                      child: Text(
+                                                        p.name,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                          color: isSelected ? AppColors.textWhite : AppColors.textBody,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      '(${p.ip})',
+                                                      style: const TextStyle(
+                                                        fontSize: 10.5,
+                                                        fontFamily: 'monospace',
+                                                        color: AppColors.textDim,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                          if (totalPages > 1) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                InkWell(
+                                  onTap: safePage > 1
+                                      ? () => setDialogState(() => personaCurrentPage = safePage - 1)
+                                      : null,
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: BoxDecoration(
+                                      color: safePage > 1 ? AppColors.cardBg : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: safePage > 1 ? AppColors.borderDark : AppColors.borderDark.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.chevron_left_rounded,
+                                      size: 15,
+                                      color: safePage > 1 ? AppColors.textBody : AppColors.textDim,
+                                    ),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
+                                const SizedBox(width: 6),
+                                Wrap(
+                                  spacing: 4,
+                                  children: List.generate(totalPages, (index) {
+                                    final pNum = index + 1;
+                                    final isCur = pNum == safePage;
+                                    return InkWell(
+                                      onTap: () => setDialogState(() => personaCurrentPage = pNum),
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        width: 26,
+                                        height: 26,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: isCur ? AppColors.primaryLight : AppColors.cardBg,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: isCur ? AppColors.primaryLight : AppColors.borderDark,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$pNum',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: isCur ? FontWeight.bold : FontWeight.w500,
+                                            color: isCur ? const Color(0xFF070B14) : AppColors.textBody,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                                const SizedBox(width: 6),
+                                InkWell(
+                                  onTap: safePage < totalPages
+                                      ? () => setDialogState(() => personaCurrentPage = safePage + 1)
+                                      : null,
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: BoxDecoration(
+                                      color: safePage < totalPages ? AppColors.cardBg : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: safePage < totalPages ? AppColors.borderDark : AppColors.borderDark.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 15,
+                                      color: safePage < totalPages ? AppColors.textBody : AppColors.textDim,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
-            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogCtx),
@@ -744,7 +907,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     // Thứ trong tuần: DateTime.weekday (1: Monday ... 7: Sunday)
     final startingWeekday = firstDayOfMonth.weekday; // 1 = T2, 7 = CN
 
-    final totalSlots = 42; // 6 hàng x 7 ngày
+    final leadingOffset = startingWeekday - 1;
+    final totalDaysWithOffset = leadingOffset + daysInMonth;
+    final totalWeeks = (totalDaysWithOffset / 7).ceil();
+    final totalSlots = totalWeeks * 7;
     final today = DateTime.now();
 
     return GridView.builder(
@@ -1324,7 +1490,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (dialogCtx, _) {
+        builder: (dialogCtx, setModalState) {
+          final isCompleted = task.status == 'completed';
+          final isRunning = task.status == 'running';
+
           return TaduDialog(
             minWidth: 500,
             maxWidth: 580,
@@ -1335,13 +1504,58 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 Text('Chi Tiết Tác Vụ Lịch Trình'),
               ],
             ),
-            content: SingleChildScrollView(
-              child: _buildTaskCard(dialogCtx, task, scheduleProvider, serverProvider),
-            ),
+            content: _buildTaskCard(dialogCtx, task),
+            leadingActions: [
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.danger),
+                tooltip: 'Xóa tác vụ',
+                onPressed: () async {
+                  if (task.id != null) {
+                    await scheduleProvider.deleteTask(task.id!);
+                    if (dialogCtx.mounted) {
+                      Navigator.pop(dialogCtx);
+                    }
+                    if (context.mounted) {
+                      AppToast.info(context, 'Đã xóa tác vụ lịch trình');
+                    }
+                  }
+                },
+              ),
+            ],
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogCtx),
                 child: const Text('Đóng', style: TextStyle(color: AppColors.textMuted)),
+              ),
+              ElevatedButton.icon(
+                onPressed: isRunning
+                    ? null
+                    : () async {
+                        AppToast.info(context, 'Bắt đầu kích hoạt tác vụ cho các nhân vật...');
+                        await scheduleProvider.executeTaskNow(
+                          task,
+                          defaultServer: serverProvider.selectedServer,
+                        );
+                        if (context.mounted) {
+                          AppToast.success(context, 'Tác vụ đã hoàn tất thực thi');
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isCompleted ? AppColors.cardBg : AppColors.primary,
+                  foregroundColor: isCompleted ? AppColors.textWhite : const Color(0xFF070B14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                    side: isCompleted ? const BorderSide(color: AppColors.borderDark) : BorderSide.none,
+                  ),
+                ),
+                icon: isRunning
+                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))
+                    : Icon(isCompleted ? Icons.replay_rounded : Icons.play_arrow_rounded, size: 15),
+                label: Text(
+                  isRunning ? 'Đang chạy...' : (isCompleted ? 'Chạy lại' : 'Kích hoạt ngay'),
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           );
@@ -1353,8 +1567,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _buildTaskCard(
     BuildContext context,
     ScheduleTaskModel task,
-    ScheduleProvider scheduleProvider,
-    ServerProvider serverProvider,
   ) {
     Color typeColor = AppColors.primaryLight;
     IconData typeIcon = Icons.favorite_rounded;
@@ -1375,208 +1587,178 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     final isCompleted = task.status == 'completed';
-    final isRunning = task.status == 'running';
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: isRunning ? AppColors.primary : AppColors.borderDark,
-          width: isRunning ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: typeColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: typeColor.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(typeIcon, size: 12, color: typeColor),
-                    const SizedBox(width: 4),
-                    Text(typeLabel, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: typeColor)),
-                  ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: typeColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: typeColor.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(typeIcon, size: 12, color: typeColor),
+                  const SizedBox(width: 4),
+                  Text(typeLabel, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: typeColor)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: (task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: (task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan).withValues(alpha: 0.25),
                 ),
               ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: (task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: (task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan).withValues(alpha: 0.25),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    task.executionMode == 'device' ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
+                    size: 11,
+                    color: task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan,
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      task.executionMode == 'device' ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
-                      size: 11,
+                  const SizedBox(width: 3),
+                  Text(
+                    task.executionMode == 'device' ? 'Thiết bị' : 'Trình duyệt',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
                       color: task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan,
                     ),
-                    const SizedBox(width: 3),
-                    Text(
-                      task.executionMode == 'device' ? 'Thiết bị' : 'Trình duyệt',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: task.executionMode == 'device' ? Colors.purpleAccent : AppColors.accentCyan,
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              DateFormat('HH:mm').format(task.scheduledTime),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppColors.textWhite),
+            ),
+            const Spacer(),
+            _buildStatusBadge(task.status),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        Text(
+          task.title,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+        ),
+        const SizedBox(height: 6),
+
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.inputBg,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: AppColors.borderDark),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.link_rounded, size: 14, color: AppColors.textDim),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SelectableText(
+                  task.targetUrl,
+                  style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.primaryLight),
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                DateFormat('HH:mm').format(task.scheduledTime),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppColors.textWhite),
-              ),
-              const Spacer(),
-              _buildStatusBadge(task.status),
             ],
           ),
-          const SizedBox(height: 8),
+        ),
 
-          Text(
-            task.title,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+        if (task.commentContent != null && task.commentContent!.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.sidebarBg,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppColors.borderDark),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Nội dung bình luận:',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  task.commentContent!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
+        ],
 
-          Text(
-            task.targetUrl,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.textMuted),
-          ),
-
-          if (task.commentContent != null && task.commentContent!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.bgDark,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                'Nội dung: ${task.commentContent}',
-                style: const TextStyle(fontSize: 11, color: AppColors.textBody, fontStyle: FontStyle.italic),
+        const SizedBox(height: 12),
+        // Danh sách avatar nhân vật thực hiện
+        Row(
+          children: [
+            Text(
+              '${task.personaIps.length} nhân vật tham gia: ',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+            ),
+            Expanded(
+              child: SizedBox(
+                height: 24,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: task.personaIps.length,
+                  separatorBuilder: (context, index) => const SizedBox(width: 5),
+                  itemBuilder: (context, pIdx) {
+                    final ip = task.personaIps[pIdx];
+                    final p = _personasMap[ip];
+                    final initial = (p != null && p.name.isNotEmpty) ? p.name[0].toUpperCase() : '?';
+                    return Tooltip(
+                      message: p != null ? '${p.name} ($ip)' : ip,
+                      child: CircleAvatar(
+                        radius: 12,
+                        backgroundColor: AppColors.sidebarBg,
+                        child: Text(initial, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
+        ),
 
+        if (task.resultNote != null && task.resultNote!.isNotEmpty) ...[
           const SizedBox(height: 10),
-          // Danh sách avatar nhân vật thực hiện
-          Row(
-            children: [
-              Text(
-                '${task.personaIps.length} nhân vật: ',
-                style: const TextStyle(fontSize: 11, color: AppColors.textDim),
-              ),
-              Expanded(
-                child: SizedBox(
-                  height: 22,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: task.personaIps.length,
-                    separatorBuilder: (context, index) => const SizedBox(width: 4),
-                    itemBuilder: (context, pIdx) {
-                      final ip = task.personaIps[pIdx];
-                      final p = _personasMap[ip];
-                      final initial = (p != null && p.name.isNotEmpty) ? p.name[0].toUpperCase() : '?';
-                      return Tooltip(
-                        message: p != null ? p.name : ip,
-                        child: CircleAvatar(
-                          radius: 11,
-                          backgroundColor: AppColors.bgDark,
-                          child: Text(initial, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primaryLight)),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          if (task.resultNote != null && task.resultNote!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (isCompleted ? AppColors.accent : AppColors.warning).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: (isCompleted ? AppColors.accent : AppColors.warning).withValues(alpha: 0.3)),
+            ),
+            child: Text(
               task.resultNote!,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 11.5,
                 color: isCompleted ? AppColors.accent : AppColors.warning,
               ),
             ),
-          ],
-
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: AppColors.borderDark),
-          const SizedBox(height: 8),
-
-          // Action Buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppColors.danger),
-                onPressed: () async {
-                  if (task.id != null) {
-                    await scheduleProvider.deleteTask(task.id!);
-                    if (context.mounted) {
-                      AppToast.info(context, 'Đã xóa tác vụ lịch trình');
-                    }
-                  }
-                },
-                tooltip: 'Xóa tác vụ',
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: isRunning
-                    ? null
-                    : () async {
-                        AppToast.info(context, 'Bắt đầu kích hoạt tác vụ cho các nhân vật...');
-                        await scheduleProvider.executeTaskNow(
-                          task,
-                          defaultServer: serverProvider.selectedServer,
-                        );
-                        if (context.mounted) {
-                          AppToast.success(context, 'Tác vụ đã hoàn tất thực thi');
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isCompleted ? AppColors.cardBg : AppColors.primary,
-                  foregroundColor: isCompleted ? AppColors.textWhite : const Color(0xFF070B14),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    side: isCompleted ? const BorderSide(color: AppColors.borderDark) : BorderSide.none,
-                  ),
-                ),
-                icon: isRunning
-                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))
-                    : Icon(isCompleted ? Icons.replay_rounded : Icons.play_arrow_rounded, size: 15),
-                label: Text(
-                  isRunning ? 'Đang chạy...' : (isCompleted ? 'Chạy lại' : 'Kích hoạt ngay'),
-                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
           ),
         ],
-      ),
+      ],
     );
   }
 

@@ -67,35 +67,6 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
         );
         await _dbService.insertMessage(userMsg);
 
-        // If user selected a CLI agent (e.g. claude-cli, gemini-cli, ollama...)
-        if (_isCliModel(targetModel)) {
-          await _runCliAgent(
-            sessionId: sessionId,
-            cliName: targetModel,
-            prompt: message,
-            attachments: attachments,
-            history: history,
-            workingDir: workingDir,
-            onToken: onToken,
-            onStatus: onStatus,
-            onTool: onTool,
-            onDone: (reply) async {
-              final assistantMsg = ChatMessageModel(
-                sessionId: sessionId,
-                role: 'assistant',
-                content: reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.',
-                model: targetModel,
-                createdAt: DateTime.now(),
-              );
-              await _dbService.insertMessage(assistantMsg);
-              onDone(reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.');
-            },
-            onError: onError,
-            isCancelled: () => isCancelled,
-          );
-          return;
-        }
-
         var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
         if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
           onError('Cấu hình Proxy Base URL không hợp lệ. Chỉ chấp nhận domain thuộc *.mitom.ai');
@@ -111,9 +82,16 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
         String sysPrompt = systemPromptBase;
         if (workingDir != null && workingDir.isNotEmpty) {
           if (workingDir.startsWith('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH') || workingDir.contains('👤 Nhân vật:')) {
-            sysPrompt += '\n\n$workingDir\n\n🎯 QUY TẮC BẮT BUỘC VỀ ĐA NHÂN VẬT (MULTI-PERSONAS SCOPE):\n'
-                '- Bạn CHỈ ĐƯỢC THAO TÁC / ĐÓNG VAI / ĐIỀU KHIỂN CÁC NHÂN VẬT TRÊN ĐÚNG VỚI IP TƯƠNG ỨNG ĐÃ ĐƯỢC CẤP.\n'
-                '- KHI DANH SÁCH CÓ TỪ 2 NHÂN VẬT TRỞ LÊN: Nếu người dùng yêu cầu hành động chung (ví dụ: mở trình duyệt, truy cập trang web, mở thiết bị giả lập, nuôi nick, tương tác), bạn BẮT BUỘC PHẢI THỰC HIỆN CHO TOÀN BỘ TẤT CẢ CÁC NHÂN VẬT có trong danh sách trên bằng cách truyền toàn bộ danh sách IP vào tham số `ips` (hoặc gọi công cụ lần lượt cho từng IP). Tuyệt đối KHÔNG ĐƯỢC chỉ mở cho 1 nhân vật đầu tiên rồi dừng lại báo xong.';
+            sysPrompt += '\n\n$workingDir\n\n🎯 QUY TẮC BẮT BUỘC TỐI THƯỢNG VỀ ĐA NHÂN VẬT (MULTI-PERSONAS SCOPE):\n'
+                '- Bạn CHỈ ĐƯỢC PHÉP thao tác, tương tác, mở trình duyệt hoặc mở thiết bị Android cho DUY NHẤT các nhân vật/IP nằm trong danh sách Scope trên.\n'
+                '- ĐẶC BIỆT KHI SCOPE CHỈ CÓ 1 NHÂN VẬT (hoặc người dùng chỉ chọn 1 profile):\n'
+                '  + BẮT BUỘC CHỈ MỞ ĐÚNG 1 TRÌNH DUYỆT HOẶC 1 THIẾT BỊ DUY NHẤT cho nhân vật đó. TUYỆT ĐỐI KHÔNG ĐƯỢC mở 2, 3 hay mở toàn bộ các máy/trình duyệt khác có trong hệ thống!\n'
+                '  + Khi gọi tool `open_profile_browser` hoặc `open_profile_device`: CHỈ truyền IP của nhân vật đó vào tham số `ip`, KHÔNG ĐƯỢC truyền mảng `ips` chứa nhiều IP.\n'
+                '  + TUYỆT ĐỐI KHÔNG được tự ý lấy các IP ngoài danh sách Scope trên (dù có gọi `list_profiles` hay thấy lịch sử trước đó).\n'
+                '- KHI SCOPE CÓ NHIỀU NHÂN VẬT:\n'
+                '  + Nếu người dùng yêu cầu 1 trình duyệt / 1 thiết bị cụ thể: Chỉ chọn đúng 1 IP và truyền vào `ip`.\n'
+                '  + Chỉ khi người dùng yêu cầu chạy tất cả/đồng loạt cho scope này: Mới truyền danh sách các IP trong scope vào `ips`.\n'
+                '- MỖI LẦN NHẬN YÊU CẦU MỚI: Phải đánh giá lại chính xác người dùng muốn làm việc trên bao nhiêu trình duyệt/thiết bị trong yêu cầu hiện tại, KHÔNG ĐƯỢC mang trạng thái mở 3 thiết bị của phiên trước áp đặt vào phiên hiện tại.';
           } else {
             sysPrompt += '\n\n🎯 PHẠM VI LÀM VIỆC MỤC TIÊU: `$workingDir`\nMọi tác vụ terminal/tài khoản phải tuân thủ phạm vi này.';
           }
@@ -179,18 +157,18 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'type': 'function',
             'function': {
               'name': 'open_profile_browser',
-              'description': 'Mở trình duyệt riêng biệt cho một hoặc nhiều nhân vật/hồ sơ theo IP để tự động hóa tương tác mạng xã hội trên web. Khi có nhiều nhân vật cần mở đồng thời, truyền danh sách vào tham số "ips".',
+              'description': 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP để tự động hóa tương tác mạng xã hội trên web. CHÚ Ý QUAN TRỌNG: Nếu người dùng yêu cầu 1 trình duyệt hoặc 1 nhân vật cụ thể, CHỈ ĐƯỢC truyền 1 IP vào tham số "ip" (để trống hoặc không dùng "ips"). Chỉ khi nào người dùng yêu cầu mở cho tất cả/nhiều nhân vật đồng loạt thì mới truyền danh sách vào tham số "ips".',
               'parameters': {
                 'type': 'object',
                 'properties': {
                   'ip': {
                     'type': 'string',
-                    'description': 'Địa chỉ IP hoặc định danh của một nhân vật duy nhất.'
+                    'description': 'Địa chỉ IP hoặc định danh của một nhân vật duy nhất khi thao tác trên 1 trình duyệt.'
                   },
                   'ips': {
                     'type': 'array',
                     'items': {'type': 'string'},
-                    'description': 'Danh sách các địa chỉ IP của toàn bộ nhân vật cần mở trình duyệt đồng loạt.'
+                    'description': 'Danh sách các địa chỉ IP của toàn bộ nhân vật cần mở trình duyệt đồng loạt (chỉ dùng khi người dùng yêu cầu nhiều trình duyệt cùng lúc).'
                   },
                   'url': {
                     'type': 'string',
@@ -225,18 +203,18 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'type': 'function',
             'function': {
               'name': 'open_profile_device',
-              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho một hoặc nhiều nhân vật theo IP.',
+              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho một hoặc nhiều nhân vật theo IP. CHÚ Ý: Nếu người dùng chỉ yêu cầu 1 thiết bị/nhân vật, chỉ truyền tham số "ip".',
               'parameters': {
                 'type': 'object',
                 'properties': {
                   'ip': {
                     'type': 'string',
-                    'description': 'Địa chỉ IP của nhân vật cần chạy thiết bị'
+                    'description': 'Địa chỉ IP của nhân vật cần chạy thiết bị duy nhất'
                   },
                   'ips': {
                     'type': 'array',
                     'items': {'type': 'string'},
-                    'description': 'Danh sách IP của các nhân vật cần khởi chạy thiết bị Android đồng loạt'
+                    'description': 'Danh sách IP của các nhân vật cần khởi chạy thiết bị Android đồng loạt (chỉ dùng khi người dùng yêu cầu chạy tất cả hoặc nhiều thiết bị)'
                   },
                   'device_type': {
                     'type': 'string',
@@ -413,6 +391,18 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             final formattedToolCalls = <Map<String, dynamic>>[];
             final executedToolResults = <Map<String, dynamic>>[];
 
+            // Extract allowed IPs if there is a Personas Scope specified
+            final List<String> allowedScopeIps = [];
+            if (workingDir != null && (workingDir.contains('SCOPE PERSONAS') || workingDir.contains('IP:'))) {
+              final ipMatches = RegExp(r'IP:\s*([0-9a-zA-Z\.\:\_\-]+)').allMatches(workingDir);
+              for (final m in ipMatches) {
+                final matchedIp = m.group(1)?.trim();
+                if (matchedIp != null && matchedIp.isNotEmpty && !allowedScopeIps.contains(matchedIp)) {
+                  allowedScopeIps.add(matchedIp);
+                }
+              }
+            }
+
             for (final entry in toolCallsMap.entries) {
               final tc = entry.value;
               final toolCallId = tc['id']?.toString() ?? 'call_${entry.key}';
@@ -492,9 +482,25 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     if (singleIp.isNotEmpty && !targetIps.contains(singleIp)) {
                       targetIps.add(singleIp);
                     }
+
+                    // Scope enforcement
+                    if (allowedScopeIps.isNotEmpty) {
+                      if (allowedScopeIps.length == 1) {
+                        // Scope chỉ có 1 nhân vật -> ÉP BUỘC chỉ mở duy nhất 1 nhân vật đó!
+                        targetIps.clear();
+                        targetIps.add(allowedScopeIps.first);
+                      } else {
+                        // Lọc bỏ bất kỳ IP nào không nằm trong danh sách Scope
+                        targetIps.retainWhere((ip) => allowedScopeIps.contains(ip));
+                        if (targetIps.isEmpty) {
+                          targetIps.addAll(allowedScopeIps);
+                        }
+                      }
+                    }
+
                     final url = parsedArgs['url']?.toString().trim();
                     if (targetIps.isEmpty) {
-                      toolOutput = 'Lỗi: Thiếu tham số IP nhân vật.';
+                      toolOutput = 'Lỗi: Thiếu tham số IP nhân vật hợp lệ trong phạm vi (Scope).';
                       break;
                     }
                     final servers = await _configService.getServers();
@@ -563,11 +569,27 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     if (singleDevIp.isNotEmpty && !targetDevIps.contains(singleDevIp)) {
                       targetDevIps.add(singleDevIp);
                     }
+
+                    // Scope enforcement
+                    if (allowedScopeIps.isNotEmpty) {
+                      if (allowedScopeIps.length == 1) {
+                        // Scope chỉ có 1 nhân vật -> ÉP BUỘC chỉ mở duy nhất 1 thiết bị cho IP đó!
+                        targetDevIps.clear();
+                        targetDevIps.add(allowedScopeIps.first);
+                      } else {
+                        // Lọc bỏ bất kỳ IP nào không nằm trong danh sách Scope
+                        targetDevIps.retainWhere((ip) => allowedScopeIps.contains(ip));
+                        if (targetDevIps.isEmpty) {
+                          targetDevIps.addAll(allowedScopeIps);
+                        }
+                      }
+                    }
+
                     final devType = parsedArgs['device_type']?.toString().trim() ?? 'mobile';
                     final avdName = parsedArgs['avd_name']?.toString().trim();
                     final remoteAddr = parsedArgs['remote_address']?.toString().trim();
                     if (targetDevIps.isEmpty) {
-                      toolOutput = 'Lỗi: Thiếu tham số IP nhân vật.';
+                      toolOutput = 'Lỗi: Thiếu tham số IP nhân vật hợp lệ trong phạm vi (Scope).';
                       break;
                     }
                     final serversDev = await _configService.getServers();
@@ -749,393 +771,5 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
     };
 
     return controller.stream.listen((_) {});
-  }
-
-  bool _isCliModel(String model) {
-    final m = model.toLowerCase();
-    return m.contains('cli') || m == 'agy' || m == 'claude' || m == 'gemini';
-  }
-
-  String _findCliExecutable(String cliName) {
-    final home = Platform.environment['HOME'] ?? '';
-    final m = cliName.toLowerCase();
-
-    if (m.contains('antigravity') || m == 'agy') {
-      final userBin = '$home/.local/bin/agy';
-      if (File(userBin).existsSync()) return userBin;
-      final binDir = '$home/bin/agy';
-      if (File(binDir).existsSync()) return binDir;
-      final usrLocal = '/usr/local/bin/agy';
-      if (File(usrLocal).existsSync()) return usrLocal;
-      final snapBin = '/snap/bin/antigravity-cli';
-      if (File(snapBin).existsSync()) return snapBin;
-      return 'agy';
-    }
-
-    if (m.contains('claude')) {
-      final nvmDir = '$home/.nvm/versions/node';
-      if (Directory(nvmDir).existsSync()) {
-        try {
-          final entries = Directory(nvmDir).listSync();
-          for (final e in entries) {
-            final claudePath = '${e.path}/bin/claude';
-            if (File(claudePath).existsSync()) return claudePath;
-          }
-        } catch (_) {}
-      }
-      final localBin = '$home/.local/bin/claude';
-      if (File(localBin).existsSync()) return localBin;
-      final usrLocal = '/usr/local/bin/claude';
-      if (File(usrLocal).existsSync()) return usrLocal;
-      return 'claude';
-    }
-
-    if (m.contains('gemini')) {
-      final localBin = '$home/.local/bin/gemini';
-      if (File(localBin).existsSync()) return localBin;
-      final usrLocal = '/usr/local/bin/gemini';
-      if (File(usrLocal).existsSync()) return usrLocal;
-      return 'gemini';
-    }
-
-    return cliName;
-  }
-
-  Future<void> _runCliAgent({
-    required String sessionId,
-    required String cliName,
-    required String prompt,
-    List<AttachmentItem>? attachments,
-    List<Map<String, dynamic>>? history,
-    String? workingDir,
-    required void Function(String token) onToken,
-    required void Function(String status) onStatus,
-    required void Function(ToolExecutionItem tool) onTool,
-    required void Function(String fullReply) onDone,
-    required void Function(dynamic error) onError,
-    required bool Function() isCancelled,
-  }) async {
-    final exe = _findCliExecutable(cliName);
-    onStatus('Đang khởi chạy $cliName agent...');
-
-    final cfg = await _configService.loadConfig();
-    final customPromptTemplate = cfg['custom_prompt']?.toString();
-
-    // Check persistent conversation ID
-    String? cliConvId = await _dbService.getCliConversationId(sessionId);
-
-    try {
-      final workDir = (workingDir != null && Directory(workingDir).existsSync())
-          ? workingDir
-          : Directory.current.path;
-
-      // Xây dựng nội dung prompt đầy đủ bao gồm tệp/ảnh đính kèm nếu có
-      String fullPromptWithAttachments = prompt;
-      if (attachments != null && attachments.isNotEmpty) {
-        final attBuf = StringBuffer();
-        attBuf.writeln('\n\n=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===');
-        for (final att in attachments) {
-          final localInfo = (att.path != null && att.path!.isNotEmpty)
-              ? ' (Đường dẫn local: ${att.path} - Dung lượng: ${att.formattedSize})'
-              : ' (Dung lượng: ${att.formattedSize})';
-          if (att.isImage) {
-            attBuf.writeln('\n--- [Ảnh: ${att.name}$localInfo] ---');
-            if (att.path != null && att.path!.isNotEmpty) {
-              attBuf.writeln('Đường dẫn file ảnh trên hệ điều hành: ${att.path}');
-            }
-          } else {
-            attBuf.writeln('\n--- [Tệp: ${att.name}$localInfo] ---');
-            if (att.path != null && att.path!.isNotEmpty) {
-              attBuf.writeln('Đường dẫn file trên hệ điều hành: ${att.path}');
-            }
-            if (att.content.isNotEmpty) {
-              attBuf.writeln('Nội dung tệp:\n${att.content}');
-            }
-          }
-        }
-        attBuf.writeln('=== KẾT THÚC DANH SÁCH ĐÍNH KÈM ===');
-        fullPromptWithAttachments += attBuf.toString();
-      }
-
-      final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
-          ? customPromptTemplate.trim()
-          : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn)';
-      final cleanPrompt = '$fullPromptWithAttachments\n\n$promptSuffix';
-
-      final m = cliName.toLowerCase();
-
-      // Build contextual prompt for CLI models that do not support multi-turn session IDs
-      String contextualPrompt = cleanPrompt;
-      if (m.contains('gemini') || (!m.contains('agy') && !m.contains('antigravity') && !m.contains('claude'))) {
-        final recentHistory = (history != null && history.isNotEmpty)
-            ? history
-            : (await _dbService.getMessages(sessionId, limit: 10)).messages.map((e) => {'role': e.role, 'content': e.content}).toList();
-        final pastMessages = recentHistory.where((h) => (h['content']?.toString().trim().isNotEmpty ?? false) && h['content'] != prompt).toList();
-        if (pastMessages.isNotEmpty) {
-          final historyBuf = StringBuffer();
-          historyBuf.writeln('=== LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ ===');
-          for (final h in pastMessages) {
-            final roleName = (h['role'] == 'user') ? 'Người dùng' : 'Trợ lý AI';
-            historyBuf.writeln('[$roleName]: ${h['content']}');
-          }
-          historyBuf.writeln('=== KẾT THÚC LỊCH SỬ HỘI THOẠI ===\n');
-          contextualPrompt = '${historyBuf.toString()}\n[Câu hỏi / Yêu cầu mới nhất của Người dùng]:\n$fullPromptWithAttachments\n\n$promptSuffix';
-        }
-      }
-
-      // Augmented PATH environment so subprocesses are always found
-      final env = Map<String, String>.from(Platform.environment);
-      final home = Platform.environment['HOME'] ?? '';
-      final currentPath = env['PATH'] ?? '';
-      final extraPaths = <String>[
-        '$home/.local/bin',
-        '$home/bin',
-        '/usr/local/bin',
-        '/snap/bin',
-      ];
-      final nvmDir = Directory('$home/.nvm/versions/node');
-      if (nvmDir.existsSync()) {
-        try {
-          for (final dir in nvmDir.listSync()) {
-            final binPath = '${dir.path}/bin';
-            if (Directory(binPath).existsSync()) {
-              extraPaths.add(binPath);
-            }
-          }
-        } catch (_) {}
-      }
-      env['PATH'] = '${extraPaths.join(':')}:$currentPath';
-      if (home.isNotEmpty) env['HOME'] = home;
-      if (!env.containsKey('DISPLAY') || env['DISPLAY']!.isEmpty) {
-        env['DISPLAY'] = Platform.environment['DISPLAY'] ?? ':0';
-      }
-      if (Platform.environment.containsKey('WAYLAND_DISPLAY')) {
-        env['WAYLAND_DISPLAY'] = Platform.environment['WAYLAND_DISPLAY']!;
-      }
-      if (Platform.environment.containsKey('XDG_RUNTIME_DIR')) {
-        env['XDG_RUNTIME_DIR'] = Platform.environment['XDG_RUNTIME_DIR']!;
-      }
-      if (Platform.environment.containsKey('XDG_CURRENT_DESKTOP')) {
-        env['XDG_CURRENT_DESKTOP'] = Platform.environment['XDG_CURRENT_DESKTOP']!;
-      }
-
-      List<String> args;
-      if (m.contains('claude')) {
-        if (cliConvId != null && cliConvId.isNotEmpty) {
-          args = ['--session-id', cliConvId, '-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
-        } else {
-          args = ['-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
-        }
-      } else if (m.contains('antigravity') || m == 'agy') {
-        if (cliConvId != null && cliConvId.isNotEmpty) {
-          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
-        } else {
-          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
-        }
-      } else if (m.contains('gemini')) {
-        args = ['-p', contextualPrompt];
-      } else {
-        args = ['-p', contextualPrompt, '--dangerously-skip-permissions'];
-      }
-
-      onStatus('AI Agent $cliName đang phân tích và thực thi tác vụ...');
-      final process = await Process.start(
-        exe,
-        args,
-        workingDirectory: workDir,
-        environment: env,
-        runInShell: false,
-      );
-
-      final fullOutput = StringBuffer();
-      final rawStdout = StringBuffer();
-      final errOutput = StringBuffer();
-      bool hasFinished = false;
-
-      void finishSession([String? fallbackReply]) {
-        if (hasFinished) return;
-        hasFinished = true;
-        final result = fullOutput.toString().trim();
-        onDone(result.isNotEmpty ? result : (fallbackReply ?? 'Đã hoàn tất tác vụ với $cliName.'));
-        try {
-          process.kill();
-        } catch (_) {}
-      }
-
-      // Close stdin asynchronously
-      process.stdin.close().catchError((_) {});
-
-      process.stdout
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen((line) {
-        if (isCancelled() || hasFinished) return;
-        final trimmed = line.trim();
-        if (trimmed.isEmpty) return;
-        rawStdout.writeln(line);
-
-        try {
-          final json = jsonDecode(trimmed);
-          if (json is Map<String, dynamic>) {
-            final emittedConvId = json['conversation_id']?.toString() ??
-                (json['result'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
-                (json['step_update'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
-                json['session_id']?.toString();
-            if (emittedConvId != null && emittedConvId.isNotEmpty && emittedConvId != cliConvId) {
-              cliConvId = emittedConvId;
-              _dbService.setCliConversationId(sessionId, emittedConvId);
-            }
-
-            // 1. Antigravity CLI (agy) streaming protocol
-            if (json.containsKey('event')) {
-              final event = json['event'];
-              if (event == 'step_update') {
-                final step = json['step_update'] as Map<String, dynamic>?;
-                final stepType = step?['step_type']?.toString();
-                final textDelta = step?['text_delta']?.toString() ?? step?['content']?.toString() ?? step?['text']?.toString();
-                final errorMsg = step?['error']?.toString();
-
-                if (textDelta != null && textDelta.isNotEmpty) {
-                  fullOutput.write(textDelta);
-                  onToken(textDelta);
-                } else if (errorMsg != null && errorMsg.isNotEmpty) {
-                  fullOutput.write('\n[Lỗi]: $errorMsg\n');
-                  onToken('\n[Lỗi]: $errorMsg\n');
-                } else if (stepType == 'tool' || stepType == 'tool_call') {
-                  final state = step?['state']?.toString();
-                  final toolInfo = step?['tool_info'] as Map<String, dynamic>?;
-                  final toolParams = toolInfo?['parameters'] as Map<String, dynamic>? ??
-                      step?['tool_args'] as Map<String, dynamic>? ??
-                      step?['parameters'] as Map<String, dynamic>? ??
-                      step?['args'] as Map<String, dynamic>?;
-                  final toolName = step?['tool_name']?.toString() ?? toolInfo?['name']?.toString() ?? 'công cụ';
-
-                  String cmdDesc = '';
-                  if (toolParams != null) {
-                    if (toolParams['CommandLine'] != null) {
-                      cmdDesc = toolParams['CommandLine'].toString();
-                    } else if (toolParams['TargetFile'] != null) {
-                      cmdDesc = '${toolParams['Instruction'] ?? 'Sửa file'}: ${toolParams['TargetFile']}';
-                    } else if (toolParams['AbsolutePath'] != null) {
-                      cmdDesc = 'Đọc file: ${toolParams['AbsolutePath']}';
-                    } else if (toolParams['Query'] != null) {
-                      cmdDesc = 'Tìm "${toolParams['Query']}" trong ${toolParams['SearchPath'] ?? ''}';
-                    } else if (toolParams['DirectoryPath'] != null) {
-                      cmdDesc = 'Xem thư mục: ${toolParams['DirectoryPath']}';
-                    } else if (toolParams['toolAction'] != null) {
-                      cmdDesc = toolParams['toolAction'].toString();
-                    } else if (toolParams['command'] != null) {
-                      cmdDesc = toolParams['command'].toString();
-                    }
-                  }
-                  if (cmdDesc.isEmpty) {
-                    cmdDesc = toolName;
-                  }
-
-                  if (state == 'ACTIVE') {
-                    onStatus('Đang thực thi $toolName: $cmdDesc...');
-                  } else {
-                    final output = toolInfo?['output']?.toString() ?? step?['output']?.toString() ?? step?['tool_result']?.toString() ?? '';
-                    onTool(ToolExecutionItem(
-                      tool: toolName,
-                      command: cmdDesc,
-                      output: output,
-                    ));
-                  }
-                } else if (stepType == 'thought' || stepType == 'thinking') {
-                  onStatus('AI đang suy nghĩ và lập kế hoạch...');
-                }
-              } else if (event == 'result') {
-                final res = json['result'] as Map<String, dynamic>?;
-                final resp = res?['response']?.toString();
-                final status = res?['status']?.toString();
-                final errorMsg = res?['error']?.toString();
-                if (resp != null && resp.isNotEmpty && fullOutput.isEmpty) {
-                  fullOutput.write(resp);
-                  onToken(resp);
-                } else if (status == 'ERROR' && errorMsg != null && errorMsg.isNotEmpty && fullOutput.isEmpty) {
-                  fullOutput.write('\n[Lỗi Antigravity]: $errorMsg\n');
-                  onToken('\n[Lỗi Antigravity]: $errorMsg\n');
-                }
-              } else if (event == 'error') {
-                final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
-                if (err.isNotEmpty && fullOutput.isEmpty) {
-                  fullOutput.write('\n[Lỗi Antigravity]: $err\n');
-                  onToken('\n[Lỗi Antigravity]: $err\n');
-                }
-              }
-              return;
-            }
-
-            // 2. Claude Code CLI streaming protocol
-            if (json.containsKey('type')) {
-              final type = json['type'];
-              if (type == 'content_block_delta') {
-                final delta = json['delta'] as Map<String, dynamic>?;
-                final text = delta?['text']?.toString();
-                if (text != null && text.isNotEmpty) {
-                  fullOutput.write(text);
-                  onToken(text);
-                }
-              } else if (type == 'result') {
-                final result = json['result']?.toString();
-                if (result != null && fullOutput.isEmpty) {
-                  fullOutput.write(result);
-                  onToken(result);
-                }
-              } else if (type == 'error') {
-                final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
-                if (err.isNotEmpty) {
-                  fullOutput.write('\n[Lỗi Claude]: $err\n');
-                  onToken('\n[Lỗi Claude]: $err\n');
-                }
-              } else if (type == 'assistant') {
-                final msg = json['message'] as Map<String, dynamic>?;
-                final contents = msg?['content'] as List<dynamic>?;
-                if (contents != null) {
-                  for (final c in contents) {
-                    if (c is Map && c['type'] == 'text') {
-                      final t = c['text']?.toString();
-                      if (t != null && fullOutput.isEmpty) {
-                        fullOutput.write(t);
-                        onToken(t);
-                      }
-                    }
-                  }
-                }
-              }
-              return;
-            }
-          }
-        } catch (_) {
-          // Plain text fallback
-        }
-
-        fullOutput.writeln(line);
-        onToken('$line\n');
-      });
-
-      process.stderr.transform(utf8.decoder).listen((data) {
-        if (!isCancelled() && !hasFinished) {
-          errOutput.write(data);
-        }
-      });
-
-      final exitCode = await process.exitCode;
-      if (!hasFinished) {
-        if (exitCode == 0 || fullOutput.isNotEmpty) {
-          finishSession();
-        } else {
-          final errStr = errOutput.toString().trim();
-          final rawStr = rawStdout.toString().trim();
-          final displayErr = errStr.isNotEmpty
-              ? errStr
-              : (rawStr.isNotEmpty ? rawStr : 'Không có phản hồi từ tiến trình (Mã thoát: $exitCode)');
-          onError('Agent $cliName báo lỗi (mã $exitCode): $displayErr');
-        }
-      }
-    } catch (e) {
-      onError('Không thể chạy CLI $cliName: $e. Hãy kiểm tra đường dẫn hoặc quyền thực thi.');
-    }
   }
 }

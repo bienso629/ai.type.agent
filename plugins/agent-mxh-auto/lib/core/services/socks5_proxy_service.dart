@@ -351,7 +351,7 @@ class Socks5ProxyService extends ChangeNotifier {
       profileDir.createSync(recursive: true);
     }
 
-    // Tắt translate option trong file cấu hình Preferences của profile Chrome
+    // Cấu hình ngôn ngữ tiếng Việt và tắt translate trong file Preferences của profile
     try {
       final defaultDir = Directory('${profileDir.path}/Default');
       if (!defaultDir.existsSync()) {
@@ -372,10 +372,43 @@ class Socks5ProxyService extends ChangeNotifier {
       }
       prefData['translate'] = {'enabled': false};
       prefData['translate_blocked_hosts'] = [];
+      prefData['intl'] = {
+        'selected_languages': 'vi-VN,vi,en-US,en',
+        'accept_languages': 'vi-VN,vi,en-US,en',
+      };
       prefFile.writeAsStringSync(jsonEncode(prefData));
     } catch (_) {}
 
-    final targetUrl = (startUrl != null && startUrl.isNotEmpty) ? startUrl : 'https://type.vn';
+    // Cấu hình Local State của Chrome cho profile (ép app_locale = vi)
+    try {
+      final localStateFile = File('${profileDir.path}/Local State');
+      Map<String, dynamic> localStateData = {};
+      if (localStateFile.existsSync()) {
+        try {
+          final content = localStateFile.readAsStringSync();
+          if (content.trim().isNotEmpty) {
+            final decoded = jsonDecode(content);
+            if (decoded is Map<String, dynamic>) {
+              localStateData = decoded;
+            }
+          }
+        } catch (_) {}
+      }
+      localStateData['intl'] = {'app_locale': 'vi'};
+      localStateFile.writeAsStringSync(jsonEncode(localStateData));
+    } catch (_) {}
+
+    // Ép buộc Facebook sử dụng giao diện Tiếng Việt bằng cách tiêm cookie locale=vi_VN vào profile
+    _ensureFacebookVietnameseCookie(profileDir.path);
+
+    // Xử lý URL khởi chạy: nếu mở Facebook thì ưu tiên kèm locale=vi_VN
+    var targetUrl = (startUrl != null && startUrl.isNotEmpty) ? startUrl : 'https://type.vn';
+    if (targetUrl.contains('facebook.com')) {
+      if (!targetUrl.contains('locale=') && !targetUrl.contains('set_token=')) {
+        final sep = targetUrl.contains('?') ? '&' : '?';
+        targetUrl = '$targetUrl${sep}locale=vi_VN';
+      }
+    }
 
     // Thử kết nối SOCKS5 nếu có server được chỉ định
     String? socks5Proxy;
@@ -397,12 +430,16 @@ class Socks5ProxyService extends ChangeNotifier {
         targetUrl,
       ];
     } else {
+      final extDir = '${profileDir.path}/vietnamese_meta_ext';
       args = [
+        '--lang=vi',
+        '--accept-lang=vi-VN,vi,en-US,en',
         '--test-type',
         '--disable-features=Translate,TranslateUI',
         '--disable-translate',
         if (socks5Proxy != null) '--proxy-server=$socks5Proxy',
         '--user-data-dir=${profileDir.path}',
+        if (Directory(extDir).existsSync()) '--load-extension=$extDir',
         '--no-first-run',
         '--no-default-browser-check',
         '--ignore-certificate-errors',
@@ -418,6 +455,10 @@ class Socks5ProxyService extends ChangeNotifier {
     if (homeDir.isNotEmpty) {
       browserEnv['HOME'] = homeDir;
     }
+    // Thiết lập môi trường tiếng Việt
+    browserEnv['LANG'] = 'vi_VN.UTF-8';
+    browserEnv['LANGUAGE'] = 'vi_VN:vi';
+    browserEnv['LC_ALL'] = 'vi_VN.UTF-8';
 
     try {
       final proc = await Process.start(
@@ -447,6 +488,89 @@ class Socks5ProxyService extends ChangeNotifier {
     } catch (e) {
       throw Exception('Lỗi khi mở trình duyệt: $e');
     }
+  }
+
+  /// Tiêm cookie locale=vi_VN vào database Cookies của Chrome và tạo extension ép tiếng Việt
+  void _ensureFacebookVietnameseCookie(String profilePath) {
+    try {
+      // 1. Tạo Extension declarativeNetRequest ép Accept-Language tiếng Việt cho toàn bộ request tới Meta/Facebook
+      final extDir = Directory('$profilePath/vietnamese_meta_ext');
+      if (!extDir.existsSync()) {
+        extDir.createSync(recursive: true);
+      }
+      final manifestFile = File('${extDir.path}/manifest.json');
+      final rulesFile = File('${extDir.path}/rules.json');
+      if (!manifestFile.existsSync() || !rulesFile.existsSync()) {
+        manifestFile.writeAsStringSync(jsonEncode({
+          'manifest_version': 3,
+          'name': 'Force Vietnamese Meta',
+          'version': '1.0',
+          'description': 'Forces Facebook and Meta to use Vietnamese interface',
+          'permissions': ['declarativeNetRequest'],
+          'host_permissions': ['*://*.facebook.com/*', '*://*.fb.com/*', '*://*.messenger.com/*'],
+          'declarative_net_request': {
+            'rule_resources': [
+              {
+                'id': 'ruleset_1',
+                'enabled': true,
+                'path': 'rules.json',
+              }
+            ]
+          }
+        }));
+        rulesFile.writeAsStringSync(jsonEncode([
+          {
+            'id': 1,
+            'priority': 1,
+            'action': {
+              'type': 'modifyHeaders',
+              'requestHeaders': [
+                {
+                  'header': 'Accept-Language',
+                  'operation': 'set',
+                  'value': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+                }
+              ]
+            },
+            'condition': {
+              'urlFilter': '*facebook.com*',
+              'resourceTypes': ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'xmlhttprequest', 'other'],
+            }
+          }
+        ]));
+      }
+
+      // 2. Tiêm cookie locale=vi_VN vào SQLite Cookies của profile
+      final cookieFile = File('$profilePath/Default/Cookies');
+      if (!cookieFile.existsSync()) return;
+
+      final pyScript = '''
+import sqlite3, time
+CHROME_EPOCH_DIFF = 11644473600
+def to_chrome_time(ts):
+    return int((ts + CHROME_EPOCH_DIFF) * 1000000)
+
+now = time.time()
+now_chrome = to_chrome_time(now)
+expire_chrome = to_chrome_time(now + 365 * 24 * 3600)
+
+try:
+    con = sqlite3.connect(r"${cookieFile.path}")
+    cur = con.cursor()
+    cur.execute("DELETE FROM cookies WHERE host_key LIKE '%facebook.com%' AND name = 'locale'")
+    for host in ['.facebook.com', 'facebook.com', 'www.facebook.com', 'm.facebook.com']:
+        cur.execute("""
+            INSERT OR REPLACE INTO cookies 
+            (creation_utc, host_key, top_frame_site_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly, last_access_utc, has_expires, is_persistent, priority, samesite, source_scheme, source_port, last_update_utc, source_type, has_cross_site_ancestor)
+            VALUES (?, ?, '', 'locale', 'vi_VN', X'', '/', ?, 1, 0, ?, 1, 1, 1, -1, 2, 443, ?, 1, 0)
+        """, (now_chrome, host, expire_chrome, now_chrome, now_chrome))
+    con.commit()
+    con.close()
+except Exception:
+    pass
+''';
+      Process.runSync('python3', ['-c', pyScript]);
+    } catch (_) {}
   }
 
   /// Mở trình duyệt trên máy local với cấu hình SOCKS5 trỏ qua SSH Server

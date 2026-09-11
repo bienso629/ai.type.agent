@@ -143,7 +143,7 @@ class ApiService {
       try {
         final headers = <String, String>{
           'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          if (!kIsWeb) 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         };
         if (apiKey != null && apiKey.trim().isNotEmpty) {
           headers['Authorization'] = 'Bearer ${apiKey.trim()}';
@@ -178,19 +178,18 @@ class ApiService {
       return [];
     }
 
-    // 1. Thử gọi targetUrl
+    // 1. Nếu chạy trên Web, BẮT BUỘC gọi qua Backend Proxy nội bộ (/api/models)
+    // để tránh trình duyệt bắn CORS preflight hoặc chặn header 'user-agent'
+    if (kIsWeb) {
+      final gateway = await _storage.getGatewayUrl();
+      final webProxyUrl = '$gateway/api/models';
+      return await tryFetch(webProxyUrl);
+    }
+
+    // 2. Thử gọi targetUrl trực tiếp (Desktop/Native mode)
     final list = await tryFetch(targetUrl);
     if (list.isNotEmpty) {
       return list;
-    }
-
-    // 2. Nếu chạy trên Web và bị chặn CORS, gọi qua Backend Proxy nội bộ
-    if (kIsWeb) {
-      final webProxyUrl = '/api/models';
-      final proxyList = await tryFetch(webProxyUrl);
-      if (proxyList.isNotEmpty) {
-        return proxyList;
-      }
     }
 
     // 3. Fallback cứu cánh sang endpoint chuẩn nếu targetUrl khác
@@ -736,13 +735,16 @@ class ApiService {
     }
     final baseUrl = await _getBaseUrl();
     try {
-      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl${ApiConstants.epFsUpload}'));
-      final headers = await _getHeaders();
+      final uploadUri = (kIsWeb && baseUrl.isEmpty)
+          ? Uri.base.resolve(ApiConstants.epFsUpload)
+          : Uri.parse('$baseUrl${ApiConstants.epFsUpload}');
+      final request = http.MultipartRequest('POST', uploadUri);
+      final headers = await _getHeaders(isJson: false);
       request.headers.addAll(headers);
       if (targetDir != null && targetDir.isNotEmpty) {
         request.fields['target_dir'] = targetDir;
       }
-      if (localFilePath != null && File(localFilePath).existsSync()) {
+      if (!kIsWeb && localFilePath != null && File(localFilePath).existsSync()) {
         request.files.add(await http.MultipartFile.fromPath('file', localFilePath, filename: fileName));
       } else if (bytes != null) {
         request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
@@ -754,7 +756,12 @@ class ApiService {
       final response = await http.Response.fromStream(streamedResponse);
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        final fileLen = (bytes != null) ? bytes.length : (File(localFilePath!).lengthSync());
+        int fileLen = 0;
+        if (bytes != null) {
+          fileLen = bytes.length;
+        } else if (!kIsWeb && localFilePath != null && File(localFilePath).existsSync()) {
+          fileLen = File(localFilePath).lengthSync();
+        }
         if (onProgress != null) onProgress(fileLen, fileLen, 1.0);
         return data is Map<String, dynamic> ? data : {'status': 'success'};
       }

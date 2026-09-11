@@ -7,19 +7,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     Response::json([], 200);
 }
 
-$currentUser = AuthMiddleware::authenticate();
-$userId = (int)$currentUser['id'];
+$currentUser = AuthMiddleware::tryAuthenticate();
+$userId = $currentUser ? (int)$currentUser['id'] : 0;
 $db = Database::getConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $stmt = $db->prepare('SELECT config_json FROM user_configs WHERE user_id = ? LIMIT 1');
-    $stmt->execute([$userId]);
-    $row = $stmt->fetch();
-    $config = $row ? json_decode($row['config_json'], true) : [];
-    Response::success(['config' => $config ?: new stdClass()]);
+    if ($userId > 0) {
+        $stmt = $db->prepare('SELECT config_json FROM user_configs WHERE user_id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        $config = $row ? json_decode($row['config_json'], true) : [];
+        Response::success(['config' => $config ?: new stdClass()]);
+    } else {
+        // Cấu hình mặc định cho khách / người dùng chưa đăng nhập
+        Response::success([
+            'config' => [
+                'ai_model' => 'gemini-2.5-flash',
+                'proxy_base_url' => 'https://api-vn-sg.mitom.ai/v1',
+                'app_title' => 'AI Agent Chatbot',
+                'brand_title' => 'AI Agent',
+                'brand_subtitle' => 'AI AGENT CHATBOT',
+            ]
+        ]);
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!$currentUser) {
+        $currentUser = AuthMiddleware::authenticate();
+        $userId = (int)$currentUser['id'];
+    }
     $input = Response::getJsonInput();
     $configData = $input['config'] ?? $input;
     $jsonString = json_encode($configData, JSON_UNESCAPED_UNICODE);

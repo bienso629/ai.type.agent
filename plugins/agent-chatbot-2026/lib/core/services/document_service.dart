@@ -9,6 +9,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart' as sf_pdf;
 import 'database_service.dart';
 import 'encryption_service.dart';
 import 'local_config_service.dart';
+import 'storage_service.dart';
 
 class KnowledgeDocument {
   final int? id;
@@ -84,6 +85,25 @@ class DocumentService {
   final LocalConfigService _configService = LocalConfigService();
   final EncryptionService _enc = EncryptionService();
 
+  final StorageService _storage = StorageService();
+
+  String? lastError;
+
+  Future<Map<String, String>> _getWebHeaders() async {
+    final authToken = await _storage.getAuthToken();
+    final secretToken = await _storage.getSecretToken();
+    final token = (authToken != null && authToken.isNotEmpty) ? authToken : secretToken;
+    final userEmail = await _storage.getUserEmail();
+    return {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Accept': 'application/json',
+      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      if (token.isNotEmpty) 'X-Secret-Token': token,
+      if (userEmail != null && userEmail.isNotEmpty) 'X-User-Email': userEmail,
+      if (userEmail != null && userEmail.isNotEmpty) 'X-User-Name': userEmail.split('@')[0],
+    };
+  }
+
   Future<void> _ensureTable(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS knowledge_documents (
@@ -99,7 +119,42 @@ class DocumentService {
     ''');
   }
 
+  Uri _resolveUri(String endpoint) {
+    if (kIsWeb) {
+      return Uri.base.resolve(endpoint);
+    }
+    return Uri.parse(endpoint);
+  }
+
   Future<List<KnowledgeDocument>> getDocuments() async {
+    if (kIsWeb) {
+      try {
+        final gateway = await _storage.getGatewayUrl();
+        final uri = gateway.isNotEmpty ? Uri.parse('$gateway/api/docs.php') : _resolveUri('/api/docs.php');
+        final res = await http.get(uri, headers: await _getWebHeaders()).timeout(const Duration(seconds: 15));
+        if (res.statusCode == 200) {
+          final body = jsonDecode(utf8.decode(res.bodyBytes));
+          if (body['success'] == true && body['data']?['documents'] is List) {
+            final list = body['data']['documents'] as List;
+            return list.map((m) {
+              final doc = KnowledgeDocument.fromMap(m as Map<String, dynamic>);
+              final dec = _enc.decryptValue(doc.content);
+              return KnowledgeDocument(
+                id: doc.id,
+                name: doc.name,
+                extension: doc.extension,
+                size: doc.size,
+                path: doc.path,
+                content: dec,
+                isEnabled: doc.isEnabled,
+                createdAt: doc.createdAt,
+              );
+            }).toList();
+          }
+        }
+      } catch (_) {}
+      return [];
+    }
     try {
       await _dbService.init();
       final db = await _dbService.getRawDatabase();
@@ -136,11 +191,6 @@ class DocumentService {
     void Function(String status)? onProgress,
   }) async {
     try {
-      await _dbService.init();
-      final db = await _dbService.getRawDatabase();
-      if (db == null) return 0;
-      await _ensureTable(db);
-
       final ext = p.extension(filePath.isNotEmpty ? filePath : name).replaceAll('.', '').toLowerCase();
       int size = 0;
       String content = '';
@@ -159,9 +209,50 @@ class DocumentService {
           final fileBytes = await f.readAsBytes();
           content = await _extractContent(fileBytes, ext, name, filePath: filePath, onProgress: onProgress);
         }
+      } else if (kIsWeb && (bytes == null || bytes.isEmpty)) {
+        lastError = 'Trình duyệt không đọc được dữ liệu byte của tệp';
+        return 0;
       }
 
       final encContent = _enc.encryptValue(content);
+
+      if (kIsWeb) {
+        final gateway = await _storage.getGatewayUrl();
+        final uri = gateway.isNotEmpty ? Uri.parse('$gateway/api/docs.php') : _resolveUri('/api/docs.php');
+        final payload = {
+          'name': name,
+          'extension': ext,
+          'size': size,
+          'path': filePath,
+          'content': encContent,
+          'is_enabled': 1,
+        };
+        final res = await http.post(
+          uri,
+          headers: await _getWebHeaders(),
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 120));
+        if (res.statusCode == 200) {
+          final body = jsonDecode(utf8.decode(res.bodyBytes));
+          if (body['success'] == true && body['data']?['id'] != null) {
+            lastError = null;
+            return (body['data']['id'] as num).toInt();
+          }
+          lastError = body['message']?.toString() ?? 'Máy chủ trả về phản hồi không hợp lệ';
+          return 0;
+        }
+        lastError = 'Máy chủ HTTP ${res.statusCode}: ${res.body.length > 200 ? res.body.substring(0, 200) : res.body}';
+        return 0;
+      }
+
+      await _dbService.init();
+      final db = await _dbService.getRawDatabase();
+      if (db == null) {
+        lastError = 'Không thể khởi tạo cơ sở dữ liệu cục bộ';
+        return 0;
+      }
+      await _ensureTable(db);
+
       final doc = KnowledgeDocument(
         name: name,
         extension: ext,
@@ -172,8 +263,12 @@ class DocumentService {
         createdAt: DateTime.now(),
       );
 
-      return await db.insert('knowledge_documents', doc.toMap());
-    } catch (_) {
+      final insertId = await db.insert('knowledge_documents', doc.toMap());
+      lastError = null;
+      return insertId;
+    } catch (e) {
+      lastError = e.toString();
+      debugPrint('[DocumentService] Lỗi addDocument: $e');
       return 0;
     }
   }
@@ -451,12 +546,22 @@ class DocumentService {
       final dataUri = 'data:$mime;base64,$b64';
 
       final client = http.Client();
+      final targetUri = kIsWeb
+          ? (await _storage.getGatewayUrl()).isNotEmpty
+              ? Uri.parse('${await _storage.getGatewayUrl()}/api/completions.php')
+              : _resolveUri('/api/completions.php')
+          : Uri.parse('$baseUrl/chat/completions');
+
+      if (apiKey.isEmpty) {
+        return null;
+      }
+
       final res = await client.post(
-        Uri.parse('$baseUrl/chat/completions'),
+        targetUri,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+          'Authorization': 'Bearer $apiKey',
         },
         body: jsonEncode({
           'model': model,
@@ -501,6 +606,10 @@ class DocumentService {
         baseUrl = baseUrl.substring(0, baseUrl.length - 1);
       }
 
+      if (apiKey.isEmpty) {
+        return null;
+      }
+
       final b64 = base64Encode(bytes);
       String mime = 'application/pdf';
       if (ext == 'pdf') {
@@ -516,12 +625,18 @@ class DocumentService {
       final dataUri = 'data:$mime;base64,$b64';
 
       final client = http.Client();
+      final targetUri = kIsWeb
+          ? (await _storage.getGatewayUrl()).isNotEmpty
+              ? Uri.parse('${await _storage.getGatewayUrl()}/api/completions.php')
+              : _resolveUri('/api/completions.php')
+          : Uri.parse('$baseUrl/chat/completions');
+
       final res = await client.post(
-        Uri.parse('$baseUrl/chat/completions'),
+        targetUri,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+          'Authorization': 'Bearer $apiKey',
         },
         body: jsonEncode({
           'model': model,
@@ -586,6 +701,23 @@ class DocumentService {
       }
 
       if (newContent.isNotEmpty) {
+        if (kIsWeb) {
+          try {
+            final gateway = await _storage.getGatewayUrl();
+            final uri = gateway.isNotEmpty
+                ? Uri.parse('$gateway/api/docs.php?action=update')
+                : _resolveUri('/api/docs.php?action=update');
+            final encContent = _enc.encryptValue(newContent);
+            final res = await http.post(
+              uri,
+              headers: await _getWebHeaders(),
+              body: jsonEncode({'id': doc.id, 'content': encContent}),
+            ).timeout(const Duration(seconds: 30));
+            return res.statusCode == 200;
+          } catch (_) {
+            return false;
+          }
+        }
         final db = await _dbService.getRawDatabase();
         if (db != null) {
           final encContent = _enc.encryptValue(newContent);
@@ -635,6 +767,22 @@ class DocumentService {
   }
 
   Future<bool> toggleDocument(int id, bool isEnabled) async {
+    if (kIsWeb) {
+      try {
+        final gateway = await _storage.getGatewayUrl();
+        final uri = gateway.isNotEmpty
+            ? Uri.parse('$gateway/api/docs.php?action=toggle')
+            : _resolveUri('/api/docs.php?action=toggle');
+        final res = await http.post(
+          uri,
+          headers: await _getWebHeaders(),
+          body: jsonEncode({'id': id, 'is_enabled': isEnabled ? 1 : 0}),
+        ).timeout(const Duration(seconds: 15));
+        return res.statusCode == 200;
+      } catch (_) {
+        return false;
+      }
+    }
     try {
       final db = await _dbService.getRawDatabase();
       if (db == null) return false;
@@ -651,6 +799,21 @@ class DocumentService {
   }
 
   Future<bool> deleteDocument(int id) async {
+    if (kIsWeb) {
+      try {
+        final gateway = await _storage.getGatewayUrl();
+        final uri = gateway.isNotEmpty
+            ? Uri.parse('$gateway/api/docs.php?id=$id')
+            : _resolveUri('/api/docs.php?id=$id');
+        final res = await http.delete(
+          uri,
+          headers: await _getWebHeaders(),
+        ).timeout(const Duration(seconds: 15));
+        return res.statusCode == 200;
+      } catch (_) {
+        return false;
+      }
+    }
     try {
       final db = await _dbService.getRawDatabase();
       if (db == null) return false;

@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/document_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -69,12 +70,13 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
       });
 
       int count = 0;
+      int failCount = 0;
       for (final pickedFile in result.files) {
         final name = pickedFile.name;
-        final path = pickedFile.path ?? name;
+        final path = kIsWeb ? name : (pickedFile.path ?? name);
         final bytes = pickedFile.bytes;
 
-        await _docService.addDocument(
+        final docId = await _docService.addDocument(
           name: name,
           filePath: path,
           bytes: bytes,
@@ -86,13 +88,25 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
             }
           },
         );
-        count++;
+        if (docId > 0) {
+          count++;
+        } else {
+          failCount++;
+        }
       }
 
       await _loadDocuments();
 
       if (mounted) {
-        AppToast.success(context, 'Đã tải lên và lập chỉ mục thành công $count tài liệu/ảnh!');
+        if (count > 0 && failCount == 0) {
+          AppToast.success(context, 'Đã tải lên và lập chỉ mục thành công $count tài liệu!');
+        } else if (count > 0 && failCount > 0) {
+          final detail = _docService.lastError != null ? ' (${_docService.lastError})' : '';
+          AppToast.warning(context, 'Đã tải thành công $count tài liệu, nhưng thất bại $failCount tài liệu$detail.');
+        } else {
+          final detail = _docService.lastError != null ? ': ${_docService.lastError}' : '';
+          AppToast.error(context, 'Không thể tải tài liệu lên máy chủ$detail');
+        }
       }
     } catch (e) {
       if (mounted) {
