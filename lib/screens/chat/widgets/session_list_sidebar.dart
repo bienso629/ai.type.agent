@@ -140,7 +140,12 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
     }
 
     if (!serverOptions.any((opt) => opt['value'] == selectedServer)) {
-      selectedServer = 'Local Machine';
+      final matched = ServerModel.findMatchingServer(serverProvider.servers, selectedServer);
+      if (matched != null && serverOptions.any((opt) => opt['value'] == matched.name)) {
+        selectedServer = matched.name;
+      } else {
+        selectedServer = 'Local Machine';
+      }
     }
 
     void doSubmit(BuildContext ctx) async {
@@ -555,18 +560,7 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                                           if (chat.currentSession?.id == sess.id) return;
                                           chat.selectSession(sess);
                                           _loadRecentQuestionsForSession(sess.id);
-                                          if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                            if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                              if (serverProvider.selectedServer?.id != 'local') {
-                                                serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                              }
-                                            } else {
-                                              final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                              if (matches.isNotEmpty && serverProvider.selectedServer?.id != matches.first.id) {
-                                                serverProvider.selectServer(matches.first);
-                                              }
-                                            }
-                                          }
+                                          serverProvider.selectServerByTarget(sess.targetServer);
                                         },
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -808,6 +802,7 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                                                 widget.onSessionSelected?.call();
                                                 if (sess.id != chat.currentSession?.id) {
                                                   chat.selectSession(sess);
+                                                  serverProvider.selectServerByTarget(sess.targetServer);
                                                 }
                                               },
                                               onCopy: () {
@@ -819,16 +814,7 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                                                 if (sess.id != chat.currentSession?.id) {
                                                   await chat.selectSession(sess);
                                                 }
-                                                if (sess.targetServer != null && sess.targetServer!.isNotEmpty) {
-                                                  if (sess.targetServer == 'Local Machine' || sess.targetServer == 'Local' || sess.targetServer == '127.0.0.1') {
-                                                    serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
-                                                  } else {
-                                                    final matches = serverProvider.servers.where((s) => s.name == sess.targetServer || s.id == sess.targetServer || s.serverIp == sess.targetServer);
-                                                    if (matches.isNotEmpty) {
-                                                      serverProvider.selectServer(matches.first);
-                                                    }
-                                                  }
-                                                }
+                                                await serverProvider.selectServerByTarget(sess.targetServer);
                                                 chat.sendMessage(
                                                   q,
                                                   model: serverProvider.currentAiModel,
