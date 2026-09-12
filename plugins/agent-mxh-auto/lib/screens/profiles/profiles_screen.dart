@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/persona_service.dart';
 import '../../core/services/socks5_proxy_service.dart';
@@ -148,6 +149,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     bool isLoadingAvds = true;
     bool didFetchAvds = false;
     bool hasPersonaAvd = false;
+    bool isCreatingPersonaAvd = false;
+    bool isImportingPersonaAvd = false;
     bool isDeletingPersonaAvd = false;
     bool isSaving = false;
 
@@ -847,6 +850,173 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                             Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
+                                                if (!hasPersonaAvd) ...[
+                                                  // NÚT TẠO MỚI (chỉ hiện khi chưa có máy ảo)
+                                                  InkWell(
+                                                    onTap: (isCreatingPersonaAvd || isImportingPersonaAvd || isDeletingPersonaAvd)
+                                                        ? null
+                                                        : () async {
+                                                            setDialogState(() {
+                                                              isCreatingPersonaAvd = true;
+                                                            });
+                                                            try {
+                                                              AppToast.info(dialogCtx, 'Đang tạo máy ảo AVD độc lập cho IP ${persona.ip}...');
+                                                              final createdAvd = await _socks5Service.createPersonaDeviceAvd(
+                                                                ip: persona.ip,
+                                                                baseAvd: selectedAvd ?? persona.avdName,
+                                                              );
+                                                              final currentP = _personas[persona.ip] ?? persona;
+                                                              final updated = currentP.copyWith(avdName: createdAvd);
+                                                              await _personaService.updatePersona(updated);
+                                                              final freshAvds = await _socks5Service.getAvailableAvds();
+                                                              if (mounted) {
+                                                                setState(() {
+                                                                  _personas[persona.ip] = updated;
+                                                                  _availableAvds = freshAvds.toSet();
+                                                                });
+                                                              }
+                                                              if (dialogCtx.mounted) {
+                                                                setDialogState(() {
+                                                                  availableAvds = freshAvds;
+                                                                  selectedAvd = createdAvd;
+                                                                  hasPersonaAvd = true;
+                                                                });
+                                                                AppToast.success(dialogCtx, 'Đã tạo máy ảo AVD thành công: $createdAvd');
+                                                              }
+                                                            } catch (e) {
+                                                              if (dialogCtx.mounted) {
+                                                                AppToast.error(dialogCtx, 'Lỗi tạo máy ảo: $e');
+                                                              }
+                                                            } finally {
+                                                              if (dialogCtx.mounted) {
+                                                                setDialogState(() {
+                                                                  isCreatingPersonaAvd = false;
+                                                                });
+                                                              }
+                                                            }
+                                                          },
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          if (isCreatingPersonaAvd)
+                                                            const SizedBox(
+                                                              width: 10,
+                                                              height: 10,
+                                                              child: CircularProgressIndicator(strokeWidth: 1.2, color: AppColors.accent),
+                                                            )
+                                                          else
+                                                            const Icon(Icons.add_circle_outline_rounded, size: 12, color: AppColors.accent),
+                                                          const SizedBox(width: 3),
+                                                          Text(
+                                                            isCreatingPersonaAvd ? 'Đang tạo...' : 'Tạo mới',
+                                                            style: const TextStyle(fontSize: 11, color: AppColors.accent, fontWeight: FontWeight.bold),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+
+                                                  // NÚT IMPORT (chỉ hiện khi chưa có máy ảo)
+                                                  InkWell(
+                                                    onTap: (isCreatingPersonaAvd || isImportingPersonaAvd || isDeletingPersonaAvd)
+                                                        ? null
+                                                        : () async {
+                                                            String? chosenPath;
+                                                            try {
+                                                              const defaultBackupDir = '/home/yenai/Documents/Devices bk';
+                                                              final initialDir = Directory(defaultBackupDir).existsSync() ? defaultBackupDir : null;
+                                                              final res = await FilePicker.platform.pickFiles(
+                                                                dialogTitle: 'Chọn file backup máy ảo Android (.tar.gz, .zip)',
+                                                                initialDirectory: initialDir,
+                                                                type: FileType.custom,
+                                                                allowedExtensions: ['tar.gz', 'gz', 'tgz', 'zip', 'tar'],
+                                                              );
+                                                              if (res != null && res.files.single.path != null) {
+                                                                chosenPath = res.files.single.path;
+                                                              }
+                                                            } catch (e) {
+                                                              if (dialogCtx.mounted) {
+                                                                AppToast.error(dialogCtx, 'Không thể mở trình chọn file: $e');
+                                                              }
+                                                              return;
+                                                            }
+
+                                                            if (chosenPath == null) {
+                                                              if (dialogCtx.mounted) {
+                                                                AppToast.warning(dialogCtx, 'Chưa chọn file backup để import');
+                                                              }
+                                                              return;
+                                                            }
+
+                                                            setDialogState(() {
+                                                              isImportingPersonaAvd = true;
+                                                            });
+                                                            try {
+                                                              if (dialogCtx.mounted) {
+                                                                AppToast.info(dialogCtx, 'Đang giải nén backup và nạp ứng dụng (Facebook, TikTok)...');
+                                                              }
+                                                              final importedAvd = await _socks5Service.importPersonaDeviceBackup(
+                                                                ip: persona.ip,
+                                                                archivePath: chosenPath,
+                                                              );
+                                                              final currentP = _personas[persona.ip] ?? persona;
+                                                              final updated = currentP.copyWith(avdName: importedAvd);
+                                                              await _personaService.updatePersona(updated);
+                                                              final freshAvds = await _socks5Service.getAvailableAvds();
+                                                              if (mounted) {
+                                                                setState(() {
+                                                                  _personas[persona.ip] = updated;
+                                                                  _availableAvds = freshAvds.toSet();
+                                                                });
+                                                              }
+                                                              if (dialogCtx.mounted) {
+                                                                setDialogState(() {
+                                                                  availableAvds = freshAvds;
+                                                                  selectedAvd = importedAvd;
+                                                                  hasPersonaAvd = true;
+                                                                });
+                                                                AppToast.success(dialogCtx, 'Import backup thành công! Đã nạp đầy đủ app cho $importedAvd');
+                                                              }
+                                                            } catch (e) {
+                                                              if (dialogCtx.mounted) {
+                                                                AppToast.error(dialogCtx, 'Lỗi import backup: $e');
+                                                              }
+                                                            } finally {
+                                                              if (dialogCtx.mounted) {
+                                                                setDialogState(() {
+                                                                  isImportingPersonaAvd = false;
+                                                                });
+                                                              }
+                                                            }
+                                                          },
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          if (isImportingPersonaAvd)
+                                                            const SizedBox(
+                                                              width: 10,
+                                                              height: 10,
+                                                              child: CircularProgressIndicator(strokeWidth: 1.2, color: AppColors.primaryLight),
+                                                            )
+                                                          else
+                                                            const Icon(Icons.cloud_download_rounded, size: 12, color: AppColors.primaryLight),
+                                                          const SizedBox(width: 3),
+                                                          Text(
+                                                            isImportingPersonaAvd ? 'Đang nạp...' : 'Import',
+                                                            style: const TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ] else ...[
                                                 // NÚT XÓA
                                                 InkWell(
                                                   onTap: (selectedAvd == null || isDeletingPersonaAvd)
@@ -890,8 +1060,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                             }
 
                                                             if (dialogCtx.mounted) {
-                                                              final personaClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
-                                                              setDialogState(() {
                                                               setDialogState(() {
                                                                 availableAvds = freshAvds;
                                                                 selectedAvd = null;
@@ -941,7 +1109,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                       ],
                                                     ),
                                                   ),
-                                                ),
+                                                 ),
+                                                ],
                                               ],
                                             ),
                                           ],

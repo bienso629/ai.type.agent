@@ -1012,59 +1012,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // GROUP 2: LOGO & BRANDING CUSTOMIZATION
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.image_rounded, size: 20, color: AppColors.accentCyan),
-                            SizedBox(width: 10),
-                            Text(
-                              '2. Nhận Diện Thương Hiệu (Logo Ứng Dụng)',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 24),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Logo Preview
-                            Container(
-                              width: 80,
-                              height: 80,
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: AppColors.inputBg,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.borderDark),
+                  // GROUP 2: LOGO & BRANDING CUSTOMIZATION (CHỈ DÀNH CHO ADMIN)
+                  if (auth.isAdmin) ...[
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.borderDark),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.image_rounded, size: 20, color: AppColors.accentCyan),
+                              SizedBox(width: 10),
+                              Text(
+                                '2. Nhận Diện Thương Hiệu (Logo Ứng Dụng)',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                               ),
-                              child: const AppLogoWidget(
-                                width: 72,
-                                height: 72,
-                                borderRadius: 6,
+                            ],
+                          ),
+                          const Divider(height: 24),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Logo Preview
+                              Container(
+                                width: 80,
+                                height: 80,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.inputBg,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.borderDark),
+                                ),
+                                child: const AppLogoWidget(
+                                  width: 72,
+                                  height: 72,
+                                  borderRadius: 6,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 18),
-                            // Description and Action
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Bấm nút "Tải Logo Lên" để chọn ảnh từ máy tính (PNG, JPG, WEBP, SVG). Logo mới sẽ được tự động đồng bộ ngay lập tức trên thanh Menu Sidebar, màn hình Đăng nhập, Avatar trợ lý AI và báo cáo PDF.',
-                                    style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.5),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  if (auth.isAdmin)
+                              const SizedBox(width: 18),
+                              // Description and Action
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Bấm nút "Tải Logo Lên" để chọn ảnh từ máy tính (PNG, JPG, WEBP, SVG). Logo mới sẽ được tự động đồng bộ ngay lập tức trên thanh Menu Sidebar, màn hình Đăng nhập, Avatar trợ lý AI và báo cáo PDF.',
+                                      style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.5),
+                                    ),
+                                    const SizedBox(height: 12),
                                     Row(
                                       children: [
                                         ElevatedButton.icon(
@@ -1094,44 +1094,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           ),
                                         ],
                                       ],
-                                    )
-                                   else
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.warning.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                                      ),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.lock_rounded, size: 14, color: AppColors.warning),
-                                          SizedBox(width: 6),
-                                          Text(
-                                            'Chỉ Admin đầu tiên mới có quyền thay đổi logo thương hiệu.',
-                                            style: TextStyle(fontSize: 11.5, color: AppColors.warning),
-                                          ),
-                                        ],
-                                      ),
                                     ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        const Divider(height: 1),
-                        const SizedBox(height: 16),
-                        // Sub-section: Text Branding Titles
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Tiêu Đề Thương Hiệu & Tên Hiển Thị Ứng Dụng',
-                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                            ),
-                            if (auth.isAdmin)
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          const Divider(height: 1),
+                          const SizedBox(height: 16),
+                          // Sub-section: Text Branding Titles
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Tiêu Đề Thương Hiệu & Tên Hiển Thị Ứng Dụng',
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                              ),
                               Row(
                                 children: [
                                   OutlinedButton.icon(
@@ -1160,92 +1139,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ],
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Tiêu đề chính Menu ("AI Agent")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _brandTitleCtrl,
-                                    enabled: auth.isAdmin,
-                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                                    decoration: InputDecoration(
-                                      hintText: 'AI Agent',
-                                      filled: true,
-                                      fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              flex: 4,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Phụ đề Menu ("AI AGENT CHATBOT")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _brandSubtitleCtrl,
-                                    enabled: auth.isAdmin,
-                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                                    decoration: InputDecoration(
-                                      hintText: 'AI AGENT CHATBOT',
-                                      filled: true,
-                                      fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              flex: 4,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Tiêu đề cửa sổ ứng dụng (Title)', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _appTitleCtrl,
-                                    enabled: auth.isAdmin,
-                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                                    decoration: InputDecoration(
-                                      hintText: 'AI Agent Chatbot',
-                                      filled: true,
-                                      fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (!auth.isAdmin) ...[
-                          const SizedBox(height: 10),
-                          const Row(
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
                             children: [
-                              Icon(Icons.lock_rounded, size: 13, color: AppColors.warning),
-                              SizedBox(width: 6),
-                              Text(
-                                'Chỉ Admin đầu tiên mới có quyền đổi các tiêu đề thương hiệu này.',
-                                style: TextStyle(fontSize: 11, color: AppColors.warning),
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Tiêu đề chính Menu ("AI Agent")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _brandTitleCtrl,
+                                      enabled: auth.isAdmin,
+                                      style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
+                                      decoration: InputDecoration(
+                                        hintText: 'AI Agent',
+                                        filled: true,
+                                        fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                flex: 4,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Phụ đề Menu ("AI AGENT CHATBOT")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _brandSubtitleCtrl,
+                                      enabled: auth.isAdmin,
+                                      style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
+                                      decoration: InputDecoration(
+                                        hintText: 'AI AGENT CHATBOT',
+                                        filled: true,
+                                        fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                flex: 4,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Tiêu đề cửa sổ ứng dụng (Title)', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _appTitleCtrl,
+                                      enabled: auth.isAdmin,
+                                      style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
+                                      decoration: InputDecoration(
+                                        hintText: 'AI Agent Chatbot',
+                                        filled: true,
+                                        fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
+                  ],
 
                   // GROUP 3: EDGE TTS VOICE CONFIGURATION (MỞ CHO TẤT CẢ NGƯỜI DÙNG)
                   Container(

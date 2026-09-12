@@ -1020,15 +1020,17 @@ for root, _, files in os.walk(target_dir):
     required String ip,
     String? baseAvd,
   }) async {
+    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
     String targetBase = baseAvd ?? '';
-    if (targetBase.isEmpty) {
+
+    if (targetBase.isEmpty || !Directory('$homeDir/.android/avd/$targetBase.avd').existsSync()) {
       final avds = await getAvailableAvds();
       if (avds.isEmpty) {
-        throw Exception('Hệ thống chưa có Android AVD gốc nào để nhân bản. Vui lòng tạo 1 AVD gốc trên Android Studio trước.');
+        throw Exception('Hệ thống chưa có Android AVD nào để làm mẫu nhân bản. Vui lòng import hoặc tạo một máy ảo trên Android Studio trước.');
       }
-      // Ưu tiên chọn base AVD không phải persona clone
+      // Ưu tiên chọn base AVD có sẵn thư mục hợp lệ trên đĩa
       targetBase = avds.firstWhere(
-        (a) => !a.contains('_persona_'),
+        (a) => Directory('$homeDir/.android/avd/$a.avd').existsSync(),
         orElse: () => avds.first,
       );
     }
@@ -1133,7 +1135,7 @@ for root, _, files in os.walk(target_dir):
   Future<String> _ensurePersonaCloneAvd(String baseAvd, String ip) async {
     final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final cloneAvdName = '${baseAvd}_persona_$sanitizedIp';
+    final cloneAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
 
     final baseAvdDir = Directory('$homeDir/.android/avd/$baseAvd.avd');
     final cloneAvdDir = Directory('$homeDir/.android/avd/$cloneAvdName.avd');
@@ -1145,18 +1147,27 @@ for root, _, files in os.walk(target_dir):
     }
 
     // 2. Tạo hoặc ghi đè file .ini trong ~/.android/avd/
-    if (!cloneIniFile.existsSync()) {
-      cloneIniFile.writeAsStringSync(
-        'avd.ini.encoding=UTF-8\n'
-        'path=${cloneAvdDir.path}\n'
-        'path.rel=avd/$cloneAvdName.avd\n'
-        'target=android-37.0\n',
-      );
-    }
+    cloneIniFile.writeAsStringSync(
+      'avd.ini.encoding=UTF-8\n'
+      'path=${cloneAvdDir.path}\n'
+      'path.rel=avd/$cloneAvdName.avd\n'
+      'target=android-37.0\n',
+    );
 
-    // 3. Sao chép các file cấu hình quan trọng từ baseAvd sang cloneAvd
+    // 3. Sao chép các file cấu hình và dữ liệu nền tảng từ baseAvd sang cloneAvd
     if (baseAvdDir.existsSync()) {
-      final configFiles = ['config.ini', 'user-settings.ini', 'emulator-user.ini', 'netsim.ini'];
+      final configFiles = [
+        'config.ini',
+        'user-settings.ini',
+        'emulator-user.ini',
+        'netsim.ini',
+        'AVD.conf',
+        'qemu-version.txt',
+        'version_num.cache',
+        'userdata-qemu.img',
+        'cache.img',
+        'encryptionkey.img',
+      ];
       for (final cfg in configFiles) {
         final src = File('${baseAvdDir.path}/$cfg');
         final dst = File('${cloneAvdDir.path}/$cfg');
@@ -1167,22 +1178,65 @@ for root, _, files in os.walk(target_dir):
         }
       }
 
-      // 4. Tạo QCOW2 overlay cho userdata nếu chưa có
-      final cloneUserdata = File('${cloneAvdDir.path}/userdata-qemu.img.qcow2');
-      final baseUserdata = File('${baseAvdDir.path}/userdata-qemu.img.qcow2');
-      if (!cloneUserdata.existsSync() && baseUserdata.existsSync()) {
-        final qemuImgBin = _findQemuImgExecutable();
-        if (qemuImgBin != null) {
-          await Process.run(qemuImgBin, [
-            'create',
-            '-f',
-            'qcow2',
-            '-b',
-            baseUserdata.path,
-            '-F',
-            'qcow2',
-            cloneUserdata.path,
-          ]);
+      // 4. Tạo QCOW2 overlay độc lập cho userdata, cache và encryptionkey
+      final qemuImgBin = _findQemuImgExecutable();
+      if (qemuImgBin != null) {
+        // Userdata: Nếu base có userdata-qemu.img.qcow2 thì tạo overlay từ file đó, nếu không thì từ userdata-qemu.img
+        final cloneUserdata = File('${cloneAvdDir.path}/userdata-qemu.img.qcow2');
+        if (!cloneUserdata.existsSync()) {
+          final baseUserdataQcow = File('${baseAvdDir.path}/userdata-qemu.img.qcow2');
+          final baseUserdataRaw = File('${cloneAvdDir.path}/userdata-qemu.img');
+          final backingPath = baseUserdataQcow.existsSync() ? baseUserdataQcow.path : (baseUserdataRaw.existsSync() ? baseUserdataRaw.path : null);
+          if (backingPath != null) {
+            try {
+              await Process.run(qemuImgBin, [
+                'create',
+                '-f',
+                'qcow2',
+                '-b',
+                backingPath,
+                '-F',
+                'qcow2',
+                cloneUserdata.path,
+              ]);
+            } catch (_) {}
+          }
+        }
+
+        // Cache overlay
+        final cloneCache = File('${cloneAvdDir.path}/cache.img.qcow2');
+        final baseCacheRaw = File('${cloneAvdDir.path}/cache.img');
+        if (!cloneCache.existsSync() && baseCacheRaw.existsSync()) {
+          try {
+            await Process.run(qemuImgBin, [
+              'create',
+              '-f',
+              'qcow2',
+              '-b',
+              'cache.img',
+              '-F',
+              'raw',
+              cloneCache.path,
+            ]);
+          } catch (_) {}
+        }
+
+        // Encryption key overlay
+        final cloneEnc = File('${cloneAvdDir.path}/encryptionkey.img.qcow2');
+        final baseEncRaw = File('${cloneAvdDir.path}/encryptionkey.img');
+        if (!cloneEnc.existsSync() && baseEncRaw.existsSync()) {
+          try {
+            await Process.run(qemuImgBin, [
+              'create',
+              '-f',
+              'qcow2',
+              '-b',
+              'encryptionkey.img',
+              '-F',
+              'raw',
+              cloneEnc.path,
+            ]);
+          } catch (_) {}
         }
       }
     }
@@ -1190,7 +1244,7 @@ for root, _, files in os.walk(target_dir):
     // Dọn dẹp lock file cũ nếu có trong thư mục clone
     try {
       for (final f in cloneAvdDir.listSync()) {
-        if (f.path.endsWith('.lock')) {
+        if (f.path.endsWith('.lock') || f.path.endsWith('multiinstance.lock')) {
           try {
             f.deleteSync();
           } catch (_) {}
