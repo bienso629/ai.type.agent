@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
-import '../../core/widgets/model_picker_dialog.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
@@ -34,6 +33,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isRightSidebarOpen = true;
   List<PersonaProfile> _selectedPersonasScope = [];
   final List<AttachmentItem> _attachedFiles = [];
+  bool _isDeviceExecutionMode = false; // false: Trình duyệt (Browser), true: Thiết bị (Device/AVD)
 
   int _inputCharCount = 0;
   static const int _maxInputChars = 100000;
@@ -375,14 +375,25 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     String? scopePayload;
+    final buffer = StringBuffer();
     if (_selectedPersonasScope.isNotEmpty) {
-      final buffer = StringBuffer();
       buffer.writeln('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH (SCOPE PERSONAS) ===');
       for (final p in _selectedPersonasScope) {
         buffer.writeln('- IP: ${p.ip} | Họ tên: ${p.name} | Tuổi: ${p.age} | Giới tính: ${p.gender} | Bio: ${p.bio}');
       }
-      scopePayload = buffer.toString().trim();
+      buffer.writeln();
     }
+
+    // Đính kèm chỉ thị môi trường thực thi được lựa chọn từ Switch ở Prompt bar
+    if (_isDeviceExecutionMode) {
+      buffer.writeln('[YÊU CẦU MÔI TRƯỜNG THỰC THI: THIẾT BỊ / DEVICE / AVD / ANDROID]');
+      buffer.writeln('- BẮT BUỘC thực hiện tác vụ trên thiết bị di động / máy ảo Android (sử dụng open_profile_device).');
+    } else {
+      buffer.writeln('[YÊU CẦU MÔI TRƯỜNG THỰC THI: TRÌNH DUYỆT / BROWSER]');
+      buffer.writeln('- BẮT BUỘC thực hiện tác vụ trên trình duyệt độc lập (sử dụng open_profile_browser).');
+    }
+
+    scopePayload = buffer.toString().trim();
 
     chat.sendMessage(
       text,
@@ -490,47 +501,6 @@ class _ChatScreenState extends State<ChatScreen> {
                             Text(
                               chat.currentSession?.title ?? 'Trợ lý MXH tự động',
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                            ),
-                            const SizedBox(width: 8),
-                            InkWell(
-                              borderRadius: BorderRadius.circular(4),
-                              onTap: () => ModelPickerDialog.show(context),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: AppColors.primary.withValues(alpha: 0.4),
-                                    width: 0.8,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.smart_toy_rounded, size: 10, color: AppColors.primaryLight),
-                                    const SizedBox(width: 4),
-                                    const Text(
-                                      'Model: ',
-                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                                    ),
-                                    Text(
-                                      serverProvider.currentAiModel,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.primaryLight,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 3),
-                                    const Icon(
-                                      Icons.keyboard_arrow_down_rounded,
-                                      size: 12,
-                                      color: AppColors.primaryLight,
-                                    ),
-                                  ],
-                                ),
-                              ),
                             ),
                           ],
                         ),
@@ -822,125 +792,200 @@ class _ChatScreenState extends State<ChatScreen> {
     required ServerProvider serverProvider,
   }) {
     final linkController = TextEditingController();
+    bool isDeviceMode = false; // false: Trình duyệt (Browser), true: Thiết bị (Device/AVD)
 
     showDialog(
       context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 460,
-        maxWidth: 540,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(actionIcon, color: actionColor, size: 20),
-            const SizedBox(width: 8),
-            Text('Nhập link video ($title)'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Nhập đường link video/livestream để các nhân vật trong scope thực hiện nhiệm vụ $title:',
-              style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              height: 38,
-              decoration: BoxDecoration(
-                color: AppColors.inputBg,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.borderDark, width: 1),
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setModalState) => TaduDialog(
+          minWidth: 460,
+          maxWidth: 540,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(actionIcon, color: actionColor, size: 20),
+              const SizedBox(width: 8),
+              Text('Nhập link video ($title)'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Nhập đường link video/livestream để các nhân vật trong scope thực hiện nhiệm vụ $title:',
+                style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(left: 10, right: 6),
-                    child: Icon(Icons.link_rounded, size: 16, color: AppColors.textDim),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: TextField(
-                        controller: linkController,
-                        autofocus: true,
-                        style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8),
-                          hintText: 'https://...',
-                          hintStyle: TextStyle(fontSize: 12, color: AppColors.textDim),
-                          fillColor: Colors.transparent,
-                          filled: false,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_selectedPersonasScope.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                height: 38,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
+                  color: AppColors.inputBg,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.borderDark, width: 1),
                 ),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Icon(Icons.people_alt_rounded, size: 13, color: AppColors.primaryLight),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Áp dụng cho ${_selectedPersonasScope.length} nhân vật đã chọn trong scope',
-                      style: const TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.w600),
+                    const Padding(
+                      padding: EdgeInsets.only(left: 10, right: 6),
+                      child: Icon(Icons.link_rounded, size: 16, color: AppColors.textDim),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: TextField(
+                          controller: linkController,
+                          autofocus: true,
+                          style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                            hintText: 'https://...',
+                            hintStyle: TextStyle(fontSize: 12, color: AppColors.textDim),
+                            fillColor: Colors.transparent,
+                            filled: false,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+
+              // Switch lựa chọn Trình duyệt hoặc Thiết bị (Device)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isDeviceMode
+                      ? Colors.purpleAccent.withValues(alpha: 0.1)
+                      : AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isDeviceMode
+                        ? Colors.purpleAccent.withValues(alpha: 0.3)
+                        : AppColors.primaryLight.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          isDeviceMode ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
+                          size: 18,
+                          color: isDeviceMode ? Colors.purpleAccent : AppColors.primaryLight,
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isDeviceMode ? 'Chạy trên Thiết bị (Device / AVD)' : 'Chạy trên Trình duyệt (Browser)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isDeviceMode ? Colors.purpleAccent : AppColors.primaryLight,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isDeviceMode
+                                  ? 'Kích hoạt máy ảo Android AVD hoặc thiết bị ngoại vi qua ADB'
+                                  : 'Khởi chạy Chrome profile riêng biệt theo IP của từng nhân vật',
+                              style: const TextStyle(fontSize: 10, color: AppColors.textDim),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 24,
+                      child: Switch(
+                        value: isDeviceMode,
+                        activeThumbColor: Colors.purpleAccent,
+                        activeTrackColor: Colors.purpleAccent.withValues(alpha: 0.3),
+                        inactiveThumbColor: AppColors.primaryLight,
+                        inactiveTrackColor: AppColors.primary.withValues(alpha: 0.3),
+                        onChanged: (val) {
+                          setModalState(() {
+                            isDeviceMode = val;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (_selectedPersonasScope.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.people_alt_rounded, size: 13, color: AppColors.primaryLight),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Áp dụng cho ${_selectedPersonasScope.length} nhân vật đã chọn trong scope',
+                        style: const TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final rawLink = linkController.text.trim();
+                if (rawLink.isEmpty) {
+                  AppToast.warning(context, 'Vui lòng nhập đường link video!');
+                  return;
+                }
+                Navigator.pop(ctx);
+
+                String? scopePayload;
+                if (_selectedPersonasScope.isNotEmpty) {
+                  final buffer = StringBuffer();
+                  buffer.writeln('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH (SCOPE PERSONAS) ===');
+                  for (final p in _selectedPersonasScope) {
+                    buffer.writeln('- IP: ${p.ip} | Họ tên: ${p.name} | Tuổi: ${p.age} | Giới tính: ${p.gender} | Bio: ${p.bio}');
+                  }
+                  scopePayload = buffer.toString().trim();
+                }
+
+                final targetPlatformPrompt = isDeviceMode
+                    ? '[MÔI TRƯỜNG: THIẾT BỊ/DEVICE/AVD] Hãy thực hiện trên thiết bị điện thoại/máy ảo Android của các nhân vật.'
+                    : '[MÔI TRƯỜNG: TRÌNH DUYỆT/BROWSER] Hãy thực hiện trên trình duyệt của các nhân vật.';
+
+                final fullMessage = '$baseInstruction\n$targetPlatformPrompt\nLink: $rawLink';
+                chat.sendMessage(
+                  fullMessage,
+                  model: serverProvider.currentAiModel,
+                  workingDir: scopePayload,
+                );
+                _safeScrollToBottom();
+              },
+              child: const Text('Xác nhận & Chạy'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final rawLink = linkController.text.trim();
-              if (rawLink.isEmpty) {
-                AppToast.warning(context, 'Vui lòng nhập đường link video!');
-                return;
-              }
-              Navigator.pop(ctx);
-
-              String? scopePayload;
-              if (_selectedPersonasScope.isNotEmpty) {
-                final buffer = StringBuffer();
-                buffer.writeln('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH (SCOPE PERSONAS) ===');
-                for (final p in _selectedPersonasScope) {
-                  buffer.writeln('- IP: ${p.ip} | Họ tên: ${p.name} | Tuổi: ${p.age} | Giới tính: ${p.gender} | Bio: ${p.bio}');
-                }
-                scopePayload = buffer.toString().trim();
-              }
-
-              final fullMessage = '$baseInstruction:\n$rawLink';
-              chat.sendMessage(
-                fullMessage,
-                model: serverProvider.currentAiModel,
-                workingDir: scopePayload,
-              );
-              _safeScrollToBottom();
-            },
-            child: const Text('Xác nhận & Chạy'),
-          ),
-        ],
       ),
     );
   }
@@ -1042,7 +1087,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Wrap(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 120),
+                      child: SingleChildScrollView(
+                        child: Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: _selectedPersonasScope.map((p) {
@@ -1055,22 +1103,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              CircleAvatar(
-                                radius: 11,
-                                backgroundColor: p.gender.toLowerCase() == 'nữ'
-                                    ? Colors.pinkAccent.withValues(alpha: 0.3)
-                                    : AppColors.accentCyan.withValues(alpha: 0.3),
-                                child: Text(
-                                  p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: p.gender.toLowerCase() == 'nữ'
-                                        ? Colors.pinkAccent
-                                        : AppColors.accentCyan,
-                                  ),
-                                ),
-                              ),
+                              _buildPersonaAvatar(p, radius: 11, fontSize: 10),
                               const SizedBox(width: 7),
                               Text(
                                 p.name,
@@ -1090,9 +1123,11 @@ class _ChatScreenState extends State<ChatScreen> {
                         );
                       }).toList(),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
+            ),
+          ),
             ],
             if (_attachedFiles.isNotEmpty) ...[
               Padding(
@@ -1259,49 +1294,55 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       onPressed: _pickFiles,
                     ),
-                    const SizedBox(width: 8),
-                    // Nút chọn AI Model trực tiếp tại thanh nhập
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(
-                          color: AppColors.primaryLight,
-                          width: 0.8,
-                        ),
-                        backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      ),
-                      icon: const Icon(
-                        Icons.smart_toy_rounded,
-                        size: 14,
-                        color: AppColors.primaryLight,
-                      ),
-                      label: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 160),
-                            child: Text(
-                              serverProvider.currentAiModel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryLight,
+                    const SizedBox(width: 10),
+
+                    // Switch chuyển đổi Trình duyệt / Device (không border, chữ bên phải switch)
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _isDeviceExecutionMode = !_isDeviceExecutionMode;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        color: Colors.transparent,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              height: 18,
+                              child: Switch(
+                                value: _isDeviceExecutionMode,
+                                activeThumbColor: Colors.purpleAccent,
+                                activeTrackColor: Colors.purpleAccent.withValues(alpha: 0.3),
+                                inactiveThumbColor: AppColors.primaryLight,
+                                inactiveTrackColor: AppColors.primary.withValues(alpha: 0.3),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _isDeviceExecutionMode = val;
+                                  });
+                                },
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.arrow_drop_down_rounded,
-                            size: 14,
-                            color: AppColors.primaryLight,
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Icon(
+                              _isDeviceExecutionMode ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
+                              size: 14,
+                              color: _isDeviceExecutionMode ? Colors.purpleAccent : AppColors.primaryLight,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _isDeviceExecutionMode ? 'Thiết bị' : 'Trình duyệt',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _isDeviceExecutionMode ? Colors.purpleAccent : AppColors.primaryLight,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      onPressed: () => ModelPickerDialog.show(context),
                     ),
                   ],
                 ),
@@ -1606,6 +1647,52 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
+  static Widget _buildPersonaAvatar(PersonaProfile p, {required double radius, required double fontSize}) {
+    final hasImg = p.avatarUrl != null && p.avatarUrl!.trim().isNotEmpty;
+    final isFemale = p.gender.toLowerCase() == 'nữ';
+    final fallbackColor = isFemale ? Colors.pinkAccent : AppColors.accentCyan;
+
+    Widget fallbackWidget() {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: fallbackColor.withValues(alpha: 0.25),
+        child: Text(
+          p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+            color: fallbackColor,
+          ),
+        ),
+      );
+    }
+
+    if (!hasImg) return fallbackWidget();
+
+    final avatarPath = p.avatarUrl!.trim();
+    final isNetwork = avatarPath.startsWith('http://') || avatarPath.startsWith('https://');
+
+    return ClipOval(
+      child: SizedBox(
+        width: radius * 2,
+        height: radius * 2,
+        child: isNetwork
+            ? Image.network(
+                avatarPath,
+                key: ValueKey(avatarPath),
+                fit: BoxFit.cover,
+                errorBuilder: (ctx, err, stack) => fallbackWidget(),
+              )
+            : Image.file(
+                File(avatarPath),
+                key: ValueKey(avatarPath),
+                fit: BoxFit.cover,
+                errorBuilder: (ctx, err, stack) => fallbackWidget(),
+              ),
+      ),
+    );
+  }
 }
 
 class _ScopePickerDialog extends StatefulWidget {
@@ -1630,12 +1717,11 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
 
   int _currentPage = 1;
   static const int _pageSize = 10;
-  static const int _maxSelection = 10;
 
   @override
   void initState() {
     super.initState();
-    final initialIps = widget.selectedPersonas.map((p) => p.ip).take(_maxSelection);
+    final initialIps = widget.selectedPersonas.map((p) => p.ip);
     _selectedIps.addAll(initialIps);
     _loadPersonas();
   }
@@ -1673,10 +1759,15 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
       if (_selectedIps.contains(p.ip)) {
         _selectedIps.remove(p.ip);
       } else {
-        if (_selectedIps.length >= _maxSelection) {
-          AppToast.warning(context, 'Chỉ được chọn tối đa $_maxSelection nhân vật cùng lúc!');
-          return;
-        }
+        _selectedIps.add(p.ip);
+      }
+    });
+  }
+
+  void _selectAllFiltered() {
+    final filtered = _filteredPersonas;
+    setState(() {
+      for (final p in filtered) {
         _selectedIps.add(p.ip);
       }
     });
@@ -1691,10 +1782,6 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
 
     setState(() {
       for (final p in pageItems) {
-        if (_selectedIps.length >= _maxSelection) {
-          AppToast.warning(context, 'Đã đạt giới hạn tối đa $_maxSelection nhân vật!');
-          break;
-        }
         _selectedIps.add(p.ip);
       }
     });
@@ -1738,7 +1825,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Chọn tối đa 10 nhân vật (persona profiles) để AI Agent quản lý và hành động trong hội thoại này:',
+              'Chọn các nhân vật (persona profiles) để AI Agent quản lý và hành động trong hội thoại này (không giới hạn số lượng):',
               style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
             ),
             const SizedBox(height: 12),
@@ -1802,19 +1889,38 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                 ),
                 const SizedBox(width: 8),
                 InkWell(
+                  onTap: _selectAllFiltered,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.5), width: 1),
+                    ),
+                    child: const Text(
+                      'Chọn tất cả',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                InkWell(
                   onTap: _selectPage,
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
                     height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
+                      color: AppColors.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.4), width: 1),
+                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3), width: 1),
                     ),
                     child: const Text(
-                      'Chọn trang này',
+                      'Chọn trang',
                       style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
                     ),
                   ),
@@ -1825,7 +1931,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
                     height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,
@@ -1882,22 +1988,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                                       activeColor: AppColors.primary,
                                       onChanged: (_) => _togglePersona(persona),
                                     ),
-                                    CircleAvatar(
-                                      radius: 16,
-                                      backgroundColor: persona.gender.toLowerCase() == 'nữ'
-                                          ? Colors.pinkAccent.withValues(alpha: 0.2)
-                                          : AppColors.accentCyan.withValues(alpha: 0.2),
-                                      child: Text(
-                                        persona.name.isNotEmpty ? persona.name[0].toUpperCase() : '?',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: persona.gender.toLowerCase() == 'nữ'
-                                              ? Colors.pinkAccent
-                                              : AppColors.accentCyan,
-                                        ),
-                                      ),
-                                    ),
+                                    _ChatScreenState._buildPersonaAvatar(persona, radius: 16, fontSize: 12),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
@@ -2063,7 +2154,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
             widget.onSelect(selected);
             Navigator.pop(context);
           },
-          child: Text('Áp dụng ($totalSelected/$_maxSelection)'),
+          child: Text('Áp dụng ($totalSelected)'),
         ),
       ],
     );

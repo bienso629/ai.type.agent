@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp } from 'lucide-react'
+import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp, Globe } from 'lucide-react'
 
 export function UserProfileModal({
   isOpen,
@@ -15,6 +15,11 @@ export function UserProfileModal({
 }) {
   const { user, logout, refreshUser } = useAuth()
   const [refreshing, setRefreshing] = useState(false)
+
+  // State AstraFlow Cookies
+  const [astraLoading, setAstraLoading] = useState(false)
+  const [astraMsg, setAstraMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [cookieCopied, setCookieCopied] = useState(false)
 
   // State đổi mật khẩu
   const [showChangePassword, setShowChangePassword] = useState(false)
@@ -93,9 +98,16 @@ export function UserProfileModal({
               )}
             </div>
             <div>
-              <h3 className="font-display text-base font-bold text-foreground">
-                {user.name || 'Người dùng Mì Tôm AI'}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-display text-base font-bold text-foreground">
+                  {user.name || 'Người dùng Mì Tôm AI'}
+                </h3>
+                {user.role === 'admin' && (
+                  <span className="rounded bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-400">
+                    ADMIN
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">{user.email}</p>
             </div>
           </div>
@@ -158,6 +170,104 @@ export function UserProfileModal({
               Base URL tích hợp hệ thống: <code className="text-primary font-mono font-bold">https://api-vn-sg.mitom.ai/v1</code>
             </p>
           </div>
+
+          {/* Khu vực Đăng nhập & Đồng bộ Cookie AstraFlow (Chỉ dành cho Admin) */}
+          {user.role === 'admin' && (
+            <div className="rounded-xl border border-border bg-secondary/40 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <Globe size={15} className="text-primary" />
+                <span>Đồng bộ Cookies AstraFlow</span>
+              </div>
+              <span className="text-[11px] text-muted-foreground font-mono">passport.scloudsg.com</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Bấm để mở trình duyệt đăng nhập tài khoản tại <code className="text-primary font-mono">https://passport.scloudsg.com/</code>. Hệ thống sẽ tự động bắt và làm mới toàn bộ cookies vào tệp hệ thống.
+            </p>
+
+            {astraMsg && (
+              <div
+                className={`rounded-lg p-3 text-xs ${
+                  astraMsg.type === 'success'
+                    ? 'border border-emerald/30 bg-emerald/10 text-emerald'
+                    : 'border border-rose-500/30 bg-rose-500/10 text-rose-300'
+                }`}
+              >
+                {astraMsg.text}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={astraLoading}
+                onClick={async () => {
+                  setAstraLoading(true)
+                  setAstraMsg(null)
+                  try {
+                    const res = await fetch('/api/astraflow', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ mode: 'window' }),
+                    })
+                    const data = await res.json()
+                    if (data.success) {
+                      setAstraMsg({
+                        type: 'success',
+                        text: data.message || 'Đã mở cửa sổ đăng nhập Chrome tại https://passport.scloudsg.com/.',
+                      })
+                    } else {
+                      setAstraMsg({
+                        type: 'error',
+                        text: data.error || 'Lỗi khi kích hoạt cửa sổ đăng nhập.',
+                      })
+                    }
+                  } catch (e: any) {
+                    setAstraMsg({ type: 'error', text: e.message || 'Lỗi kết nối máy chủ.' })
+                  } finally {
+                    setAstraLoading(false)
+                  }
+                }}
+                className="glow-button flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+              >
+                {astraLoading ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                    Đang kích hoạt...
+                  </span>
+                ) : (
+                  <>
+                    <ExternalLink size={14} />
+                    <span>Đăng nhập AstraFlow</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/astraflow')
+                    const data = await res.json()
+                    if (data.success && data.hasCookies && data.cookieHeader) {
+                      await navigator.clipboard.writeText(data.cookieHeader)
+                      setCookieCopied(true)
+                      setTimeout(() => setCookieCopied(false), 2500)
+                    } else {
+                      setAstraMsg({ type: 'error', text: 'Chưa có dữ liệu cookies để sao chép.' })
+                    }
+                  } catch {
+                    setAstraMsg({ type: 'error', text: 'Không thể truy xuất cookies.' })
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/80 px-3 py-2 text-xs font-semibold text-foreground hover:border-primary/50 transition-colors cursor-pointer"
+              >
+                {cookieCopied ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
+                <span>{cookieCopied ? 'Đã sao chép Cookie!' : 'Sao chép Cookie Header'}</span>
+              </button>
+            </div>
+          </div>
+          )}
 
           {/* Khu vực Đổi mật khẩu */}
           <div className="rounded-xl border border-border bg-secondary/30 overflow-hidden">

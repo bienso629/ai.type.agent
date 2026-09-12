@@ -875,7 +875,7 @@ function OrderLookupModal({
 
 export function FrontendApp({
   models = ALL_MODELS,
-  adminRoute = '/admin',
+  adminRoute = '/101',
 }: {
   models?: ApiModel[]
   adminRoute?: string
@@ -997,10 +997,21 @@ export function FrontendApp({
           </nav>
           <div className="flex items-center gap-3">
             {user ? (
-              <button
-                onClick={() => setIsProfileOpen(true)}
-                className="flex items-center gap-2 rounded-lg border border-border bg-secondary/60 px-3.5 py-2 text-xs font-bold text-foreground transition-all hover:border-primary/50"
-              >
+              <div className="flex items-center gap-2">
+                {user.role === 'admin' && (
+                  <button
+                    onClick={() => setIsProfileOpen(true)}
+                    className="hidden sm:flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/20 transition-all cursor-pointer"
+                    title="Mở bảng điều khiển Admin & Đồng bộ Cookie AstraFlow"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span>AstraFlow Cookie</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsProfileOpen(true)}
+                  className="flex items-center gap-2 rounded-lg border border-border bg-secondary/60 px-3.5 py-2 text-xs font-bold text-foreground transition-all hover:border-primary/50"
+                >
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[11px] text-primary overflow-hidden font-mono font-bold">
                   {user.avatar ? (
                     <img src={user.avatar} alt="Avatar" className="h-full w-full object-cover" />
@@ -1013,6 +1024,7 @@ export function FrontendApp({
                   {user.balance.toLocaleString('vi-VN')}đ
                 </span>
               </button>
+              </div>
             ) : (
               <button
                 onClick={() => {

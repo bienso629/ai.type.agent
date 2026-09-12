@@ -31,11 +31,17 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
    - TUYỆT ĐỐI KHÔNG TỰ Ý KHỞI CHẠY THIẾT BỊ / MÁY ẢO ANDROID (`open_profile_device`).
    - BẠN CHỈ ĐƯỢC PHÉP mở thiết bị Android (`open_profile_device`) KHI VÀ CHỈ KHI người dùng có yêu cầu cụ thể bằng lời nói nhắc đến máy ảo, điện thoại, thiết bị, mobile, adb, avd hoặc giả lập (ví dụ: "chạy trên điện thoại", "mở máy ảo", "mở device", "chạy giả lập"). Nếu người dùng chỉ nói chung chung hoặc không nói gì về thiết bị, LUÔN LUÔN DÙNG TRÌNH DUYỆT.
 
-2. LẬP KẾ HOẠCH & ĐIỀU PHỐI LOCAL PROFILE:
+2. GIỚI HẠN TỐI ĐA 2 THIẾT BỊ / DEVICES CÙNG LÚC & ĐẢM BẢO HOÀN THÀNH MỚI ĐỔI THIẾT BỊ:
+   - Khi có bất kỳ yêu cầu tự động hóa nào trên thiết bị (Android / AVD / Mobile), BẮT BUỘC CHỈ ĐƯỢC PHÉP mở tối đa 2 thiết bị cùng lúc trên toàn hệ thống để chống treo máy.
+   - TUYỆT ĐỐI KHÔNG mở cùng lúc từ 3 thiết bị trở lên.
+   - VÌ MỖI LỆNH CHẠY AUTO CÓ THỂ KÉO DÀI RẤT LÂU: Bạn PHẢI đảm bảo tác vụ auto trên thiết bị đang chạy phải hoàn thành trọn vẹn 100% (hoặc có kết quả xác nhận) rồi mới đóng/tắt thiết bị đó bằng `close_profile_device`, sau đó mới mở thiết bị kế tiếp.
+   - Khi người dùng yêu cầu chạy 10, 50 hay 100 thiết bị: Bạn phải triển khai cơ chế hàng đợi xử lý tuần tự (mỗi đợt tối đa 2 thiết bị -> thực hiện xong auto -> đóng lại -> lấy thiết bị tiếp theo trong danh sách cho đến khi xử lý hết toàn bộ 100 thiết bị mà không bị sót).
+
+3. LẬP KẾ HOẠCH & ĐIỀU PHỐI LOCAL PROFILE:
    - Quản lý và tra cứu danh sách nhân vật/profile với IP và cấu hình riêng biệt.
    - Điều khiển mở trình duyệt với profile riêng để thực hiện các tác vụ tự động hóa như lướt bài, like, tương tác, xem video.
 
-3. TẬP TRUNG TÁC VỤ TỰ ĐỘNG HÓA MXH:
+4. TẬP TRUNG TÁC VỤ TỰ ĐỘNG HÓA MXH:
    - Sử dụng các công cụ nội bộ để tương tác trực tiếp với trình duyệt cục bộ.
    - BẮT BUỘC: Sau khi gọi hoặc thực thi bất kỳ công cụ (tool/function) nào, bạn PHẢI luôn luôn có câu trả lời bằng văn bản gửi cho người dùng để trình bày chi tiết kết quả, giải thích các bước đã thực hiện hoặc đưa ra phân tích tiếp theo. Tuyệt đối KHÔNG được kết thúc cuộc hội thoại trong im lặng hoặc trả về nội dung rỗng.''';
 
@@ -208,7 +214,7 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'type': 'function',
             'function': {
               'name': 'open_profile_device',
-              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho một hoặc nhiều nhân vật theo IP. QUY TẮC BẮT BUỘC: Phần mềm mặc định làm việc trên Trình duyệt (open_profile_browser). CHỈ ĐƯỢC GỌI công cụ này khi người dùng có yêu cầu cụ thể rõ ràng bằng lời nhắc đến thiết bị/máy ảo/điện thoại/AVD/mobile. Nếu người dùng chỉ yêu cầu chung chung thì LUÔN DÙNG open_profile_browser.',
+              'description': 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho nhân vật theo IP. QUY TẮC BẮT BUỘC: (1) Mặc định làm việc trên Trình duyệt, chỉ dùng thiết bị khi người dùng yêu cầu rõ ràng; (2) GIỚI HẠN TỐI ĐA 2 THIẾT BỊ MỞ CÙNG LÚC TRÊN TOÀN HỆ THỐNG ĐỂ TRÁNH TREO MÁY. Tuyệt đối không mở từ 3 thiết bị trở lên cùng lúc; (3) Với yêu cầu chạy nhiều thiết bị (kể cả 100 devices): Phải đảm bảo từng thiết bị chạy XONG XUÔI tác vụ auto rồi mới đóng bằng close_profile_device, sau đó mới mở thiết bị tiếp theo cho đến khi hoàn tất toàn bộ danh sách.',
               'parameters': {
                 'type': 'object',
                 'properties': {
@@ -608,6 +614,9 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     final List<String> devSuccessList = [];
                     final List<String> devFailList = [];
                     for (final tip in targetDevIps) {
+                      // Đảm bảo không bao giờ vượt quá 2 thiết bị chạy đồng thời trên máy
+                      await _socks5Service.ensureDeviceCapacity(maxConcurrent: 2, exemptIps: [tip]);
+
                       onStatus('Đang khởi chạy thiết bị cho IP: $tip...');
                       final success = await _socks5Service.launchDeviceWithSocks5(
                         server: activeServerDev,

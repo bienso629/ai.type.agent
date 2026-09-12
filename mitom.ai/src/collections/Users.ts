@@ -8,7 +8,20 @@ export const Users: CollectionConfig = {
   },
   auth: true,
   access: {
+    // Chỉ admin mới có quyền đăng nhập vào giao diện quản trị Payload CMS (/101)
+    admin: ({ req }) => req.user?.role === 'admin',
+    // Chỉ admin mới có thể tạo người dùng qua CMS
+    create: ({ req }) => req.user?.role === 'admin',
+    // Khách hàng có thể đọc thông tin cơ bản; admin đọc tất cả
     read: () => true,
+    // Chỉ admin mới có thể sửa tài khoản người khác; người dùng chỉ sửa chính mình (nếu đăng nhập)
+    update: ({ req, id }) => {
+      if (!req.user) return false
+      if (req.user.role === 'admin') return true
+      return req.user.id === id
+    },
+    // Chỉ admin mới có quyền xóa người dùng
+    delete: ({ req }) => req.user?.role === 'admin',
   },
   hooks: {
     afterChange: [
@@ -78,6 +91,9 @@ export const Users: CollectionConfig = {
       type: 'number',
       defaultValue: 0,
       label: 'Số dư tài khoản (VNĐ)',
+      access: {
+        update: ({ req }) => req.user?.role === 'admin',
+      },
     },
     {
       name: 'customerCode',
@@ -103,6 +119,9 @@ export const Users: CollectionConfig = {
         { label: 'Người dùng', value: 'user' },
       ],
       label: 'Vai trò',
+      access: {
+        update: ({ req }) => req.user?.role === 'admin',
+      },
     },
     {
       name: 'resetOtp',

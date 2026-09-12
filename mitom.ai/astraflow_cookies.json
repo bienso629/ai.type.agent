@@ -1,0 +1,40 @@
+{
+  "targetUrl": "https://astraflow.scloudsg.com",
+  "finalUrl": "https://astraflow.scloudsg.com/en-us",
+  "title": "AstraFlow",
+  "extractedAt": "2026-09-12T07:37:18.095Z",
+  "cookieCount": 3,
+  "cookieHeader": "das_session=5af2b0b5-f3ad-430c-9e4d-2f96b8424c72; _pk_id.21.ca32=90f8d0b71ddb20c5.1789198611.; _pk_ses.21.ca32=1",
+  "cookies": [
+    {
+      "name": "das_session",
+      "value": "5af2b0b5-f3ad-430c-9e4d-2f96b8424c72",
+      "domain": ".scloudsg.com",
+      "path": "/",
+      "expires": 1820734611,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_pk_id.21.ca32",
+      "value": "90f8d0b71ddb20c5.1789198611.",
+      "domain": "astraflow.scloudsg.com",
+      "path": "/",
+      "expires": 1823153811,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_pk_ses.21.ca32",
+      "value": "1",
+      "domain": "astraflow.scloudsg.com",
+      "path": "/",
+      "expires": 1789200411,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ]
+}

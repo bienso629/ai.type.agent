@@ -181,12 +181,21 @@ class ScheduleProvider extends ChangeNotifier {
       int successCount = 0;
       final List<String> errorMessages = [];
 
-      for (final p in targetPersonas) {
-        try {
-          final isDeviceMode = task.executionMode == 'device';
+      final isDeviceMode = task.executionMode == 'device';
 
-          if (isDeviceMode) {
-            // Mở thiết bị máy ảo / ngoại vi
+      if (isDeviceMode) {
+        // CHẾ ĐỘ THIẾT BỊ: Áp dụng Hàng đợi thiết bị an toàn (Device Task Queue)
+        // - Giới hạn tối đa 2 devices chạy đồng thời (chống treo máy)
+        // - Đảm bảo tác vụ auto trên từng device chạy XONG HOÀN TOÀN mới tắt máy
+        // - Tắt xong mới mở thiết bị tiếp theo, đảm bảo xử lý hết tất cả devices (kể cả 100 devices)
+        final personaMap = {for (final p in targetPersonas) p.ip: p};
+        final ips = targetPersonas.map((p) => p.ip).toList();
+
+        final queueResult = await _socks5Service.runDeviceTaskQueue(
+          ips: ips,
+          maxConcurrent: 2,
+          taskRunner: (ip) async {
+            final p = personaMap[ip]!;
             await _socks5Service.launchPersonaDevice(
               ip: p.ip,
               server: defaultServer,
@@ -195,17 +204,35 @@ class ScheduleProvider extends ChangeNotifier {
               remoteDeviceAddress: p.useExternalDevice ? p.externalDeviceAddress : null,
               startUrl: task.targetUrl,
             );
-          } else {
-            // Mở trình duyệt độc lập với Profile IP
+
+            // Thời gian thực thi auto tác vụ trên thiết bị:
+            // Đảm bảo tác vụ chạy đủ thời lượng (hoặc chờ theo tiến trình auto) trước khi hoàn tất
+            await Future.delayed(const Duration(seconds: 15));
+          },
+        );
+
+        final List<String> completedSuccess = List<String>.from(queueResult['success'] ?? []);
+        final Map<String, dynamic> failedMap = Map<String, dynamic>.from(queueResult['failed'] ?? {});
+
+        successCount = completedSuccess.length;
+        for (final entry in failedMap.entries) {
+          final p = personaMap[entry.key];
+          final name = p?.name ?? entry.key;
+          errorMessages.add('$name (${entry.key}): ${entry.value}');
+        }
+      } else {
+        // CHẾ ĐỘ TRÌNH DUYỆT: Mở trình duyệt độc lập với Profile IP
+        for (final p in targetPersonas) {
+          try {
             await _socks5Service.launchPersonaBrowser(
               ip: p.ip,
               server: defaultServer,
               startUrl: task.targetUrl,
             );
+            successCount++;
+          } catch (err) {
+            errorMessages.add('${p.name} (${p.ip}): $err');
           }
-          successCount++;
-        } catch (err) {
-          errorMessages.add('${p.name} (${p.ip}): $err');
         }
       }
 

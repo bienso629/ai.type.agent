@@ -7,7 +7,18 @@ export const Orders: CollectionConfig = {
     defaultColumns: ['orderCode', 'customerEmail', 'product', 'totalAmount', 'paymentStatus', 'fulfillmentStatus', 'createdAt'],
   },
   access: {
-    read: () => true,
+    read: ({ req }) => {
+      if (!req.user) return true
+      if (req.user.role === 'admin') return true
+      return {
+        customerEmail: {
+          equals: req.user.email,
+        },
+      }
+    },
+    create: () => true,
+    update: ({ req }) => req.user?.role === 'admin',
+    delete: ({ req }) => req.user?.role === 'admin',
   },
   fields: [
     {

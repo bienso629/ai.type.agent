@@ -8,6 +8,7 @@ export const SystemSettings: GlobalConfig = {
   },
   access: {
     read: () => true,
+    update: ({ req }) => req.user?.role === 'admin',
   },
   fields: [
     {
@@ -31,6 +32,15 @@ export const SystemSettings: GlobalConfig = {
       type: 'text',
       label: 'Hotline / Zalo hỗ trợ',
       defaultValue: '0908.888.888',
+    },
+    {
+      name: 'astraflowSync',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '/components/AstraFlowSyncField#AstraFlowSyncField',
+        },
+      },
     },
   ],
 }

@@ -7,7 +7,18 @@ export const Transactions: CollectionConfig = {
     defaultColumns: ['transactionId', 'order', 'amount', 'paymentMethod', 'status', 'createdAt'],
   },
   access: {
-    read: () => true,
+    read: ({ req }) => {
+      if (!req.user) return true
+      if (req.user.role === 'admin') return true
+      return {
+        user: {
+          equals: req.user.id,
+        },
+      }
+    },
+    create: () => true,
+    update: ({ req }) => req.user?.role === 'admin',
+    delete: ({ req }) => req.user?.role === 'admin',
   },
   fields: [
     {

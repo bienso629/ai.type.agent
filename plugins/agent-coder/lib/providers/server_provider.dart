@@ -232,6 +232,27 @@ class ServerProvider extends ChangeNotifier {
     }
   }
 
+  /// Tự động đồng bộ và chuyển sang server theo targetServer được lưu trong chat session
+  Future<bool> selectServerByTarget(String? targetServer) async {
+    final t = targetServer?.trim();
+    if (t == null || t.isEmpty || t == 'Local Machine' || t == 'Local' || t == 'localhost' || t == '127.0.0.1') {
+      if (_selectedServer != null) {
+        return await selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+      }
+      return true;
+    }
+
+    final matched = ServerModel.findMatchingServer(_servers, t);
+    if (matched != null) {
+      if (_selectedServer?.id != matched.id) {
+        return await selectServer(matched);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
   Future<bool> addOrUpdateServer(ServerModel server) async {
     try {
       final ok = await _api.updateServer(server);

@@ -131,6 +131,60 @@ class ServerModel {
       status: status ?? this.status,
     );
   }
+
+  /// Kiểm tra xem server có khớp với targetServer (tên, IP, ID, hoặc khớp tương đối) không
+  bool matchesTarget(String target) {
+    final t = target.trim().toLowerCase();
+    if (t.isEmpty) return false;
+    final n = name.trim().toLowerCase();
+    final ip = serverIp.trim().toLowerCase();
+    final sId = id.trim().toLowerCase();
+
+    // 1. Khớp chính xác
+    if (n == t || ip == t || sId == t) return true;
+
+    // 2. Khớp theo prefix hoặc tên tương đối (ví dụ 'Plesk' khớp 'Plesk (Free)')
+    if (n.startsWith(t) || t.startsWith(n)) return true;
+    if (n.contains(t) || t.contains(n)) return true;
+
+    return false;
+  }
+
+  /// Tìm server phù hợp nhất từ danh sách theo targetServer
+  static ServerModel? findMatchingServer(List<ServerModel> servers, String? target) {
+    if (target == null || target.trim().isEmpty) return null;
+    final t = target.trim().toLowerCase();
+    if (t == 'local machine' || t == 'local' || t == 'localhost' || t == '127.0.0.1') {
+      return null;
+    }
+
+    // 1. Tìm khớp chính xác tuyệt đối trước
+    for (final s in servers) {
+      if (s.name.trim().toLowerCase() == t ||
+          s.id.trim().toLowerCase() == t ||
+          s.serverIp.trim().toLowerCase() == t) {
+        return s;
+      }
+    }
+
+    // 2. Tìm khớp theo tiền tố bắt đầu (ví dụ: 'Plesk' bắt đầu 'Plesk (Free)')
+    for (final s in servers) {
+      final sn = s.name.trim().toLowerCase();
+      if (sn.startsWith(t) || t.startsWith(sn)) {
+        return s;
+      }
+    }
+
+    // 3. Tìm khớp chứa từ khóa (contains)
+    for (final s in servers) {
+      final sn = s.name.trim().toLowerCase();
+      if (sn.contains(t) || t.contains(sn)) {
+        return s;
+      }
+    }
+
+    return null;
+  }
 }
 class UniqueKey {
   static int _counter = 0;

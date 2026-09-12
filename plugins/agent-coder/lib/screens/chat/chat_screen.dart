@@ -79,17 +79,20 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final chat = context.read<ChatProvider>();
       final server = context.read<ServerProvider>();
-      server.loadServers();
-      chat.loadSessions().then((_) {
-        if (chat.currentSession != null) {
-          chat.selectSession(chat.currentSession!).then((_) {
-            _safeScrollToBottom(instant: true);
-          });
-        } else if (chat.sessions.isNotEmpty) {
-          chat.selectSession(chat.sessions.first).then((_) {
-            _safeScrollToBottom(instant: true);
-          });
-        }
+      server.loadServers().then((_) {
+        chat.loadSessions().then((_) {
+          if (chat.currentSession != null) {
+            chat.selectSession(chat.currentSession!).then((_) {
+              server.selectServerByTarget(chat.currentSession!.targetServer);
+              _safeScrollToBottom(instant: true);
+            });
+          } else if (chat.sessions.isNotEmpty) {
+            chat.selectSession(chat.sessions.first).then((_) {
+              server.selectServerByTarget(chat.sessions.first.targetServer);
+              _safeScrollToBottom(instant: true);
+            });
+          }
+        });
       });
     });
   }
@@ -973,6 +976,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _stickyUserQuestion = null;
       _wasGenerating = chat.isGenerating;
       _safeScrollToBottom(instant: true);
+      if (chat.currentSession != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            serverProvider.selectServerByTarget(chat.currentSession!.targetServer);
+          }
+        });
+      }
     }
     // 2. Chỉ cuộn xuống cuối khi Agent trả lời xong câu hỏi (chuyển từ generating sang done)
     else if (_wasGenerating && !chat.isGenerating) {

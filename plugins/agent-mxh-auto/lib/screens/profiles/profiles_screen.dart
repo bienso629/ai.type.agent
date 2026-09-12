@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/persona_service.dart';
 import '../../core/services/socks5_proxy_service.dart';
@@ -118,6 +119,469 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     }
   }
 
+  /// Hiển thị hộp thoại cho phép người dùng chọn:
+  /// 1. Import thiết bị từ file backup (.tar.gz / .zip)
+  /// 2. Tạo thiết bị mới (Clone độc lập từ base AVD)
+  Future<bool> _showDeviceSetupModeDialog({
+    required String ip,
+    required ServerModel server,
+    required PersonaProfile? persona,
+  }) async {
+    final defaultBackupDir = '/home/yenai/Documents/Devices bk';
+    List<File> backupFiles = [];
+    try {
+      final dir = Directory(defaultBackupDir);
+      if (dir.existsSync()) {
+        backupFiles = dir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.tar.gz') || f.path.endsWith('.zip') || f.path.endsWith('.tgz'))
+            .toList();
+        backupFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      }
+    } catch (_) {}
+
+    String? chosenBackupPath = backupFiles.isNotEmpty ? backupFiles.first.path : null;
+    int selectedMode = backupFiles.isNotEmpty ? 1 : 2; // 1: Import, 2: Tạo mới
+    bool isProcessing = false;
+    String statusMsg = '';
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Dialog(
+            backgroundColor: AppColors.cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: AppColors.borderLight, width: 1.2),
+            ),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. Header
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF090F1E),
+                      border: Border(bottom: BorderSide(color: AppColors.borderLight, width: 1.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.phonelink_setup_rounded, color: AppColors.primaryLight, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Khởi Tạo Thiết Bị Cho Nhân Vật',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'IP: $ip · ${persona?.name ?? "Chưa đặt tên"}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textDim, fontFamily: 'monospace'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!isProcessing)
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textDim),
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // 2. Body
+                  Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Chọn phương thức thiết lập thiết bị:',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // TÙY CHỌN 1: IMPORT TỪ FILE BACKUP
+                        InkWell(
+                          onTap: isProcessing
+                              ? null
+                              : () {
+                                  setModalState(() {
+                                    selectedMode = 1;
+                                  });
+                                },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: selectedMode == 1 ? AppColors.primary.withValues(alpha: 0.12) : AppColors.inputBg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: selectedMode == 1 ? AppColors.primaryLight : AppColors.borderDark,
+                                width: selectedMode == 1 ? 1.5 : 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Radio<int>(
+                                      value: 1,
+                                      groupValue: selectedMode,
+                                      activeColor: AppColors.primaryLight,
+                                      onChanged: isProcessing
+                                          ? null
+                                          : (val) {
+                                              setModalState(() {
+                                                selectedMode = val ?? 1;
+                                              });
+                                            },
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Chế độ 1: Import từ file backup (Khuyên dùng)',
+                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            'Nạp lại đầy đủ ứng dụng (Facebook, TikTok...), tài khoản và snapshot đã lưu trước đó',
+                                            style: TextStyle(fontSize: 11, color: AppColors.textDim),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (selectedMode == 1) ...[
+                                  const SizedBox(height: 10),
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 40),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        if (backupFiles.isNotEmpty) ...[
+                                          const Text(
+                                            'Chọn file backup có sẵn:',
+                                            style: TextStyle(fontSize: 11, color: AppColors.textWhite, fontWeight: FontWeight.w600),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.sidebarBg,
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(color: AppColors.borderDark),
+                                            ),
+                                            child: DropdownButtonHideUnderline(
+                                              child: DropdownButton<String>(
+                                                value: chosenBackupPath,
+                                                isExpanded: true,
+                                                dropdownColor: AppColors.sidebarBg,
+                                                style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
+                                                items: backupFiles.map((f) {
+                                                  final name = f.path.split('/').last;
+                                                  final sizeMb = (f.lengthSync() / (1024 * 1024 * 1024)).toStringAsFixed(1);
+                                                  return DropdownMenuItem<String>(
+                                                    value: f.path,
+                                                    child: Text(
+                                                      '$name (${sizeMb}GB)',
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                                onChanged: isProcessing
+                                                    ? null
+                                                    : (val) {
+                                                        setModalState(() {
+                                                          chosenBackupPath = val;
+                                                        });
+                                                      },
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                        ],
+                                        ElevatedButton.icon(
+                                          onPressed: isProcessing
+                                              ? null
+                                              : () async {
+                                                  try {
+                                                    final res = await FilePicker.platform.pickFiles(
+                                                      dialogTitle: 'Chọn file backup máy ảo Android (.tar.gz, .zip)',
+                                                      type: FileType.custom,
+                                                      allowedExtensions: ['tar.gz', 'gz', 'tgz', 'zip', 'tar'],
+                                                    );
+                                                    if (res != null && res.files.single.path != null) {
+                                                      setModalState(() {
+                                                        chosenBackupPath = res.files.single.path;
+                                                      });
+                                                    }
+                                                  } catch (e) {
+                                                    AppToast.error(dialogCtx, 'Không thể mở trình chọn file: $e');
+                                                  }
+                                                },
+                                          icon: const Icon(Icons.folder_open_rounded, size: 14),
+                                          label: Text(
+                                            chosenBackupPath != null && !chosenBackupPath!.startsWith(defaultBackupDir)
+                                                ? 'Đã chọn: ${chosenBackupPath!.split("/").last}'
+                                                : 'Chọn file backup từ thư mục khác...',
+                                            style: const TextStyle(fontSize: 11),
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.sidebarBg,
+                                            foregroundColor: AppColors.primaryLight,
+                                            elevation: 0,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // TÙY CHỌN 2: TẠO MỚI (CLONE TỪ BASE)
+                        InkWell(
+                          onTap: isProcessing
+                              ? null
+                              : () {
+                                  setModalState(() {
+                                    selectedMode = 2;
+                                  });
+                                },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: selectedMode == 2 ? AppColors.accent.withValues(alpha: 0.12) : AppColors.inputBg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: selectedMode == 2 ? AppColors.accent : AppColors.borderDark,
+                                width: selectedMode == 2 ? 1.5 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Radio<int>(
+                                  value: 2,
+                                  groupValue: selectedMode,
+                                  activeColor: AppColors.accent,
+                                  onChanged: isProcessing
+                                      ? null
+                                      : (val) {
+                                          setModalState(() {
+                                            selectedMode = val ?? 2;
+                                          });
+                                        },
+                                ),
+                                const SizedBox(width: 4),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Chế độ 2: Tạo thiết bị mới hoàn toàn (Clean Base)',
+                                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Tạo phân vùng userdata trắng từ AVD gốc sạch, chưa cài đặt thêm ứng dụng nào',
+                                        style: TextStyle(fontSize: 11, color: AppColors.textDim),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        if (isProcessing) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF090F1E),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                            ),
+                            child: Row(
+                              children: [
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    statusMsg.isNotEmpty ? statusMsg : 'Đang xử lý thiết bị...',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // 3. Footer
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF070C18),
+                      border: Border(top: BorderSide(color: AppColors.borderLight, width: 1.2)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: isProcessing ? null : () => Navigator.of(ctx).pop(false),
+                          child: const Text('Hủy', style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton.icon(
+                          onPressed: isProcessing
+                              ? null
+                              : () async {
+                                  if (selectedMode == 1) {
+                                    if (chosenBackupPath == null || chosenBackupPath!.isEmpty) {
+                                      AppToast.warning(ctx, 'Vui lòng chọn file backup để import');
+                                      return;
+                                    }
+                                    setModalState(() {
+                                      isProcessing = true;
+                                      statusMsg = 'Đang giải nén backup và nạp ứng dụng (Facebook, TikTok)...';
+                                    });
+
+                                    try {
+                                      final importedAvd = await _socks5Service.importPersonaDeviceBackup(
+                                        ip: ip,
+                                        archivePath: chosenBackupPath!,
+                                      );
+
+                                      // Cập nhật avdName vào persona profile nếu cần
+                                      final currentP = _personas[ip] ?? persona;
+                                      if (currentP != null) {
+                                        final updated = currentP.copyWith(avdName: importedAvd);
+                                        await _personaService.updatePersona(updated);
+                                        if (mounted) {
+                                          setState(() {
+                                            _personas[ip] = updated;
+                                          });
+                                        }
+                                      }
+
+                                      if (ctx.mounted) {
+                                        Navigator.of(ctx).pop(true);
+                                      }
+                                    } catch (e) {
+                                      if (ctx.mounted) {
+                                        setModalState(() {
+                                          isProcessing = false;
+                                          statusMsg = '';
+                                        });
+                                        AppToast.error(ctx, 'Lỗi import backup: $e');
+                                      }
+                                    }
+                                  } else {
+                                    setModalState(() {
+                                      isProcessing = true;
+                                      statusMsg = 'Đang tạo máy ảo mới độc lập cho IP $ip...';
+                                    });
+
+                                    try {
+                                      final createdAvd = await _socks5Service.createPersonaDeviceAvd(
+                                        ip: ip,
+                                        baseAvd: persona?.avdName,
+                                      );
+
+                                      final currentP = _personas[ip] ?? persona;
+                                      if (currentP != null) {
+                                        final updated = currentP.copyWith(avdName: createdAvd);
+                                        await _personaService.updatePersona(updated);
+                                        if (mounted) {
+                                          setState(() {
+                                            _personas[ip] = updated;
+                                          });
+                                        }
+                                      }
+
+                                      if (ctx.mounted) {
+                                        Navigator.of(ctx).pop(true);
+                                      }
+                                    } catch (e) {
+                                      if (ctx.mounted) {
+                                        setModalState(() {
+                                          isProcessing = false;
+                                          statusMsg = '';
+                                        });
+                                        AppToast.error(ctx, 'Lỗi tạo máy ảo mới: $e');
+                                      }
+                                    }
+                                  }
+                                },
+                          icon: isProcessing
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
+                                )
+                              : Icon(selectedMode == 1 ? Icons.cloud_download_rounded : Icons.add_circle_outline_rounded, size: 15),
+                          label: Text(
+                            isProcessing
+                                ? 'Đang thiết lập...'
+                                : (selectedMode == 1 ? 'Import & Khởi Chạy' : 'Tạo Mới & Khởi Chạy'),
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: selectedMode == 1 ? AppColors.primary : AppColors.accent,
+                            foregroundColor: const Color(0xFF070B14),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    return result ?? false;
+  }
+
   void _showPersonaDetails(PersonaProfile persona) {
     final nameCtrl = TextEditingController(text: persona.name);
     final ageCtrl = TextEditingController(text: persona.age.toString());
@@ -141,6 +605,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     List<String> availableAvds = [];
     bool isLoadingAvds = true;
     bool didFetchAvds = false;
+    bool hasPersonaAvd = false;
     bool isSaving = false;
 
     void startOtpPolling(String orderId, StateSetter setDialogState, BuildContext dialogCtx) {
@@ -181,13 +646,24 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             if (currentOrderId != null && currentOrderId!.isNotEmpty && latestOtpCode == null) {
               startOtpPolling(currentOrderId!, setDialogState, dialogCtx);
             }
-            _socks5Service.getAvailableAvds().then((avds) {
+            Future.wait([
+              _socks5Service.getAvailableAvds(),
+              _socks5Service.hasDeviceForPersona(ip: persona.ip, avdName: persona.avdName),
+            ]).then((results) {
               if (dialogCtx.mounted) {
+                final avds = results[0] as List<String>;
+                final hasDev = results[1] as bool;
+                final personaClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
                 setDialogState(() {
                   availableAvds = avds;
+                  hasPersonaAvd = hasDev || avds.contains(personaClone);
                   isLoadingAvds = false;
                   if (selectedAvd == null && avds.isNotEmpty) {
-                    selectedAvd = avds.first;
+                    if (avds.contains(personaClone)) {
+                      selectedAvd = personaClone;
+                    } else {
+                      selectedAvd = avds.first;
+                    }
                   }
                 });
               }
@@ -877,6 +1353,162 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                   ),
                                                 ),
                                               ),
+                                              const SizedBox(height: 8),
+                                              if (!hasPersonaAvd) ...[
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: SizedBox(
+                                                        height: 32,
+                                                        child: ElevatedButton.icon(
+                                                          onPressed: () async {
+                                                            final serverProv = context.read<ServerProvider>();
+                                                            final svr = serverProv.servers.firstWhere(
+                                                              (s) => s.serverIp == persona.ip,
+                                                              orElse: () => serverProv.servers.isNotEmpty
+                                                                  ? serverProv.servers.first
+                                                                  : ServerModel(
+                                                                      id: 'fallback_${persona.ip}',
+                                                                      name: 'Server ${persona.ip}',
+                                                                      serverIp: persona.ip,
+                                                                      sshUser: 'root',
+                                                                      sshPort: 22,
+                                                                    ),
+                                                            );
+                                                            final setupOk = await _showDeviceSetupModeDialog(
+                                                              ip: persona.ip,
+                                                              server: svr,
+                                                              persona: _personas[persona.ip] ?? persona,
+                                                            );
+                                                            if (setupOk) {
+                                                              final freshAvds = await _socks5Service.getAvailableAvds();
+                                                              final targetClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
+                                                              setDialogState(() {
+                                                                availableAvds = freshAvds;
+                                                                hasPersonaAvd = true;
+                                                                if (freshAvds.contains(targetClone)) {
+                                                                  selectedAvd = targetClone;
+                                                                }
+                                                              });
+                                                            }
+                                                          },
+                                                          icon: const Icon(Icons.add_circle_outline_rounded, size: 14),
+                                                          label: const Text(
+                                                            'Tạo mới',
+                                                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                                                          ),
+                                                          style: ElevatedButton.styleFrom(
+                                                            backgroundColor: AppColors.accent,
+                                                            foregroundColor: const Color(0xFF070B14),
+                                                            elevation: 0,
+                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: SizedBox(
+                                                        height: 32,
+                                                        child: ElevatedButton.icon(
+                                                          onPressed: () async {
+                                                            final serverProv = context.read<ServerProvider>();
+                                                            final svr = serverProv.servers.firstWhere(
+                                                              (s) => s.serverIp == persona.ip,
+                                                              orElse: () => serverProv.servers.isNotEmpty
+                                                                  ? serverProv.servers.first
+                                                                  : ServerModel(
+                                                                      id: 'fallback_${persona.ip}',
+                                                                      name: 'Server ${persona.ip}',
+                                                                      serverIp: persona.ip,
+                                                                      sshUser: 'root',
+                                                                      sshPort: 22,
+                                                                    ),
+                                                            );
+                                                            final setupOk = await _showDeviceSetupModeDialog(
+                                                              ip: persona.ip,
+                                                              server: svr,
+                                                              persona: _personas[persona.ip] ?? persona,
+                                                            );
+                                                            if (setupOk) {
+                                                              final freshAvds = await _socks5Service.getAvailableAvds();
+                                                              final targetClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
+                                                              setDialogState(() {
+                                                                availableAvds = freshAvds;
+                                                                hasPersonaAvd = true;
+                                                                if (freshAvds.contains(targetClone)) {
+                                                                  selectedAvd = targetClone;
+                                                                }
+                                                              });
+                                                            }
+                                                          },
+                                                          icon: const Icon(Icons.cloud_download_rounded, size: 14),
+                                                          label: const Text(
+                                                            'Import',
+                                                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                                                          ),
+                                                          style: ElevatedButton.styleFrom(
+                                                            backgroundColor: AppColors.primary,
+                                                            foregroundColor: const Color(0xFF070B14),
+                                                            elevation: 0,
+                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ] else ...[
+                                                SizedBox(
+                                                  height: 32,
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () async {
+                                                      final serverProv = context.read<ServerProvider>();
+                                                      final svr = serverProv.servers.firstWhere(
+                                                        (s) => s.serverIp == persona.ip,
+                                                        orElse: () => serverProv.servers.isNotEmpty
+                                                            ? serverProv.servers.first
+                                                            : ServerModel(
+                                                                id: 'fallback_${persona.ip}',
+                                                                name: 'Server ${persona.ip}',
+                                                                serverIp: persona.ip,
+                                                                sshUser: 'root',
+                                                                sshPort: 22,
+                                                              ),
+                                                      );
+                                                      final setupOk = await _showDeviceSetupModeDialog(
+                                                        ip: persona.ip,
+                                                        server: svr,
+                                                        persona: _personas[persona.ip] ?? persona,
+                                                      );
+                                                      if (setupOk) {
+                                                        final freshAvds = await _socks5Service.getAvailableAvds();
+                                                        final targetClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
+                                                        setDialogState(() {
+                                                          availableAvds = freshAvds;
+                                                          hasPersonaAvd = true;
+                                                          if (freshAvds.contains(targetClone)) {
+                                                            selectedAvd = targetClone;
+                                                          }
+                                                        });
+                                                      }
+                                                    },
+                                                    icon: const Icon(Icons.phonelink_setup_rounded, size: 14),
+                                                    label: const Text(
+                                                      'Cấu hình lại AVD (Tạo mới / Import)',
+                                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                                    ),
+                                                    style: OutlinedButton.styleFrom(
+                                                      foregroundColor: AppColors.primaryLight,
+                                                      side: BorderSide(color: AppColors.primaryLight.withValues(alpha: 0.5)),
+                                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ],
                                           ),
                                         ),
@@ -906,7 +1538,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                           Icon(Icons.phone_android_rounded, size: 14, color: AppColors.accent),
                                           SizedBox(width: 6),
                                           Text(
-                                            'Gắn số điện thoại vào thiết bị',
+                                            'Thuê số điện thoại Việt Nam',
                                             style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                           ),
                                         ],
@@ -1334,7 +1966,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                 )
                               : const Icon(Icons.check_rounded, size: 15),
                           label: Text(
-                            isSaving ? 'Đang lưu...' : 'Lưu vào Database',
+                            isSaving ? 'Đang lưu...' : 'Lưu lại',
                             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -2205,24 +2837,25 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                 context,
                                 isExt
                                     ? 'Đang kết nối thiết bị ngoại vi ($targetRemoteDevice)...'
-                                    : 'Đang khởi tạo mobile device cho ${item.ip}...',
+                                    : 'Đang khởi động mobile device cho ${item.ip}...',
                               );
                               try {
+                                final currentP = _personas[item.ip] ?? persona;
                                 await _socks5Service.launchDeviceWithSocks5(
                                   server: item.server,
                                   ip: item.ip,
                                   remoteDeviceAddress: targetRemoteDevice,
-                                  avdName: persona?.avdName,
-                                  deviceType: persona?.deviceType ?? 'mobile',
-                                  phoneNumber: persona?.phoneNumber,
-                                  autoSyncPhone: persona?.autoSyncPhoneToDevice ?? false,
+                                  avdName: currentP?.avdName,
+                                  deviceType: currentP?.deviceType ?? 'mobile',
+                                  phoneNumber: currentP?.phoneNumber,
+                                  autoSyncPhone: currentP?.autoSyncPhoneToDevice ?? false,
                                 );
                                 if (mounted) {
                                   AppToast.success(
                                     context,
                                     isExt
                                         ? 'Đã kết nối ngoại vi $targetRemoteDevice'
-                                        : 'Đã mở ${persona?.deviceType == 'tablet' ? 'tablet' : 'mobile'} device qua ${item.ip}',
+                                        : 'Đã mở ${currentP?.deviceType == 'tablet' ? 'tablet' : 'mobile'} device qua ${item.ip}',
                                   );
                                 }
                               } catch (e) {
