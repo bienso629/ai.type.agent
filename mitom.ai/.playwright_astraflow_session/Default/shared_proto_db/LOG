@@ -1,2 +1,3 @@
-2026/09/12-14:36:35.340 15e2e Creating DB /home/yenai/Documents/Projects/Typing/apps/mitom.ai/.playwright_astraflow_session/Default/shared_proto_db since it was missing.
-2026/09/12-14:36:35.371 15e2e Reusing MANIFEST /home/yenai/Documents/Projects/Typing/apps/mitom.ai/.playwright_astraflow_session/Default/shared_proto_db/MANIFEST-000001
+2026/09/12-19:17:08.395 28bdf Reusing MANIFEST /home/yenai/Documents/Projects/Typing/apps/mitom.ai/.playwright_astraflow_session/Default/shared_proto_db/MANIFEST-000001
+2026/09/12-19:17:08.396 28bdf Recovering log #3
+2026/09/12-19:17:08.396 28bdf Reusing old log /home/yenai/Documents/Projects/Typing/apps/mitom.ai/.playwright_astraflow_session/Default/shared_proto_db/000003.log 

@@ -1273,44 +1273,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          // Cuộn nhanh về vị trí câu hỏi
-          Tooltip(
-            message: 'Cuộn tới câu hỏi này',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(4),
-              onTap: () {
-                final idx = chat.messages.indexOf(question);
-                if (idx != -1) {
-                  final keyStr = _getMessageKey(question, idx);
-                  final gKey = _messageKeys[keyStr];
-                  if (gKey?.currentContext != null) {
-                    Scrollable.ensureVisible(
-                      gKey!.currentContext!,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                      alignment: 0.1,
-                    );
-                  }
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.arrow_upward_rounded, size: 12, color: AppColors.primaryLight),
-                    SizedBox(width: 4),
-                    Text('Về câu hỏi', style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ),
-          ),
           const SizedBox(width: 4),
           // Nút đóng sticky
           IconButton(

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { User, LogOut, Key, Wallet, Shield, Check, Copy, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp, Globe } from 'lucide-react'
+import { User, LogOut, Key, Wallet, Shield, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp, Globe } from 'lucide-react'
 
 export function UserProfileModal({
   isOpen,
@@ -19,7 +19,6 @@ export function UserProfileModal({
   // State AstraFlow Cookies
   const [astraLoading, setAstraLoading] = useState(false)
   const [astraMsg, setAstraMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [cookieCopied, setCookieCopied] = useState(false)
 
   // State đổi mật khẩu
   const [showChangePassword, setShowChangePassword] = useState(false)
@@ -28,6 +27,8 @@ export function UserProfileModal({
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+
 
   if (!isOpen || !user) return null
 
@@ -84,7 +85,7 @@ export function UserProfileModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        className="relative w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -126,7 +127,7 @@ export function UserProfileModal({
           {/* Badge phương thức và số dư */}
           {/* Badge phương thức, mã khách hàng và số dư */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-border bg-secondary/30 p-3.5">
+            <div className="rounded-lg border border-border bg-secondary/30 p-3.5">
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                 <Shield size={14} className="text-primary" />
                 <span>Mã khách hàng</span>
@@ -136,7 +137,7 @@ export function UserProfileModal({
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-secondary/30 p-3.5">
+            <div className="rounded-lg border border-border bg-secondary/30 p-3.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span className="flex items-center gap-2">
                   <Wallet size={14} className="text-emerald" />
@@ -158,7 +159,7 @@ export function UserProfileModal({
           </div>
 
           {/* Thong tin API Key gui qua email */}
-          <div className="rounded-xl border border-border bg-secondary/40 p-4">
+          <div className="rounded-lg border border-border bg-secondary/40 p-4">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground mb-1.5">
               <Key size={14} className="text-primary" />
               API Key sử dụng AI
@@ -173,7 +174,7 @@ export function UserProfileModal({
 
           {/* Khu vực Đăng nhập & Đồng bộ Cookie AstraFlow (Chỉ dành cho Admin) */}
           {user.role === 'admin' && (
-            <div className="rounded-xl border border-border bg-secondary/40 p-4 space-y-3">
+            <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                 <Globe size={15} className="text-primary" />
@@ -242,35 +243,12 @@ export function UserProfileModal({
                   </>
                 )}
               </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/astraflow')
-                    const data = await res.json()
-                    if (data.success && data.hasCookies && data.cookieHeader) {
-                      await navigator.clipboard.writeText(data.cookieHeader)
-                      setCookieCopied(true)
-                      setTimeout(() => setCookieCopied(false), 2500)
-                    } else {
-                      setAstraMsg({ type: 'error', text: 'Chưa có dữ liệu cookies để sao chép.' })
-                    }
-                  } catch {
-                    setAstraMsg({ type: 'error', text: 'Không thể truy xuất cookies.' })
-                  }
-                }}
-                className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/80 px-3 py-2 text-xs font-semibold text-foreground hover:border-primary/50 transition-colors cursor-pointer"
-              >
-                {cookieCopied ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
-                <span>{cookieCopied ? 'Đã sao chép Cookie!' : 'Sao chép Cookie Header'}</span>
-              </button>
             </div>
           </div>
           )}
 
           {/* Khu vực Đổi mật khẩu */}
-          <div className="rounded-xl border border-border bg-secondary/30 overflow-hidden">
+          <div className="rounded-lg border border-border bg-secondary/30 overflow-hidden">
             <button
               type="button"
               onClick={() => {

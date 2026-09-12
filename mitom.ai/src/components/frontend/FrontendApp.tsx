@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import { UserProfileModal } from './UserProfileModal'
 import { LoginModal } from './LoginModal'
 import { GuideTopupPage, ApiDocsPage, TermsPage, PrivacyPage } from './StaticPages'
-import { User, ChevronLeft, ChevronRight, Sparkles, Copy, Check, X } from 'lucide-react'
+import { User, ChevronLeft, ChevronRight, Sparkles, Copy, Check, X, Key } from 'lucide-react'
 
 export type Page = 'home' | 'models' | 'topup' | 'success' | 'guide-topup' | 'api-docs' | 'terms' | 'privacy'
 
@@ -999,14 +999,25 @@ export function FrontendApp({
             {user ? (
               <div className="flex items-center gap-2">
                 {user.role === 'admin' && (
-                  <button
-                    onClick={() => setIsProfileOpen(true)}
-                    className="hidden sm:flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/20 transition-all cursor-pointer"
-                    title="Mở bảng điều khiển Admin & Đồng bộ Cookie AstraFlow"
-                  >
-                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                    <span>AstraFlow Cookie</span>
-                  </button>
+                  <>
+                    <a
+                      href="/101/collections/api-keys"
+                      className="hidden sm:flex items-center gap-1.5 rounded-lg border border-emerald/40 bg-emerald/10 px-3 py-2 text-xs font-bold text-emerald hover:bg-emerald/20 transition-all cursor-pointer"
+                      title="Xem và quản lý danh sách API Keys AstraFlow"
+                    >
+                      <Key size={13} />
+                      <span>Quản lý keys</span>
+                    </a>
+
+                    <button
+                      onClick={() => setIsProfileOpen(true)}
+                      className="hidden sm:flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/20 transition-all cursor-pointer"
+                      title="Mở bảng điều khiển Admin & Đồng bộ Cookie AstraFlow"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                      <span>AstraFlow Cookie</span>
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => setIsProfileOpen(true)}

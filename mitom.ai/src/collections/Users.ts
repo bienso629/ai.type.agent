@@ -99,9 +99,9 @@ export const Users: CollectionConfig = {
       name: 'customerCode',
       type: 'text',
       index: true,
-      label: 'Mã khách hàng / Cú pháp nạp (Ví dụ: MITO000123)',
+      label: 'Mã khách hàng hoặc cú pháp nạp',
       admin: {
-        description: 'Mã nhận diện nạp tiền tự động qua Webhook ngân hàng (Định dạng MITOxxxxxx với xxxxxx là ID người dùng)',
+        description: 'Mã nhận diện nạp tiền tự động qua cổng ngân hàng',
       },
     },
     {

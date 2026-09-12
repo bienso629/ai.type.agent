@@ -1038,6 +1038,96 @@ for root, _, files in os.walk(target_dir):
     return createdName;
   }
 
+  /// Xóa thiết bị máy ảo AVD khỏi hệ thống (tự động đóng device trước khi xóa)
+  Future<bool> deleteAvd(String avdName, {String? ip}) async {
+    final sanitizedIp = ip != null ? ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_") : "";
+    final dedicatedPersonaAvd = sanitizedIp.isNotEmpty ? "Pixel_10_Pro_persona_$sanitizedIp" : "";
+
+    // 1. Đóng device nếu đang chạy liên kết với IP
+    if (ip != null && ip.isNotEmpty) {
+      try {
+        await closeDeviceForIp(ip);
+      } catch (_) {}
+    }
+
+    // 2. Dừng triệt để qua ADB emu kill đối với mọi instance emulator đang chạy AVD này
+    try {
+      final adbBin = await _findAdbExecutable();
+      final devRes = await Process.run(adbBin, ["devices"]);
+      final lines = (devRes.stdout as String).split("\n");
+      for (final line in lines) {
+        final parts = line.trim().split(RegExp(r"\s+"));
+        if (parts.length >= 2 && parts[0].startsWith("emulator-") && parts[1] == "device") {
+          final serial = parts[0];
+          try {
+            final emuNameRes = await Process.run(adbBin, ["-s", serial, "emu", "avd", "name"]);
+            final runningAvd = (emuNameRes.stdout as String).trim().split("\n").first.trim();
+            if (runningAvd == avdName || (dedicatedPersonaAvd.isNotEmpty && runningAvd == dedicatedPersonaAvd)) {
+              await Process.run(adbBin, ["-s", serial, "emu", "kill"]);
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    // 3. Quét và dừng mọi tiến trình emulator / qemu đang chạy gắn với avdName hoặc IP này
+    try {
+      await Process.run("pkill", ["-f", avdName]);
+      await Process.run("pkill", ["-9", "-f", avdName]);
+      if (dedicatedPersonaAvd.isNotEmpty) {
+        await Process.run("pkill", ["-f", dedicatedPersonaAvd]);
+        await Process.run("pkill", ["-9", "-f", dedicatedPersonaAvd]);
+      }
+      if (sanitizedIp.isNotEmpty) {
+        await Process.run("pkill", ["-f", "device_profiles/ip_$sanitizedIp"]);
+        await Process.run("pkill", ["-9", "-f", "device_profiles/ip_$sanitizedIp"]);
+      }
+    } catch (_) {}
+
+    // 4. Đợi để hệ điều hành Linux giải phóng hoàn toàn file lock
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final homeDir = Platform.environment["HOME"] ?? Directory.systemTemp.path;
+    bool deleted = false;
+
+    // 5. Xóa AVD được chỉ định
+    final avdDir = Directory("$homeDir/.android/avd/$avdName.avd");
+    final iniFile = File("$homeDir/.android/avd/$avdName.ini");
+    try {
+      if (avdDir.existsSync()) {
+        avdDir.deleteSync(recursive: true);
+        deleted = true;
+      }
+    } catch (_) {}
+    try {
+      if (iniFile.existsSync()) {
+        iniFile.deleteSync();
+        deleted = true;
+      }
+    } catch (_) {}
+
+    // 6. Xóa cả dedicated persona clone AVD nếu có
+    if (dedicatedPersonaAvd.isNotEmpty && dedicatedPersonaAvd != avdName) {
+      final pDir = Directory("$homeDir/.android/avd/$dedicatedPersonaAvd.avd");
+      final pIni = File("$homeDir/.android/avd/$dedicatedPersonaAvd.ini");
+      try {
+        if (pDir.existsSync()) {
+          pDir.deleteSync(recursive: true);
+          deleted = true;
+        }
+      } catch (_) {}
+      try {
+        if (pIni.existsSync()) {
+          pIni.deleteSync();
+          deleted = true;
+        }
+      } catch (_) {}
+    }
+
+    notifyListeners();
+    return deleted;
+  }
+
   /// Tự động tạo hoặc kiểm tra AVD Clone riêng biệt cho từng IP nhân vật (Copy-on-Write overlay)
   /// Giúp nhiều thiết bị chạy đồng thời từ 1 base AVD mà không bị lỗi file lock hoặc ngốn dung lượng đĩa
   Future<String> _ensurePersonaCloneAvd(String baseAvd, String ip) async {
@@ -1241,17 +1331,9 @@ for root, _, files in os.walk(target_dir):
       }
     }
 
-    // Nếu chưa có AVD riêng cho persona này, tiến hành clone từ base AVD
+    // Nếu chưa có AVD riêng cho persona này (hoặc đã bị xóa), không tự ý khởi chạy máy ảo khác
     if (actualAvd.isEmpty) {
-      String baseAvd = avdName ?? '';
-      if (baseAvd.isEmpty || !Directory('$homeDir/.android/avd/$baseAvd.avd').existsSync()) {
-        final avds = await getAvailableAvds();
-        if (avds.isEmpty) {
-          throw Exception('Chưa có thiết bị Android ảo (AVD) nào được tạo. Bạn có thể sử dụng ngay chế độ Thiết bị ngoại vi (WiFi ADB) để kết nối điện thoại thật / Android box.');
-        }
-        baseAvd = avds.firstWhere((a) => !a.contains('_persona_'), orElse: () => avds.first);
-      }
-      actualAvd = await _ensurePersonaCloneAvd(baseAvd, ip);
+      throw Exception('Nhân vật $ip chưa được cài đặt máy ảo hoặc máy ảo đã bị xóa. Vui lòng bấm "Cài đặt máy ảo" để cấu hình.');
     }
 
     // 4. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP nếu có socks5

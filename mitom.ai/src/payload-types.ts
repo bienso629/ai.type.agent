@@ -73,6 +73,7 @@ export interface Config {
     products: Product;
     orders: Order;
     transactions: Transaction;
+    'api-keys': ApiKey;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -86,6 +87,7 @@ export interface Config {
     products: ProductsSelect<false> | ProductsSelect<true>;
     orders: OrdersSelect<false> | OrdersSelect<true>;
     transactions: TransactionsSelect<false> | TransactionsSelect<true>;
+    'api-keys': ApiKeysSelect<false> | ApiKeysSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -142,7 +144,7 @@ export interface User {
   googleId?: string | null;
   balance?: number | null;
   /**
-   * Mã nhận diện nạp tiền tự động qua Webhook ngân hàng (Định dạng MITOxxxxxx với xxxxxx là ID người dùng)
+   * Mã nhận diện nạp tiền tự động qua cổng ngân hàng
    */
   customerCode?: string | null;
   apiKey?: string | null;
@@ -290,6 +292,42 @@ export interface Transaction {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "api-keys".
+ */
+export interface ApiKey {
+  id: number;
+  name: string;
+  /**
+   * Tự động sinh mã định danh nếu không nhập thủ công
+   */
+  keyId?: string | null;
+  maskedKey?: string | null;
+  /**
+   * Khóa bảo mật đầy đủ nếu có
+   */
+  secretKey?: string | null;
+  status?: ('Normal' | 'Disabled' | 'Expired') | null;
+  permissions?: string | null;
+  dailyLimit?: string | null;
+  monthlyLimit?: string | null;
+  dailySpend?: string | null;
+  monthlySpend?: string | null;
+  modelAccessMode?: string | null;
+  expiryTime?: string | null;
+  rawResponse?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -335,6 +373,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'transactions';
         value: number | Transaction;
+      } | null)
+    | ({
+        relationTo: 'api-keys';
+        value: number | ApiKey;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -514,6 +556,27 @@ export interface TransactionsSelect<T extends boolean = true> {
   vatAmount?: T;
   paymentMethod?: T;
   status?: T;
+  rawResponse?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "api-keys_select".
+ */
+export interface ApiKeysSelect<T extends boolean = true> {
+  name?: T;
+  keyId?: T;
+  maskedKey?: T;
+  secretKey?: T;
+  status?: T;
+  permissions?: T;
+  dailyLimit?: T;
+  monthlyLimit?: T;
+  dailySpend?: T;
+  monthlySpend?: T;
+  modelAccessMode?: T;
+  expiryTime?: T;
   rawResponse?: T;
   updatedAt?: T;
   createdAt?: T;

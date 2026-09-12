@@ -11,6 +11,7 @@ import { Categories } from './collections/Categories'
 import { Products } from './collections/Products'
 import { Orders } from './collections/Orders'
 import { Transactions } from './collections/Transactions'
+import { ApiKeys } from './collections/ApiKeys'
 import { SystemSettings } from './globals/SystemSettings'
 
 const filename = fileURLToPath(import.meta.url)
@@ -32,7 +33,7 @@ export default buildConfig({
       },
     },
   },
-  collections: [Users, Media, Categories, Products, Orders, Transactions],
+  collections: [Users, Media, Categories, Products, Orders, Transactions, ApiKeys],
   globals: [SystemSettings],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',

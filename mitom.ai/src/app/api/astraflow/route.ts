@@ -137,9 +137,59 @@ export async function POST(request: Request) {
     const page = context.pages().length > 0 ? context.pages()[0] : await context.newPage()
     await page.goto('https://passport.scloudsg.com/', { timeout: 60000 })
 
-    // Lắng nghe điều hướng: Nếu người dùng đăng nhập xong chuyển hướng về dashboard hoặc astraflow
-    // Ta lưu cookie ban đầu và để trình duyệt mở cho người dùng thao tác
-    // Đồng thời thiết lập hook lưu cookie khi đóng trang hoặc định kỳ
+    const KEYS_FILE = path.resolve(process.cwd(), 'astraflow_keys.json')
+
+    // Lắng nghe điều hướng và response để bắt API Keys tự động
+    page.on('response', async (res) => {
+      if (res.url().includes('ListUMInferAPIKey')) {
+        try {
+          const resData = await res.json()
+          if (resData?.Data && Array.isArray(resData.Data)) {
+            fs.writeFileSync(KEYS_FILE, JSON.stringify(resData.Data, null, 2), 'utf-8')
+            const payload = await getPayload({ config: configPromise })
+            for (const item of resData.Data) {
+              const keyId = item.KeyId || item.ResourceId || `key-${Date.now()}`
+              const existing = await payload.find({
+                collection: 'api-keys',
+                where: { keyId: { equals: keyId } },
+              })
+
+              const docData = {
+                name: item.KeyName || item.Name || 'AstraFlow API Key',
+                keyId,
+                maskedKey: item.APIKey || item.Key || '',
+                secretKey: item.SecretKey || item.APIKey || '',
+                status: item.Status === 2 ? 'Disabled' : 'Normal',
+                permissions: item.Permissions || 'Sandbox, Modelverse',
+                dailyLimit: String(item.DailyLimitAmount || 'Không giới hạn'),
+                monthlyLimit: String(item.MonthlyLimitAmount || 'Không giới hạn'),
+                dailySpend: String(item.DailyUsedAmount || '0'),
+                monthlySpend: String(item.MonthlyUsedAmount || '0'),
+                modelAccessMode: item.ModelAccessMode || 'All Models',
+                expiryTime: item.ExpireTime ? new Date(item.ExpireTime * 1000).toLocaleString('vi-VN') : 'Vĩnh viễn',
+                rawResponse: item,
+              }
+
+              if (existing.docs.length > 0) {
+                await payload.update({
+                  collection: 'api-keys',
+                  id: existing.docs[0].id,
+                  data: docData as any,
+                })
+              } else {
+                await payload.create({
+                  collection: 'api-keys',
+                  data: docData as any,
+                })
+              }
+            }
+          }
+        } catch {
+          // Ignored
+        }
+      }
+    })
+
     const saveCookies = async () => {
       try {
         const cookies = await context.cookies()
@@ -160,17 +210,21 @@ export async function POST(request: Request) {
       }
     }
 
+    // Tự động kiểm tra và lưu cookies mỗi 5 giây trong khi người dùng thao tác
+    const intervalId = setInterval(saveCookies, 5000)
+
     page.on('close', async () => {
+      clearInterval(intervalId)
       await saveCookies()
       await context.close().catch(() => {})
     })
 
-    // Lưu ngay trạng thái hiện tại
+    // Lưu ngay trạng thái ban đầu
     await saveCookies()
 
     return NextResponse.json({
       success: true,
-      message: 'Đã mở cửa sổ đăng nhập Chrome tại https://passport.scloudsg.com/. Bạn chỉ việc đăng nhập, hệ thống sẽ tự động bắt cookies.',
+      message: 'Đã mở cửa sổ đăng nhập Chrome tại https://passport.scloudsg.com/. Sau khi đăng nhập, bạn truy cập https://astraflow.scloudsg.com/en-us/experience-modelverse/api-keys là hệ thống tự động bắt và lưu toàn bộ Keys!',
     })
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })

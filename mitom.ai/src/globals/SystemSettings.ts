@@ -14,7 +14,7 @@ export const SystemSettings: GlobalConfig = {
     {
       name: 'usdRate',
       type: 'number',
-      label: 'Tỷ giá USD / VNĐ (USD Rate)',
+      label: 'Tỷ giá USD trên VNĐ',
       defaultValue: 26000,
       required: true,
       admin: {

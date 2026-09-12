@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/persona_service.dart';
 import '../../core/services/socks5_proxy_service.dart';
@@ -32,6 +31,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   Map<String, PersonaProfile> _personas = {};
   bool _isGeneratingPersonas = false;
+  Set<String> _availableAvds = {};
 
   @override
   void initState() {
@@ -41,9 +41,14 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   Future<void> _loadPersonas() async {
     final saved = await _personaService.loadSavedPersonas();
+    List<String> avdList = [];
+    try {
+      avdList = await _socks5Service.getAvailableAvds();
+    } catch (_) {}
     if (mounted) {
       setState(() {
         _personas = Map.from(saved);
+        _availableAvds = avdList.toSet();
       });
     }
   }
@@ -119,469 +124,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     }
   }
 
-  /// Hiển thị hộp thoại cho phép người dùng chọn:
-  /// 1. Import thiết bị từ file backup (.tar.gz / .zip)
-  /// 2. Tạo thiết bị mới (Clone độc lập từ base AVD)
-  Future<bool> _showDeviceSetupModeDialog({
-    required String ip,
-    required ServerModel server,
-    required PersonaProfile? persona,
-  }) async {
-    final defaultBackupDir = '/home/yenai/Documents/Devices bk';
-    List<File> backupFiles = [];
-    try {
-      final dir = Directory(defaultBackupDir);
-      if (dir.existsSync()) {
-        backupFiles = dir
-            .listSync()
-            .whereType<File>()
-            .where((f) => f.path.endsWith('.tar.gz') || f.path.endsWith('.zip') || f.path.endsWith('.tgz'))
-            .toList();
-        backupFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-      }
-    } catch (_) {}
-
-    String? chosenBackupPath = backupFiles.isNotEmpty ? backupFiles.first.path : null;
-    int selectedMode = backupFiles.isNotEmpty ? 1 : 2; // 1: Import, 2: Tạo mới
-    bool isProcessing = false;
-    String statusMsg = '';
-
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          return Dialog(
-            backgroundColor: AppColors.cardBg,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: const BorderSide(color: AppColors.borderLight, width: 1.2),
-            ),
-            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            clipBehavior: Clip.antiAlias,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. Header
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF090F1E),
-                      border: Border(bottom: BorderSide(color: AppColors.borderLight, width: 1.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.phonelink_setup_rounded, color: AppColors.primaryLight, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Khởi Tạo Thiết Bị Cho Nhân Vật',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'IP: $ip · ${persona?.name ?? "Chưa đặt tên"}',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textDim, fontFamily: 'monospace'),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (!isProcessing)
-                          IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textDim),
-                            onPressed: () => Navigator.of(ctx).pop(false),
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  // 2. Body
-                  Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Chọn phương thức thiết lập thiết bị:',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // TÙY CHỌN 1: IMPORT TỪ FILE BACKUP
-                        InkWell(
-                          onTap: isProcessing
-                              ? null
-                              : () {
-                                  setModalState(() {
-                                    selectedMode = 1;
-                                  });
-                                },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: selectedMode == 1 ? AppColors.primary.withValues(alpha: 0.12) : AppColors.inputBg,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: selectedMode == 1 ? AppColors.primaryLight : AppColors.borderDark,
-                                width: selectedMode == 1 ? 1.5 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Radio<int>(
-                                      value: 1,
-                                      groupValue: selectedMode,
-                                      activeColor: AppColors.primaryLight,
-                                      onChanged: isProcessing
-                                          ? null
-                                          : (val) {
-                                              setModalState(() {
-                                                selectedMode = val ?? 1;
-                                              });
-                                            },
-                                    ),
-                                    const SizedBox(width: 4),
-                                    const Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            'Chế độ 1: Import từ file backup (Khuyên dùng)',
-                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                          ),
-                                          SizedBox(height: 2),
-                                          Text(
-                                            'Nạp lại đầy đủ ứng dụng (Facebook, TikTok...), tài khoản và snapshot đã lưu trước đó',
-                                            style: TextStyle(fontSize: 11, color: AppColors.textDim),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (selectedMode == 1) ...[
-                                  const SizedBox(height: 10),
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 40),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        if (backupFiles.isNotEmpty) ...[
-                                          const Text(
-                                            'Chọn file backup có sẵn:',
-                                            style: TextStyle(fontSize: 11, color: AppColors.textWhite, fontWeight: FontWeight.w600),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.sidebarBg,
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: AppColors.borderDark),
-                                            ),
-                                            child: DropdownButtonHideUnderline(
-                                              child: DropdownButton<String>(
-                                                value: chosenBackupPath,
-                                                isExpanded: true,
-                                                dropdownColor: AppColors.sidebarBg,
-                                                style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
-                                                items: backupFiles.map((f) {
-                                                  final name = f.path.split('/').last;
-                                                  final sizeMb = (f.lengthSync() / (1024 * 1024 * 1024)).toStringAsFixed(1);
-                                                  return DropdownMenuItem<String>(
-                                                    value: f.path,
-                                                    child: Text(
-                                                      '$name (${sizeMb}GB)',
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  );
-                                                }).toList(),
-                                                onChanged: isProcessing
-                                                    ? null
-                                                    : (val) {
-                                                        setModalState(() {
-                                                          chosenBackupPath = val;
-                                                        });
-                                                      },
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                        ],
-                                        ElevatedButton.icon(
-                                          onPressed: isProcessing
-                                              ? null
-                                              : () async {
-                                                  try {
-                                                    final res = await FilePicker.platform.pickFiles(
-                                                      dialogTitle: 'Chọn file backup máy ảo Android (.tar.gz, .zip)',
-                                                      type: FileType.custom,
-                                                      allowedExtensions: ['tar.gz', 'gz', 'tgz', 'zip', 'tar'],
-                                                    );
-                                                    if (res != null && res.files.single.path != null) {
-                                                      setModalState(() {
-                                                        chosenBackupPath = res.files.single.path;
-                                                      });
-                                                    }
-                                                  } catch (e) {
-                                                    AppToast.error(dialogCtx, 'Không thể mở trình chọn file: $e');
-                                                  }
-                                                },
-                                          icon: const Icon(Icons.folder_open_rounded, size: 14),
-                                          label: Text(
-                                            chosenBackupPath != null && !chosenBackupPath!.startsWith(defaultBackupDir)
-                                                ? 'Đã chọn: ${chosenBackupPath!.split("/").last}'
-                                                : 'Chọn file backup từ thư mục khác...',
-                                            style: const TextStyle(fontSize: 11),
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.sidebarBg,
-                                            foregroundColor: AppColors.primaryLight,
-                                            elevation: 0,
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // TÙY CHỌN 2: TẠO MỚI (CLONE TỪ BASE)
-                        InkWell(
-                          onTap: isProcessing
-                              ? null
-                              : () {
-                                  setModalState(() {
-                                    selectedMode = 2;
-                                  });
-                                },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: selectedMode == 2 ? AppColors.accent.withValues(alpha: 0.12) : AppColors.inputBg,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: selectedMode == 2 ? AppColors.accent : AppColors.borderDark,
-                                width: selectedMode == 2 ? 1.5 : 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Radio<int>(
-                                  value: 2,
-                                  groupValue: selectedMode,
-                                  activeColor: AppColors.accent,
-                                  onChanged: isProcessing
-                                      ? null
-                                      : (val) {
-                                          setModalState(() {
-                                            selectedMode = val ?? 2;
-                                          });
-                                        },
-                                ),
-                                const SizedBox(width: 4),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Chế độ 2: Tạo thiết bị mới hoàn toàn (Clean Base)',
-                                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                      ),
-                                      SizedBox(height: 2),
-                                      Text(
-                                        'Tạo phân vùng userdata trắng từ AVD gốc sạch, chưa cài đặt thêm ứng dụng nào',
-                                        style: TextStyle(fontSize: 11, color: AppColors.textDim),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        if (isProcessing) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF090F1E),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                            ),
-                            child: Row(
-                              children: [
-                                const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    statusMsg.isNotEmpty ? statusMsg : 'Đang xử lý thiết bị...',
-                                    style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  // 3. Footer
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF070C18),
-                      border: Border(top: BorderSide(color: AppColors.borderLight, width: 1.2)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: isProcessing ? null : () => Navigator.of(ctx).pop(false),
-                          child: const Text('Hủy', style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
-                        ),
-                        const SizedBox(width: 10),
-                        ElevatedButton.icon(
-                          onPressed: isProcessing
-                              ? null
-                              : () async {
-                                  if (selectedMode == 1) {
-                                    if (chosenBackupPath == null || chosenBackupPath!.isEmpty) {
-                                      AppToast.warning(ctx, 'Vui lòng chọn file backup để import');
-                                      return;
-                                    }
-                                    setModalState(() {
-                                      isProcessing = true;
-                                      statusMsg = 'Đang giải nén backup và nạp ứng dụng (Facebook, TikTok)...';
-                                    });
-
-                                    try {
-                                      final importedAvd = await _socks5Service.importPersonaDeviceBackup(
-                                        ip: ip,
-                                        archivePath: chosenBackupPath!,
-                                      );
-
-                                      // Cập nhật avdName vào persona profile nếu cần
-                                      final currentP = _personas[ip] ?? persona;
-                                      if (currentP != null) {
-                                        final updated = currentP.copyWith(avdName: importedAvd);
-                                        await _personaService.updatePersona(updated);
-                                        if (mounted) {
-                                          setState(() {
-                                            _personas[ip] = updated;
-                                          });
-                                        }
-                                      }
-
-                                      if (ctx.mounted) {
-                                        Navigator.of(ctx).pop(true);
-                                      }
-                                    } catch (e) {
-                                      if (ctx.mounted) {
-                                        setModalState(() {
-                                          isProcessing = false;
-                                          statusMsg = '';
-                                        });
-                                        AppToast.error(ctx, 'Lỗi import backup: $e');
-                                      }
-                                    }
-                                  } else {
-                                    setModalState(() {
-                                      isProcessing = true;
-                                      statusMsg = 'Đang tạo máy ảo mới độc lập cho IP $ip...';
-                                    });
-
-                                    try {
-                                      final createdAvd = await _socks5Service.createPersonaDeviceAvd(
-                                        ip: ip,
-                                        baseAvd: persona?.avdName,
-                                      );
-
-                                      final currentP = _personas[ip] ?? persona;
-                                      if (currentP != null) {
-                                        final updated = currentP.copyWith(avdName: createdAvd);
-                                        await _personaService.updatePersona(updated);
-                                        if (mounted) {
-                                          setState(() {
-                                            _personas[ip] = updated;
-                                          });
-                                        }
-                                      }
-
-                                      if (ctx.mounted) {
-                                        Navigator.of(ctx).pop(true);
-                                      }
-                                    } catch (e) {
-                                      if (ctx.mounted) {
-                                        setModalState(() {
-                                          isProcessing = false;
-                                          statusMsg = '';
-                                        });
-                                        AppToast.error(ctx, 'Lỗi tạo máy ảo mới: $e');
-                                      }
-                                    }
-                                  }
-                                },
-                          icon: isProcessing
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
-                                )
-                              : Icon(selectedMode == 1 ? Icons.cloud_download_rounded : Icons.add_circle_outline_rounded, size: 15),
-                          label: Text(
-                            isProcessing
-                                ? 'Đang thiết lập...'
-                                : (selectedMode == 1 ? 'Import & Khởi Chạy' : 'Tạo Mới & Khởi Chạy'),
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: selectedMode == 1 ? AppColors.primary : AppColors.accent,
-                            foregroundColor: const Color(0xFF070B14),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-
-    return result ?? false;
-  }
-
   void _showPersonaDetails(PersonaProfile persona) {
     final nameCtrl = TextEditingController(text: persona.name);
     final ageCtrl = TextEditingController(text: persona.age.toString());
@@ -606,6 +148,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     bool isLoadingAvds = true;
     bool didFetchAvds = false;
     bool hasPersonaAvd = false;
+    bool isDeletingPersonaAvd = false;
     bool isSaving = false;
 
     void startOtpPolling(String orderId, StateSetter setDialogState, BuildContext dialogCtx) {
@@ -661,8 +204,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   if (selectedAvd == null && avds.isNotEmpty) {
                     if (avds.contains(personaClone)) {
                       selectedAvd = personaClone;
-                    } else {
-                      selectedAvd = avds.first;
                     }
                   }
                 });
@@ -1151,373 +692,311 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                   ] else ...[
                                     const SizedBox(height: 12),
                                     // Tùy chọn Loại thiết bị: Mobile hoặc Tablet
-                                    Row(
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Text(
-                                                'Loại thiết bị AVD',
-                                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: InkWell(
-                                                      onTap: () {
-                                                        setDialogState(() {
-                                                          selectedDeviceType = 'mobile';
-                                                        });
-                                                      },
-                                                      borderRadius: BorderRadius.circular(6),
-                                                      child: Container(
-                                                        height: 36,
-                                                        decoration: BoxDecoration(
-                                                          color: selectedDeviceType == 'mobile'
-                                                              ? AppColors.primary.withValues(alpha: 0.2)
-                                                              : AppColors.inputBg,
-                                                          borderRadius: BorderRadius.circular(6),
-                                                          border: Border.all(
-                                                            color: selectedDeviceType == 'mobile'
-                                                                ? AppColors.primaryLight
-                                                                : AppColors.borderDark,
-                                                            width: selectedDeviceType == 'mobile' ? 1.5 : 1,
-                                                          ),
-                                                        ),
-                                                        child: Row(
-                                                          mainAxisAlignment: MainAxisAlignment.center,
-                                                          children: [
-                                                            Icon(
-                                                              Icons.phone_android_rounded,
-                                                              size: 14,
-                                                              color: selectedDeviceType == 'mobile'
-                                                                  ? AppColors.primaryLight
-                                                                  : AppColors.textDim,
-                                                            ),
-                                                            const SizedBox(width: 5),
-                                                            Text(
-                                                              'Mobile',
-                                                              style: TextStyle(
-                                                                fontSize: 11.5,
-                                                                fontWeight: selectedDeviceType == 'mobile'
-                                                                    ? FontWeight.bold
-                                                                    : FontWeight.normal,
-                                                                color: selectedDeviceType == 'mobile'
-                                                                    ? AppColors.textWhite
-                                                                    : AppColors.textDim,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Expanded(
-                                                    child: InkWell(
-                                                      onTap: () {
-                                                        setDialogState(() {
-                                                          selectedDeviceType = 'tablet';
-                                                        });
-                                                      },
-                                                      borderRadius: BorderRadius.circular(6),
-                                                      child: Container(
-                                                        height: 36,
-                                                        decoration: BoxDecoration(
-                                                          color: selectedDeviceType == 'tablet'
-                                                              ? AppColors.accent.withValues(alpha: 0.2)
-                                                              : AppColors.inputBg,
-                                                          borderRadius: BorderRadius.circular(6),
-                                                          border: Border.all(
-                                                            color: selectedDeviceType == 'tablet'
-                                                                ? AppColors.accent
-                                                                : AppColors.borderDark,
-                                                            width: selectedDeviceType == 'tablet' ? 1.5 : 1,
-                                                          ),
-                                                        ),
-                                                        child: Row(
-                                                          mainAxisAlignment: MainAxisAlignment.center,
-                                                          children: [
-                                                            Icon(
-                                                              Icons.tablet_android_rounded,
-                                                              size: 14,
-                                                              color: selectedDeviceType == 'tablet'
-                                                                  ? AppColors.accent
-                                                                  : AppColors.textDim,
-                                                            ),
-                                                            const SizedBox(width: 5),
-                                                            Text(
-                                                              'Tablet',
-                                                              style: TextStyle(
-                                                                fontSize: 11.5,
-                                                                fontWeight: selectedDeviceType == 'tablet'
-                                                                    ? FontWeight.bold
-                                                                    : FontWeight.normal,
-                                                                color: selectedDeviceType == 'tablet'
-                                                                    ? AppColors.textWhite
-                                                                    : AppColors.textDim,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
+                                        const Text(
+                                          'Loại thiết bị AVD',
+                                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                         ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  const Text(
-                                                    'Chọn máy ảo (AVD)',
-                                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                                  ),
-                                                  InkWell(
-                                                    onTap: () {
-                                                      setDialogState(() {
-                                                        selectedDeviceType = 'mobile';
-                                                        selectedAvd = availableAvds.isNotEmpty ? availableAvds.first : null;
-                                                      });
-                                                      AppToast.info(context, 'Đã đặt lại cấu hình máy ảo AVD về mặc định');
-                                                    },
-                                                    borderRadius: BorderRadius.circular(4),
-                                                    child: const Padding(
-                                                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                                      child: Row(
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          Icon(Icons.restart_alt_rounded, size: 13, color: AppColors.primaryLight),
-                                                          SizedBox(width: 3),
-                                                          Text(
-                                                            'Reset',
-                                                            style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
-                                                          ),
-                                                        ],
-                                                      ),
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () {
+                                                  setDialogState(() {
+                                                    selectedDeviceType = 'mobile';
+                                                  });
+                                                },
+                                                borderRadius: BorderRadius.circular(6),
+                                                child: Container(
+                                                  height: 36,
+                                                  decoration: BoxDecoration(
+                                                    color: selectedDeviceType == 'mobile'
+                                                        ? AppColors.primary.withValues(alpha: 0.2)
+                                                        : AppColors.inputBg,
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(
+                                                      color: selectedDeviceType == 'mobile'
+                                                          ? AppColors.primaryLight
+                                                          : AppColors.borderDark,
+                                                      width: selectedDeviceType == 'mobile' ? 1.5 : 1,
                                                     ),
                                                   ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Container(
-                                                height: 36,
-                                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.inputBg,
-                                                  borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: AppColors.borderDark),
-                                                ),
-                                                child: DropdownButtonHideUnderline(
-                                                  child: DropdownButton<String?>(
-                                                    value: availableAvds.contains(selectedAvd) ? selectedAvd : null,
-                                                    hint: Text(
-                                                      isLoadingAvds ? 'Đang quét...' : (availableAvds.isEmpty ? 'Chưa có AVD (Khuyên dùng Ngoại vi)' : 'Chọn AVD...'),
-                                                      style: const TextStyle(fontSize: 11, color: AppColors.textDim),
-                                                    ),
-                                                    dropdownColor: AppColors.sidebarBg,
-                                                    icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
-                                                    isExpanded: true,
-                                                    style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
-                                                    items: [
-                                                      const DropdownMenuItem<String?>(
-                                                        value: null,
-                                                        child: Text('Mặc định hệ thống', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.phone_android_rounded,
+                                                        size: 14,
+                                                        color: selectedDeviceType == 'mobile'
+                                                            ? AppColors.primaryLight
+                                                            : AppColors.textDim,
                                                       ),
-                                                      ...availableAvds.map((avd) {
-                                                        return DropdownMenuItem<String?>(
-                                                          value: avd,
-                                                          child: Text(
-                                                            avd,
-                                                            maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: const TextStyle(fontSize: 11.5),
-                                                          ),
-                                                        );
-                                                      }),
+                                                      const SizedBox(width: 5),
+                                                      Text(
+                                                        'Mobile',
+                                                        style: TextStyle(
+                                                          fontSize: 11.5,
+                                                          fontWeight: selectedDeviceType == 'mobile'
+                                                              ? FontWeight.bold
+                                                              : FontWeight.normal,
+                                                          color: selectedDeviceType == 'mobile'
+                                                              ? AppColors.textWhite
+                                                              : AppColors.textDim,
+                                                        ),
+                                                      ),
                                                     ],
-                                                    onChanged: (val) {
-                                                      setDialogState(() {
-                                                        selectedAvd = val;
-                                                      });
-                                                    },
                                                   ),
                                                 ),
                                               ),
-                                              const SizedBox(height: 8),
-                                              if (!hasPersonaAvd) ...[
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: SizedBox(
-                                                        height: 32,
-                                                        child: ElevatedButton.icon(
-                                                          onPressed: () async {
-                                                            final serverProv = context.read<ServerProvider>();
-                                                            final svr = serverProv.servers.firstWhere(
-                                                              (s) => s.serverIp == persona.ip,
-                                                              orElse: () => serverProv.servers.isNotEmpty
-                                                                  ? serverProv.servers.first
-                                                                  : ServerModel(
-                                                                      id: 'fallback_${persona.ip}',
-                                                                      name: 'Server ${persona.ip}',
-                                                                      serverIp: persona.ip,
-                                                                      sshUser: 'root',
-                                                                      sshPort: 22,
-                                                                    ),
-                                                            );
-                                                            final setupOk = await _showDeviceSetupModeDialog(
-                                                              ip: persona.ip,
-                                                              server: svr,
-                                                              persona: _personas[persona.ip] ?? persona,
-                                                            );
-                                                            if (setupOk) {
-                                                              final freshAvds = await _socks5Service.getAvailableAvds();
-                                                              final targetClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
-                                                              setDialogState(() {
-                                                                availableAvds = freshAvds;
-                                                                hasPersonaAvd = true;
-                                                                if (freshAvds.contains(targetClone)) {
-                                                                  selectedAvd = targetClone;
-                                                                }
-                                                              });
-                                                            }
-                                                          },
-                                                          icon: const Icon(Icons.add_circle_outline_rounded, size: 14),
-                                                          label: const Text(
-                                                            'Tạo mới',
-                                                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                                                          ),
-                                                          style: ElevatedButton.styleFrom(
-                                                            backgroundColor: AppColors.accent,
-                                                            foregroundColor: const Color(0xFF070B14),
-                                                            elevation: 0,
-                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                                          ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () {
+                                                  setDialogState(() {
+                                                    selectedDeviceType = 'tablet';
+                                                  });
+                                                },
+                                                borderRadius: BorderRadius.circular(6),
+                                                child: Container(
+                                                  height: 36,
+                                                  decoration: BoxDecoration(
+                                                    color: selectedDeviceType == 'tablet'
+                                                        ? AppColors.accent.withValues(alpha: 0.2)
+                                                        : AppColors.inputBg,
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(
+                                                      color: selectedDeviceType == 'tablet'
+                                                          ? AppColors.accent
+                                                          : AppColors.borderDark,
+                                                      width: selectedDeviceType == 'tablet' ? 1.5 : 1,
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.tablet_android_rounded,
+                                                        size: 14,
+                                                        color: selectedDeviceType == 'tablet'
+                                                            ? AppColors.accent
+                                                            : AppColors.textDim,
+                                                      ),
+                                                      const SizedBox(width: 5),
+                                                      Text(
+                                                        'Tablet',
+                                                        style: TextStyle(
+                                                          fontSize: 11.5,
+                                                          fontWeight: selectedDeviceType == 'tablet'
+                                                              ? FontWeight.bold
+                                                              : FontWeight.normal,
+                                                          color: selectedDeviceType == 'tablet'
+                                                              ? AppColors.textWhite
+                                                              : AppColors.textDim,
                                                         ),
                                                       ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(
-                                                      child: SizedBox(
-                                                        height: 32,
-                                                        child: ElevatedButton.icon(
-                                                          onPressed: () async {
-                                                            final serverProv = context.read<ServerProvider>();
-                                                            final svr = serverProv.servers.firstWhere(
-                                                              (s) => s.serverIp == persona.ip,
-                                                              orElse: () => serverProv.servers.isNotEmpty
-                                                                  ? serverProv.servers.first
-                                                                  : ServerModel(
-                                                                      id: 'fallback_${persona.ip}',
-                                                                      name: 'Server ${persona.ip}',
-                                                                      serverIp: persona.ip,
-                                                                      sshUser: 'root',
-                                                                      sshPort: 22,
-                                                                    ),
-                                                            );
-                                                            final setupOk = await _showDeviceSetupModeDialog(
-                                                              ip: persona.ip,
-                                                              server: svr,
-                                                              persona: _personas[persona.ip] ?? persona,
-                                                            );
-                                                            if (setupOk) {
-                                                              final freshAvds = await _socks5Service.getAvailableAvds();
-                                                              final targetClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
-                                                              setDialogState(() {
-                                                                availableAvds = freshAvds;
-                                                                hasPersonaAvd = true;
-                                                                if (freshAvds.contains(targetClone)) {
-                                                                  selectedAvd = targetClone;
-                                                                }
-                                                              });
-                                                            }
-                                                          },
-                                                          icon: const Icon(Icons.cloud_download_rounded, size: 14),
-                                                          label: const Text(
-                                                            'Import',
-                                                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                                                          ),
-                                                          style: ElevatedButton.styleFrom(
-                                                            backgroundColor: AppColors.primary,
-                                                            foregroundColor: const Color(0xFF070B14),
-                                                            elevation: 0,
-                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
+                                                    ],
+                                                  ),
                                                 ),
-                                              ] else ...[
-                                                SizedBox(
-                                                  height: 32,
-                                                  child: OutlinedButton.icon(
-                                                    onPressed: () async {
-                                                      final serverProv = context.read<ServerProvider>();
-                                                      final svr = serverProv.servers.firstWhere(
-                                                        (s) => s.serverIp == persona.ip,
-                                                        orElse: () => serverProv.servers.isNotEmpty
-                                                            ? serverProv.servers.first
-                                                            : ServerModel(
-                                                                id: 'fallback_${persona.ip}',
-                                                                name: 'Server ${persona.ip}',
-                                                                serverIp: persona.ip,
-                                                                sshUser: 'root',
-                                                                sshPort: 22,
-                                                              ),
-                                                      );
-                                                      final setupOk = await _showDeviceSetupModeDialog(
-                                                        ip: persona.ip,
-                                                        server: svr,
-                                                        persona: _personas[persona.ip] ?? persona,
-                                                      );
-                                                      if (setupOk) {
-                                                        final freshAvds = await _socks5Service.getAvailableAvds();
-                                                        final targetClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
-                                                        setDialogState(() {
-                                                          availableAvds = freshAvds;
-                                                          hasPersonaAvd = true;
-                                                          if (freshAvds.contains(targetClone)) {
-                                                            selectedAvd = targetClone;
-                                                          }
-                                                        });
-                                                      }
-                                                    },
-                                                    icon: const Icon(Icons.phonelink_setup_rounded, size: 14),
-                                                    label: const Text(
-                                                      'Cấu hình lại AVD (Tạo mới / Import)',
-                                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    // Chọn máy ảo AVD & Hành động tạo mới/import
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Text(
+                                                  'Chọn máy ảo (AVD)',
+                                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                  decoration: BoxDecoration(
+                                                    color: hasPersonaAvd ? AppColors.accent.withValues(alpha: 0.15) : AppColors.danger.withValues(alpha: 0.15),
+                                                    borderRadius: BorderRadius.circular(3),
+                                                    border: Border.all(
+                                                      color: hasPersonaAvd ? AppColors.accent.withValues(alpha: 0.5) : AppColors.danger.withValues(alpha: 0.5),
+                                                      width: 0.8,
                                                     ),
-                                                    style: OutlinedButton.styleFrom(
-                                                      foregroundColor: AppColors.primaryLight,
-                                                      side: BorderSide(color: AppColors.primaryLight.withValues(alpha: 0.5)),
-                                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                                  ),
+                                                  child: Text(
+                                                    hasPersonaAvd ? 'Đã có máy ảo' : 'Chưa cài đặt',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: hasPersonaAvd ? AppColors.accent : AppColors.danger,
                                                     ),
                                                   ),
                                                 ),
                                               ],
-                                            ],
+                                            ),
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                // NÚT XÓA
+                                                InkWell(
+                                                  onTap: (selectedAvd == null || isDeletingPersonaAvd)
+                                                      ? null
+                                                      : () async {
+                                                          final avdToDelete = selectedAvd!;
+                                                          final confirm = await showDialog<bool>(
+                                                            context: dialogCtx,
+                                                            builder: (c) => AlertDialog(
+                                                              backgroundColor: const Color(0xFF0C1322),
+                                                              title: const Text('Xác nhận xóa máy ảo', style: TextStyle(color: AppColors.danger, fontSize: 14)),
+                                                              content: Text('Bạn có chắc chắn muốn xóa máy ảo "$avdToDelete" khỏi ổ cứng không? Thao tác này không thể hoàn tác.', style: const TextStyle(color: AppColors.textWhite, fontSize: 12)),
+                                                              actions: [
+                                                                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Hủy', style: TextStyle(color: AppColors.textDim))),
+                                                                ElevatedButton(
+                                                                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+                                                                  onPressed: () => Navigator.pop(c, true),
+                                                                  child: const Text('Xóa vĩnh viễn', style: TextStyle(color: Colors.white)),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
+
+                                                          if (confirm != true) return;
+
+                                                          setDialogState(() {
+                                                            isDeletingPersonaAvd = true;
+                                                          });
+                                                          try {
+                                                            await _socks5Service.deleteAvd(avdToDelete, ip: persona.ip);
+                                                            final freshAvds = await _socks5Service.getAvailableAvds();
+                                                            final currentP = _personas[persona.ip] ?? persona;
+                                                            final updated = currentP.copyWith(avdName: null);
+                                                            await _personaService.updatePersona(updated);
+
+                                                            if (mounted) {
+                                                              setState(() {
+                                                                _personas[persona.ip] = updated;
+                                                                _availableAvds = freshAvds.toSet();
+                                                              });
+                                                            }
+
+                                                            if (dialogCtx.mounted) {
+                                                              final personaClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
+                                                              setDialogState(() {
+                                                              setDialogState(() {
+                                                                availableAvds = freshAvds;
+                                                                selectedAvd = null;
+                                                                hasPersonaAvd = false;
+                                                              });
+                                                              AppToast.success(dialogCtx, 'Đã xóa máy ảo $avdToDelete thành công');
+                                                            }
+                                                          } catch (e) {
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.error(dialogCtx, 'Lỗi khi xóa máy ảo: $e');
+                                                            }
+                                                          } finally {
+                                                            if (dialogCtx.mounted) {
+                                                              setDialogState(() {
+                                                                isDeletingPersonaAvd = false;
+                                                              });
+                                                            }
+                                                          }
+                                                        },
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        if (isDeletingPersonaAvd)
+                                                          const SizedBox(
+                                                            width: 10,
+                                                            height: 10,
+                                                            child: CircularProgressIndicator(strokeWidth: 1.2, color: AppColors.danger),
+                                                          )
+                                                        else
+                                                          Icon(
+                                                            Icons.delete_outline_rounded,
+                                                            size: 12,
+                                                            color: selectedAvd == null ? AppColors.textDim.withValues(alpha: 0.4) : AppColors.danger,
+                                                          ),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          isDeletingPersonaAvd ? 'Đang xóa...' : 'Xóa',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            color: selectedAvd == null ? AppColors.textDim.withValues(alpha: 0.4) : AppColors.danger,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Container(
+                                          height: 36,
+                                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.inputBg,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: AppColors.borderDark),
+                                          ),
+                                          child: DropdownButtonHideUnderline(
+                                            child: DropdownButton<String?>(
+                                              value: availableAvds.contains(selectedAvd) ? selectedAvd : null,
+                                              hint: Text(
+                                                isLoadingAvds ? 'Đang quét...' : (availableAvds.isEmpty ? 'Chưa có AVD (Khuyên dùng Ngoại vi)' : 'Chọn AVD...'),
+                                                style: const TextStyle(fontSize: 11, color: AppColors.textDim),
+                                              ),
+                                              dropdownColor: AppColors.sidebarBg,
+                                              icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
+                                              isExpanded: true,
+                                              style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                                              items: [
+                                                const DropdownMenuItem<String?>(
+                                                  value: null,
+                                                  child: Text('Mặc định hệ thống', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                                                ),
+                                                ...availableAvds.map((avd) {
+                                                  return DropdownMenuItem<String?>(
+                                                    value: avd,
+                                                    child: Text(
+                                                      avd,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(fontSize: 11.5),
+                                                    ),
+                                                  );
+                                                }),
+                                              ],
+                                              onChanged: (val) {
+                                                setDialogState(() {
+                                                  selectedAvd = val;
+                                                });
+                                              },
+                                            ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ],
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
                             const SizedBox(height: 12),
                             // Cấu hình Số điện thoại & Thuê số OTP
                             Container(
@@ -1989,6 +1468,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     ).then((_) {
       otpTimer?.cancel();
       otpTimer = null;
+      _loadPersonas();
     });
   }
 
@@ -2825,6 +2305,45 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     }
 
                     final bool isExt = targetRemoteDevice != null;
+                    final currentP = _personas[item.ip] ?? persona;
+                    final sanitizedIp = item.ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+                    final expectedPersonaAvd = 'Pixel_10_Pro_persona_$sanitizedIp';
+                    final bool hasLocalAvd = (currentP?.avdName != null && currentP!.avdName!.isNotEmpty && _availableAvds.contains(currentP.avdName)) ||
+                        _availableAvds.contains(expectedPersonaAvd);
+                    final bool hasDeviceSetup = isExt || hasLocalAvd;
+
+                    // Nếu chưa có thiết bị máy ảo, hiện nút "Cài đặt máy ảo" bấm vào mở modal hồ sơ
+                    if (!hasDeviceSetup) {
+                      return ElevatedButton.icon(
+                        onPressed: () {
+                          final p = currentP ?? PersonaProfile(
+                            ip: item.ip,
+                            name: 'Nhân vật ${item.ip}',
+                            age: 25,
+                            gender: 'Nam',
+                            bio: 'Nhân vật tự động cho địa chỉ IP ${item.ip}',
+                            avatarPrompt: '',
+                          );
+                          _showPersonaDetails(p);
+                        },
+                        icon: const Icon(Icons.phonelink_setup_rounded, size: 14),
+                        label: const Text(
+                          'Cài đặt máy ảo',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      );
+                    }
 
                     return ElevatedButton.icon(
                       onPressed: isDeviceBusy
@@ -2840,7 +2359,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     : 'Đang khởi động mobile device cho ${item.ip}...',
                               );
                               try {
-                                final currentP = _personas[item.ip] ?? persona;
                                 await _socks5Service.launchDeviceWithSocks5(
                                   server: item.server,
                                   ip: item.ip,

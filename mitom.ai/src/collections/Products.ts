@@ -53,7 +53,7 @@ export const Products: CollectionConfig = {
     {
       name: 'plans',
       type: 'array',
-      label: 'Các gói giá (Plans)',
+      label: 'Các gói giá',
       fields: [
         {
           name: 'name',
