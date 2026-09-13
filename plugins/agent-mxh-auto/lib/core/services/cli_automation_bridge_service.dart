@@ -377,18 +377,24 @@ def close_browser(ips):
                 pass
 
 def open_device(ip, device_type="mobile", avd_name=None):
-    # Tìm emulator binary
     sdk_emulator = os.path.expanduser("~/Android/Sdk/emulator/emulator")
     if not os.path.exists(sdk_emulator):
         sdk_emulator = "emulator"
 
+    sdk_adb = os.path.expanduser("~/Android/Sdk/platform-tools/adb")
+    if not os.path.exists(sdk_adb):
+        sdk_adb = "adb"
+
+    sanitized_ip = ip.replace(".", "_").replace(":", "_")
     target_avd = avd_name
     if not target_avd:
-        # Lấy danh sách avd hiện có
+        persona_avd_name = f"Pixel_10_Pro_persona_{sanitized_ip}"
         try:
             res = subprocess.run([sdk_emulator, "-list-avds"], stdout=subprocess.PIPE, text=True, check=False)
             avds = [line.strip() for line in res.stdout.splitlines() if line.strip()]
-            if avds:
+            if persona_avd_name in avds:
+                target_avd = persona_avd_name
+            elif avds:
                 target_avd = avds[0]
         except Exception:
             pass
@@ -397,23 +403,192 @@ def open_device(ip, device_type="mobile", avd_name=None):
         print("Không tìm thấy máy ảo AVD nào trong hệ thống Android SDK!", file=sys.stderr)
         sys.exit(1)
 
-    cmd = [sdk_emulator, "-avd", target_avd, "-netdelay", "none", "-netspeed", "full"]
+    # 1. Khởi tạo đường hầm SOCKS5 SSH cho IP này
+    socks5_proxy = _start_socks5_for_ip(ip)
+    socks5_port = None
+    if socks5_proxy and ":" in socks5_proxy:
+        try:
+            socks5_port = int(socks5_proxy.split(":")[-1])
+        except Exception:
+            socks5_port = None
+
+    # 2. Khởi tạo HTTP Proxy Bridge chuyển tiếp sang SOCKS5
+    http_proxy_port = None
+    bridge_proc = None
+    if socks5_port:
+        bridge_script = os.path.expanduser("~/Documents/Projects/Typing/apps/plugins/agent-mxh-auto/lib/core/services/scripts/socks2http_bridge.py")
+        if os.path.exists(bridge_script):
+            hs = socket.socket()
+            hs.bind(("0.0.0.0", 0))
+            http_proxy_port = hs.getsockname()[1]
+            hs.close()
+
+            try:
+                bridge_proc = subprocess.Popen(
+                    [sys.executable, bridge_script, str(http_proxy_port), "127.0.0.1", str(socks5_port), "0.0.0.0"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    start_new_session=True
+                )
+                for _ in range(20):
+                    time.sleep(0.1)
+                    try:
+                        ts = socket.socket()
+                        ts.settimeout(0.2)
+                        ts.connect(("127.0.0.1", http_proxy_port))
+                        ts.close()
+                        break
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"Lỗi khởi động HTTP bridge cho thiết bị: {e}", file=sys.stderr)
+                http_proxy_port = None
+
+    # 3. Tìm cổng console khả dụng cho emulator (5554 đến 5584 chẵn)
+    console_port = 5554
+    for p in range(5554, 5586, 2):
+        s1 = socket.socket()
+        r1 = s1.connect_ex(("127.0.0.1", p))
+        s1.close()
+        s2 = socket.socket()
+        r2 = s2.connect_ex(("127.0.0.1", p + 1))
+        s2.close()
+        if r1 != 0 and r2 != 0:
+            console_port = p
+            break
+
+    cmd = [
+        sdk_emulator,
+        "-avd", target_avd,
+        "-port", str(console_port),
+        "-netdelay", "none",
+        "-netspeed", "full",
+        "-gpu", "host",
+        "-no-boot-anim"
+    ]
+    if http_proxy_port:
+        cmd.extend(["-http-proxy", f"http://127.0.0.1:{http_proxy_port}"])
+    if device_type == "tablet":
+        cmd.extend(["-skin", "1200x1920"])
+
     env = os.environ.copy()
     if "DISPLAY" not in env or not env["DISPLAY"]:
         env["DISPLAY"] = ":0"
 
     try:
-        subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print(f"Đã mở thiết bị Android máy ảo {target_avd} cho IP {ip}")
+        emu_proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        # Lưu metadata quản lý máy ảo và proxy theo IP
+        tmp_dir = os.path.join(DATA_DIR, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        dev_meta_file = os.path.join(tmp_dir, f"device_{sanitized_ip}.json")
+        with open(dev_meta_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "ip": ip,
+                "target_avd": target_avd,
+                "console_port": console_port,
+                "emulator_pid": emu_proc.pid,
+                "bridge_pid": bridge_proc.pid if bridge_proc else None,
+                "http_proxy_port": http_proxy_port,
+                "socks5_port": socks5_port
+            }, f)
+
+        proxy_str = f"qua SOCKS5 SSH & HTTP Bridge (10.0.2.2:{http_proxy_port})" if http_proxy_port else "không proxy"
+        print(f"Đã mở thiết bị Android máy ảo {target_avd} cho IP {ip} [port {console_port}] {proxy_str}")
+
+        # Chạy luồng nền cấu hình proxy và đánh thức AVD qua ADB
+        def _bg_adb_setup():
+            serial = f"emulator-{console_port}"
+            # Chờ boot xong (tối đa 40s)
+            for _ in range(20):
+                time.sleep(2)
+                try:
+                    res = subprocess.run([sdk_adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], stdout=subprocess.PIPE, text=True, check=False)
+                    if res.stdout.strip() == "1":
+                        break
+                except Exception:
+                    pass
+            # Cấu hình adb global proxy
+            if http_proxy_port:
+                try:
+                    subprocess.run([sdk_adb, "-s", serial, "shell", "settings", "put", "global", "http_proxy", f"10.0.2.2:{http_proxy_port}"], check=False)
+                except Exception:
+                    pass
+            # Đánh thức & mở khóa màn hình
+            try:
+                subprocess.run([sdk_adb, "-s", serial, "shell", "input", "keyevent", "224"], check=False)
+                subprocess.run([sdk_adb, "-s", serial, "shell", "input", "keyevent", "82"], check=False)
+                subprocess.run([sdk_adb, "-s", serial, "shell", "input", "swipe", "500", "1500", "500", "500", "200"], check=False)
+            except Exception:
+                pass
+
+        threading.Thread(target=_bg_adb_setup, daemon=True).start()
+
     except Exception as e:
         print(f"Lỗi khởi chạy máy ảo cho IP {ip}: {e}", file=sys.stderr)
 
 def close_device(ip=None):
-    try:
-        subprocess.run(["adb", "emu", "kill"], check=False)
-        print("Đã gửi lệnh tắt thiết bị Android máy ảo.")
-    except Exception as e:
-        print(f"Lỗi tắt máy ảo: {e}", file=sys.stderr)
+    sdk_adb = os.path.expanduser("~/Android/Sdk/platform-tools/adb")
+    if not os.path.exists(sdk_adb):
+        sdk_adb = "adb"
+
+    tmp_dir = os.path.join(DATA_DIR, "tmp")
+    if ip:
+        sanitized_ip = ip.replace(".", "_").replace(":", "_")
+        dev_meta_file = os.path.join(tmp_dir, f"device_{sanitized_ip}.json")
+        console_port = None
+        bridge_pid = None
+        if os.path.exists(dev_meta_file):
+            try:
+                with open(dev_meta_file, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                console_port = meta.get("console_port")
+                bridge_pid = meta.get("bridge_pid")
+                emu_pid = meta.get("emulator_pid")
+                if bridge_pid:
+                    subprocess.run(["kill", "-9", str(bridge_pid)], check=False)
+                if emu_pid:
+                    subprocess.run(["kill", str(emu_pid)], check=False)
+                os.remove(dev_meta_file)
+            except Exception:
+                pass
+
+        if console_port:
+            serial = f"emulator-{console_port}"
+            try:
+                subprocess.run([sdk_adb, "-s", serial, "shell", "settings", "put", "global", "http_proxy", ":0"], check=False)
+                subprocess.run([sdk_adb, "-s", serial, "emu", "kill"], check=False)
+            except Exception:
+                pass
+        else:
+            try:
+                subprocess.run([sdk_adb, "emu", "kill"], check=False)
+            except Exception:
+                pass
+
+        # Dọn dẹp SSH SOCKS5 tương ứng nếu không còn trình duyệt dùng
+        meta_file = os.path.join(tmp_dir, f"socks_{sanitized_ip}.json")
+        if os.path.exists(meta_file):
+            try:
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    smeta = json.load(f)
+                spid = smeta.get("pid")
+                if spid:
+                    subprocess.run(["kill", "-9", str(spid)], check=False)
+                askpass = smeta.get("askpass")
+                if askpass and os.path.exists(askpass):
+                    os.remove(askpass)
+                os.remove(meta_file)
+            except Exception:
+                pass
+
+        print(f"Đã tắt thiết bị Android máy ảo và dọn dẹp proxy cho IP {ip}.")
+    else:
+        try:
+            subprocess.run([sdk_adb, "emu", "kill"], check=False)
+            print("Đã gửi lệnh tắt tất cả thiết bị Android máy ảo.")
+        except Exception as e:
+            print(f"Lỗi tắt máy ảo: {e}", file=sys.stderr)
 
 def main():
     parser = argparse.ArgumentParser(description="MXH Auto CLI Tool for Local CLI Agents")
@@ -538,7 +713,11 @@ if __name__ == "__main__":
       buffer.writeln('');
     }
 
-    buffer.writeln('QUY TẮC ĐIỀU KHIỂN & MỞ TRÌNH DUYỆT BẮT BUỘC:');
+    buffer.writeln('QUY TẮC ĐIỀU KHIỂN & MỞ THIẾT BỊ / TRÌNH DUYỆT BẮT BUỘC:');
+    buffer.writeln('- TRÌNH DUYỆT & THIẾT BỊ ĐÃ ĐƯỢC ÉP DÙNG PROXY SOCKS5 SSH THEO TỪNG IP:');
+    buffer.writeln('  Khi chạy lệnh `open-device --ip <IP>`, hệ thống tự động khởi tạo hầm SOCKS5 SSH, kích hoạt HTTP bridge và cấu hình proxy toàn phần (Android Emulator flag `-http-proxy` và ADB global proxy `10.0.2.2:<port>`). Tất cả lưu lượng mạng của máy ảo đều đi qua IP sạch của nhân vật đó.');
+    buffer.writeln('  Khi chạy `close-device --ip <IP>`, hệ thống tự động tắt máy ảo, gỡ proxy và dọn dẹp hầm SSH tương ứng.');
+    buffer.writeln('');
     if (scopeIps.length > 1) {
       buffer.writeln('- QUAN TRỌNG: Người dùng đang chọn ${scopeIps.length} nhân vật trong Scope (${scopeIps.join(', ')}).');
       buffer.writeln('- Khi người dùng bảo mở link, xem link, hoặc làm việc chung mà KHÔNG chỉ định đích danh 1 ai: BẮT BUỘC phải mở trình duyệt cho TOÀN BỘ ${scopeIps.length} nhân vật bằng cách truyền toàn bộ danh sách IP vào tham số `--ips`:');
