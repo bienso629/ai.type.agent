@@ -31,6 +31,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _appTitleCtrl = TextEditingController(text: 'AI Agent Chatbot');
   final TextEditingController _brandTitleCtrl = TextEditingController(text: 'AI Agent');
   final TextEditingController _brandSubtitleCtrl = TextEditingController(text: 'AI AGENT CHATBOT');
+  final TextEditingController _personalInstructionsCtrl = TextEditingController();
+  final TextEditingController _newMemoryCtrl = TextEditingController();
 
   bool _voiceEnabled = false;
   String _selectedVoice = 'vi-VN-HoaiMyNeural';
@@ -38,6 +40,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   List<String> _availableModels = [];
   bool _isLoadingModels = false;
+
+  List<Map<String, dynamic>> _userMemories = [];
+  bool _isLoadingMemories = false;
 
   @override
   void initState() {
@@ -48,7 +53,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _initSettings() async {
     await _loadGlobalConfig();
     if (mounted) {
-      await _fetchModelsList();
+      await Future.wait([
+        _fetchModelsList(),
+        _loadUserMemories(),
+      ]);
+    }
+  }
+
+  Future<void> _loadUserMemories() async {
+    setState(() {
+      _isLoadingMemories = true;
+    });
+    try {
+      final list = await _api.getUserMemories();
+      if (mounted) {
+        setState(() {
+          _userMemories = list;
+          _isLoadingMemories = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMemories = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _addUserMemory() async {
+    final text = _newMemoryCtrl.text.trim();
+    if (text.isEmpty) {
+      AppToast.warning(context, 'Vui lòng nhập nội dung cần AI ghi nhớ');
+      return;
+    }
+    final ok = await _api.addUserMemory(text);
+    if (ok) {
+      _newMemoryCtrl.clear();
+      await _loadUserMemories();
+      if (mounted) {
+        AppToast.success(context, 'Đã thêm ghi nhớ cho AI thành công');
+      }
+    } else {
+      if (mounted) {
+        AppToast.error(context, 'Không thể lưu ghi nhớ');
+      }
+    }
+  }
+
+  Future<void> _toggleUserMemory(int memoryId, bool currentVal) async {
+    final nextVal = !currentVal;
+    final ok = await _api.toggleUserMemory(memoryId, nextVal);
+    if (ok) {
+      await _loadUserMemories();
+    }
+  }
+
+  Future<void> _deleteUserMemory(int memoryId) async {
+    final ok = await _api.deleteUserMemory(memoryId);
+    if (ok) {
+      await _loadUserMemories();
+      if (mounted) {
+        AppToast.success(context, 'Đã xóa ghi nhớ');
+      }
     }
   }
 
@@ -61,6 +128,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _appTitleCtrl.dispose();
     _brandTitleCtrl.dispose();
     _brandSubtitleCtrl.dispose();
+    _personalInstructionsCtrl.dispose();
+    _newMemoryCtrl.dispose();
     super.dispose();
   }
 
@@ -106,6 +175,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       if (cfg['brand_subtitle'] != null && cfg['brand_subtitle'].toString().isNotEmpty) {
         _brandSubtitleCtrl.text = cfg['brand_subtitle'].toString();
+      }
+      if (cfg['personal_instructions'] != null) {
+        _personalInstructionsCtrl.text = cfg['personal_instructions'].toString();
       }
     } catch (_) {}
   }
@@ -574,6 +646,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       cfg['app_title'] = _appTitleCtrl.text.trim().isEmpty ? 'AI Agent Chatbot' : _appTitleCtrl.text.trim();
       cfg['brand_title'] = _brandTitleCtrl.text.trim().isEmpty ? 'AI Agent' : _brandTitleCtrl.text.trim();
       cfg['brand_subtitle'] = _brandSubtitleCtrl.text.trim().isEmpty ? 'AI AGENT CHATBOT' : _brandSubtitleCtrl.text.trim();
+      cfg['personal_instructions'] = _personalInstructionsCtrl.text.trim();
 
       final ok = await _api.saveConfig(cfg);
       if (mounted) {
@@ -884,24 +957,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 Icon(Icons.memory_rounded, size: 20, color: AppColors.primaryLight),
                                 SizedBox(width: 10),
                                 Text(
-                                  '1. Cấu Hình AI Model & Proxy API',
+                                  'Cấu Hình AI Model & Proxy API',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                 ),
                               ],
                             ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.cardBg,
-                                side: const BorderSide(color: AppColors.primary),
+                            SizedBox(
+                              height: 38,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.cardBg,
+                                  side: const BorderSide(color: AppColors.primary),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                ),
+                                icon: const Icon(Icons.save_rounded, size: 16, color: AppColors.primaryLight),
+                                label: const Text('Lưu Cấu Hình AI', style: TextStyle(color: AppColors.primaryLight, fontSize: 12, fontWeight: FontWeight.w600)),
+                                onPressed: _saveAISettings,
                               ),
-                              icon: const Icon(Icons.save_rounded, size: 16, color: AppColors.primaryLight),
-                              label: const Text('Lưu Cấu Hình AI', style: TextStyle(color: AppColors.primaryLight, fontSize: 12)),
-                              onPressed: _saveAISettings,
                             ),
                           ],
                         ),
                         const Divider(height: 24),
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
                               child: Column(
@@ -936,7 +1015,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     borderRadius: BorderRadius.circular(6),
                                     onTap: _openModelSelectorDialog,
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                                      height: 42,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12),
                                       decoration: BoxDecoration(
                                         color: AppColors.inputBg,
                                         borderRadius: BorderRadius.circular(6),
@@ -985,13 +1065,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Proxy Base URL', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
+                                  const SizedBox(
+                                    height: 18,
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text('Proxy Base URL', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
+                                    ),
+                                  ),
                                   const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _baseUrlCtrl,
-                                    obscureText: true,
-                                    style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                                    decoration: const InputDecoration(hintText: 'https://api.mitom.ai/v1'),
+                                  SizedBox(
+                                    height: 42,
+                                    child: TextField(
+                                      controller: _baseUrlCtrl,
+                                      obscureText: true,
+                                      style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                                      decoration: const InputDecoration(
+                                        hintText: 'https://api.mitom.ai/v1',
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1001,11 +1093,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 16),
                         const Text('Proxy API Key', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 6),
+                        SizedBox(
+                          height: 42,
+                          child: TextField(
+                            controller: _apiKeyCtrl,
+                            obscureText: true,
+                            style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                            decoration: const InputDecoration(
+                              hintText: 'sk-... hoặc mitom key',
+                              contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        const Divider(height: 1),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            const Icon(Icons.psychology_alt_rounded, size: 18, color: AppColors.primaryLight),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Chỉ Dẫn & Huấn Luyện Tính Cách Riêng Cho AI (Custom Instructions)',
+                                style: TextStyle(fontSize: 13, color: AppColors.textWhite, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Cung cấp thông tin về bản thân, phong cách trả lời bạn mong muốn, xưng hô, quy tắc format code hoặc ngành nghề của bạn. AI sẽ áp dụng chỉ dẫn này trong mọi cuộc trò chuyện của riêng bạn.',
+                          style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.4),
+                        ),
+                        const SizedBox(height: 10),
                         TextField(
-                          controller: _apiKeyCtrl,
-                          obscureText: true,
-                          style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                          decoration: const InputDecoration(hintText: 'sk-... hoặc mitom key'),
+                          controller: _personalInstructionsCtrl,
+                          maxLines: 4,
+                          style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.4),
+                          decoration: const InputDecoration(
+                            hintText: 'Ví dụ: Tôi là lập trình viên Flutter, hãy xưng hô Sếp - Em. Luôn trả lời ngắn gọn, tập trung vào mã nguồn Dart sạch và giải thích súc tích...',
+                            filled: true,
+                            fillColor: AppColors.inputBg,
+                          ),
                         ),
                       ],
                     ),
@@ -1029,7 +1158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Icon(Icons.image_rounded, size: 20, color: AppColors.accentCyan),
                               SizedBox(width: 10),
                               Text(
-                                '2. Nhận Diện Thương Hiệu (Logo Ứng Dụng)',
+                                'Nhận Diện Thương Hiệu (Logo Ứng Dụng)',
                                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                               ),
                             ],
@@ -1067,30 +1196,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     const SizedBox(height: 12),
                                     Row(
                                       children: [
-                                        ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.primary,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                            elevation: 0,
+                                        SizedBox(
+                                          height: 38,
+                                          child: ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: AppColors.primary,
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                              elevation: 0,
+                                            ),
+                                            icon: const Icon(Icons.cloud_upload_rounded, size: 16),
+                                            label: const Text('Tải Logo Lên', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                            onPressed: _pickLogoFile,
                                           ),
-                                          icon: const Icon(Icons.cloud_upload_rounded, size: 16),
-                                          label: const Text('Tải Logo Lên', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                          onPressed: _pickLogoFile,
                                         ),
                                         if (serverProvider.customLogoPath != null && serverProvider.customLogoPath!.isNotEmpty) ...[
                                           const SizedBox(width: 10),
-                                          OutlinedButton.icon(
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: AppColors.textMuted,
-                                              side: const BorderSide(color: AppColors.borderDark),
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                          SizedBox(
+                                            height: 38,
+                                            child: OutlinedButton.icon(
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: AppColors.textMuted,
+                                                side: const BorderSide(color: AppColors.borderDark),
+                                                padding: const EdgeInsets.symmetric(horizontal: 14),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                              ),
+                                              icon: const Icon(Icons.restart_alt_rounded, size: 15),
+                                              label: const Text('Khôi phục mặc định', style: TextStyle(fontSize: 12)),
+                                              onPressed: _resetLogo,
                                             ),
-                                            icon: const Icon(Icons.restart_alt_rounded, size: 15),
-                                            label: const Text('Khôi phục mặc định', style: TextStyle(fontSize: 12)),
-                                            onPressed: _resetLogo,
                                           ),
                                         ],
                                       ],
@@ -1113,29 +1248,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                               Row(
                                 children: [
-                                  OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: AppColors.textMuted,
-                                      side: const BorderSide(color: AppColors.borderDark),
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                  SizedBox(
+                                    height: 36,
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppColors.textMuted,
+                                        side: const BorderSide(color: AppColors.borderDark),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      icon: const Icon(Icons.restart_alt_rounded, size: 14),
+                                      label: const Text('Mặc định', style: TextStyle(fontSize: 11)),
+                                      onPressed: _resetBrandTitles,
                                     ),
-                                    icon: const Icon(Icons.restart_alt_rounded, size: 14),
-                                    label: const Text('Mặc định', style: TextStyle(fontSize: 11)),
-                                    onPressed: _resetBrandTitles,
                                   ),
                                   const SizedBox(width: 8),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primary,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                      elevation: 0,
+                                  SizedBox(
+                                    height: 36,
+                                    child: ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                        elevation: 0,
+                                      ),
+                                      icon: const Icon(Icons.save_rounded, size: 14),
+                                      label: const Text('Lưu Tiêu Đề', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                      onPressed: _saveBrandTitles,
                                     ),
-                                    icon: const Icon(Icons.save_rounded, size: 14),
-                                    label: const Text('Lưu Tiêu Đề', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                    onPressed: _saveBrandTitles,
                                   ),
                                 ],
                               ),
@@ -1151,14 +1292,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Text('Tiêu đề chính Menu ("AI Agent")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                                     const SizedBox(height: 6),
-                                    TextField(
-                                      controller: _brandTitleCtrl,
-                                      enabled: auth.isAdmin,
-                                      style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                                      decoration: InputDecoration(
-                                        hintText: 'AI Agent',
-                                        filled: true,
-                                        fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                    SizedBox(
+                                      height: 42,
+                                      child: TextField(
+                                        controller: _brandTitleCtrl,
+                                        enabled: auth.isAdmin,
+                                        style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                                        decoration: InputDecoration(
+                                          hintText: 'AI Agent',
+                                          filled: true,
+                                          fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1172,14 +1317,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Text('Phụ đề Menu ("AI AGENT CHATBOT")', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                                     const SizedBox(height: 6),
-                                    TextField(
-                                      controller: _brandSubtitleCtrl,
-                                      enabled: auth.isAdmin,
-                                      style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                                      decoration: InputDecoration(
-                                        hintText: 'AI AGENT CHATBOT',
-                                        filled: true,
-                                        fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                    SizedBox(
+                                      height: 42,
+                                      child: TextField(
+                                        controller: _brandSubtitleCtrl,
+                                        enabled: auth.isAdmin,
+                                        style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                                        decoration: InputDecoration(
+                                          hintText: 'AI AGENT CHATBOT',
+                                          filled: true,
+                                          fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1193,14 +1342,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Text('Tiêu đề cửa sổ ứng dụng (Title)', style: TextStyle(fontSize: 13, color: AppColors.textBody, fontWeight: FontWeight.w600)),
                                     const SizedBox(height: 6),
-                                    TextField(
-                                      controller: _appTitleCtrl,
-                                      enabled: auth.isAdmin,
-                                      style: const TextStyle(fontSize: 14, color: AppColors.textWhite),
-                                      decoration: InputDecoration(
-                                        hintText: 'AI Agent Chatbot',
-                                        filled: true,
-                                        fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                    SizedBox(
+                                      height: 42,
+                                      child: TextField(
+                                        controller: _appTitleCtrl,
+                                        enabled: auth.isAdmin,
+                                        style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                                        decoration: InputDecoration(
+                                          hintText: 'AI Agent Chatbot',
+                                          filled: true,
+                                          fillColor: auth.isAdmin ? AppColors.inputBg : AppColors.cardBg,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1233,7 +1386,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 Icon(Icons.record_voice_over_rounded, size: 20, color: AppColors.accent),
                                 SizedBox(width: 10),
                                 Text(
-                                  '3. Tự động đọc',
+                                  'Tự Động Đọc (Voice TTS)',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                 ),
                               ],
@@ -1263,8 +1416,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Row(
                             children: [
                               Container(
-                                height: 38,
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                height: 40,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
                                 decoration: BoxDecoration(
                                   color: AppColors.inputBg,
                                   borderRadius: BorderRadius.circular(6),
@@ -1307,7 +1460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                               const SizedBox(width: 12),
                               SizedBox(
-                                height: 38,
+                                height: 40,
                                 child: ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: _isTestingVoice ? Colors.amber.shade800 : AppColors.primaryLight,
@@ -1332,7 +1485,156 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // GROUP 4: USER ACCOUNT & ENVIRONMENT
+                  // GROUP 3.5: USER MEMORIES & ADAPTIVE HABITS (BỘ NHỚ DÀI HẠN CÁ NHÂN)
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderDark),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.memory_rounded, size: 20, color: Colors.purpleAccent),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Bộ Nhớ Dài Hạn & Thói Quen (Long-Term Memories)',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                ),
+                              ],
+                            ),
+                            if (_isLoadingMemories)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purpleAccent),
+                              )
+                            else
+                              IconButton(
+                                icon: const Icon(Icons.refresh_rounded, size: 18, color: AppColors.textMuted),
+                                tooltip: 'Tải lại danh sách bộ nhớ',
+                                onPressed: _loadUserMemories,
+                              ),
+                          ],
+                        ),
+                        const Divider(height: 24),
+                        const Text(
+                          'AI sẽ tự động nạp các điều ghi nhớ đang bật vào mọi cuộc trò chuyện để luôn hiểu rõ thói quen, công việc và sở thích của bạn mà bạn không cần phải nhắc lại.',
+                          style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.5),
+                        ),
+                        const SizedBox(height: 14),
+                        // Input add new memory
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 42,
+                                child: TextField(
+                                  controller: _newMemoryCtrl,
+                                  style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                                  decoration: const InputDecoration(
+                                    hintText: 'Thêm điều bạn muốn AI luôn ghi nhớ (Ví dụ: "Tôi thường làm việc ca đêm", "Tôi thích dùng Flutter 3.x")...',
+                                    filled: true,
+                                    fillColor: AppColors.inputBg,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  ),
+                                  onSubmitted: (_) => _addUserMemory(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              height: 42,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.purpleAccent.shade700,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                  elevation: 0,
+                                ),
+                                icon: const Icon(Icons.add_rounded, size: 16),
+                                label: const Text('Thêm Ghi Nhớ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                onPressed: _addUserMemory,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // List memories
+                        if (_userMemories.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              'Chưa có dữ liệu bộ nhớ nào. Hãy thêm các thói quen hoặc thông tin cá nhân của bạn ở trên.',
+                              style: TextStyle(fontSize: 12, color: AppColors.textDim),
+                            ),
+                          )
+                        else
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _userMemories.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (context, idx) {
+                              final mem = _userMemories[idx];
+                              final memId = int.tryParse(mem['id']?.toString() ?? '0') ?? 0;
+                              final memText = mem['memory_text']?.toString() ?? '';
+                              final isActive = mem['is_active'] == 1 || mem['is_active'] == true || mem['is_active'] == '1';
+
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.inputBg,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: isActive ? Colors.purpleAccent.withValues(alpha: 0.3) : AppColors.borderDark,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Switch(
+                                      value: isActive,
+                                      onChanged: (val) => _toggleUserMemory(memId, isActive),
+                                      activeThumbColor: Colors.white,
+                                      activeTrackColor: Colors.purpleAccent,
+                                      inactiveThumbColor: AppColors.textDim,
+                                      inactiveTrackColor: AppColors.borderDark,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        memText,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: isActive ? AppColors.textWhite : AppColors.textDim,
+                                          decoration: isActive ? TextDecoration.none : TextDecoration.lineThrough,
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.danger),
+                                      tooltip: 'Xóa ghi nhớ',
+                                      onPressed: () => _deleteUserMemory(memId),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // GROUP 5: USER ACCOUNT & ENVIRONMENT
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
@@ -1351,24 +1653,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 Icon(Icons.person_rounded, size: 20, color: AppColors.primaryLight),
                                 SizedBox(width: 10),
                                 Text(
-                                  '4. Thông Tin Tài Khoản & Bản Quyền',
+                                  'Thông Tin Tài Khoản & Bản Quyền',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                 ),
                               ],
                             ),
                             if (auth.isAuthenticated && auth.userEmail != null && auth.userEmail != 'local.admin@agent.chatbot')
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.cardBg,
-                                  side: const BorderSide(color: AppColors.primaryLight),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              SizedBox(
+                                height: 36,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.cardBg,
+                                    side: const BorderSide(color: AppColors.primaryLight),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                  ),
+                                  icon: const Icon(Icons.lock_reset_rounded, size: 16, color: AppColors.primaryLight),
+                                  label: const Text(
+                                    'Đổi Mật Khẩu',
+                                    style: TextStyle(color: AppColors.primaryLight, fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                                  onPressed: () => _showChangePasswordDialog(auth.userEmail),
                                 ),
-                                icon: const Icon(Icons.lock_reset_rounded, size: 16, color: AppColors.primaryLight),
-                                label: const Text(
-                                  'Đổi Mật Khẩu',
-                                  style: TextStyle(color: AppColors.primaryLight, fontSize: 12, fontWeight: FontWeight.w600),
-                                ),
-                                onPressed: () => _showChangePasswordDialog(auth.userEmail),
                               ),
                           ],
                         ),
@@ -1409,7 +1715,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(Icons.shield_rounded, size: 20, color: AppColors.accent),
                             SizedBox(width: 10),
                             Text(
-                              '5. Bảo Mật & Thông Tin Hệ Thống',
+                              'Bảo Mật & Thông Tin Hệ Thống',
                               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                             ),
                           ],
