@@ -52,6 +52,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final chat = context.read<ChatProvider>();
       final server = context.read<ServerProvider>();
       server.loadServers();
+      _api.getConfig().then((cfg) {
+        if (cfg['default_execution_mode'] != null && mounted) {
+          setState(() {
+            _isDeviceExecutionMode = cfg['default_execution_mode'].toString() == 'device';
+          });
+        }
+      }).catchError((_) {});
       chat.loadSessions().then((_) {
         if (chat.currentSession != null) {
           chat.selectSession(chat.currentSession!).then((_) {
@@ -1294,56 +1301,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       onPressed: _pickFiles,
                     ),
-                    const SizedBox(width: 10),
-
-                    // Switch chuyển đổi Trình duyệt / Device (không border, chữ bên phải switch)
-                    InkWell(
-                      onTap: () {
-                        setState(() {
-                          _isDeviceExecutionMode = !_isDeviceExecutionMode;
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(4),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                        color: Colors.transparent,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              height: 18,
-                              child: Switch(
-                                value: _isDeviceExecutionMode,
-                                activeThumbColor: Colors.purpleAccent,
-                                activeTrackColor: Colors.purpleAccent.withValues(alpha: 0.3),
-                                inactiveThumbColor: AppColors.primaryLight,
-                                inactiveTrackColor: AppColors.primary.withValues(alpha: 0.3),
-                                onChanged: (val) {
-                                  setState(() {
-                                    _isDeviceExecutionMode = val;
-                                  });
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Icon(
-                              _isDeviceExecutionMode ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
-                              size: 14,
-                              color: _isDeviceExecutionMode ? Colors.purpleAccent : AppColors.primaryLight,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _isDeviceExecutionMode ? 'Thiết bị' : 'Trình duyệt',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: _isDeviceExecutionMode ? Colors.purpleAccent : AppColors.primaryLight,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                 ),
                 if (chat.isGenerating)
@@ -1892,27 +1849,34 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                   onTap: _selectAllFiltered,
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.18),
+                      color: AppColors.primary.withValues(alpha: 0.22),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.5), width: 1),
+                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6), width: 1.2),
                     ),
-                    child: const Text(
-                      'Chọn tất cả',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.done_all_rounded, size: 16, color: AppColors.primaryLight),
+                        SizedBox(width: 6),
+                        Text(
+                          'Chọn tất cả',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 InkWell(
                   onTap: _selectPage,
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.08),
@@ -1921,17 +1885,17 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                     ),
                     child: const Text(
                       'Chọn trang',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 InkWell(
                   onTap: _clearAll,
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: AppColors.cardBg,
@@ -1940,7 +1904,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                     ),
                     child: const Text(
                       'Bỏ chọn',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: AppColors.textMuted),
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: AppColors.textMuted),
                     ),
                   ),
                 ),

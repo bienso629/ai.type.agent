@@ -1,6 +1,20 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+class SmsCountry {
+  final int id;
+  final String name;
+  final String shortName;
+  final String cc;
+
+  const SmsCountry({
+    required this.id,
+    required this.name,
+    required this.shortName,
+    required this.cc,
+  });
+}
+
 class SmsPoolService {
   static final SmsPoolService _instance = SmsPoolService._internal();
   factory SmsPoolService() => _instance;
@@ -8,6 +22,20 @@ class SmsPoolService {
 
   static const String defaultApiKey = 'RJ66sICar3YC0ubDbaoKbLl7zyxUVqIy';
   static const String baseUrl = 'https://api.smspool.net';
+
+  /// Danh sách các quốc gia phổ biến hỗ trợ thuê số SMSPool
+  static const List<SmsCountry> popularCountries = [
+    SmsCountry(id: 11, name: 'Việt Nam', shortName: 'VN', cc: '84'),
+    SmsCountry(id: 1, name: 'Mỹ (United States)', shortName: 'US', cc: '1'),
+    SmsCountry(id: 2, name: 'Anh (United Kingdom)', shortName: 'GB', cc: '44'),
+    SmsCountry(id: 9, name: 'Indonesia', shortName: 'ID', cc: '62'),
+    SmsCountry(id: 52, name: 'Thái Lan', shortName: 'TH', cc: '66'),
+    SmsCountry(id: 12, name: 'Philippines', shortName: 'PH', cc: '63'),
+    SmsCountry(id: 20, name: 'Malaysia', shortName: 'MY', cc: '60'),
+    SmsCountry(id: 15, name: 'Ấn Độ', shortName: 'IN', cc: '91'),
+    SmsCountry(id: 141, name: 'Singapore', shortName: 'SG', cc: '65'),
+    SmsCountry(id: 157, name: 'Nhật Bản', shortName: 'JP', cc: '81'),
+  ];
 
   /// Kiểm tra số dư tài khoản SMSPool
   Future<double> checkBalance({String apiKey = defaultApiKey}) async {
@@ -64,7 +92,7 @@ class SmsPoolService {
   }
 
   /// Hủy đơn thuê số và hoàn tiền
-  Future<bool> cancelOrder({
+  Future<Map<String, dynamic>> cancelOrder({
     String apiKey = defaultApiKey,
     required String orderId,
   }) async {
@@ -73,13 +101,38 @@ class SmsPoolService {
         Uri.parse('$baseUrl/sms/cancel'),
         body: {
           'key': apiKey,
-          'orderid': orderId,
+          'orderid': orderId.trim(),
         },
-      ).timeout(const Duration(seconds: 10));
-      final data = jsonDecode(res.body);
-      return data['success'] == 1;
-    } catch (_) {
-      return false;
+      ).timeout(const Duration(seconds: 12));
+
+      String bodyStr = utf8.decode(res.bodyBytes);
+      dynamic data;
+      try {
+        data = jsonDecode(bodyStr);
+      } catch (_) {}
+
+      if (data is Map<String, dynamic>) {
+        final successVal = data['success'];
+        final isSuccess = successVal == 1 || successVal == true;
+        String msg = data['message']?.toString() ?? '';
+        if (msg.isEmpty && data['errors'] is List && (data['errors'] as List).isNotEmpty) {
+          final firstErr = (data['errors'] as List).first;
+          if (firstErr is Map && firstErr['message'] != null) {
+            msg = firstErr['message'].toString();
+          }
+        }
+        return {
+          'success': isSuccess ? 1 : 0,
+          'message': msg.isNotEmpty ? msg : (isSuccess ? 'Hủy đơn thành công.' : 'Không thể hủy đơn.'),
+        };
+      }
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return {'success': 1, 'message': 'Hủy đơn thành công.'};
+      }
+      return {'success': 0, 'message': 'Mã lỗi máy chủ SMSPool: ${res.statusCode}'};
+    } catch (e) {
+      return {'success': 0, 'message': 'Lỗi kết nối tới SMSPool: $e'};
     }
   }
 

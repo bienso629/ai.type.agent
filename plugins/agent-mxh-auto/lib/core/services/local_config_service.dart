@@ -46,6 +46,10 @@ class LocalConfigService {
     'remote_work_dir': '/root',
     'api_port': 8000,
     'secret_token': 'super_secret_token_123',
+    'max_concurrent_devices': 2,
+    'default_execution_mode': 'browser', // 'browser' | 'device'
+    'ai_engine_type': 'proxy', // 'proxy' | 'cli'
+    'active_cli_agent': 'antigravity-cli',
     'servers': [],
   };
 
@@ -77,6 +81,7 @@ class LocalConfigService {
         p.join(execDir, '..', '..', '..', '..', configFileName),
         p.join(execDir, '..', '..', '..', '..', '..', configFileName),
         '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/$configFileName',
+        p.join(Platform.environment['HOME'] ?? '', '.agent_mxh_auto', configFileName),
         p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', configFileName),
       ];
 
@@ -101,6 +106,7 @@ class LocalConfigService {
           p.join(execDir, '..', '..', '..', '..', 'config.json'),
           p.join(execDir, '..', '..', '..', '..', '..', 'config.json'),
           '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/config.json',
+          p.join(Platform.environment['HOME'] ?? '', '.agent_mxh_auto', 'config.json'),
           p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', 'config.json'),
         ];
         for (final fallback in fallbackCandidates) {
@@ -178,7 +184,7 @@ class LocalConfigService {
 
         if (v is String && v.startsWith('enc:')) {
           final dec = _enc.decryptValue(v);
-          if (k == 'ssh_port' || k == 'api_port') {
+          if (k == 'ssh_port' || k == 'api_port' || k == 'max_concurrent_devices') {
             result[k] = int.tryParse(dec) ?? dec;
           } else if (k == 'servers') {
             try {
@@ -203,7 +209,7 @@ class LocalConfigService {
           if (v != null && (v is! String || !v.startsWith('enc:'))) {
             needsReSave = true;
           }
-          if (k == 'ssh_port' || k == 'api_port') {
+          if (k == 'ssh_port' || k == 'api_port' || k == 'max_concurrent_devices') {
             result[k] = int.tryParse(v.toString()) ?? v;
           } else {
             result[k] = v;

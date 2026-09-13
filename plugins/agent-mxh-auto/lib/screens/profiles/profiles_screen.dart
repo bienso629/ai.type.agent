@@ -141,6 +141,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     Timer? otpTimer;
     String? latestOtpCode;
     int selectedSmsService = 924; // 924: TikTok, 395: Gmail/Google, 329: Facebook
+    int selectedSmsCountry = 11; // 11: Việt Nam (+84)
     String? currentOrderId = persona.smsOrderId;
     String selectedDeviceType = persona.deviceType; // 'mobile' | 'tablet'
     String? selectedAvd = persona.avdName;
@@ -1211,159 +1212,248 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     style: TextStyle(fontSize: 10, color: AppColors.textDim),
                                   ),
                                   const SizedBox(height: 8),
-                                  // Dropdown chọn dịch vụ SMSPool (không có nhãn Dịch vụ:)
-                                  Container(
-                                    height: 34,
-                                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.sidebarBg,
-                                      borderRadius: BorderRadius.circular(5),
-                                      border: Border.all(color: AppColors.borderDark),
-                                    ),
-                                    child: DropdownButtonHideUnderline(
-                                      child: DropdownButton<int>(
-                                        value: selectedSmsService,
-                                        dropdownColor: AppColors.sidebarBg,
-                                        isDense: true,
-                                        isExpanded: true,
-                                        icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
-                                        style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
-                                        items: const [
-                                          DropdownMenuItem(value: 924, child: Text(r'TikTok ($0.07)')),
-                                          DropdownMenuItem(value: 395, child: Text(r'Google / Gmail ($0.30)')),
-                                          DropdownMenuItem(value: 329, child: Text(r'Facebook ($0.08)')),
-                                          DropdownMenuItem(value: 589, child: Text(r'Telegram ($0.15)')),
-                                        ],
-                                        onChanged: (val) {
-                                          if (val != null) {
-                                            setDialogState(() {
-                                              selectedSmsService = val;
-                                            });
-                                          }
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
+                                  // Dropdown chọn Quốc gia và Dịch vụ SMSPool
                                   Row(
-                                    children: [
-                                      Expanded(
-                                        child: SizedBox(
-                                          height: 36,
-                                          child: TextField(
-                                            controller: phoneCtrl,
-                                            style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.textWhite),
-                                            decoration: const InputDecoration(
-                                              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                              prefixIcon: Icon(Icons.dialpad_rounded, size: 15),
-                                              hintText: '+84968661631',
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Tooltip(
-                                        message: 'Thuê số Việt Nam (+84) cho dịch vụ đã chọn',
-                                        child: ElevatedButton.icon(
-                                          onPressed: isPurchasingPhone
-                                              ? null
-                                              : () async {
-                                                  // BẮT BUỘC: Nếu bật chế độ thiết bị ngoại vi, kiểm tra kết nối thiết bị trước rồi mới cho thuê số
-                                                  if (useExternalDevice) {
-                                                    final devAddr = externalDeviceCtrl.text.trim();
-                                                    if (devAddr.isEmpty) {
-                                                      AppToast.warning(dialogCtx, 'Chưa nhập địa chỉ thiết bị ngoại vi! Vui lòng nhập IP:Port trước khi thuê số.');
-                                                      return;
-                                                    }
-                                                    setDialogState(() {
-                                                      isPurchasingPhone = true;
-                                                    });
-                                                    try {
-                                                      await _socks5Service.connectRemoteDevice(devAddr);
-                                                    } catch (e) {
-                                                      setDialogState(() {
-                                                        isPurchasingPhone = false;
-                                                      });
-                                                      if (dialogCtx.mounted) {
-                                                        AppToast.error(dialogCtx, 'Chưa kết nối được với Thiết bị ngoại vi ($devAddr)! Vui lòng kiểm tra WiFi ADB trên máy.');
-                                                      }
-                                                      return;
-                                                    }
-                                                  } else {
-                                                    setDialogState(() {
-                                                      isPurchasingPhone = true;
-                                                    });
-                                                  }
+                                     children: [
+                                       Expanded(
+                                         flex: 5,
+                                         child: Container(
+                                           height: 34,
+                                           padding: const EdgeInsets.symmetric(horizontal: 8),
+                                           decoration: BoxDecoration(
+                                             color: AppColors.sidebarBg,
+                                             borderRadius: BorderRadius.circular(5),
+                                             border: Border.all(color: AppColors.borderDark),
+                                           ),
+                                           child: DropdownButtonHideUnderline(
+                                             child: DropdownButton<int>(
+                                               value: selectedSmsCountry,
+                                               dropdownColor: AppColors.sidebarBg,
+                                               isDense: true,
+                                               isExpanded: true,
+                                               icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
+                                               style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
+                                               items: SmsPoolService.popularCountries.map((c) {
+                                                 return DropdownMenuItem<int>(
+                                                   value: c.id,
+                                                   child: Text(
+                                                     '${c.name} (+${c.cc})',
+                                                     overflow: TextOverflow.ellipsis,
+                                                   ),
+                                                 );
+                                               }).toList(),
+                                               onChanged: (val) {
+                                                 if (val != null) {
+                                                   setDialogState(() {
+                                                     selectedSmsCountry = val;
+                                                   });
+                                                 }
+                                               },
+                                             ),
+                                           ),
+                                         ),
+                                       ),
+                                       const SizedBox(width: 8),
+                                       Expanded(
+                                         flex: 6,
+                                         child: Container(
+                                           height: 34,
+                                           padding: const EdgeInsets.symmetric(horizontal: 8),
+                                           decoration: BoxDecoration(
+                                             color: AppColors.sidebarBg,
+                                             borderRadius: BorderRadius.circular(5),
+                                             border: Border.all(color: AppColors.borderDark),
+                                           ),
+                                           child: DropdownButtonHideUnderline(
+                                             child: DropdownButton<int>(
+                                               value: selectedSmsService,
+                                               dropdownColor: AppColors.sidebarBg,
+                                               isDense: true,
+                                               isExpanded: true,
+                                               icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
+                                               style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
+                                               items: const [
+                                                 DropdownMenuItem(value: 924, child: Text(r'TikTok ($0.07)')),
+                                                 DropdownMenuItem(value: 395, child: Text(r'Google / Gmail ($0.30)')),
+                                                 DropdownMenuItem(value: 329, child: Text(r'Facebook ($0.08)')),
+                                                 DropdownMenuItem(value: 589, child: Text(r'Telegram ($0.15)')),
+                                               ],
+                                               onChanged: (val) {
+                                                 if (val != null) {
+                                                   setDialogState(() {
+                                                     selectedSmsService = val;
+                                                   });
+                                                 }
+                                               },
+                                             ),
+                                           ),
+                                         ),
+                                       ),
+                                     ],
+                                   ),
+                                   const SizedBox(height: 8),
+                                   Row(
+                                     children: [
+                                       Expanded(
+                                         child: SizedBox(
+                                           height: 36,
+                                           child: TextField(
+                                             controller: phoneCtrl,
+                                             style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.textWhite),
+                                             decoration: InputDecoration(
+                                               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                               prefixIcon: const Icon(Icons.dialpad_rounded, size: 15),
+                                               hintText: () {
+                                                 final countryObj = SmsPoolService.popularCountries.firstWhere(
+                                                   (c) => c.id == selectedSmsCountry,
+                                                   orElse: () => SmsPoolService.popularCountries.first,
+                                                 );
+                                                 return '+${countryObj.cc}xxxxxxxxx';
+                                               }(),
+                                               suffixIcon: phoneCtrl.text.isNotEmpty
+                                                   ? IconButton(
+                                                       icon: const Icon(Icons.clear_rounded, size: 14, color: AppColors.textDim),
+                                                       tooltip: 'Xóa số điện thoại',
+                                                       onPressed: () {
+                                                         setDialogState(() {
+                                                           phoneCtrl.clear();
+                                                           autoSyncPhoneToDevice = false;
+                                                         });
+                                                       },
+                                                     )
+                                                   : null,
+                                             ),
+                                             onChanged: (_) {
+                                               setDialogState(() {});
+                                             },
+                                           ),
+                                         ),
+                                       ),
+                                       const SizedBox(width: 8),
+                                       Tooltip(
+                                         message: () {
+                                           final countryObj = SmsPoolService.popularCountries.firstWhere(
+                                             (c) => c.id == selectedSmsCountry,
+                                             orElse: () => SmsPoolService.popularCountries.first,
+                                           );
+                                           return 'Thuê số ${countryObj.name} (+${countryObj.cc}) cho dịch vụ đã chọn';
+                                         }(),
+                                         child: ElevatedButton.icon(
+                                           onPressed: isPurchasingPhone
+                                               ? null
+                                               : () async {
+                                                   // BẮT BUỘC: Nếu bật chế độ thiết bị ngoại vi, kiểm tra kết nối thiết bị trước rồi mới cho thuê số
+                                                   if (useExternalDevice) {
+                                                     final devAddr = externalDeviceCtrl.text.trim();
+                                                     if (devAddr.isEmpty) {
+                                                       AppToast.warning(dialogCtx, 'Chưa nhập địa chỉ thiết bị ngoại vi! Vui lòng nhập IP:Port trước khi thuê số.');
+                                                       return;
+                                                     }
+                                                     setDialogState(() {
+                                                       isPurchasingPhone = true;
+                                                     });
+                                                     try {
+                                                       await _socks5Service.connectRemoteDevice(devAddr);
+                                                     } catch (e) {
+                                                       setDialogState(() {
+                                                         isPurchasingPhone = false;
+                                                       });
+                                                       if (dialogCtx.mounted) {
+                                                         AppToast.error(dialogCtx, 'Chưa kết nối được với Thiết bị ngoại vi ($devAddr)! Vui lòng kiểm tra WiFi ADB trên máy.');
+                                                       }
+                                                       return;
+                                                     }
+                                                   } else {
+                                                     setDialogState(() {
+                                                       isPurchasingPhone = true;
+                                                     });
+                                                   }
 
-                                                  try {
-                                                    // country: 11 là ID của Việt Nam trên SMSPool (đầu số quốc tế +84)
-                                                    final res = await SmsPoolService().orderSmsNumber(
-                                                      country: 11,
-                                                      service: selectedSmsService,
-                                                    );
-                                                    if (res['success'] == 1) {
-                                                      final rawNum = res['phonenumber']?.toString() ?? res['number']?.toString() ?? '';
-                                                      final formattedNum = rawNum.startsWith('+') ? rawNum : (rawNum.startsWith('84') ? '+$rawNum' : '+84$rawNum');
-                                                      phoneCtrl.text = formattedNum;
-                                                      currentOrderId = res['order_id']?.toString() ?? res['orderid']?.toString();
-                                                      autoSyncPhoneToDevice = true; // Tự động bật switch khi vừa mua số mới
-                                                      latestOtpCode = null;
-                                                      if (currentOrderId != null && currentOrderId!.isNotEmpty && dialogCtx.mounted) {
-                                                        startOtpPolling(currentOrderId!, setDialogState, dialogCtx);
-                                                      }
+                                                   try {
+                                                     final countryObj = SmsPoolService.popularCountries.firstWhere(
+                                                       (c) => c.id == selectedSmsCountry,
+                                                       orElse: () => SmsPoolService.popularCountries.first,
+                                                     );
+                                                     final res = await SmsPoolService().orderSmsNumber(
+                                                       country: selectedSmsCountry,
+                                                       service: selectedSmsService,
+                                                     );
+                                                     if (res['success'] == 1) {
+                                                       final rawNum = res['phonenumber']?.toString() ?? res['number']?.toString() ?? '';
+                                                       final ccPrefix = countryObj.cc;
+                                                       final formattedNum = rawNum.startsWith('+')
+                                                           ? rawNum
+                                                           : (rawNum.startsWith(ccPrefix)
+                                                               ? '+$rawNum'
+                                                               : '+$ccPrefix$rawNum');
+                                                       phoneCtrl.text = formattedNum;
+                                                       currentOrderId = res['order_id']?.toString() ?? res['orderid']?.toString();
+                                                       autoSyncPhoneToDevice = true; // Tự động bật switch khi vừa mua số mới
+                                                       latestOtpCode = null;
+                                                       if (currentOrderId != null && currentOrderId!.isNotEmpty && dialogCtx.mounted) {
+                                                         startOtpPolling(currentOrderId!, setDialogState, dialogCtx);
+                                                       }
 
-                                                      // Nếu máy ngoại vi đang kết nối, đồng bộ ngay lập tức
-                                                      if (useExternalDevice && externalDeviceCtrl.text.trim().isNotEmpty) {
-                                                        try {
-                                                          await _socks5Service.syncPhoneNumberToDevice(
-                                                            externalDeviceCtrl.text.trim(),
-                                                            formattedNum,
-                                                            ownerName: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : 'Chủ Thiết Bị',
-                                                          );
-                                                        } catch (_) {}
-                                                      }
+                                                       // Nếu máy ngoại vi đang kết nối, đồng bộ ngay lập tức
+                                                       if (useExternalDevice && externalDeviceCtrl.text.trim().isNotEmpty) {
+                                                         try {
+                                                           await _socks5Service.syncPhoneNumberToDevice(
+                                                             externalDeviceCtrl.text.trim(),
+                                                             formattedNum,
+                                                             ownerName: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : 'Chủ Thiết Bị',
+                                                           );
+                                                         } catch (_) {}
+                                                       }
 
-                                                      if (dialogCtx.mounted) {
-                                                        AppToast.success(dialogCtx, 'Đã thuê số VN (+84): $formattedNum và gắn vào máy!');
-                                                      }
-                                                    } else {
-                                                      if (dialogCtx.mounted) {
-                                                        AppToast.error(dialogCtx, 'Chưa thể thuê đầu số này.');
-                                                      }
-                                                    }
-                                                  } catch (e) {
-                                                    if (dialogCtx.mounted) {
-                                                      AppToast.error(dialogCtx, 'Chưa thể thuê đầu số này.');
-                                                    }
-                                                  } finally {
-                                                    setDialogState(() {
-                                                      isPurchasingPhone = false;
-                                                    });
-                                                  }
-                                                },
-                                          icon: isPurchasingPhone
-                                              ? const SizedBox(
-                                                  width: 12,
-                                                  height: 12,
-                                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
-                                                )
-                                              : const Icon(Icons.shopping_cart_rounded, size: 13),
-                                          label: Text(
-                                            isPurchasingPhone ? 'Đang thuê...' : 'Thuê số VN',
-                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFF0284C7),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                                       if (dialogCtx.mounted) {
+                                                         AppToast.success(dialogCtx, 'Đã thuê số ${countryObj.shortName} (+${countryObj.cc}): $formattedNum và gắn vào máy!');
+                                                       }
+                                                     } else {
+                                                       if (dialogCtx.mounted) {
+                                                         AppToast.error(dialogCtx, 'Chưa thể thuê đầu số này.');
+                                                       }
+                                                     }
+                                                   } catch (e) {
+                                                     if (dialogCtx.mounted) {
+                                                       AppToast.error(dialogCtx, 'Chưa thể thuê đầu số này.');
+                                                     }
+                                                   } finally {
+                                                     setDialogState(() {
+                                                       isPurchasingPhone = false;
+                                                     });
+                                                   }
+                                                 },
+                                           icon: isPurchasingPhone
+                                               ? const SizedBox(
+                                                   width: 12,
+                                                   height: 12,
+                                                   child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                                                 )
+                                               : const Icon(Icons.shopping_cart_rounded, size: 13),
+                                           label: Text(
+                                             isPurchasingPhone
+                                                 ? 'Đang thuê...'
+                                                 : () {
+                                                     final countryObj = SmsPoolService.popularCountries.firstWhere(
+                                                       (c) => c.id == selectedSmsCountry,
+                                                       orElse: () => SmsPoolService.popularCountries.first,
+                                                     );
+                                                     return 'Thuê số ${countryObj.shortName}';
+                                                   }(),
+                                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                           ),
+                                           style: ElevatedButton.styleFrom(
+                                             backgroundColor: const Color(0xFF0284C7),
+                                             foregroundColor: Colors.white,
+                                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                             shape: RoundedRectangleBorder(
+                                               borderRadius: BorderRadius.circular(4),
+                                             ),
+                                           ),
+                                         ),
+                                       ),
+                                     ],
+                                   ),
                                   // Phần kiểm tra mã OTP khi đã có orderId từ SMSPool
                                   if (currentOrderId != null && currentOrderId!.isNotEmpty) ...[
                                     const SizedBox(height: 8),
@@ -1482,8 +1572,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                     });
 
                                                     try {
-                                                      final ok = await SmsPoolService().cancelOrder(orderId: currentOrderId!);
-                                                      if (ok) {
+                                                      final res = await SmsPoolService().cancelOrder(orderId: currentOrderId!);
+                                                      if (res['success'] == 1) {
                                                         otpTimer?.cancel();
                                                         otpTimer = null;
                                                         final canceledOrderId = currentOrderId;
@@ -1507,7 +1597,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                         }
                                                       } else {
                                                         if (dialogCtx.mounted) {
-                                                          AppToast.error(dialogCtx, 'Không thể hủy đơn. Đơn có thể đã hoàn thành hoặc hết hạn.');
+                                                          final errMsg = res['message']?.toString();
+                                                          AppToast.error(dialogCtx, (errMsg != null && errMsg.isNotEmpty) ? errMsg : 'Không thể hủy đơn. Đơn có thể đã hoàn thành hoặc hết hạn.');
                                                         }
                                                       }
                                                     } catch (e) {

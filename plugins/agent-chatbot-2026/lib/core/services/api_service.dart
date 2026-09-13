@@ -552,6 +552,63 @@ class ApiService {
     return res.statusCode == 200;
   }
 
+  // 8.1 User Memories APIs
+  Future<List<Map<String, dynamic>>> getUserMemories() async {
+    final baseUrl = await _getBaseUrl();
+    try {
+      final res = await _client.get(
+        Uri.parse('$baseUrl${ApiConstants.epMemories}'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (data is Map && data['data'] is Map && data['data']['memories'] is List) {
+          return List<Map<String, dynamic>>.from(data['data']['memories']);
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<bool> addUserMemory(String memoryText) async {
+    final baseUrl = await _getBaseUrl();
+    try {
+      final res = await _client.post(
+        Uri.parse('$baseUrl${ApiConstants.epMemories}'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'memory_text': memoryText}),
+      ).timeout(const Duration(seconds: 6));
+      return res.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
+  Future<bool> toggleUserMemory(int memoryId, bool isActive) async {
+    final baseUrl = await _getBaseUrl();
+    try {
+      final res = await _client.post(
+        Uri.parse('$baseUrl${ApiConstants.epMemories}?action=toggle'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'id': memoryId, 'is_active': isActive}),
+      ).timeout(const Duration(seconds: 6));
+      return res.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
+  Future<bool> deleteUserMemory(int memoryId) async {
+    final baseUrl = await _getBaseUrl();
+    try {
+      final res = await _client.delete(
+        Uri.parse('$baseUrl${ApiConstants.epMemories}'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'id': memoryId}),
+      ).timeout(const Duration(seconds: 6));
+      return res.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
   // 9. AI Agent Chat Stream
   StreamSubscription<String> streamChatMessage({
     required String sessionId,

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../models/server_model.dart';
 import 'adb_manager_service.dart';
+import 'local_config_service.dart';
+import 'persona_service.dart';
 
 class Socks5Session {
   final int localPort;
@@ -86,6 +88,7 @@ class Socks5ProxyService extends ChangeNotifier {
   }
 
   final Map<String, Socks5Session> _activeSessions = {};
+  final Set<String> _closingDeviceIps = {};
 
   bool isIpRunning(String ip) => _activeSessions.containsKey(ip);
 
@@ -153,6 +156,95 @@ class Socks5ProxyService extends ChangeNotifier {
     return false;
   }
 
+  /// Tìm console port (5554, 5556,...) của máy ảo AVD đang chạy trên hệ thống
+  int? _findRunningConsolePortForAvd(String avdName) {
+    // 1. Quét tiến trình thực tế trong /proc khớp chính xác tên avdName và -port
+    try {
+      final procDir = Directory('/proc');
+      if (procDir.existsSync()) {
+        final myPid = pid;
+        for (final entity in procDir.listSync(followLinks: false)) {
+          final baseName = entity.path.split('/').last;
+          final p = int.tryParse(baseName);
+          if (p == null || p == myPid) continue;
+          try {
+            final cmdFile = File('${entity.path}/cmdline');
+            if (cmdFile.existsSync()) {
+              final raw = cmdFile.readAsStringSync();
+              if (raw.contains(avdName) && raw.contains('-port')) {
+                final match = RegExp(r'-port[\x00\s]+(\d+)').firstMatch(raw);
+                if (match != null) {
+                  return int.tryParse(match.group(1)!);
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Đọc authentication token của emulator console
+  String? _getEmulatorConsoleAuthToken() {
+    try {
+      final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+      final tokenFile = File('$homeDir/.emulator_console_auth_token');
+      if (tokenFile.existsSync()) {
+        final t = tokenFile.readAsStringSync().trim();
+        if (t.isNotEmpty) return t;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Lưu trạng thái và snapshot của máy ảo qua Telnet Console
+  Future<bool> _saveSnapshotViaConsole(int consolePort, {String snapshotName = 'default_boot'}) async {
+    try {
+      final token = _getEmulatorConsoleAuthToken();
+      final socket = await Socket.connect('127.0.0.1', consolePort, timeout: const Duration(seconds: 3));
+      final completer = Completer<void>();
+      socket.listen(
+        (_) {},
+        onDone: () {
+          if (!completer.isCompleted) completer.complete();
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete();
+        },
+      );
+
+      if (token != null && token.isNotEmpty) {
+        socket.write('auth $token\n');
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      socket.write('avd snapshot save $snapshotName\n');
+      await Future.delayed(const Duration(milliseconds: 1000));
+      socket.destroy();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Tắt máy ảo an toàn chuẩn graceful qua Telnet Console để emulator tự flush userdata xuống đĩa
+  Future<bool> _gracefulKillEmulatorViaConsole(int consolePort) async {
+    try {
+      final token = _getEmulatorConsoleAuthToken();
+      final socket = await Socket.connect('127.0.0.1', consolePort, timeout: const Duration(seconds: 3));
+      if (token != null && token.isNotEmpty) {
+        socket.write('auth $token\n');
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      socket.write('kill\n');
+      await Future.delayed(const Duration(milliseconds: 300));
+      socket.destroy();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Kiểm tra xem trình duyệt gắn với IP này có đang mở hay không
   bool isBrowserRunningForIp(String ip) {
     return _isSystemProcessAliveForIp(ip);
@@ -160,6 +252,9 @@ class Socks5ProxyService extends ChangeNotifier {
 
   /// Kiểm tra xem mobile device gắn với IP này có đang chạy hay không
   bool isDeviceRunningForIp(String ip) {
+    if (_closingDeviceIps.contains(ip)) {
+      return false;
+    }
     final session = _activeSessions[ip];
     if (session?.remoteDeviceAddress != null) {
       return true;
@@ -178,31 +273,48 @@ class Socks5ProxyService extends ChangeNotifier {
     return res;
   }
 
-  /// Giới hạn tối đa số lượng devices chạy đồng thời (mặc định tối đa 2 devices để chống treo máy).
-  /// Nếu số lượng device đang chạy đạt max, hàm này sẽ tự động tắt bớt device cũ nhất không nằm trong danh sách ưu tiên.
-  Future<void> ensureDeviceCapacity({int maxConcurrent = 2, List<String>? exemptIps}) async {
-    final running = runningDeviceIps;
-    if (running.length < maxConcurrent) return;
+  /// Lấy số lượng thiết bị tối đa được mở đồng thời từ cấu hình hệ thống
+  Future<int> getMaxConcurrentDevices() async {
+    try {
+      final cfg = await LocalConfigService().loadConfig();
+      final val = cfg['max_concurrent_devices'];
+      if (val != null) {
+        final parsed = int.tryParse(val.toString());
+        if (parsed != null && parsed > 0) {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return 2;
+  }
 
-    final candidates = running.where((ip) => exemptIps == null || !exemptIps.contains(ip)).toList();
-    while (runningDeviceIps.length >= maxConcurrent && candidates.isNotEmpty) {
-      final ipToClose = candidates.removeAt(0);
-      await closeDeviceForIp(ipToClose);
+  /// Kiểm tra số lượng devices chạy đồng thời (mặc định theo cấu hình hệ thống hoặc 2 devices).
+  /// Khi số lượng Device được mở đang vượt quá giới hạn thì tuyệt đối KHÔNG tự ý đóng device trước
+  /// mà ném lỗi thông báo: "Số lượng thiết bị đã mở quá [effectiveMax]"
+  Future<void> ensureDeviceCapacity({int? maxConcurrent, List<String>? exemptIps}) async {
+    final effectiveMax = maxConcurrent ?? await getMaxConcurrentDevices();
+    final running = runningDeviceIps;
+    
+    // Đếm số lượng thiết bị đang chạy mà không tính thiết bị hiện tại (nếu đang chạy lại chính nó)
+    final runningOthers = running.where((ip) => exemptIps == null || !exemptIps.contains(ip)).toList();
+    if (runningOthers.length >= effectiveMax) {
+      throw Exception('Số lượng thiết bị đã mở quá $effectiveMax');
     }
   }
 
   /// QUY TRÌNH HÀNG ĐỢI THIẾT BỊ AN TOÀN (DEVICE TASK QUEUE):
   /// Đảm bảo dù có yêu cầu chạy 10, 50 hay 100 devices cùng một lúc thì:
-  /// 1. Tối đa chỉ có [maxConcurrent] (mặc định là 2) thiết bị được mở đồng thời để chống treo máy.
+  /// 1. Tối đa chỉ có [maxConcurrent] thiết bị được mở đồng thời để chống treo máy.
   /// 2. BẮT BUỘC mỗi thiết bị phải chạy XONG HOÀN TOÀN tác vụ [taskRunner] của nó trước khi bị tắt đi.
   /// 3. Khi một thiết bị chạy xong và tắt đi, thiết bị tiếp theo trong hàng đợi mới được mở lên.
   /// 4. Đảm bảo toàn bộ danh sách thiết bị (kể cả 100 devices) đều sẽ được phục vụ và hoàn thành lần lượt.
   Future<Map<String, dynamic>> runDeviceTaskQueue<T>({
     required List<String> ips,
     required Future<T> Function(String ip) taskRunner,
-    int maxConcurrent = 2,
+    int? maxConcurrent,
     void Function(String ip, int completed, int total, String status)? onProgress,
   }) async {
+    final effectiveMax = maxConcurrent ?? await getMaxConcurrentDevices();
     final distinctIps = ips.toSet().toList();
     final total = distinctIps.length;
     final Map<String, dynamic> results = {
@@ -226,7 +338,7 @@ class Socks5ProxyService extends ChangeNotifier {
 
         try {
           // 1. Kiểm soát sức chứa trước khi khởi chạy thiết bị mới
-          await ensureDeviceCapacity(maxConcurrent: maxConcurrent, exemptIps: [ip]);
+          await ensureDeviceCapacity(maxConcurrent: effectiveMax, exemptIps: [ip]);
 
           // 2. Chờ tác vụ auto trên thiết bị HOÀN THÀNH TOÀN DIỆN (bất kể thời gian bao lâu)
           await taskRunner(ip);
@@ -247,8 +359,8 @@ class Socks5ProxyService extends ChangeNotifier {
       }
     }
 
-    // Khởi chạy đồng thời số worker bằng maxConcurrent (tối đa 2)
-    final poolSize = distinctIps.length < maxConcurrent ? distinctIps.length : maxConcurrent;
+    // Khởi chạy đồng thời số worker bằng effectiveMax
+    final poolSize = distinctIps.length < effectiveMax ? distinctIps.length : effectiveMax;
     final workers = List.generate(poolSize, (_) => worker());
     await Future.wait(workers);
 
@@ -281,7 +393,7 @@ class Socks5ProxyService extends ChangeNotifier {
 
     // 3. Chuẩn bị file script Askpass để cấp mật khẩu tự động cho lệnh ssh
     final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    final runDir = Directory('$homeDir/.tadu_ai_agent/tmp');
+    final runDir = Directory('$homeDir/.agent_mxh_auto/tmp');
     if (!runDir.existsSync()) {
       runDir.createSync(recursive: true);
     }
@@ -434,7 +546,7 @@ class Socks5ProxyService extends ChangeNotifier {
     // Đường dẫn thư mục dữ liệu riêng cho từng IP để cô lập profile không ảnh hưởng trình duyệt gốc
     final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final profileDir = Directory('$homeDir/.tadu_ai_agent/browser_profiles/ip_$sanitizedIp');
+    final profileDir = Directory('$homeDir/.agent_mxh_auto/browser_profiles/ip_$sanitizedIp');
     if (!profileDir.existsSync()) {
       profileDir.createSync(recursive: true);
     }
@@ -680,6 +792,7 @@ except Exception:
       '/usr/bin/emulator',
       '/usr/local/bin/emulator',
       '$home/.android-sdk/emulator/emulator',
+      '$home/.agent_mxh_auto/emulator/emulator',
       '$home/.tadu_ai_agent/emulator/emulator',
     ];
     for (final c in candidates) {
@@ -1015,10 +1128,87 @@ for root, _, files in os.walk(target_dir):
     }
   }
 
+  /// Backup thiết bị máy ảo AVD thành file nén .tar.gz lưu trữ vào thư mục đích
+  Future<String> backupPersonaDeviceAvd({
+    required String avdName,
+    String? destinationPath,
+    void Function(String message)? onProgress,
+  }) async {
+    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    final avdDir = Directory('$homeDir/.android/avd/$avdName.avd');
+    final iniFile = File('$homeDir/.android/avd/$avdName.ini');
+
+    if (!avdDir.existsSync()) {
+      throw Exception('Thư mục máy ảo $avdName không tồn tại trên hệ thống.');
+    }
+
+    // 1. Đảm bảo thư mục lưu backup tồn tại (mặc định là ~/Documents/devices)
+    final resolvedDefaultDir = Directory('$homeDir/Documents/devices').path;
+    final backupDir = Directory(destinationPath ?? resolvedDefaultDir);
+    if (!backupDir.existsSync()) {
+      backupDir.createSync(recursive: true);
+    }
+
+    // 2. Nếu máy ảo đang mở chạy, đồng bộ dữ liệu vào đĩa và lưu snapshot default_boot chuẩn xác
+    final runningPort = _findRunningConsolePortForAvd(avdName);
+    if (runningPort != null) {
+      onProgress?.call('Đang lưu trạng thái và ứng dụng máy ảo vào snapshot...');
+      try {
+        final adbBin = await _findAdbExecutable();
+        await Process.run(adbBin, ['-s', 'emulator-$runningPort', 'shell', 'sync']);
+      } catch (_) {}
+      try {
+        await _saveSnapshotViaConsole(runningPort, snapshotName: 'default_boot');
+        // Đợi 1 giây để QEMU commit toàn bộ RAM và userdata-qemu.img.qcow2 xuống đĩa
+        await Future.delayed(const Duration(milliseconds: 1000));
+      } catch (_) {}
+    }
+
+    final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[^0-9]'), '_');
+    final targetTarFile = File('${backupDir.path}/${avdName}_backup_$timestamp.tar.gz');
+
+    // 3. Dọn dẹp các file lock tạm thời trước khi đóng gói
+    try {
+      for (final f in avdDir.listSync(recursive: true)) {
+        if (f.path.endsWith('.lock') || f.path.endsWith('multiinstance.lock')) {
+          try {
+            f.deleteSync();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    onProgress?.call('Đang nén dữ liệu máy ảo $avdName...');
+
+    // 4. Thực thi lệnh tar nén thư mục .avd và file .ini (loại trừ các file socket và lock)
+    final avdParent = Directory('$homeDir/.android/avd');
+    final args = [
+      '-czf',
+      targetTarFile.path,
+      '--exclude=*.lock',
+      '--exclude=multiinstance.lock',
+      '--exclude=modem_simulator/*.sock',
+      '--exclude=modem_simulator/modem_nvram.json',
+      '-C',
+      avdParent.path,
+      '$avdName.avd',
+      if (iniFile.existsSync()) '$avdName.ini',
+    ];
+
+    final res = await Process.run('tar', args);
+    if (res.exitCode != 0) {
+      throw Exception('Lỗi khi nén backup máy ảo: ${res.stderr}');
+    }
+
+    notifyListeners();
+    return targetTarFile.path;
+  }
+
   /// Tạo thiết bị (AVD Clone) riêng biệt cho nhân vật theo IP
   Future<String> createPersonaDeviceAvd({
     required String ip,
     String? baseAvd,
+    void Function(String message)? onProgress,
   }) async {
     final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
     String targetBase = baseAvd ?? '';
@@ -1028,14 +1218,32 @@ for root, _, files in os.walk(target_dir):
       if (avds.isEmpty) {
         throw Exception('Hệ thống chưa có Android AVD nào để làm mẫu nhân bản. Vui lòng import hoặc tạo một máy ảo trên Android Studio trước.');
       }
-      // Ưu tiên chọn base AVD có sẵn thư mục hợp lệ trên đĩa
-      targetBase = avds.firstWhere(
-        (a) => Directory('$homeDir/.android/avd/$a.avd').existsSync(),
-        orElse: () => avds.first,
-      );
+      // Ưu tiên chọn base AVD có sẵn snapshot default_boot và dung lượng userdata lớn nhất (đầy đủ app)
+      String? bestCandidate;
+      int maxScore = -1;
+
+      for (final a in avds) {
+        final dir = Directory('$homeDir/.android/avd/$a.avd');
+        if (!dir.existsSync()) continue;
+        int score = 0;
+        final snapFile = File('${dir.path}/snapshots/default_boot/ram.bin');
+        if (snapFile.existsSync() && snapFile.lengthSync() > 1000000) {
+          score += 100;
+        }
+        final qcowFile = File('${dir.path}/userdata-qemu.img.qcow2');
+        if (qcowFile.existsSync()) {
+          score += (qcowFile.lengthSync() / (1024 * 1024 * 100)).toInt(); // cộng điểm theo dung lượng
+        }
+        if (score > maxScore) {
+          maxScore = score;
+          bestCandidate = a;
+        }
+      }
+
+      targetBase = bestCandidate ?? avds.first;
     }
 
-    final createdName = await _ensurePersonaCloneAvd(targetBase, ip);
+    final createdName = await _ensurePersonaCloneAvd(targetBase, ip, onProgress: onProgress);
     notifyListeners();
     return createdName;
   }
@@ -1130,9 +1338,13 @@ for root, _, files in os.walk(target_dir):
     return deleted;
   }
 
-  /// Tự động tạo hoặc kiểm tra AVD Clone riêng biệt cho từng IP nhân vật (Copy-on-Write overlay)
-  /// Giúp nhiều thiết bị chạy đồng thời từ 1 base AVD mà không bị lỗi file lock hoặc ngốn dung lượng đĩa
-  Future<String> _ensurePersonaCloneAvd(String baseAvd, String ip) async {
+  /// Tự động tạo hoặc kiểm tra AVD Clone riêng biệt cho từng IP nhân vật
+  /// Sao chép toàn bộ userdata, cache, encryptionkey và snapshot từ baseAvd chuẩn nhất để máy ảo tạo mới khởi động được ngay với đầy đủ app
+  Future<String> _ensurePersonaCloneAvd(
+    String baseAvd,
+    String ip, {
+    void Function(String message)? onProgress,
+  }) async {
     final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     final cloneAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
@@ -1156,6 +1368,7 @@ for root, _, files in os.walk(target_dir):
 
     // 3. Sao chép các file cấu hình và dữ liệu nền tảng từ baseAvd sang cloneAvd
     if (baseAvdDir.existsSync()) {
+      onProgress?.call('Đang sao chép file cấu hình hệ thống...');
       final configFiles = [
         'config.ini',
         'user-settings.ini',
@@ -1178,77 +1391,189 @@ for root, _, files in os.walk(target_dir):
         }
       }
 
-      // 4. Tạo QCOW2 overlay độc lập cho userdata, cache và encryptionkey
+      // Sao chép thư mục data và bootcompleted.ini nếu base có
+      final baseDataDir = Directory('${baseAvdDir.path}/data');
+      final cloneDataDir = Directory('${cloneAvdDir.path}/data');
+      if (baseDataDir.existsSync() && !cloneDataDir.existsSync()) {
+        try {
+          await Process.run('cp', ['-a', baseDataDir.path, cloneDataDir.path]);
+        } catch (_) {}
+      }
+      final baseBootCompleted = File('${baseAvdDir.path}/bootcompleted.ini');
+      if (baseBootCompleted.existsSync()) {
+        try {
+          baseBootCompleted.copySync('${cloneAvdDir.path}/bootcompleted.ini');
+        } catch (_) {}
+      }
+
+      // 4. Sao chép và rebase các file QCOW2 (userdata, cache, encryptionkey)
+      onProgress?.call('Đang thiết lập dữ liệu phân vùng và ứng dụng...');
       final qemuImgBin = _findQemuImgExecutable();
-      if (qemuImgBin != null) {
-        // Userdata: Nếu base có userdata-qemu.img.qcow2 thì tạo overlay từ file đó, nếu không thì từ userdata-qemu.img
-        final cloneUserdata = File('${cloneAvdDir.path}/userdata-qemu.img.qcow2');
-        if (!cloneUserdata.existsSync()) {
-          final baseUserdataQcow = File('${baseAvdDir.path}/userdata-qemu.img.qcow2');
-          final baseUserdataRaw = File('${cloneAvdDir.path}/userdata-qemu.img');
-          final backingPath = baseUserdataQcow.existsSync() ? baseUserdataQcow.path : (baseUserdataRaw.existsSync() ? baseUserdataRaw.path : null);
-          if (backingPath != null) {
+      final qcowFiles = ['userdata-qemu.img.qcow2', 'cache.img.qcow2', 'encryptionkey.img.qcow2'];
+
+      for (final qf in qcowFiles) {
+        final baseQcow = File('${baseAvdDir.path}/$qf');
+        final cloneQcow = File('${cloneAvdDir.path}/$qf');
+        if (baseQcow.existsSync() && !cloneQcow.existsSync()) {
+          try {
+            // Sao chép file qcow2 từ base
+            await Process.run('cp', ['-a', baseQcow.path, cloneQcow.path]);
+          } catch (_) {}
+        }
+
+        // Rebase backing file thành tên tương đối trong cùng thư mục của máy ảo mới
+        if (cloneQcow.existsSync() && qemuImgBin != null) {
+          final baseRaw = qf.replaceAll('.qcow2', '');
+          final cloneRawFile = File('${cloneAvdDir.path}/$baseRaw');
+          if (cloneRawFile.existsSync()) {
             try {
               await Process.run(qemuImgBin, [
-                'create',
-                '-f',
-                'qcow2',
+                'rebase',
+                '-u',
                 '-b',
-                backingPath,
-                '-F',
-                'qcow2',
-                cloneUserdata.path,
+                baseRaw,
+                cloneQcow.path,
               ]);
             } catch (_) {}
           }
         }
-
-        // Cache overlay
-        final cloneCache = File('${cloneAvdDir.path}/cache.img.qcow2');
-        final baseCacheRaw = File('${cloneAvdDir.path}/cache.img');
-        if (!cloneCache.existsSync() && baseCacheRaw.existsSync()) {
-          try {
-            await Process.run(qemuImgBin, [
-              'create',
-              '-f',
-              'qcow2',
-              '-b',
-              'cache.img',
-              '-F',
-              'raw',
-              cloneCache.path,
-            ]);
-          } catch (_) {}
-        }
-
-        // Encryption key overlay
-        final cloneEnc = File('${cloneAvdDir.path}/encryptionkey.img.qcow2');
-        final baseEncRaw = File('${cloneAvdDir.path}/encryptionkey.img');
-        if (!cloneEnc.existsSync() && baseEncRaw.existsSync()) {
-          try {
-            await Process.run(qemuImgBin, [
-              'create',
-              '-f',
-              'qcow2',
-              '-b',
-              'encryptionkey.img',
-              '-F',
-              'raw',
-              cloneEnc.path,
-            ]);
-          } catch (_) {}
-        }
       }
+
+      // 5. Sao chép thư mục snapshots (chứa default_boot) từ base sang máy ảo clone
+      final baseSnapshotsDir = Directory('${baseAvdDir.path}/snapshots');
+      final cloneSnapshotsDir = Directory('${cloneAvdDir.path}/snapshots');
+      if (baseSnapshotsDir.existsSync() && !cloneSnapshotsDir.existsSync()) {
+        onProgress?.call('Đang sao chép snapshot khởi động siêu tốc...');
+        try {
+          await Process.run('cp', ['-aT', baseSnapshotsDir.path, cloneSnapshotsDir.path]);
+        } catch (_) {}
+      }
+
+      // 6. Vá toàn bộ cấu hình text và nhị phân .pb trỏ về tên máy ảo clone mới
+      onProgress?.call('Đang cấu hình định danh thiết bị...');
+      try {
+        final patchScript = '''
+import os, re
+
+target_avd = "$cloneAvdName"
+target_dir = "${cloneAvdDir.path}"
+
+def patch_text_file(fpath):
+    if not os.path.exists(fpath): return
+    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    new_content = re.sub(r'Pixel_10_Pro_persona_[a-zA-Z0-9_-]+', target_avd, content)
+    with open(fpath, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+for root, _, files in os.walk(target_dir):
+    for fn in files:
+        if fn.endswith(".ini") or fn == "AVD.conf" or fn == "emu-launch-params.txt":
+            patch_text_file(os.path.join(root, fn))
+
+def encode_varint(val):
+    out = []
+    while val > 0x7f:
+        out.append((val & 0x7f) | 0x80)
+        val >>= 7
+    out.append(val & 0x7f)
+    return bytes(out)
+
+def decode_varint(b, p):
+    val = 0; shift = 0
+    while True:
+        byte = b[p]; p += 1
+        val |= (byte & 0x7f) << shift
+        shift += 7
+        if not (byte & 0x80): break
+    return val, p
+
+persona_pattern = re.compile(rb'Pixel_10_Pro_persona_[a-zA-Z0-9_-]+')
+
+def transform_bytes(b):
+    p = 0
+    res = bytearray()
+    while p < len(b):
+        key, p = decode_varint(b, p)
+        wire = key & 0x7
+        field = key >> 3
+        if wire == 0:
+            v, p = decode_varint(b, p)
+            res.extend(encode_varint(key))
+            res.extend(encode_varint(v))
+        elif wire == 2:
+            length, p = decode_varint(b, p)
+            val = b[p:p+length]
+            p += length
+            if field == 3:
+                new_val = transform_bytes(val)
+            elif persona_pattern.search(val):
+                new_val = persona_pattern.sub(target_avd.encode('utf-8'), val)
+            else:
+                new_val = val
+            res.extend(encode_varint(key))
+            res.extend(encode_varint(len(new_val)))
+            res.extend(new_val)
+        elif wire == 1:
+            res.extend(encode_varint(key))
+            res.extend(b[p:p+8])
+            p += 8
+        elif wire == 5:
+            res.extend(encode_varint(key))
+            res.extend(b[p:p+4])
+            p += 4
+        else:
+            break
+    return bytes(res)
+
+for root, _, files in os.walk(target_dir):
+    for fn in files:
+        if fn.endswith(".pb"):
+            pb_path = os.path.join(root, fn)
+            try:
+                with open(pb_path, "rb") as f:
+                    data = f.read()
+                new_data = transform_bytes(data)
+                with open(pb_path, "wb") as f:
+                    f.write(new_data)
+            except Exception:
+                pass
+''';
+        await Process.run('python3', ['-c', patchScript]);
+      } catch (_) {}
     }
 
-    // Dọn dẹp lock file cũ nếu có trong thư mục clone
+    // 7. Dọn dẹp lock file cũ và file sinh tự động không tương thích
     try {
-      for (final f in cloneAvdDir.listSync()) {
+      final hwIni = File('${cloneAvdDir.path}/hardware-qemu.ini');
+      if (hwIni.existsSync()) {
+        try {
+          hwIni.deleteSync();
+        } catch (_) {}
+      }
+      for (final f in cloneAvdDir.listSync(recursive: true)) {
         if (f.path.endsWith('.lock') || f.path.endsWith('multiinstance.lock')) {
           try {
             f.deleteSync();
           } catch (_) {}
         }
+      }
+      // Đánh dấu cần dọn dẹp app của máy mẫu (Facebook, TikTok) khi khởi động lần đầu
+      final cleanFlag = File('${cloneAvdDir.path}/.clean_needed');
+      cleanFlag.writeAsStringSync('1');
+
+      // Đặt trước tên nhân vật vào config.ini của máy ảo vừa clone
+      final cfgFile = File('${cloneAvdDir.path}/config.ini');
+      if (cfgFile.existsSync()) {
+        final persona = PersonaService().getPersona(ip);
+        final title = (persona != null && persona.name.trim().isNotEmpty) ? persona.name.trim() : ip;
+        var cfg = cfgFile.readAsStringSync();
+        if (cfg.contains('avd.ini.displayname=')) {
+          cfg = cfg.replaceAll(RegExp(r'avd\.ini\.displayname=.*'), 'avd.ini.displayname=$title');
+        } else {
+          cfg = 'avd.ini.displayname=$title\n$cfg';
+        }
+        cfgFile.writeAsStringSync(cfg);
       }
     } catch (_) {}
 
@@ -1288,6 +1613,9 @@ for root, _, files in os.walk(target_dir):
       );
       _activeSessions[ip] = session;
     }
+
+    // Đảm bảo không vượt quá số lượng thiết bị tối đa được phép mở đồng thời theo cấu hình
+    await ensureDeviceCapacity(exemptIps: [ip]);
 
     // TRƯỜNG HỢP 1: Kết nối thiết bị Android ngoại vi qua WiFi/TCP-IP và ép HTTP Proxy vào máy (nếu có socks5)
     if (remoteDeviceAddress != null && remoteDeviceAddress.trim().isNotEmpty) {
@@ -1390,6 +1718,49 @@ for root, _, files in os.walk(target_dir):
       throw Exception('Nhân vật $ip chưa được cài đặt máy ảo hoặc máy ảo đã bị xóa. Vui lòng bấm "Cài đặt máy ảo" để cấu hình.');
     }
 
+    // Cập nhật tên hiển thị của máy ảo (Title) theo Tên Nhân Vật trong file cấu hình AVD
+    String personaTitle = ip;
+    try {
+      final cachedPersona = PersonaService().getPersona(ip);
+      if (cachedPersona != null && cachedPersona.name.trim().isNotEmpty) {
+        personaTitle = cachedPersona.name.trim();
+      } else {
+        final allPersonas = await PersonaService().loadSavedPersonas();
+        if (allPersonas.containsKey(ip) && allPersonas[ip]!.name.trim().isNotEmpty) {
+          personaTitle = allPersonas[ip]!.name.trim();
+        }
+      }
+
+      final avdConfigFile = File('$homeDir/.android/avd/$actualAvd.avd/config.ini');
+      if (avdConfigFile.existsSync()) {
+        var cfgContent = avdConfigFile.readAsStringSync();
+        if (cfgContent.contains('avd.ini.displayname=')) {
+          cfgContent = cfgContent.replaceAll(
+            RegExp(r'avd\.ini\.displayname=.*'),
+            'avd.ini.displayname=$personaTitle',
+          );
+        } else {
+          cfgContent = 'avd.ini.displayname=$personaTitle\n$cfgContent';
+        }
+        avdConfigFile.writeAsStringSync(cfgContent);
+      }
+
+      // Ghi cả vào file $actualAvd.ini ở thư mục cha ~/.android/avd/ vì Android Emulator đọc displayname từ file này để đặt Window Title
+      final outerIniFile = File('$homeDir/.android/avd/$actualAvd.ini');
+      if (outerIniFile.existsSync()) {
+        var outerContent = outerIniFile.readAsStringSync();
+        if (outerContent.contains('avd.ini.displayname=')) {
+          outerContent = outerContent.replaceAll(
+            RegExp(r'avd\.ini\.displayname=.*'),
+            'avd.ini.displayname=$personaTitle',
+          );
+        } else {
+          outerContent = 'avd.ini.displayname=$personaTitle\n$outerContent';
+        }
+        outerIniFile.writeAsStringSync(outerContent);
+      }
+    } catch (_) {}
+
     // 4. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP nếu có socks5
     if (session.localPort > 0) {
       final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
@@ -1471,8 +1842,14 @@ for root, _, files in os.walk(target_dir):
       );
       session.deviceProcess = proc;
 
-      // Đánh thức màn hình và mở khóa AVD tự động ngầm để tránh màn hình ngủ đen ngòm
-      _autoWakeAndUnlockAvd(consolePort);
+      // Đánh thức màn hình, mở khóa AVD và tự động thiết lập ADB Global HTTP Proxy cho hệ thống
+      _autoWakeAndUnlockAvd(
+        consolePort,
+        actualAvd: actualAvd,
+        personaTitle: personaTitle,
+        emulatorPid: proc.pid,
+        proxyPort: httpProxyPort,
+      );
 
       notifyListeners();
       return true;
@@ -1507,11 +1884,28 @@ for root, _, files in os.walk(target_dir):
   }
 
   /// Tự động kiểm tra và đánh thức, mở khóa màn hình AVD tránh màn hình đen ngủ
-  void _autoWakeAndUnlockAvd(int consolePort) {
+  /// Tự động cấu hình global http_proxy trực tiếp qua ADB settings để tất cả ứng dụng Android (Chrome, WebView, App MXH) bắt buộc chạy qua proxy SOCKS5
+  /// Nếu máy ảo vừa được tạo mới từ mẫu có sẵn (cờ .clean_needed), tự động gỡ sạch Facebook, TikTok để máy ảo trắng tinh nguyên bản
+  void _autoWakeAndUnlockAvd(int consolePort, {String? actualAvd, String? personaTitle, int? emulatorPid, int? proxyPort}) {
     Future.microtask(() async {
       try {
         final adbBin = await _findAdbExecutable();
         final serial = 'emulator-$consolePort';
+
+        // Cập nhật tiêu đề cửa sổ máy ảo theo Tên Nhân Vật thông qua helper script
+        if (personaTitle != null && personaTitle.trim().isNotEmpty) {
+          try {
+            final titleScript = File('${Directory.current.path}/lib/core/services/scripts/update_emulator_title.py');
+            if (titleScript.existsSync()) {
+              Process.start('python3', [
+                titleScript.path,
+                actualAvd ?? consolePort.toString(),
+                personaTitle.trim(),
+                if (emulatorPid != null) emulatorPid.toString(),
+              ], mode: ProcessStartMode.detached);
+            }
+          } catch (_) {}
+        }
 
         // Đợi thiết bị boot xong và sẵn sàng nhận input (tối đa 40 giây)
         for (int i = 0; i < 20; i++) {
@@ -1522,6 +1916,14 @@ for root, _, files in os.walk(target_dir):
           }
         }
 
+        // ÉP CẤU HÌNH PROXY QUA ADB SETTINGS:
+        // Android Emulator mặc định dùng 10.0.2.2 làm địa chỉ loopback quay về máy trạm (host)
+        if (proxyPort != null && proxyPort > 0) {
+          try {
+            await setAdbGlobalProxy(serial, '10.0.2.2', proxyPort);
+          } catch (_) {}
+        }
+
         // 1. Gửi phím WAKEUP (224) và POWER (26) để bật sáng màn hình
         await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'keyevent', '224']);
         await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'keyevent', '26']);
@@ -1530,6 +1932,43 @@ for root, _, files in os.walk(target_dir):
         await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'keyevent', '82']);
         // 3. Vuốt nhẹ lên mở khóa phòng trường hợp màn hình khóa cần vuốt
         await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'swipe', '500', '1500', '500', '500', '200']);
+
+        // 4. Kiểm tra xem có cờ .clean_needed của máy ảo vừa tạo mới không
+        if (actualAvd != null && actualAvd.isNotEmpty) {
+          final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+          final cleanFlagFile = File('$homeDir/.android/avd/$actualAvd.avd/.clean_needed');
+          if (cleanFlagFile.existsSync()) {
+            try {
+              // Gỡ bỏ hoàn toàn ứng dụng mẫu bên thứ ba (Facebook, TikTok)
+              final appsToClean = [
+                'com.facebook.katana',
+                'com.facebook.orca',
+                'com.facebook.lite',
+                'com.ss.android.ugc.trill',
+                'com.zhiliaoapp.musically',
+              ];
+              for (final app in appsToClean) {
+                try {
+                  await Process.run(adbBin, ['-s', serial, 'shell', 'pm', 'uninstall', app]);
+                } catch (_) {}
+              }
+
+              // Lưu snapshot mới sạch bóng app để các lần khởi động sau nạp thẳng snapshot sạch
+              try {
+                await _saveSnapshotViaConsole(consolePort, snapshotName: 'default_boot');
+              } catch (_) {
+                try {
+                  await Process.run(adbBin, ['-s', serial, 'emu', 'avd', 'snapshot', 'save', 'default_boot']);
+                } catch (_) {}
+              }
+
+              // Xóa file cờ đánh dấu
+              try {
+                cleanFlagFile.deleteSync();
+              } catch (_) {}
+            } catch (_) {}
+          }
+        }
       } catch (_) {}
     });
   }
@@ -1545,6 +1984,10 @@ for root, _, files in os.walk(target_dir):
 
   /// Đóng trình duyệt và dừng toàn bộ kết nối SOCKS5 của IP
   Future<void> stopSession(String ip) async {
+    // Đóng device an toàn trước nếu đang chạy để kịp flush dữ liệu ứng dụng
+    if (isDeviceRunningForIp(ip)) {
+      await closeDeviceForIp(ip);
+    }
     final session = _activeSessions.remove(ip);
     if (session != null) {
       if (session.remoteDeviceAddress != null) {
@@ -1552,11 +1995,10 @@ for root, _, files in os.walk(target_dir):
       }
       await session.stop();
     }
-    // Dừng triệt để các tiến trình trình duyệt và device gắn với profile của IP này nếu còn chạy ngầm
+    // Dừng triệt để các tiến trình trình duyệt gắn với profile của IP này nếu còn chạy ngầm
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
-      await Process.run('pkill', ['-f', 'device_profiles/ip_$sanitizedIp']);
       await Process.run('pkill', ['-f', 'ip_$sanitizedIp']);
     } catch (_) {}
     notifyListeners();
@@ -1589,45 +2031,91 @@ for root, _, files in os.walk(target_dir):
 
   /// Đóng riêng mobile device của IP mà không làm mất hầm SOCKS5 nếu trình duyệt vẫn đang chạy
   Future<void> closeDeviceForIp(String ip) async {
-    final session = _activeSessions[ip];
-    if (session?.remoteDeviceAddress != null) {
-      try {
-        await disconnectRemoteDevice(session!.remoteDeviceAddress!);
-      } catch (_) {}
-      session?.remoteDeviceAddress = null;
-    }
-    if (session?.deviceProcess != null) {
-      try {
-        session!.deviceProcess!.kill();
-      } catch (_) {}
-      session?.deviceProcess = null;
-    }
-    if (session?.httpBridgeProcess != null) {
-      try {
-        session!.httpBridgeProcess!.kill();
-      } catch (_) {}
-      session?.httpBridgeProcess = null;
-    }
-    try {
-      final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      await Process.run('pkill', ['-f', 'device_profiles/ip_$sanitizedIp']);
-      await Process.run('pkill', ['-f', 'persona_$sanitizedIp']);
-      // Dừng emulator của port đó qua adb nếu có
-      if (session?.emulatorPort != null) {
-        final adbBin = await _findAdbExecutable();
-        await Process.run(adbBin, ['-s', 'emulator-${session!.emulatorPort}', 'emu', 'kill']);
-      }
-    } catch (_) {}
-
-    // Nếu browser cũng không còn chạy thì giải phóng hoàn toàn session SOCKS5
-    if (!_isSystemProcessAliveForIp(ip)) {
-      final s = _activeSessions.remove(ip);
-      if (s != null) {
-        await s.stop();
-      }
-    }
-
+    _closingDeviceIps.add(ip);
     notifyListeners();
+
+    try {
+      final session = _activeSessions[ip];
+      final port = session?.emulatorPort;
+      final remoteAddr = session?.remoteDeviceAddress;
+
+      if (remoteAddr != null) {
+        try {
+          await disconnectRemoteDevice(remoteAddr);
+        } catch (_) {}
+        session?.remoteDeviceAddress = null;
+      }
+
+      final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final personaAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
+      final personaProfile = PersonaService().getPersona(ip);
+      final customAvdName = personaProfile?.avdName?.trim();
+      final targetAvd = (customAvdName != null && customAvdName.isNotEmpty) ? customAvdName : personaAvdName;
+      final activePort = port ?? _findRunningConsolePortForAvd(targetAvd) ?? _findRunningConsolePortForAvd(personaAvdName);
+
+      // 1. Nếu emulator đang chạy, gửi lệnh sync đĩa và yêu cầu thoát an toàn để ghi dữ liệu ứng dụng
+      if (activePort != null) {
+        final serial = 'emulator-$activePort';
+        try {
+          final adbBin = await _findAdbExecutable();
+          await Process.run(adbBin, ['-s', serial, 'shell', 'sync']);
+        } catch (_) {}
+        try {
+          // Gỡ proxy trước khi snapshot để tránh lưu cố định port proxy cũ của phiên này vào ảnh đĩa
+          await clearAdbGlobalProxy(serial);
+        } catch (_) {}
+        try {
+          // Lưu snapshot default_boot hiện tại để lưu trạng thái app mới nhất
+          await _saveSnapshotViaConsole(activePort, snapshotName: 'default_boot');
+        } catch (_) {}
+        try {
+          // Gửi lệnh kill an toàn tới emulator console
+          await _gracefulKillEmulatorViaConsole(activePort);
+        } catch (_) {}
+        // Đợi tối đa 1.5 giây để tiến trình emulator tự động thoát êm đẹp
+        for (int i = 0; i < 15; i++) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (!_isDeviceProcessAliveForIp(ip)) break;
+        }
+      }
+
+      if (session?.deviceProcess != null) {
+        try {
+          session!.deviceProcess!.kill();
+        } catch (_) {}
+        session?.deviceProcess = null;
+      }
+
+      if (session?.httpBridgeProcess != null) {
+        try {
+          session!.httpBridgeProcess!.kill(ProcessSignal.sigkill);
+        } catch (_) {}
+        session?.httpBridgeProcess = null;
+      }
+
+      session?.emulatorPort = null;
+
+      // 2. Chỉ cưỡng bức pkill -9 nếu tiến trình vẫn còn bị kẹt sau graceful shutdown
+      try {
+        if (_isDeviceProcessAliveForIp(ip)) {
+          await Process.run('pkill', ['-9', '-f', 'device_profiles/ip_$sanitizedIp']);
+          await Process.run('pkill', ['-9', '-f', 'persona_$sanitizedIp']);
+        }
+      } catch (_) {}
+
+      // Nếu browser cũng không còn chạy thì giải phóng hoàn toàn session SOCKS5
+      if (!_isSystemProcessAliveForIp(ip)) {
+        final s = _activeSessions.remove(ip);
+        if (s != null) {
+          await s.stop();
+        }
+      }
+    } finally {
+      // Đợi ngắn một chút để OS dọn sạch PID trong /proc trước khi gỡ cờ closing
+      await Future.delayed(const Duration(milliseconds: 300));
+      _closingDeviceIps.remove(ip);
+      notifyListeners();
+    }
   }
 
   /// Tìm và cung cấp đường dẫn binary adb (tự động tải và nhúng nếu hệ thống chưa có)

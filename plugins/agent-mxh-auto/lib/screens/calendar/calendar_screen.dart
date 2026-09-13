@@ -371,13 +371,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     ),
                                     const SizedBox(width: 8),
                                   ],
-                                  TextButton(
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    onPressed: () {
+                                  InkWell(
+                                    onTap: () {
                                       setDialogState(() {
                                         if (selectedIps.length == totalPersonas) {
                                           selectedIps.clear();
@@ -386,9 +381,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         }
                                       });
                                     },
-                                    child: Text(
-                                      selectedIps.length == totalPersonas ? 'Bỏ chọn hết' : 'Chọn tất cả',
-                                      style: const TextStyle(fontSize: 11, color: AppColors.accentCyan),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.6), width: 1),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            selectedIps.length == totalPersonas ? Icons.clear_all_rounded : Icons.done_all_rounded,
+                                            size: 14,
+                                            color: AppColors.primaryLight,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            selectedIps.length == totalPersonas ? 'Bỏ chọn hết' : 'Chọn tất cả',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.primaryLight,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],

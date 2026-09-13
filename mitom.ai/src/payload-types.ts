@@ -298,21 +298,34 @@ export interface ApiKey {
   id: number;
   name: string;
   /**
-   * Tự động sinh mã định danh nếu không nhập thủ công
+   * Ngân sách giới hạn theo ngày (USD), ví dụ: 2, 5 hoặc Không giới hạn
+   */
+  dailyLimit?: string | null;
+  /**
+   * Ngân sách giới hạn theo tháng (USD), ví dụ: 20, 50 hoặc Không giới hạn
+   */
+  monthlyLimit?: string | null;
+  /**
+   * Danh sách IP được phép truy cập, phân cách bằng dấu phẩy hoặc Không giới hạn
+   */
+  ipWhitelist?: string | null;
+  modelAccessMode?: ('All Models' | 'whitelist') | null;
+  /**
+   * Các quyền được cấp: Sandbox, Modelverse
+   */
+  permissions?: string | null;
+  status?: ('Normal' | 'Disabled' | 'Expired') | null;
+  /**
+   * Hệ thống tự động khởi tạo mã định danh duy nhất
    */
   keyId?: string | null;
   maskedKey?: string | null;
   /**
-   * Khóa bảo mật đầy đủ nếu có
+   * Khóa bảo mật đầy đủ sau khi được đồng bộ từ AstraFlow
    */
   secretKey?: string | null;
-  status?: ('Normal' | 'Disabled' | 'Expired') | null;
-  permissions?: string | null;
-  dailyLimit?: string | null;
-  monthlyLimit?: string | null;
   dailySpend?: string | null;
   monthlySpend?: string | null;
-  modelAccessMode?: string | null;
   expiryTime?: string | null;
   rawResponse?:
     | {
@@ -566,16 +579,17 @@ export interface TransactionsSelect<T extends boolean = true> {
  */
 export interface ApiKeysSelect<T extends boolean = true> {
   name?: T;
+  dailyLimit?: T;
+  monthlyLimit?: T;
+  ipWhitelist?: T;
+  modelAccessMode?: T;
+  permissions?: T;
+  status?: T;
   keyId?: T;
   maskedKey?: T;
   secretKey?: T;
-  status?: T;
-  permissions?: T;
-  dailyLimit?: T;
-  monthlyLimit?: T;
   dailySpend?: T;
   monthlySpend?: T;
-  modelAccessMode?: T;
   expiryTime?: T;
   rawResponse?: T;
   updatedAt?: T;

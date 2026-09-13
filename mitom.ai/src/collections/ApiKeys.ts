@@ -24,8 +24,11 @@ export const ApiKeys: CollectionConfig = {
         if (operation === 'create' || !data?.keyId) {
           if (!data?.keyId) {
             data = data || {}
-            data.keyId = `key-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`
+            data.keyId = `uminferapikey-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`
           }
+        }
+        if (Array.isArray(data?.permissions)) {
+          data.permissions = data.permissions.join(', ')
         }
         return data
       },
@@ -37,28 +40,54 @@ export const ApiKeys: CollectionConfig = {
       type: 'text',
       required: true,
       label: 'Tên Key',
-    },
-    {
-      name: 'keyId',
-      type: 'text',
-      unique: true,
-      label: 'Mã định danh khóa',
-      defaultValue: () => `key-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`,
       admin: {
-        description: 'Tự động sinh mã định danh nếu không nhập thủ công',
+        placeholder: 'Nhập tên API Key (ví dụ: my-api-key)',
       },
     },
     {
-      name: 'maskedKey',
+      name: 'dailyLimit',
       type: 'text',
-      label: 'Khóa hiển thị thu gọn',
+      label: 'Hạn mức ngày',
+      defaultValue: 'Không giới hạn',
+      admin: {
+        description: 'Ngân sách giới hạn theo ngày (USD), ví dụ: 2, 5 hoặc Không giới hạn',
+      },
     },
     {
-      name: 'secretKey',
+      name: 'monthlyLimit',
       type: 'text',
-      label: 'Khóa bí mật',
+      label: 'Hạn mức tháng',
+      defaultValue: 'Không giới hạn',
       admin: {
-        description: 'Khóa bảo mật đầy đủ nếu có',
+        description: 'Ngân sách giới hạn theo tháng (USD), ví dụ: 20, 50 hoặc Không giới hạn',
+      },
+    },
+    {
+      name: 'ipWhitelist',
+      type: 'text',
+      label: 'Giới hạn địa chỉ IP',
+      defaultValue: 'Không giới hạn',
+      admin: {
+        description: 'Danh sách IP được phép truy cập, phân cách bằng dấu phẩy hoặc Không giới hạn',
+      },
+    },
+    {
+      name: 'modelAccessMode',
+      type: 'select',
+      label: 'Giới hạn mô hình truy cập',
+      defaultValue: 'All Models',
+      options: [
+        { label: 'Tất cả mô hình', value: 'All Models' },
+        { label: 'Chỉ các mô hình được cấp phép', value: 'whitelist' },
+      ],
+    },
+    {
+      name: 'permissions',
+      type: 'text',
+      label: 'Cấu hình quyền hạn',
+      defaultValue: 'Sandbox, Modelverse',
+      admin: {
+        description: 'Các quyền được cấp: Sandbox, Modelverse',
       },
     },
     {
@@ -73,40 +102,50 @@ export const ApiKeys: CollectionConfig = {
       label: 'Trạng thái',
     },
     {
-      name: 'permissions',
+      name: 'keyId',
       type: 'text',
-      label: 'Quyền hạn',
-      defaultValue: 'Sandbox, Modelverse',
+      unique: true,
+      label: 'Mã định danh khóa',
+      defaultValue: () => `uminferapikey-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`,
+      admin: {
+        readOnly: true,
+        description: 'Hệ thống tự động khởi tạo mã định danh duy nhất',
+      },
     },
     {
-      name: 'dailyLimit',
+      name: 'maskedKey',
       type: 'text',
-      label: 'Hạn mức ngày',
-      defaultValue: 'Không giới hạn',
+      label: 'Khóa hiển thị thu gọn',
+      admin: {
+        readOnly: true,
+      },
     },
     {
-      name: 'monthlyLimit',
+      name: 'secretKey',
       type: 'text',
-      label: 'Hạn mức tháng',
-      defaultValue: 'Không giới hạn',
+      label: 'Khóa bí mật',
+      admin: {
+        readOnly: true,
+        description: 'Khóa bảo mật đầy đủ sau khi được đồng bộ từ AstraFlow',
+      },
     },
     {
       name: 'dailySpend',
       type: 'text',
       label: 'Chi tiêu trong ngày',
       defaultValue: '0',
+      admin: {
+        readOnly: true,
+      },
     },
     {
       name: 'monthlySpend',
       type: 'text',
       label: 'Chi tiêu trong tháng',
       defaultValue: '0',
-    },
-    {
-      name: 'modelAccessMode',
-      type: 'text',
-      label: 'Chế độ truy cập mô hình',
-      defaultValue: 'Tất cả mô hình',
+      admin: {
+        readOnly: true,
+      },
     },
     {
       name: 'expiryTime',

@@ -33,14 +33,5 @@ export const SystemSettings: GlobalConfig = {
       label: 'Hotline / Zalo hỗ trợ',
       defaultValue: '0908.888.888',
     },
-    {
-      name: 'astraflowSync',
-      type: 'ui',
-      admin: {
-        components: {
-          Field: '/components/AstraFlowSyncField#AstraFlowSyncField',
-        },
-      },
-    },
   ],
 }

@@ -12,6 +12,7 @@ class ApiConstants {
   static const String epChatHistory = '/api/chat/history';
   static const String epChatClear = '/api/chat/clear';
   static const String epChat = '/api/chat';
+  static const String epMemories = '/api/memories.php';
   
   static const String epSshTest = '/api/ssh/test';
   static const String epServerHealth = '/api/server/health';

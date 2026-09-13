@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/cli_scanner_service.dart';
 import '../../core/services/local_config_service.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -8,6 +9,7 @@ import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/model_picker_dialog.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/server_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/gateway_provider.dart';
 import '../../providers/server_provider.dart';
 
@@ -23,10 +25,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _modelCtrl = TextEditingController(text: 'glm-5.3');
   final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://api.mitom.ai/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
+  final TextEditingController _maxDevicesCtrl = TextEditingController(text: '2');
+  bool _isDeviceExecutionMode = false; // false: Trình duyệt (Browser), true: Thiết bị (Device/AVD)
+
+  // AI Engine Mode: 'proxy' (Cloud Proxy AI) hoặc 'cli' (Local CLI Agent)
+  String _aiEngineType = 'proxy';
+  String _activeCliAgent = 'antigravity-cli';
+  List<LocalCliAgent> _installedCliAgents = [];
+  bool _isScanningCli = false;
+
   @override
   void initState() {
     super.initState();
     _loadGlobalConfig();
+    _scanCliAgents();
   }
 
   @override
@@ -34,7 +46,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _modelCtrl.dispose();
     _baseUrlCtrl.dispose();
     _apiKeyCtrl.dispose();
+    _maxDevicesCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _scanCliAgents() async {
+    setState(() {
+      _isScanningCli = true;
+    });
+    try {
+      final agents = await CliScannerService().scanInstalledAgents();
+      if (mounted) {
+        setState(() {
+          _installedCliAgents = agents;
+          _isScanningCli = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isScanningCli = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadGlobalConfig() async {
@@ -46,28 +80,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
+      if (cfg['max_concurrent_devices'] != null) {
+        _maxDevicesCtrl.text = cfg['max_concurrent_devices'].toString();
+      }
+      if (cfg['ai_engine_type'] != null) {
+        _aiEngineType = cfg['ai_engine_type'].toString();
+      }
+      if (cfg['active_cli_agent'] != null) {
+        _activeCliAgent = cfg['active_cli_agent'].toString();
+      }
+      if (cfg['default_execution_mode'] != null) {
+        final mode = cfg['default_execution_mode'].toString();
+        setState(() {
+          _isDeviceExecutionMode = mode == 'device';
+        });
+      } else {
+        setState(() {});
+      }
     } catch (_) {}
   }
 
   Future<void> _saveAISettings() async {
-    final rawBaseUrl = _baseUrlCtrl.text.trim();
-    if (rawBaseUrl.isNotEmpty && !LocalConfigService.isValidMitomProxyUrl(rawBaseUrl)) {
-      AppToast.error(context, 'Chỉ chấp nhận Proxy Base URL thuộc domain *.mitom.ai (Ví dụ: https://api.mitom.ai/v1)');
-      return;
+    if (_aiEngineType == 'proxy') {
+      final rawBaseUrl = _baseUrlCtrl.text.trim();
+      if (rawBaseUrl.isNotEmpty && !LocalConfigService.isValidMitomProxyUrl(rawBaseUrl)) {
+        AppToast.error(context, 'Chỉ chấp nhận Proxy Base URL thuộc domain *.mitom.ai (Ví dụ: https://api.mitom.ai/v1)');
+        return;
+      }
     }
 
     try {
       final cfg = await _api.getConfig();
+      cfg['ai_engine_type'] = _aiEngineType;
+      cfg['active_cli_agent'] = _activeCliAgent;
       cfg['ai_model'] = _modelCtrl.text.trim();
-      cfg['proxy_base_url'] = rawBaseUrl;
+      cfg['proxy_base_url'] = _baseUrlCtrl.text.trim();
       cfg['proxy_api_key'] = _apiKeyCtrl.text.trim();
       final ok = await _api.saveConfig(cfg);
       if (mounted) {
         if (ok) {
           context.read<ServerProvider>().setGlobalAiModel(_modelCtrl.text.trim());
-          AppToast.success(context, 'Đã lưu cấu hình AI thành công!');
+          AppToast.success(context, 'Đã lưu cấu hình AI Engine & Model thành công!');
         } else {
           AppToast.error(context, 'Lưu cấu hình AI thất bại!');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi: $e');
+      }
+    }
+  }
+
+  Future<void> _saveDeviceSettings() async {
+    final maxDevParsed = int.tryParse(_maxDevicesCtrl.text.trim());
+    if (maxDevParsed == null || maxDevParsed <= 0) {
+      AppToast.warning(context, 'Số thiết bị tối đa phải là số nguyên dương lớn hơn 0 (ví dụ: 2)');
+      return;
+    }
+
+    try {
+      final cfg = await _api.getConfig();
+      cfg['max_concurrent_devices'] = maxDevParsed;
+      cfg['default_execution_mode'] = _isDeviceExecutionMode ? 'device' : 'browser';
+      final ok = await _api.saveConfig(cfg);
+      if (mounted) {
+        if (ok) {
+          AppToast.success(context, 'Đã lưu cấu hình thiết bị & máy ảo thành công!');
+        } else {
+          AppToast.error(context, 'Lưu cấu hình thiết bị thất bại!');
         }
       }
     } catch (e) {
@@ -555,6 +636,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
     final gateway = context.watch<GatewayProvider>();
+    final authProvider = context.watch<AuthProvider>();
+    final isAdmin = authProvider.isAdmin;
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
@@ -798,7 +881,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   const SizedBox(height: 24),
 
-                  // GROUP 2: AI MODEL & PROXY CONFIGURATION
+                  // GROUP 2: AI ENGINE & MODEL CONFIGURATION
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -814,10 +897,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             const Row(
                               children: [
-                                Icon(Icons.memory_rounded, size: 18, color: AppColors.primaryLight),
+                                Icon(Icons.psychology_rounded, size: 18, color: AppColors.primaryLight),
                                 SizedBox(width: 8),
                                 Text(
-                                  '2. Cấu Hình AI Model & Proxy API (Toàn Cục)',
+                                  '2. Cấu Hình Chế Độ AI Agent & Engine',
                                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                                 ),
                               ],
@@ -834,74 +917,519 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                         const Divider(height: 20),
-                        // CẤU HÌNH AI MODEL & PROXY
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('AI Model Name', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _modelCtrl,
-                                    decoration: InputDecoration(
-                                      hintText: 'glm-5.3 / gpt-4o / deepseek-chat',
-                                      prefixIcon: const Icon(Icons.smart_toy_outlined, size: 18),
-                                      suffixIcon: IconButton(
-                                        icon: const Icon(Icons.list_alt_rounded, size: 18, color: AppColors.primaryLight),
-                                        tooltip: 'Mở bảng chọn AI Model',
-                                        onPressed: () {
-                                          showDialog(
-                                            context: context,
-                                            builder: (ctx) => ModelPickerDialog(
-                                              serverProvider: serverProvider,
+
+                        // CHỌN CHẾ ĐỘ AI ENGINE: PROXY AI vs LOCAL CLI AGENT (CHỈ HIỂN THỊ CLI CHO ADMIN)
+                        if (isAdmin) ...[
+                          const Text(
+                            'Chế Độ Vận Hành AI Agent',
+                            style: TextStyle(fontSize: 11, color: AppColors.textDim, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _aiEngineType = 'proxy';
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: _aiEngineType == 'proxy'
+                                          ? AppColors.primary.withValues(alpha: 0.15)
+                                          : AppColors.bgDark,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: _aiEngineType == 'proxy'
+                                            ? AppColors.primary
+                                            : AppColors.borderDark,
+                                        width: _aiEngineType == 'proxy' ? 1.5 : 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.cloud_sync_rounded,
+                                          size: 20,
+                                          color: _aiEngineType == 'proxy' ? AppColors.primaryLight : AppColors.textMuted,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Proxy AI (Cloud LLM)',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: _aiEngineType == 'proxy' ? Colors.white : AppColors.textDim,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              const Text(
+                                                'Gọi qua API Proxy Mitom (GLM-5.3, GPT-4o, DeepSeek...)',
+                                                style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (_aiEngineType == 'proxy')
+                                          const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.primaryLight),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _aiEngineType = 'cli';
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: _aiEngineType == 'cli'
+                                          ? AppColors.accent.withValues(alpha: 0.15)
+                                          : AppColors.bgDark,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: _aiEngineType == 'cli'
+                                            ? AppColors.accent
+                                            : AppColors.borderDark,
+                                        width: _aiEngineType == 'cli' ? 1.5 : 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.terminal_rounded,
+                                          size: 20,
+                                          color: _aiEngineType == 'cli' ? AppColors.accent : AppColors.textMuted,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    'Local CLI Agent (Máy Local)',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: _aiEngineType == 'cli' ? Colors.white : AppColors.textDim,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                    decoration: BoxDecoration(
+                                                      color: AppColors.accent.withValues(alpha: 0.2),
+                                                      borderRadius: BorderRadius.circular(3),
+                                                      border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
+                                                    ),
+                                                    child: const Text(
+                                                      'ADMIN',
+                                                      style: TextStyle(
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: AppColors.accent,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 2),
+                                              const Text(
+                                                'Chạy trực tiếp công cụ CLI đã cài đặt (Antigravity agy, Claude...)',
+                                                style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (_aiEngineType == 'cli')
+                                          const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.accent),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // NỘI DUNG FORM CHI TIẾT THEO CHẾ ĐỘ (USER THƯỜNG LUÔN LÀ PROXY AI, CHỈ ADMIN MỚI THẤY CLI)
+                        if (!isAdmin || _aiEngineType == 'proxy') ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('AI Model Name', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _modelCtrl,
+                                      decoration: InputDecoration(
+                                        hintText: 'glm-5.3 / gpt-4o / deepseek-chat',
+                                        prefixIcon: const Icon(Icons.smart_toy_outlined, size: 18),
+                                        suffixIcon: IconButton(
+                                          icon: const Icon(Icons.list_alt_rounded, size: 18, color: AppColors.primaryLight),
+                                          tooltip: 'Mở bảng chọn AI Model',
+                                          onPressed: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (ctx) => ModelPickerDialog(
+                                                serverProvider: serverProvider,
+                                              ),
+                                            ).then((_) {
+                                              if (mounted) {
+                                                setState(() {
+                                                  _modelCtrl.text = serverProvider.cloudAiModel;
+                                                });
+                                              }
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Proxy Base URL', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _baseUrlCtrl,
+                                      obscureText: true,
+                                      decoration: const InputDecoration(hintText: 'https://api.mitom.ai/v1'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          const Text('Proxy API Key', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _apiKeyCtrl,
+                            obscureText: true,
+                            decoration: const InputDecoration(hintText: 'sk-or-v1-... (OpenRouter / Zhipu / OpenAI API Key)'),
+                          ),
+                        ] else ...[
+                          // GIAO DIỆN CHỌN LOCAL CLI AGENT (DÀNH CHO ADMIN)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Công cụ CLI đã phát hiện trên máy local:',
+                                style: TextStyle(fontSize: 11, color: AppColors.textDim),
+                              ),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                icon: _isScanningCli
+                                    ? const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accent),
+                                      )
+                                    : const Icon(Icons.refresh_rounded, size: 14, color: AppColors.accent),
+                                label: Text(
+                                  _isScanningCli ? 'Đang quét...' : 'Quét lại CLI',
+                                  style: const TextStyle(fontSize: 11, color: AppColors.accent),
+                                ),
+                                onPressed: _isScanningCli ? null : _scanCliAgents,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+
+                          if (_installedCliAgents.isEmpty && !_isScanningCli)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.bgDark,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.borderDark),
+                              ),
+                              child: const Text(
+                                'Không tìm thấy công cụ CLI nào đã cài đặt (agy, claude, gemini, ollama). Hãy cài đặt và bấm "Quét lại CLI".',
+                                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                              ),
+                            )
+                          else
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: _installedCliAgents.map((cli) {
+                                final isSelected = _activeCliAgent == cli.id;
+                                return InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _activeCliAgent = cli.id;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? AppColors.accent.withValues(alpha: 0.15) : AppColors.bgDark,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: isSelected ? AppColors.accent : AppColors.borderDark,
+                                        width: isSelected ? 1.5 : 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.terminal_rounded,
+                                          size: 16,
+                                          color: isSelected ? AppColors.accent : AppColors.textMuted,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              cli.label,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: isSelected ? Colors.white : AppColors.textDim,
+                                              ),
                                             ),
-                                          ).then((_) {
-                                            if (mounted) {
-                                              setState(() {
-                                                _modelCtrl.text = serverProvider.cloudAiModel;
-                                              });
-                                            }
+                                            Text(
+                                              '${cli.binary} (${cli.path})${cli.version != null ? ' - ${cli.version}' : ''}',
+                                              style: const TextStyle(fontSize: 10, color: AppColors.textMuted, fontFamily: 'monospace'),
+                                            ),
+                                          ],
+                                        ),
+                                        if (isSelected) ...[
+                                          const SizedBox(width: 8),
+                                          const Icon(Icons.check_circle_rounded, size: 16, color: AppColors.accent),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.bgDark,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppColors.borderDark),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.flash_on_rounded, size: 16, color: AppColors.accent),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Vũ khí tự động hóa cho $_activeCliAgent:',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accent),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'Đã trang bị bộ công cụ CLI Bridge `mxh-tool` (~/.agent_mxh_auto/bin/mxh-tool). Khi bạn ra lệnh, CLI Agent sẽ tự động chạy lệnh terminal để mở/đóng cửa sổ trình duyệt Chromium theo từng profile IP nhân vật, truy cập link Facebook/TikTok/Reels và điều khiển máy ảo Android trực tiếp trên máy local mà không cần thông qua Cloud Proxy.',
+                                  style: TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.45),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // GROUP 3: DEVICE & EMULATOR SYSTEM CONFIGURATION
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.borderDark),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.devices_other_rounded, size: 18, color: AppColors.accent),
+                                SizedBox(width: 8),
+                                Text(
+                                  '3. Cấu Hình Thiết Bị & Máy Ảo Android',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.cardBg,
+                                side: const BorderSide(color: AppColors.accent),
+                              ),
+                              icon: const Icon(Icons.check_rounded, size: 16, color: AppColors.accent),
+                              label: const Text('Lưu Cấu Hình Thiết Bị', style: TextStyle(color: AppColors.accent)),
+                              onPressed: _saveDeviceSettings,
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 20),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Môi Trường Thực Thi Mặc Định Cho Tác Vụ', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                            const SizedBox(height: 8),
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _isDeviceExecutionMode = !_isDeviceExecutionMode;
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: _isDeviceExecutionMode
+                                      ? Colors.purpleAccent.withValues(alpha: 0.1)
+                                      : AppColors.primary.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _isDeviceExecutionMode
+                                        ? Colors.purpleAccent.withValues(alpha: 0.3)
+                                        : AppColors.primaryLight.withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          _isDeviceExecutionMode ? Icons.phone_android_rounded : Icons.open_in_browser_rounded,
+                                          size: 18,
+                                          color: _isDeviceExecutionMode ? Colors.purpleAccent : AppColors.primaryLight,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _isDeviceExecutionMode ? 'Chạy trên Thiết bị (Device / AVD)' : 'Chạy trên Trình duyệt (Browser)',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: _isDeviceExecutionMode ? Colors.purpleAccent : AppColors.primaryLight,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              _isDeviceExecutionMode
+                                                  ? 'Tự động kích hoạt thiết bị Android hoặc máy ảo AVD khi giao việc cho nhân vật'
+                                                  : 'Mở cửa sổ trình duyệt web antidetect độc lập theo profile nhân vật',
+                                              style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      height: 22,
+                                      child: Switch(
+                                        value: _isDeviceExecutionMode,
+                                        activeThumbColor: Colors.purpleAccent,
+                                        activeTrackColor: Colors.purpleAccent.withValues(alpha: 0.3),
+                                        inactiveThumbColor: AppColors.primaryLight,
+                                        inactiveTrackColor: AppColors.primary.withValues(alpha: 0.3),
+                                        onChanged: (val) {
+                                          setState(() {
+                                            _isDeviceExecutionMode = val;
                                           });
                                         },
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
+                            const SizedBox(height: 16),
+                            const Text('Số Thiết Bị Tối Đa Được Mở Đồng Thời', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: _maxDevicesCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                hintText: '2',
+                                prefixIcon: Icon(Icons.phone_android_rounded, size: 18),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Áp dụng cho cả mở thiết bị thủ công và hàng đợi chạy tác vụ tự động (Task Queue)',
+                              style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                            ),
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBg,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.borderDark),
+                              ),
+                              child: const Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Proxy Base URL', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _baseUrlCtrl,
-                                    obscureText: true,
-                                    decoration: const InputDecoration(hintText: 'https://api.mitom.ai/v1'),
+                                  Icon(Icons.info_outline_rounded, size: 16, color: AppColors.accent),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Cơ Chế Bảo Vệ Tài Nguyên Máy Host: Khi số lượng máy ảo/ngoại vi đạt mức tối đa này, hệ thống sẽ tự động tắt thiết bị cũ nhất hoặc xếp hàng đợi luân phiên để chống tràn RAM và nghẽn CPU.',
+                                      style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        const Text('Proxy API Key', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _apiKeyCtrl,
-                          obscureText: true,
-                          decoration: const InputDecoration(hintText: 'sk-or-v1-... (OpenRouter / Zhipu / OpenAI API Key)'),
-                        ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 24),
 
-                  // GROUP 3: SECURITY & STORAGE INFO
+                  // GROUP 4: SECURITY & STORAGE INFO
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -917,7 +1445,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(Icons.shield_rounded, size: 18, color: AppColors.accent),
                             SizedBox(width: 8),
                             Text(
-                              '3. Bảo Mật & Thông Tin Hệ Thống',
+                              '4. Bảo Mật & Thông Tin Hệ Thống',
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                             ),
                           ],

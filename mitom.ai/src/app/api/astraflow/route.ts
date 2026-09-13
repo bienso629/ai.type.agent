@@ -10,8 +10,18 @@ import path from 'path'
 const COOKIE_FILE = path.resolve(process.cwd(), 'astraflow_cookies.json')
 const USER_DATA_DIR = path.resolve(process.cwd(), '.playwright_astraflow_session')
 
-async function checkIsAdmin(): Promise<boolean> {
+async function checkIsAdmin(requestHeaders?: Headers): Promise<boolean> {
   try {
+    if (requestHeaders) {
+      const cronSecret = requestHeaders.get('x-cron-secret')
+      const authHeader = requestHeaders.get('authorization')
+      const expectedSecret = process.env.CRON_SECRET || process.env.PAYLOAD_SECRET
+      if (expectedSecret) {
+        if (cronSecret === expectedSecret) return true
+        if (authHeader === `Bearer ${expectedSecret}`) return true
+      }
+    }
+
     const cookieStore = await cookies()
     const sessionToken = cookieStore.get('mitom_session')?.value
 
@@ -37,9 +47,9 @@ async function checkIsAdmin(): Promise<boolean> {
 }
 
 // GET: Lấy trạng thái cookies hiện tại
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const isAdmin = await checkIsAdmin()
+    const isAdmin = await checkIsAdmin(request.headers)
     if (!isAdmin) {
       return NextResponse.json({ success: false, error: 'Chỉ quản trị viên (Admin) mới có quyền truy cập.' }, { status: 403 })
     }
@@ -68,7 +78,7 @@ export async function GET() {
 // POST: Kích hoạt phiên đăng nhập hoặc lấy cookies
 export async function POST(request: Request) {
   try {
-    const isAdmin = await checkIsAdmin()
+    const isAdmin = await checkIsAdmin(request.headers)
     if (!isAdmin) {
       return NextResponse.json({ success: false, error: 'Chỉ quản trị viên (Admin) mới có quyền truy cập.' }, { status: 403 })
     }

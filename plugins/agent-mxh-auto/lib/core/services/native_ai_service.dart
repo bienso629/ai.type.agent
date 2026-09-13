@@ -6,6 +6,7 @@ import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/server_model.dart';
 import 'adb_manager_service.dart';
+import 'cli_automation_bridge_service.dart';
 import 'database_service.dart';
 import 'local_config_service.dart';
 import 'persona_service.dart';
@@ -77,6 +78,39 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
           createdAt: DateTime.now(),
         );
         await _dbService.insertMessage(userMsg);
+
+        final aiEngineType = cfg['ai_engine_type']?.toString() ?? 'proxy';
+        final activeCliAgent = cfg['active_cli_agent']?.toString() ?? 'antigravity-cli';
+
+        // Check if running Local CLI Agent mode or selected model is a CLI model
+        final isCli = aiEngineType == 'cli' || _isCliModel(targetModel);
+        if (isCli) {
+          final chosenCli = (aiEngineType == 'cli' && !_isCliModel(targetModel))
+              ? activeCliAgent
+              : targetModel;
+          await _runCliAgent(
+            cliName: chosenCli,
+            prompt: message,
+            workingDir: workingDir,
+            onToken: onToken,
+            onStatus: onStatus,
+            onTool: onTool,
+            onDone: (reply) async {
+              final assistantMsg = ChatMessageModel(
+                sessionId: sessionId,
+                role: 'assistant',
+                content: reply,
+                model: chosenCli,
+                createdAt: DateTime.now(),
+              );
+              await _dbService.insertMessage(assistantMsg);
+              onDone(reply);
+            },
+            onError: onError,
+            isCancelled: () => isCancelled,
+          );
+          return;
+        }
 
         var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://api.mitom.ai/v1';
         if (!LocalConfigService.isValidMitomProxyUrl(baseUrl)) {
@@ -614,8 +648,8 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     final List<String> devSuccessList = [];
                     final List<String> devFailList = [];
                     for (final tip in targetDevIps) {
-                      // Đảm bảo không bao giờ vượt quá 2 thiết bị chạy đồng thời trên máy
-                      await _socks5Service.ensureDeviceCapacity(maxConcurrent: 2, exemptIps: [tip]);
+                      // Đảm bảo không bao giờ vượt quá số lượng thiết bị chạy đồng thời theo cấu hình
+                      await _socks5Service.ensureDeviceCapacity(exemptIps: [tip]);
 
                       onStatus('Đang khởi chạy thiết bị cho IP: $tip...');
                       final success = await _socks5Service.launchDeviceWithSocks5(
@@ -785,5 +819,240 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
     };
 
     return controller.stream.listen((_) {});
+  }
+
+  bool _isCliModel(String model) {
+    final m = model.toLowerCase();
+    return m.contains('antigravity') ||
+        m == 'agy' ||
+        m.contains('claude') ||
+        m.contains('gemini') ||
+        m.contains('ollama') ||
+        m.contains('sgpt') ||
+        m.contains('aichat');
+  }
+
+  String _findCliExecutable(String cliName) {
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    final m = cliName.toLowerCase();
+
+    if (m.contains('antigravity') || m == 'agy') {
+      final localBin = '$home/.local/bin/agy';
+      if (File(localBin).existsSync()) return localBin;
+      final localBinAlt = '$home/.local/bin/antigravity';
+      if (File(localBinAlt).existsSync()) return localBinAlt;
+      return 'agy';
+    }
+
+    if (m.contains('claude')) {
+      final nvmDir = '$home/.nvm/versions/node';
+      if (Directory(nvmDir).existsSync()) {
+        try {
+          final entries = Directory(nvmDir).listSync();
+          for (final e in entries) {
+            final claudePath = '${e.path}/bin/claude';
+            if (File(claudePath).existsSync()) return claudePath;
+          }
+        } catch (_) {}
+      }
+      final localBin = '$home/.local/bin/claude';
+      if (File(localBin).existsSync()) return localBin;
+      return 'claude';
+    }
+
+    if (m.contains('gemini')) {
+      final localBin = '$home/.local/bin/gemini';
+      if (File(localBin).existsSync()) return localBin;
+      return 'gemini';
+    }
+
+    if (m.contains('ollama')) {
+      return 'ollama';
+    }
+
+    return cliName;
+  }
+
+  Future<void> _runCliAgent({
+    required String cliName,
+    required String prompt,
+    String? workingDir,
+    required void Function(String token) onToken,
+    required void Function(String status) onStatus,
+    required void Function(ToolExecutionItem tool) onTool,
+    required void Function(String fullReply) onDone,
+    required void Function(dynamic error) onError,
+    required bool Function() isCancelled,
+  }) async {
+    final exe = _findCliExecutable(cliName);
+    onStatus('Đang khởi chạy $cliName agent...');
+
+    try {
+      final workDir = (workingDir != null && Directory(workingDir).existsSync())
+          ? workingDir
+          : (Platform.environment['HOME'] ?? Directory.current.path);
+
+      // Cung cấp bộ vũ khí tự động hóa cho Local CLI Agent
+      final bridgeService = CliAutomationBridgeService();
+      final systemContext = await bridgeService.buildCliSystemContext(workingDir: workingDir);
+
+      final cleanPrompt = '''$systemContext
+
+=== YÊU CẦU TỪ NGƯỜI DÙNG ===
+$prompt
+
+(Yêu cầu thực thi: Nếu người dùng yêu cầu mở/đóng trình duyệt, xem link hay auto thiết bị, hãy sử dụng lệnh terminal được cấp ở trên để thực thi ngay lập tức. Tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày kết quả rõ ràng)''';
+
+      List<String> args;
+      final m = cliName.toLowerCase();
+      if (m.contains('claude')) {
+        args = ['-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+      } else if (m.contains('antigravity') || m == 'agy') {
+        args = ['--print', cleanPrompt, '--output-format', 'stream-json', '--dangerously-skip-permissions'];
+      } else if (m.contains('gemini')) {
+        args = ['-p', cleanPrompt];
+      } else {
+        args = ['-p', cleanPrompt, '--dangerously-skip-permissions'];
+      }
+
+      // Augmented PATH environment so subprocesses (mxh-tool, node, git, etc.) are always found
+      final env = Map<String, String>.from(Platform.environment);
+      final home = Platform.environment['HOME'] ?? '';
+      final currentPath = env['PATH'] ?? '';
+      final extraPaths = <String>[
+        '$home/.agent_mxh_auto/bin',
+        '$home/.tadu_ai_agent/bin',
+        '$home/.local/bin',
+        '$home/bin',
+        '/usr/local/bin',
+        '/snap/bin',
+      ];
+      final nvmDir = Directory('$home/.nvm/versions/node');
+      if (nvmDir.existsSync()) {
+        try {
+          for (final dir in nvmDir.listSync()) {
+            final binPath = '${dir.path}/bin';
+            if (Directory(binPath).existsSync()) {
+              extraPaths.add(binPath);
+            }
+          }
+        } catch (_) {}
+      }
+      env['PATH'] = '${extraPaths.join(':')}:$currentPath';
+
+      onStatus('AI Agent $cliName đang phân tích và thực thi tác vụ...');
+      final process = await Process.start(
+        exe,
+        args,
+        workingDirectory: workDir,
+        environment: env,
+        runInShell: false,
+      );
+
+      // Close stdin immediately so CLI doesn't wait for input
+      try {
+        await process.stdin.close();
+      } catch (_) {}
+
+      final fullOutput = StringBuffer();
+      final errOutput = StringBuffer();
+
+      process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        if (isCancelled()) return;
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return;
+
+        try {
+          final json = jsonDecode(trimmed);
+          if (json is Map<String, dynamic>) {
+            // 1. Antigravity CLI (agy) streaming protocol
+            if (json.containsKey('event')) {
+              final event = json['event'];
+              if (event == 'step_update') {
+                final step = json['step_update'] as Map<String, dynamic>?;
+                final stepType = step?['step_type']?.toString();
+                final textDelta = step?['text_delta']?.toString();
+
+                if (textDelta != null && textDelta.isNotEmpty) {
+                  fullOutput.write(textDelta);
+                  onToken(textDelta);
+                } else if (stepType == 'tool_call') {
+                  final toolName = step?['tool_name'] ?? 'công cụ';
+                  onStatus('Antigravity CLI đang gọi: $toolName...');
+                }
+              } else if (event == 'result') {
+                final res = json['result'] as Map<String, dynamic>?;
+                final resp = res?['response']?.toString();
+                if (resp != null && fullOutput.isEmpty) {
+                  fullOutput.write(resp);
+                  onToken(resp);
+                }
+              }
+              return;
+            }
+
+            // 2. Claude Code CLI streaming protocol
+            if (json.containsKey('type')) {
+              final type = json['type'];
+              if (type == 'content_block_delta') {
+                final delta = json['delta'] as Map<String, dynamic>?;
+                final text = delta?['text']?.toString();
+                if (text != null && text.isNotEmpty) {
+                  fullOutput.write(text);
+                  onToken(text);
+                }
+              } else if (type == 'result') {
+                final result = json['result']?.toString();
+                if (result != null && fullOutput.isEmpty) {
+                  fullOutput.write(result);
+                  onToken(result);
+                }
+              } else if (type == 'assistant') {
+                final msg = json['message'] as Map<String, dynamic>?;
+                final contents = msg?['content'] as List<dynamic>?;
+                if (contents != null) {
+                  for (final c in contents) {
+                    if (c is Map && c['type'] == 'text') {
+                      final t = c['text']?.toString();
+                      if (t != null && fullOutput.isEmpty) {
+                        fullOutput.write(t);
+                        onToken(t);
+                      }
+                    }
+                  }
+                }
+              }
+              return;
+            }
+          }
+        } catch (_) {
+          // Not JSON -> handle as plain text stream
+        }
+
+        // Plain text fallback line
+        fullOutput.writeln(line);
+        onToken('$line\n');
+      });
+
+      process.stderr.transform(utf8.decoder).listen((data) {
+        if (!isCancelled()) {
+          errOutput.write(data);
+        }
+      });
+
+      final exitCode = await process.exitCode;
+      if (exitCode == 0 || fullOutput.isNotEmpty) {
+        final result = fullOutput.toString().trim();
+        onDone(result.isNotEmpty ? result : 'Đã hoàn tất tác vụ với $cliName.');
+      } else {
+        final errStr = errOutput.toString().trim();
+        onError('Agent $cliName báo lỗi (mã $exitCode): ${errStr.isNotEmpty ? errStr : "Không có phản hồi"}');
+      }
+    } catch (e) {
+      onError('Không thể chạy CLI $cliName: $e. Hãy kiểm tra đường dẫn hoặc quyền thực thi.');
+    }
   }
 }

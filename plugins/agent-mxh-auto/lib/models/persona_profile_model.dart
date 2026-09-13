@@ -49,6 +49,10 @@ class PersonaProfile {
     String? phoneNumber,
     bool? autoSyncPhoneToDevice,
     String? smsOrderId,
+    bool clearSmsOrderId = false,
+    bool clearAvdName = false,
+    bool clearPhoneNumber = false,
+    bool clearAvatarUrl = false,
   }) {
     return PersonaProfile(
       ip: ip ?? this.ip,
@@ -57,15 +61,15 @@ class PersonaProfile {
       gender: gender ?? this.gender,
       bio: bio ?? this.bio,
       avatarPrompt: avatarPrompt ?? this.avatarPrompt,
-      avatarUrl: avatarUrl ?? this.avatarUrl,
+      avatarUrl: clearAvatarUrl ? null : (avatarUrl ?? this.avatarUrl),
       externalDeviceAddress: externalDeviceAddress ?? this.externalDeviceAddress,
       useExternalDevice: useExternalDevice ?? this.useExternalDevice,
-      avdName: avdName ?? this.avdName,
+      avdName: clearAvdName ? null : (avdName ?? this.avdName),
       deviceType: deviceType ?? this.deviceType,
       agentInfo: agentInfo ?? this.agentInfo,
-      phoneNumber: phoneNumber ?? this.phoneNumber,
+      phoneNumber: clearPhoneNumber ? null : (phoneNumber ?? this.phoneNumber),
       autoSyncPhoneToDevice: autoSyncPhoneToDevice ?? this.autoSyncPhoneToDevice,
-      smsOrderId: smsOrderId ?? this.smsOrderId,
+      smsOrderId: clearSmsOrderId ? null : (smsOrderId ?? this.smsOrderId),
     );
   }
 

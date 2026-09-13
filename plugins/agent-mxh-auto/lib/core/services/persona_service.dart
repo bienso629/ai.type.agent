@@ -18,7 +18,7 @@ class PersonaService {
 
   String get _storageFilePath {
     final home = Platform.environment['HOME'] ?? '';
-    final dir = p.join(home, '.tadu_ai_agent');
+    final dir = p.join(home, '.agent_mxh_auto');
     if (!Directory(dir).existsSync()) {
       try {
         Directory(dir).createSync(recursive: true);
@@ -282,7 +282,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
 
     // Thư mục lưu trữ avatar cục bộ
     final home = Platform.environment['HOME'] ?? '';
-    final avatarDir = Directory(p.join(home, '.tadu_ai_agent', 'avatars'));
+    final avatarDir = Directory(p.join(home, '.agent_mxh_auto', 'avatars'));
     if (!avatarDir.existsSync()) {
       avatarDir.createSync(recursive: true);
     }

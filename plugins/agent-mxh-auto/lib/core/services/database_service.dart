@@ -184,6 +184,7 @@ class DatabaseService {
         p.join(execDir, '..', '..', '..', '..', dbFileName),
         p.join(execDir, '..', '..', '..', '..', '..', dbFileName),
         '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-client-server/$dbFileName',
+        p.join(Platform.environment['HOME'] ?? '', '.agent_mxh_auto', dbFileName),
         p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent', dbFileName),
       ];
 
@@ -193,14 +194,14 @@ class DatabaseService {
         }
       }
 
-      // Luôn lưu trữ DB của user mới vào ~/.tadu_ai_agent/
-      final homeTaduDir = Directory(p.join(Platform.environment['HOME'] ?? '', '.tadu_ai_agent'));
-      if (!homeTaduDir.existsSync()) {
+      // Luôn lưu trữ DB của user mới vào ~/.agent_mxh_auto/
+      final homeDataDir = Directory(p.join(Platform.environment['HOME'] ?? '', '.agent_mxh_auto'));
+      if (!homeDataDir.existsSync()) {
         try {
-          homeTaduDir.createSync(recursive: true);
+          homeDataDir.createSync(recursive: true);
         } catch (_) {}
       }
-      return p.join(homeTaduDir.path, dbFileName);
+      return p.join(homeDataDir.path, dbFileName);
     }
 
     try {
