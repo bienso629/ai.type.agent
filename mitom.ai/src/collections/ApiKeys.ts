@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { callUCloudApi } from '@/lib/ucloudClient'
 
 export const ApiKeys: CollectionConfig = {
   slug: 'api-keys',
@@ -20,17 +21,69 @@ export const ApiKeys: CollectionConfig = {
   },
   hooks: {
     beforeValidate: [
-      ({ data, operation }) => {
-        if (operation === 'create' || !data?.keyId) {
-          if (!data?.keyId) {
-            data = data || {}
-            data.keyId = `uminferapikey-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`
+      async ({ data = {}, operation }) => {
+        const record = data || {}
+        if (Array.isArray(record.permissions)) {
+          record.permissions = record.permissions.join(', ')
+        }
+
+        // Khi Admin tạo key mới trên CMS (chưa có keyId từ AstraFlow)
+        if (operation === 'create' && !record.keyId) {
+          const pubKey = process.env.ASTRAFLOW_PUBLIC_KEY || process.env.UCLOUD_PUBLIC_KEY
+          const privKey = process.env.ASTRAFLOW_PRIVATE_KEY || process.env.UCLOUD_PRIVATE_KEY
+
+          if (pubKey && privKey) {
+            try {
+              const res = await callUCloudApi(
+                {
+                  Action: 'CreateUMInferAPIKey',
+                  Name: record.name || 'AstraFlow API Key',
+                },
+                { publicKey: pubKey, privateKey: privKey },
+              )
+
+              if (res?.Data) {
+                record.keyId = res.Data.KeyId
+                record.maskedKey = res.Data.Key || ''
+                record.secretKey = res.Data.Key || ''
+                record.rawResponse = res.Data
+                record.permissions = record.permissions || 'Sandbox, Modelverse'
+                record.status = res.Data.Status === 2 ? 'Disabled' : 'Normal'
+              }
+            } catch (err: any) {
+              console.error('Lỗi khi gọi CreateUMInferAPIKey sang AstraFlow:', err.message)
+            }
+          }
+
+          if (!record.keyId) {
+            record.keyId = `uminferapikey-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`
           }
         }
-        if (Array.isArray(data?.permissions)) {
-          data.permissions = data.permissions.join(', ')
+        return record
+      },
+    ],
+    afterDelete: [
+      async ({ doc }) => {
+        // Khi xóa key trên CMS, tự động xóa key tương ứng trên AstraFlow
+        if (doc?.keyId && doc.keyId.startsWith('uminferapikey-')) {
+          const pubKey = process.env.ASTRAFLOW_PUBLIC_KEY || process.env.UCLOUD_PUBLIC_KEY
+          const privKey = process.env.ASTRAFLOW_PRIVATE_KEY || process.env.UCLOUD_PRIVATE_KEY
+
+          if (pubKey && privKey) {
+            try {
+              await callUCloudApi(
+                {
+                  Action: 'DeleteUMInferAPIKey',
+                  KeyId: doc.keyId,
+                },
+                { publicKey: pubKey, privateKey: privKey },
+              )
+              console.log(`Đã xóa key ${doc.keyId} (${doc.name}) trên máy chủ AstraFlow thành công.`)
+            } catch (err: any) {
+              console.error(`Lỗi khi xóa key ${doc.keyId} trên AstraFlow:`, err.message)
+            }
+          }
         }
-        return data
       },
     ],
   },
