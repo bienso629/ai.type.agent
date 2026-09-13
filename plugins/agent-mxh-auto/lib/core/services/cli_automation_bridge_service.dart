@@ -76,6 +76,202 @@ def list_profiles():
         print(f"Error reading personas: {e}", file=sys.stderr)
         sys.exit(1)
 
+def _decrypt_vault_value(val):
+    if not val or not isinstance(val, str) or not val.startswith("enc:"):
+        return val
+    try:
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.backends import default_backend
+        import hashlib, base64
+
+        machine_id = "tadu-cloud-ai-agent-control-center-secret-salt-2026"
+        for p in ["/etc/machine-id", "/var/lib/dbus/machine-id"]:
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    machine_id += f.read().strip()
+                break
+        key_bytes = hashlib.sha256(machine_id.encode("utf-8")).digest()
+        enc_key = key_bytes[16:32]
+
+        raw = base64.urlsafe_b64decode(val[4:] + "===")
+        iv = raw[9:25]
+        cipher_bytes = raw[25:-32]
+        cipher = Cipher(algorithms.AES(enc_key), modes.CBC(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        plain = decryptor.update(cipher_bytes) + decryptor.finalize()
+        pad = plain[-1]
+        return plain[:-pad].decode("utf-8", errors="ignore")
+    except Exception:
+        return val
+
+def _get_server_for_ip(target_ip):
+    if not os.path.exists(CONFIG_FILE):
+        return None
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        servers_raw = _decrypt_vault_value(cfg.get("servers"))
+        servers = json.loads(servers_raw) if servers_raw else []
+        active_id = _decrypt_vault_value(cfg.get("active_server_id"))
+
+        server_100 = None
+        active_server = None
+        for s in servers:
+            sid = _decrypt_vault_value(s.get("id"))
+            sip = _decrypt_vault_value(s.get("server_ip"))
+            sname = _decrypt_vault_value(s.get("name"))
+            if sname == "Server 100" or sip == "103.74.116.119":
+                server_100 = s
+            if active_id and (sid == active_id or sip == active_id):
+                active_server = s
+
+        chosen = None
+        if target_ip.startswith("103.74.") and server_100:
+            chosen = server_100
+        elif active_server:
+            chosen = active_server
+        elif server_100:
+            chosen = server_100
+        elif servers:
+            chosen = servers[0]
+        else:
+            chosen = cfg
+
+        s_ip = _decrypt_vault_value(chosen.get("server_ip"))
+        s_port = _decrypt_vault_value(chosen.get("ssh_port")) or 22
+        s_user = _decrypt_vault_value(chosen.get("ssh_user")) or "root"
+        s_pass = _decrypt_vault_value(chosen.get("ssh_pass")) or ""
+        return {
+            "server_ip": s_ip,
+            "ssh_port": int(s_port),
+            "ssh_user": s_user,
+            "ssh_pass": s_pass
+        }
+    except Exception as e:
+        return None
+
+def _start_socks5_for_ip(ip):
+    server = _get_server_for_ip(ip)
+    if not server or not server.get("server_ip") or not server.get("ssh_pass"):
+        return None
+
+    # Tìm cổng local trống
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    local_port = s.getsockname()[1]
+    s.close()
+
+    tmp_dir = os.path.join(DATA_DIR, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    askpass_file = os.path.join(tmp_dir, f"ssh_askpass_{ip.replace('.', '_')}_{local_port}.sh")
+    escaped_pass = server["ssh_pass"].replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\$", "\\\\\$")
+    with open(askpass_file, "w", encoding="utf-8") as f:
+        f.write(f'#!/bin/sh\\necho "{escaped_pass}"\\n')
+    os.chmod(askpass_file, 0o700)
+
+    # Tính toán remote socks5 port nếu là Server 100 hoặc alias
+    parts = ip.split(".")
+    remote_socks_port = None
+    if len(parts) == 4:
+        try:
+            p2, p3 = int(parts[2]), int(parts[3])
+            remote_socks_port = 20000 + (p2 * 256 + p3) % 10000
+        except Exception:
+            pass
+
+    is_alias = (ip != server["server_ip"])
+    use_remote_socks = remote_socks_port is not None and (is_alias or server["server_ip"] == "103.74.116.119")
+    if use_remote_socks:
+        forward_args = ["-L", f"127.0.0.1:{local_port}:127.0.0.1:{remote_socks_port}"]
+    else:
+        forward_args = ["-D", f"127.0.0.1:{local_port}"]
+
+    ssh_cmd = [
+        "ssh",
+        "-N",
+        *forward_args,
+        "-p", str(server["ssh_port"]),
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "ExitOnForwardFailure=yes",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
+        f"{server['ssh_user']}@{server['server_ip']}"
+    ]
+
+    env = os.environ.copy()
+    env["SSH_ASKPASS"] = askpass_file
+    env["SSH_ASKPASS_REQUIRE"] = "force"
+    if "DISPLAY" not in env or not env["DISPLAY"]:
+        env["DISPLAY"] = ":0"
+
+    try:
+        proc = subprocess.Popen(ssh_cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        # Ghi nhận pid và port vào file metadata
+        meta_file = os.path.join(tmp_dir, f"socks_{ip.replace('.', '_')}.json")
+        with open(meta_file, "w", encoding="utf-8") as f:
+            json.dump({"pid": proc.pid, "local_port": local_port, "askpass": askpass_file}, f)
+
+        # Chờ socket lắng nghe (tối đa 6 giây)
+        ready = False
+        for _ in range(24):
+            time.sleep(0.25)
+            try:
+                test_sock = socket.socket()
+                test_sock.settimeout(0.3)
+                test_sock.connect(("127.0.0.1", local_port))
+                test_sock.close()
+                ready = True
+                break
+            except Exception:
+                pass
+
+        if ready:
+            print(f"Đã thiết lập hầm SSH SOCKS5 proxy 127.0.0.1:{local_port} cho IP {ip} qua {server['server_ip']}")
+            return f"socks5://127.0.0.1:{local_port}"
+        else:
+            print(f"Không thể kết nối hầm SOCKS5 SSH cho IP {ip}, sẽ mở không proxy.", file=sys.stderr)
+            return None
+    except Exception as e:
+        print(f"Lỗi khởi chạy SSH tunnel cho IP {ip}: {e}", file=sys.stderr)
+        return None
+
+def _setup_facebook_vietnamese(profile_dir):
+    try:
+        ext_dir = os.path.join(profile_dir, "vietnamese_meta_ext")
+        os.makedirs(ext_dir, exist_ok=True)
+        manifest_file = os.path.join(ext_dir, "manifest.json")
+        rules_file = os.path.join(ext_dir, "rules.json")
+        if not os.path.exists(manifest_file) or not os.path.exists(rules_file):
+            with open(manifest_file, "w", encoding="utf-8") as f:
+                json.dump({
+                    "manifest_version": 3,
+                    "name": "Force Vietnamese Meta",
+                    "version": "1.0",
+                    "description": "Forces Facebook and Meta to use Vietnamese interface",
+                    "permissions": ["declarativeNetRequest"],
+                    "host_permissions": ["*://*.facebook.com/*", "*://*.fb.com/*", "*://*.messenger.com/*"],
+                    "declarative_net_request": {
+                        "rule_resources": [{"id": "ruleset_1", "enabled": True, "path": "rules.json"}]
+                    }
+                }, f)
+            with open(rules_file, "w", encoding="utf-8") as f:
+                json.dump([{
+                    "id": 1,
+                    "priority": 1,
+                    "action": {
+                        "type": "modifyHeaders",
+                        "requestHeaders": [{"header": "Accept-Language", "operation": "set", "value": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"}]
+                    },
+                    "condition": {
+                        "urlFilter": "*facebook.com*",
+                        "resourceTypes": ["main_frame", "sub_frame", "stylesheet", "script", "image", "xmlhttprequest", "other"]
+                    }
+                }], f)
+    except Exception:
+        pass
+
 def open_browser(ips, url=None):
     if not ips:
         print("Lỗi: Cần cung cấp ít nhất một địa chỉ IP (--ip hoặc --ips)", file=sys.stderr)
@@ -86,8 +282,12 @@ def open_browser(ips, url=None):
         sanitized_ip = ip.replace(".", "_").replace(":", "_")
         profile_dir = os.path.join(DATA_DIR, "browser_profiles", f"ip_{sanitized_ip}")
         os.makedirs(profile_dir, exist_ok=True)
-        
-        # Tìm Chrome/Chromium/Brave/Edge trên Linux
+        _setup_facebook_vietnamese(profile_dir)
+
+        # 1. Khởi tạo đường hầm SOCKS5 SSH cho IP
+        socks5_proxy = _start_socks5_for_ip(ip)
+
+        # 2. Tìm Chrome/Chromium/Brave/Edge trên Linux
         candidates = [
             "/usr/bin/google-chrome",
             "/usr/bin/google-chrome-stable",
@@ -101,36 +301,55 @@ def open_browser(ips, url=None):
             if os.path.exists(c) and os.access(c, os.X_OK):
                 browser_exe = c
                 break
-        
+
         if not browser_exe:
-            # Fallback xdg-open nếu không tìm thấy binary cụ thể
             subprocess.Popen(["xdg-open", url_to_open])
             print(f"Đã mở {url_to_open} qua trình duyệt mặc định hệ thống cho IP {ip}")
             continue
 
+        ext_dir = os.path.join(profile_dir, "vietnamese_meta_ext")
         cmd = [
             browser_exe,
             f"--user-data-dir={profile_dir}",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-blink-features=AutomationControlled",
+            "--ignore-certificate-errors",
+            "--disable-features=Translate,TranslateUI",
+            "--disable-translate",
             "--lang=vi",
-            url_to_open
+            "--accept-lang=vi-VN,vi,en-US,en"
         ]
-        
+
+        if socks5_proxy:
+            cmd.append(f"--proxy-server={socks5_proxy}")
+        if os.path.exists(ext_dir):
+            cmd.append(f"--load-extension={ext_dir}")
+
+        target_url = url_to_open
+        if "facebook.com" in target_url and "locale=" not in target_url:
+            sep = "&" if "?" in target_url else "?"
+            target_url = f"{target_url}{sep}locale=vi_VN"
+        cmd.append(target_url)
+
         env = os.environ.copy()
         if "DISPLAY" not in env or not env["DISPLAY"]:
             env["DISPLAY"] = ":0"
-            
+        env["LANG"] = "vi_VN.UTF-8"
+        env["LANGUAGE"] = "vi_VN:vi"
+        env["LC_ALL"] = "vi_VN.UTF-8"
+
         try:
             subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            print(f"Đã khởi chạy trình duyệt profile cho IP {ip} tại URL: {url_to_open}")
+            proxy_info = f" (qua SOCKS5 SSH: {socks5_proxy})" if socks5_proxy else " (không proxy)"
+            print(f"Đã khởi chạy trình duyệt profile cho IP {ip}{proxy_info} tại URL: {target_url}")
             if len(ips) > 1:
                 time.sleep(0.3)
         except Exception as e:
             print(f"Không thể mở trình duyệt cho IP {ip}: {e}", file=sys.stderr)
 
 def close_browser(ips):
+    tmp_dir = os.path.join(DATA_DIR, "tmp")
     for ip in ips:
         sanitized_ip = ip.replace(".", "_").replace(":", "_")
         needle = f"browser_profiles/ip_{sanitized_ip}"
@@ -139,6 +358,23 @@ def close_browser(ips):
             print(f"Đã gửi tín hiệu đóng trình duyệt cho IP {ip}")
         except Exception as e:
             print(f"Lỗi đóng trình duyệt cho IP {ip}: {e}", file=sys.stderr)
+
+        # Dọn dẹp tiến trình SSH SOCKS5 tương ứng
+        meta_file = os.path.join(tmp_dir, f"socks_{sanitized_ip}.json")
+        if os.path.exists(meta_file):
+            try:
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                pid = meta.get("pid")
+                if pid:
+                    subprocess.run(["kill", "-9", str(pid)], check=False)
+                askpass = meta.get("askpass")
+                if askpass and os.path.exists(askpass):
+                    os.remove(askpass)
+                os.remove(meta_file)
+                print(f"Đã dọn dẹp hầm SSH SOCKS5 proxy cho IP {ip}")
+            except Exception:
+                pass
 
 def open_device(ip, device_type="mobile", avd_name=None):
     # Tìm emulator binary
