@@ -125,6 +125,8 @@ def open_browser(ips, url=None):
         try:
             subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             print(f"Đã khởi chạy trình duyệt profile cho IP {ip} tại URL: {url_to_open}")
+            if len(ips) > 1:
+                time.sleep(0.3)
         except Exception as e:
             print(f"Không thể mở trình duyệt cho IP {ip}: {e}", file=sys.stderr)
 
@@ -250,21 +252,47 @@ if __name__ == "__main__":
     buffer.writeln('');
     buffer.writeln('BỘ CÔNG CỤ ĐIỀU KHIỂN ĐƯỢC CẤP SẴN TRÊN MÁY:');
     buffer.writeln('Đường dẫn công cụ helper: `$helperPath` (hoặc lệnh `mxh-tool`)');
-    buffer.writeln('1. Mở trình duyệt nuôi nick cho nhân vật theo IP:');
+    buffer.writeln('1. Mở trình duyệt nuôi nick cho 1 nhân vật:');
     buffer.writeln('   $helperPath open-browser --ip <IP> --url <URL_TRANG_WEB>');
-    buffer.writeln('   (Ví dụ mở Facebook xem video reel: `$helperPath open-browser --ip 103.74.117.46 --url https://www.facebook.com/reel/990771153520030`)');
-    buffer.writeln('2. Đóng trình duyệt của nhân vật:');
+    buffer.writeln('2. Mở trình duyệt đồng loạt cho NHIỀU nhân vật (khi Scope có nhiều nhân vật):');
+    buffer.writeln('   $helperPath open-browser --ips <IP1> <IP2> <IP3> ... --url <URL_TRANG_WEB>');
+    buffer.writeln('3. Đóng trình duyệt của nhân vật:');
     buffer.writeln('   $helperPath close-browser --ip <IP>');
-    buffer.writeln('3. Mở thiết bị máy ảo Android cho nhân vật:');
+    buffer.writeln('   $helperPath close-browser --ips <IP1> <IP2> ...');
+    buffer.writeln('4. Mở thiết bị máy ảo Android cho nhân vật:');
     buffer.writeln('   $helperPath open-device --ip <IP>');
-    buffer.writeln('4. Đóng thiết bị máy ảo Android:');
+    buffer.writeln('5. Đóng thiết bị máy ảo Android:');
     buffer.writeln('   $helperPath close-device --ip <IP>');
-    buffer.writeln('5. Tra cứu danh sách nhân vật:');
+    buffer.writeln('6. Tra cứu danh sách nhân vật:');
     buffer.writeln('   $helperPath list-profiles');
     buffer.writeln('');
 
+    // Trích xuất các IP trong Scope hiện tại nếu có
+    final scopeIps = <String>[];
+    if (workingDir != null && workingDir.isNotEmpty) {
+      final ipRegex = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b');
+      final matches = ipRegex.allMatches(workingDir);
+      for (final m in matches) {
+        final ipStr = m.group(0);
+        if (ipStr != null && !scopeIps.contains(ipStr)) {
+          scopeIps.add(ipStr);
+        }
+      }
+    }
+
+    if (workingDir != null && workingDir.isNotEmpty) {
+      buffer.writeln('PHẠM VI (SCOPE) CHỈ ĐỊNH CHO PHIÊN NÀY:');
+      buffer.writeln(workingDir);
+      buffer.writeln('');
+      if (scopeIps.isNotEmpty) {
+        buffer.writeln('DANH SÁCH ${scopeIps.length} ĐỊA CHỈ IP ĐƯỢC CHỈ ĐỊNH TRONG SCOPE:');
+        buffer.writeln(scopeIps.join(' '));
+        buffer.writeln('');
+      }
+    }
+
     if (personas.isNotEmpty) {
-      buffer.writeln('DANH SÁCH NHÂN VẬT & IP HIỆN CÓ TRÊN HỆ THỐNG:');
+      buffer.writeln('DANH SÁCH TOÀN BỘ NHÂN VẬT & IP TRÊN HỆ THỐNG:');
       for (final p in personas.values) {
         buffer.writeln('- IP: ${p.ip} | Tên: ${p.name} | Giới tính: ${p.gender} | Tuổi: ${p.age}');
         if (p.bio.isNotEmpty) {
@@ -274,16 +302,21 @@ if __name__ == "__main__":
       buffer.writeln('');
     }
 
-    if (workingDir != null && workingDir.isNotEmpty) {
-      buffer.writeln('PHẠM VI (SCOPE) CHỈ ĐỊNH CHO PHIÊN NÀY:');
-      buffer.writeln(workingDir);
-      buffer.writeln('');
+    buffer.writeln('QUY TẮC ĐIỀU KHIỂN & MỞ TRÌNH DUYỆT BẮT BUỘC:');
+    if (scopeIps.length > 1) {
+      buffer.writeln('- QUAN TRỌNG: Người dùng đang chọn ${scopeIps.length} nhân vật trong Scope (${scopeIps.join(', ')}).');
+      buffer.writeln('- Khi người dùng bảo mở link, xem link, hoặc làm việc chung mà KHÔNG chỉ định đích danh 1 ai: BẮT BUỘC phải mở trình duyệt cho TOÀN BỘ ${scopeIps.length} nhân vật bằng cách truyền toàn bộ danh sách IP vào tham số `--ips`:');
+      buffer.writeln('  Lệnh mẫu: $helperPath open-browser --ips ${scopeIps.join(' ')} --url <URL>');
+      buffer.writeln('- TUYỆT ĐỐI KHÔNG được chỉ chọn 1 người đầu tiên mà bỏ quên các nhân vật còn lại trong Scope.');
+    } else if (scopeIps.length == 1) {
+      buffer.writeln('- Scope hiện tại chỉ chọn đúng 1 nhân vật: IP ${scopeIps.first}. BẮT BUỘC chỉ mở 1 trình duyệt cho IP này:');
+      buffer.writeln('  Lệnh mẫu: $helperPath open-browser --ip ${scopeIps.first} --url <URL>');
+    } else {
+      buffer.writeln('- Khi người dùng yêu cầu mở trình duyệt, xem link hoặc auto tương tác, BẮT BUỘC phải chạy lệnh `$helperPath open-browser` bằng terminal.');
     }
-
-    buffer.writeln('NGUYÊN TẮC HÀNH ĐỘNG:');
-    buffer.writeln('- Khi người dùng yêu cầu mở trình duyệt, xem link hoặc auto tương tác, BẮT BUỘC phải chạy lệnh `$helperPath open-browser` bằng terminal để mở cửa sổ trình duyệt thực tế trên màn hình.');
+    buffer.writeln('- BẮT BUỘC phải thực thi lệnh terminal thực tế để mở cửa sổ trình duyệt trên màn hình người dùng.');
     buffer.writeln('- TUYỆT ĐỐI KHÔNG giải thích vòng vo về headless mode hay khuyên người dùng tự mở lệnh.');
-    buffer.writeln('- Sau khi thực thi lệnh, hãy báo cáo kết quả rõ ràng về IP và URL đã được mở.');
+    buffer.writeln('- Sau khi thực thi lệnh, hãy báo cáo chi tiết danh sách tất cả các nhân vật/IP đã được mở trình duyệt thành công.');
 
     return buffer.toString();
   }
