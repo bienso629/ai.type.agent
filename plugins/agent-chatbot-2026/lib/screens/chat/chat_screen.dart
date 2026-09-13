@@ -1319,12 +1319,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   : chat.sessions.where((s) => s.title.toLowerCase().contains(query)).toList();
 
               if (filteredSessions.isEmpty) {
-                return Center(
+                return Align(
+                  alignment: Alignment.centerLeft,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     child: Text(
                       query.isEmpty ? 'Chưa có hội thoại nào' : 'Không tìm thấy hội thoại phù hợp',
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.left,
                       style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                     ),
                   ),

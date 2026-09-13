@@ -1570,10 +1570,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         // List memories
                         if (_userMemories.isEmpty)
                           Container(
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                            alignment: Alignment.centerLeft,
                             child: const Text(
                               'Chưa có dữ liệu bộ nhớ nào. Hãy thêm các thói quen hoặc thông tin cá nhân của bạn ở trên.',
+                              textAlign: TextAlign.left,
                               style: TextStyle(fontSize: 12, color: AppColors.textDim),
                             ),
                           )
