@@ -723,7 +723,7 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
         _buildSectionCard(
           icon: Icons.rocket_launch_rounded,
           iconColor: AppColors.primaryLight,
-          title: '1. Giới thiệu tổng quan',
+          title: 'Giới thiệu tổng quan',
           content:
               'AI Agent Chatbot là giải pháp trợ lý thông minh đa năng, hỗ trợ lập kế hoạch công việc, phân tích hệ thống và hỗ trợ kỹ thuật theo thời gian thực. Ứng dụng tích hợp mô hình ngôn ngữ lớn tiên tiến cùng khả năng thực thi tác vụ an toàn.',
         ),
@@ -731,7 +731,7 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
         _buildSectionCard(
           icon: Icons.chat_bubble_outline_rounded,
           iconColor: AppColors.accent,
-          title: '2. Cách tương tác với Trợ lý AI',
+          title: 'Cách tương tác với Trợ lý AI',
           content:
               '• Tạo hội thoại mới: Bấm nút "Hội thoại mới" ở góc trên bên phải để bắt đầu phiên làm việc độc lập.\n'
               '• Ghim hội thoại: Trong danh sách hộp hội thoại, bấm biểu tượng ghim để giữ các phiên quan trọng lên trên đầu.\n'
@@ -741,7 +741,7 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
         _buildSectionCard(
           icon: Icons.terminal_rounded,
           iconColor: AppColors.accentCyan,
-          title: '3. Cơ chế lập kế hoạch & Thực thi',
+          title: 'Cơ chế lập kế hoạch & Thực thi',
           content:
               '• Lập kế hoạch: AI Agent tự động hiểu mục tiêu của người dùng, phân tích và chia nhỏ thành các bước thực hiện rõ ràng.\n'
               '• Thực thi lệnh an toàn: Mọi thao tác đều được kiểm soát và ghi log minh bạch để đảm bảo an toàn hệ thống.',
@@ -750,7 +750,7 @@ class _DocsScreenState extends State<DocsScreen> with SingleTickerProviderStateM
         _buildSectionCard(
           icon: Icons.tune_rounded,
           iconColor: AppColors.warning,
-          title: '4. Cấu hình Model & Proxy API',
+          title: 'Cấu hình Model & Proxy API',
           content:
               '• Chuyển sang mục "Cài đặt" để lựa chọn các dòng Model AI phù hợp (glm-5.3, qwen-2.5-coder, gemini-2.5-flash,...).\n'
               '• Nhập Proxy Base URL và API Key khi kết nối qua cổng proxy riêng để tối ưu băng thông và bảo mật.',
