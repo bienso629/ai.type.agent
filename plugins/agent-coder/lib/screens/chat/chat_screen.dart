@@ -63,7 +63,69 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, GlobalKey> _messageKeys = {};
   String? _highlightedMessageKey;
   Timer? _highlightTimer;
+  Timer? _stickyScrollThrottleTimer;
   ChatMessageModel? _stickyUserQuestion;
+
+  static final MarkdownStyleSheet _sharedMarkdownStyle = MarkdownStyleSheet(
+    p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.55),
+    pPadding: const EdgeInsets.only(bottom: 6),
+    strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
+    em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.textBody),
+    h1: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
+    h1Padding: const EdgeInsets.only(top: 10, bottom: 5),
+    h2: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
+    h2Padding: const EdgeInsets.only(top: 9, bottom: 4),
+    h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.3),
+    h3Padding: const EdgeInsets.only(top: 7, bottom: 4),
+    h4: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
+    h4Padding: const EdgeInsets.only(top: 6, bottom: 3),
+    h5: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
+    h5Padding: const EdgeInsets.only(top: 4, bottom: 2),
+    h6: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600, color: AppColors.textMuted, height: 1.3),
+    h6Padding: const EdgeInsets.only(top: 4, bottom: 2),
+    blockSpacing: 6.0,
+    listBullet: const TextStyle(fontSize: 10.0, color: AppColors.textMuted),
+    listBulletPadding: const EdgeInsets.only(right: 8, top: 4),
+    listIndent: 16.0,
+    code: const TextStyle(
+      fontFamily: 'monospace',
+      backgroundColor: AppColors.codeBg,
+      color: AppColors.terminalGreen,
+      fontSize: 12,
+    ),
+    codeblockPadding: EdgeInsets.zero,
+    codeblockDecoration: const BoxDecoration(),
+    blockquote: const TextStyle(fontSize: 13, color: AppColors.textBody, fontStyle: FontStyle.italic),
+    blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    blockquoteDecoration: BoxDecoration(
+      color: AppColors.inputBg,
+      borderRadius: BorderRadius.circular(4),
+      border: const Border(
+        left: BorderSide(color: AppColors.primaryLight, width: 3),
+      ),
+    ),
+    horizontalRuleDecoration: const BoxDecoration(
+      border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
+    ),
+    tableBorder: TableBorder.all(
+      color: AppColors.borderDark,
+      width: 1.0,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    tableHead: const TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.bold,
+      color: AppColors.textWhite,
+    ),
+    tableBody: const TextStyle(
+      fontSize: 12,
+      color: AppColors.textBody,
+    ),
+    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    tableCellsDecoration: const BoxDecoration(
+      color: AppColors.inputBg,
+    ),
+  );
 
   String _getMessageKey(ChatMessageModel msg, [int? index]) {
     if (msg.id != null) return 'msg_id_${msg.id}';
@@ -101,6 +163,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _highlightTimer?.cancel();
     _dirDebounceTimer?.cancel();
+    _stickyScrollThrottleTimer?.cancel();
+    _messageKeys.clear();
     _textController.removeListener(_onTextChanged);
     _scrollController.removeListener(_onScroll);
     _inputFocusNode.dispose();
@@ -325,7 +389,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _updateStickyQuestion() {
-    if (!_scrollController.hasClients) return;
+    if (!_scrollController.hasClients || !mounted) return;
     final chat = context.read<ChatProvider>();
     if (chat.messages.isEmpty) {
       if (_stickyUserQuestion != null) {
@@ -334,8 +398,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // Nếu đang ở gần cuối (scroll offset < 50px), người dùng đang nhìn thấy tin nhắn mới nhất
-    // Chưa cần dính sticky header trừ khi tin nhắn câu hỏi đã bị cuộn khuất
+    // Nếu đang ở gần cuối (scroll offset <= 30px), người dùng đang nhìn thấy tin nhắn mới nhất
     final currentPixels = _scrollController.position.pixels;
     if (currentPixels <= 30.0) {
       if (_stickyUserQuestion != null) {
@@ -345,11 +408,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     // Duyệt tìm câu hỏi người dùng gần nhất ở vị trí phía trên
-    // ListView reverse: true nghĩa là idx = 0 là tin nhắn cuối cùng (dưới đáy danh sách)
-    // idx tăng dần = đi ngược lên quá khứ
-    // Duyệt qua các câu hỏi role == 'user'
+    // Chỉ cần kiểm tra tối đa 20 tin nhắn gần nhất để tránh lag danh sách dài
     ChatMessageModel? targetStickyQuestion;
-    for (int i = 0; i < chat.messages.length; i++) {
+    final checkLimit = chat.messages.length > 20 ? 20 : chat.messages.length;
+    for (int i = 0; i < checkLimit; i++) {
       final msg = chat.messages[chat.messages.length - 1 - i];
       if (msg.role == 'user') {
         final keyStr = _getMessageKey(msg, chat.messages.length - 1 - i);
@@ -358,8 +420,7 @@ class _ChatScreenState extends State<ChatScreen> {
           final renderBox = gKey!.currentContext!.findRenderObject() as RenderBox?;
           if (renderBox != null && renderBox.hasSize) {
             final position = renderBox.localToGlobal(Offset.zero);
-            // Header topbar cao 66px. Nếu cạnh dưới của bubble câu hỏi nằm trên hoặc gần sát 66px (bị che khuất phía trên)
-            // hoặc đã cuộn vượt qua đỉnh màn hình:
+            // Header topbar cao 66px. Nếu bubble câu hỏi đã cuộn vượt qua đỉnh màn hình:
             if (position.dy + renderBox.size.height <= 80) {
               targetStickyQuestion = msg;
               break;
@@ -377,7 +438,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // Fallback: nếu scroll sâu mà không tính được vị trí, lấy user message gần nhất trước tin nhắn cuối
     if (targetStickyQuestion == null && currentPixels > 120.0) {
-      for (int i = chat.messages.length - 1; i >= 0; i--) {
+      final fallbackLimit = chat.messages.length > 30 ? chat.messages.length - 30 : 0;
+      for (int i = chat.messages.length - 1; i >= fallbackLimit; i--) {
         if (chat.messages[i].role == 'user') {
           targetStickyQuestion = chat.messages[i];
           break;
@@ -395,7 +457,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onScroll() {
     if (!_scrollController.hasClients || _isLoadingOlder) return;
-    _updateStickyQuestion();
+    
+    // Throttle _updateStickyQuestion để tránh tính toán RenderBox liên tục trên từng pixel scroll
+    if (_stickyScrollThrottleTimer == null || !_stickyScrollThrottleTimer!.isActive) {
+      _stickyScrollThrottleTimer = Timer(const Duration(milliseconds: 60), () {
+        if (mounted) _updateStickyQuestion();
+      });
+    }
+
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 80) {
       final chat = context.read<ChatProvider>();
       if (chat.hasMoreMessages && !chat.isLoadingMore && !chat.isLoading) {
@@ -971,6 +1040,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // 1. Chỉ cuộn xuống cuối và nạp lịch sử câu hỏi gần đây khi lần đầu chọn/mở Hộp hội thoại
     if (_lastSessionId != chat.currentSession?.id) {
       _lastSessionId = chat.currentSession?.id;
+      _messageKeys.clear();
       _promptHistoryIndex = -1;
       _draftPrompt = '';
       _stickyUserQuestion = null;
@@ -1139,9 +1209,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                   : ListView.builder(
                                       controller: _scrollController,
                                       reverse: true,
-                                      cacheExtent: 400.0,
+                                      cacheExtent: 250.0,
                                       addRepaintBoundaries: true,
-                                      addAutomaticKeepAlives: true,
+                                      addAutomaticKeepAlives: false,
                                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                                       itemCount: chat.messages.isEmpty
                                           ? 1
@@ -1431,7 +1501,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final isTargetHighlighted = _highlightedMessageKey == keyStr;
 
     return Padding(
-      key: _messageKeys.putIfAbsent(keyStr, () => GlobalKey()),
+      key: isUser
+          ? _messageKeys.putIfAbsent(keyStr, () => GlobalKey())
+          : ValueKey(keyStr),
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1589,66 +1661,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           builders: {
                             'code': CodeElementBuilder(context),
                           },
-                          styleSheet: MarkdownStyleSheet(
-                            p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.55),
-                            pPadding: const EdgeInsets.only(bottom: 6),
-                            strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                            em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.textBody),
-                            h1: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
-                            h1Padding: const EdgeInsets.only(top: 10, bottom: 5),
-                            h2: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.35),
-                            h2Padding: const EdgeInsets.only(top: 9, bottom: 4),
-                            h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.3),
-                            h3Padding: const EdgeInsets.only(top: 7, bottom: 4),
-                            h4: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
-                            h4Padding: const EdgeInsets.only(top: 6, bottom: 3),
-                            h5: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite, height: 1.3),
-                            h5Padding: const EdgeInsets.only(top: 4, bottom: 2),
-                            h6: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600, color: AppColors.textMuted, height: 1.3),
-                            h6Padding: const EdgeInsets.only(top: 4, bottom: 2),
-                            blockSpacing: 6.0,
-                            listBullet: const TextStyle(fontSize: 10.0, color: AppColors.textMuted),
-                            listBulletPadding: const EdgeInsets.only(right: 8, top: 4),
-                            listIndent: 16.0,
-                            code: const TextStyle(
-                              fontFamily: 'monospace',
-                              backgroundColor: AppColors.codeBg,
-                              color: AppColors.terminalGreen,
-                              fontSize: 12,
-                            ),
-                            codeblockPadding: EdgeInsets.zero,
-                            codeblockDecoration: const BoxDecoration(),
-                            blockquote: const TextStyle(fontSize: 13, color: AppColors.textBody, fontStyle: FontStyle.italic),
-                            blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            blockquoteDecoration: BoxDecoration(
-                              color: AppColors.inputBg,
-                              borderRadius: BorderRadius.circular(4),
-                              border: const Border(
-                                left: BorderSide(color: AppColors.primaryLight, width: 3),
-                              ),
-                            ),
-                            horizontalRuleDecoration: const BoxDecoration(
-                              border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
-                            ),
-                            tableBorder: TableBorder.all(
-                              color: AppColors.borderDark,
-                              width: 1.0,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            tableHead: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textWhite,
-                            ),
-                            tableBody: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textBody,
-                            ),
-                            tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                            tableCellsDecoration: const BoxDecoration(
-                              color: AppColors.inputBg,
-                            ),
-                          ),
+                          styleSheet: _sharedMarkdownStyle,
                         ),
 
                       if (msg.content.isEmpty && msg.isStreaming)
