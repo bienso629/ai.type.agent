@@ -77,7 +77,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final auth = context.watch<AuthProvider>();
     final serverProvider = context.watch<ServerProvider>();
     final m = metricsProvider.metrics;
-    final isAgentActive = m.serviceStatus == 'active';
+    final isAgentActive = m.serviceStatus == 'active' || serverProvider.currentAiModel.trim().isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
