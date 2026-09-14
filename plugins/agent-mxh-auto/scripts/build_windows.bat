@@ -16,7 +16,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-set DIST_DIR=%~dp0\..\dist-flutter
+set "DIST_DIR=%~dp0..\dist-flutter"
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 
 echo.
@@ -28,17 +28,20 @@ echo %DIST_DIR%\MXH-Tu-Dong-Portable-Windows-x64.zip
 
 echo.
 echo [3/3] Đang kiểm tra Inno Setup Compiler để tạo file Setup .exe...
-set ISCC_PATH=""
+set "ISCC_CMD="
 
-if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" (
-    set ISCC_PATH="%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+where iscc >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    set "ISCC_CMD=iscc"
+) else if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" (
+    set "ISCC_CMD="%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe""
 ) else if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" (
-    set ISCC_PATH="%ProgramFiles%\Inno Setup 6\ISCC.exe"
+    set "ISCC_CMD="%ProgramFiles%\Inno Setup 6\ISCC.exe""
 )
 
-if not %ISCC_PATH%=="" (
+if defined ISCC_CMD (
     echo Đang biên dịch Setup Installer bằng Inno Setup...
-    %ISCC_PATH% "%~dp0\installer_windows.iss"
+    !ISCC_CMD! "%~dp0installer_windows.iss"
     if !ERRORLEVEL! EQU 0 (
         echo [THÀNH CÔNG] Đã tạo file cài đặt: %DIST_DIR%\MXH-Tu-Dong-Setup-x64.exe
     ) else (
