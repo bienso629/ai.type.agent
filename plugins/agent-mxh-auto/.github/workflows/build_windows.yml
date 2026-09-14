@@ -19,7 +19,6 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.x'
           channel: 'stable'
           cache: true
 
@@ -31,15 +30,23 @@ jobs:
         run: |
           choco install innosetup --no-progress -y
 
+      - name: Add Inno Setup to PATH
+        shell: pwsh
+        run: |
+          $innoPath = "C:\Program Files (x86)\Inno Setup 6"
+          if (Test-Path $innoPath) {
+            echo "$innoPath" >> $env:GITHUB_PATH
+          }
+          $innoPath64 = "C:\Program Files\Inno Setup 6"
+          if (Test-Path $innoPath64) {
+            echo "$innoPath64" >> $env:GITHUB_PATH
+          }
+
       - name: Get Dependencies
         run: |
           flutter pub get
 
-      - name: Build Windows Application
-        run: |
-          flutter build windows --release
-
-      - name: Package ZIP & Compile Installer
+      - name: Package Windows Release & Compile Installer
         shell: cmd
         run: |
           call scripts\build_windows.bat
