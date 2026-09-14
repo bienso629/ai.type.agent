@@ -16,7 +16,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-set DIST_DIR=%~dp0\..\..\dist-flutter
+set DIST_DIR=%~dp0\..\dist-flutter
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 
 echo.
