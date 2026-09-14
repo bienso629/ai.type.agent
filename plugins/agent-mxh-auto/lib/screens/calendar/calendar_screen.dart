@@ -351,21 +351,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         });
                                       },
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                         decoration: BoxDecoration(
                                           color: allInPageSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
                                           borderRadius: BorderRadius.circular(4),
                                           border: Border.all(
                                             color: allInPageSelected ? AppColors.primaryLight : AppColors.borderDark,
+                                            width: 1,
                                           ),
                                         ),
-                                        child: Text(
-                                          allInPageSelected ? 'Bỏ chọn trang này' : 'Chọn trang này',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: allInPageSelected ? AppColors.primaryLight : AppColors.textBody,
-                                          ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              allInPageSelected ? Icons.check_box_outlined : Icons.library_add_check_outlined,
+                                              size: 14,
+                                              color: allInPageSelected ? AppColors.primaryLight : AppColors.textBody,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              allInPageSelected ? 'Bỏ chọn trang này' : 'Chọn trang này',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: allInPageSelected ? AppColors.primaryLight : AppColors.textBody,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
