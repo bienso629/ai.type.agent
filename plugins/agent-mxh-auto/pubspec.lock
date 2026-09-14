@@ -125,10 +125,10 @@ packages:
     dependency: "direct main"
     description:
       name: dartssh2
-      sha256: eba2540c6fb0c8a4553ab13cf23662402337a08bcfeb61d644eea8efdf389162
+      sha256: "39359aceafcf5940b868249e3c9c6d86e4e0f989eec7417d033c943157c84c51"
       url: "https://pub.dev"
     source: hosted
-    version: "2.14.0"
+    version: "4.1.0"
   encrypt:
     dependency: "direct main"
     description:
@@ -529,7 +529,7 @@ packages:
     source: hosted
     version: "2.1.8"
   pointycastle:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: pointycastle
       sha256: "4be0097fcf3fd3e8449e53730c631200ebc7b88016acecab2b0da2f0149222fe"
