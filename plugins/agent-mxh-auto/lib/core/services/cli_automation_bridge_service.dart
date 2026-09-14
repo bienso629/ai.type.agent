@@ -318,7 +318,11 @@ def open_browser(ips, url=None):
             "--disable-features=Translate,TranslateUI",
             "--disable-translate",
             "--lang=vi",
-            "--accept-lang=vi-VN,vi,en-US,en"
+            "--accept-lang=vi-VN,vi,en-US,en",
+            # Ép chạy qua X11 (XWayland) thay vì Wayland native:
+            # Wayland native + NVIDIA xung đột Vulkan -> GPU acceleration hỏng -> trang web giật lag.
+            "--ozone-platform=x11",
+            "--disable-gpu-compositing"
         ]
 
         if socks5_proxy:
@@ -335,6 +339,9 @@ def open_browser(ips, url=None):
         env = os.environ.copy()
         if "DISPLAY" not in env or not env["DISPLAY"]:
             env["DISPLAY"] = ":0"
+        # Không truyền WAYLAND_DISPLAY cho trình duyệt:
+        # Chrome ưu tiên Wayland native nếu thấy biến này, gây lỗi Vulkan trên NVIDIA.
+        env.pop("WAYLAND_DISPLAY", None)
         env["LANG"] = "vi_VN.UTF-8"
         env["LANGUAGE"] = "vi_VN:vi"
         env["LC_ALL"] = "vi_VN.UTF-8"

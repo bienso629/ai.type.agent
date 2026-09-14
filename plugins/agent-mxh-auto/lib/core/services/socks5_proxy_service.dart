@@ -687,7 +687,10 @@ class Socks5ProxyService extends ChangeNotifier {
         '--test-type',
         '--disable-features=Translate,TranslateUI',
         '--disable-translate',
-        '--ozone-platform-hint=auto',
+        // Ép chạy qua X11 (XWayland) thay vì Wayland native:
+        // Wayland native + NVIDIA bị xung đột Vulkan -> GPU acceleration hỏng -> trang web giật lag.
+        // X11/XWayland dùng GLX/EGL hoạt động ổn định với driver NVIDIA.
+        '--ozone-platform=x11',
         if (socks5Proxy != null) '--proxy-server=$socks5Proxy',
         '--user-data-dir=${profileDir.path}',
         if (Directory(extDir).existsSync()) '--load-extension=$extDir',
@@ -715,12 +718,9 @@ class Socks5ProxyService extends ChangeNotifier {
     if (!browserEnv.containsKey('DISPLAY') || browserEnv['DISPLAY']!.isEmpty) {
       browserEnv['DISPLAY'] = ':0';
     }
-    if (!browserEnv.containsKey('WAYLAND_DISPLAY') || browserEnv['WAYLAND_DISPLAY']!.isEmpty) {
-      final waylandSock = File('/run/user/1000/wayland-0');
-      if (waylandSock.existsSync()) {
-        browserEnv['WAYLAND_DISPLAY'] = 'wayland-0';
-      }
-    }
+    // Không truyền WAYLAND_DISPLAY cho trình duyệt:
+    // Chrome sẽ ưu tiên Wayland native nếu thấy biến này, gây lỗi Vulkan trên NVIDIA.
+    browserEnv.remove('WAYLAND_DISPLAY');
     if (homeDir.isNotEmpty) {
       browserEnv['HOME'] = homeDir;
     }

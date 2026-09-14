@@ -1,0 +1,60 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch: # Cho phép bấm nút "Run workflow" bằng tay trên giao diện web GitHub
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'plugins/agent-mxh-auto/**'
+
+jobs:
+  build-windows:
+    name: Build Windows EXE & Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x' # Hoặc phiên bản stable mới nhất
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Flutter & Environment
+        working-directory: plugins/agent-mxh-auto
+        run: |
+          flutter doctor -v
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Get Dependencies
+        working-directory: plugins/agent-mxh-auto
+        run: |
+          flutter pub get
+
+      - name: Build Windows Application
+        working-directory: plugins/agent-mxh-auto
+        run: |
+          flutter build windows --release
+
+      - name: Package ZIP & Compile Installer
+        working-directory: plugins/agent-mxh-auto
+        shell: cmd
+        run: |
+          call scripts\build_windows.bat
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MXH-Tu-Dong-Windows-Release
+          path: |
+            dist-flutter/*.zip
+            dist-flutter/*.exe
+          retention-days: 14
