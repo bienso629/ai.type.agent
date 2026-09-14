@@ -28,29 +28,7 @@ echo %DIST_DIR%\MXH-Tu-Dong-Portable-Windows-x64.zip
 
 echo.
 echo [3/3] Đang kiểm tra Inno Setup Compiler để tạo file Setup .exe...
-set "ISCC_CMD="
-
-where iscc >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    set "ISCC_CMD=iscc"
-) else if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" (
-    set "ISCC_CMD="%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe""
-) else if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" (
-    set "ISCC_CMD="%ProgramFiles%\Inno Setup 6\ISCC.exe""
-)
-
-if defined ISCC_CMD (
-    echo Đang biên dịch Setup Installer bằng Inno Setup...
-    !ISCC_CMD! "%~dp0installer_windows.iss"
-    if !ERRORLEVEL! EQU 0 (
-        echo [THÀNH CÔNG] Đã tạo file cài đặt: %DIST_DIR%\MXH-Tu-Dong-Setup-x64.exe
-    ) else (
-        echo [CẢNH BÁO] Không thể tạo file Setup qua Inno Setup.
-    )
-) else (
-    echo [CHÚ Ý] Không tìm thấy Inno Setup 6 (ISCC.exe).
-    echo Nếu muốn tạo file Setup tự động cài đặt (.exe), hãy cài Inno Setup tại: https://jrsoftware.org/isdl.php
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0compile_installer.ps1"
 
 echo.
 echo ========================================================
