@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -522,26 +524,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final picked = result.files.first;
         String? targetPath;
 
-        // Lưu bản sao logo vào thư mục dữ liệu cục bộ của app để không phụ thuộc file gốc
-        final appDataDir = p.join(Platform.environment['HOME'] ?? '', '.agent_chatbot_2026', 'branding');
-        final targetDir = Directory(appDataDir);
-        if (!targetDir.existsSync()) {
-          targetDir.createSync(recursive: true);
-        }
+        if (kIsWeb) {
+          if (picked.bytes != null && picked.bytes!.isNotEmpty) {
+            final ext = (picked.extension ?? 'png').toLowerCase();
+            final mimeType = ext == 'svg'
+                ? 'image/svg+xml'
+                : (ext == 'jpg' || ext == 'jpeg')
+                    ? 'image/jpeg'
+                    : ext == 'webp'
+                        ? 'image/webp'
+                        : 'image/png';
+            final base64String = base64Encode(picked.bytes!);
+            targetPath = 'data:$mimeType;base64,$base64String';
+          }
+        } else {
+          // Lưu bản sao logo vào thư mục dữ liệu cục bộ của app trên desktop
+          final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+          final appDataDir = p.join(home, '.agent_chatbot_2026', 'branding');
+          final targetDir = Directory(appDataDir);
+          if (!targetDir.existsSync()) {
+            targetDir.createSync(recursive: true);
+          }
 
-        final ext = p.extension(picked.name).isNotEmpty ? p.extension(picked.name) : '.png';
-        final savedFile = File(p.join(appDataDir, 'app_logo$ext'));
+          final ext = p.extension(picked.name).isNotEmpty ? p.extension(picked.name) : '.png';
+          final savedFile = File(p.join(appDataDir, 'app_logo$ext'));
 
-        if (picked.bytes != null && picked.bytes!.isNotEmpty) {
-          await savedFile.writeAsBytes(picked.bytes!, flush: true);
-          targetPath = savedFile.path;
-        } else if (picked.path != null && picked.path!.isNotEmpty) {
-          final srcFile = File(picked.path!);
-          if (await srcFile.exists()) {
-            await srcFile.copy(savedFile.path);
+          if (picked.bytes != null && picked.bytes!.isNotEmpty) {
+            await savedFile.writeAsBytes(picked.bytes!, flush: true);
             targetPath = savedFile.path;
-          } else {
-            targetPath = picked.path;
+          } else if (picked.path != null && picked.path!.isNotEmpty) {
+            final srcFile = File(picked.path!);
+            if (await srcFile.exists()) {
+              await srcFile.copy(savedFile.path);
+              targetPath = savedFile.path;
+            } else {
+              targetPath = picked.path;
+            }
           }
         }
 

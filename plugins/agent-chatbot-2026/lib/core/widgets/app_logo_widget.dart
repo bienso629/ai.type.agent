@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -42,23 +43,84 @@ class AppLogoWidget extends StatelessWidget {
 
     Widget imageContent;
 
-    if (customPath != null && customPath.trim().isNotEmpty && !kIsWeb) {
+    if (customPath != null && customPath.trim().isNotEmpty) {
       final trimmed = customPath.trim();
-      final file = File(trimmed);
-      if (file.existsSync()) {
-        imageContent = Image.file(
-          file,
-          width: width,
-          height: height,
-          fit: fit,
-          errorBuilder: (context, error, stackTrace) => Image.asset(
+
+      if (trimmed.startsWith('data:image/') || (trimmed.startsWith('data:') && trimmed.contains('base64,'))) {
+        try {
+          final base64String = trimmed.substring(trimmed.indexOf('base64,') + 7);
+          final bytes = base64Decode(base64String);
+          imageContent = Image.memory(
+            bytes,
+            width: width,
+            height: height,
+            fit: fit,
+            errorBuilder: (ctx, err, st) => Image.asset(
+              'assets/icon.png',
+              width: width,
+              height: height,
+              fit: fit,
+              errorBuilder: (c, e, s) => defaultFallback(),
+            ),
+          );
+        } catch (_) {
+          imageContent = Image.asset(
             'assets/icon.png',
             width: width,
             height: height,
             fit: fit,
             errorBuilder: (ctx, err, st) => defaultFallback(),
+          );
+        }
+      } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        imageContent = Image.network(
+          trimmed,
+          width: width,
+          height: height,
+          fit: fit,
+          errorBuilder: (ctx, err, st) => Image.asset(
+            'assets/icon.png',
+            width: width,
+            height: height,
+            fit: fit,
+            errorBuilder: (c, e, s) => defaultFallback(),
           ),
         );
+      } else if (!kIsWeb) {
+        try {
+          final file = File(trimmed);
+          if (file.existsSync()) {
+            imageContent = Image.file(
+              file,
+              width: width,
+              height: height,
+              fit: fit,
+              errorBuilder: (context, error, stackTrace) => Image.asset(
+                'assets/icon.png',
+                width: width,
+                height: height,
+                fit: fit,
+                errorBuilder: (ctx, err, st) => defaultFallback(),
+              ),
+            );
+          } else {
+            imageContent = Image.asset(
+              'assets/icon.png',
+              width: width,
+              height: height,
+              fit: fit,
+              errorBuilder: (ctx, err, st) => defaultFallback(),
+            );
+          }
+        } catch (_) {
+          imageContent = Image.asset(
+            'assets/icon.png',
+            width: width,
+            height: height,
+            fit: fit,
+            errorBuilder: (ctx, err, st) => defaultFallback(),
+          );
+        }
       } else {
         imageContent = Image.asset(
           'assets/icon.png',
