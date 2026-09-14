@@ -136,6 +136,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final phoneCtrl = TextEditingController(text: persona.phoneNumber ?? '');
     bool autoSyncPhoneToDevice = persona.autoSyncPhoneToDevice;
     bool isPurchasingPhone = false;
+    bool isReordering = false;
     bool isRefunding = false;
     bool isTestingDevice = false;
     Timer? otpTimer;
@@ -1452,6 +1453,111 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                            ),
                                          ),
                                        ),
+                                        if (phoneCtrl.text.trim().isNotEmpty) ...[
+                                          const SizedBox(width: 8),
+                                          Tooltip(
+                                            message: 'Thuê lại chính số điện thoại ${phoneCtrl.text.trim()} này từ nhà cung cấp để nhận mã OTP mới',
+                                            child: ElevatedButton.icon(
+                                              onPressed: (isPurchasingPhone || isReordering)
+                                                  ? null
+                                                  : () async {
+                                                      final rawPhone = phoneCtrl.text.trim().replaceAll(RegExp(r'[^0-9]'), '');
+                                                      if (rawPhone.isEmpty) {
+                                                        AppToast.warning(dialogCtx, 'Chưa có số điện thoại để thuê lại!');
+                                                        return;
+                                                      }
+
+                                                      setDialogState(() {
+                                                        isReordering = true;
+                                                      });
+
+                                                      try {
+                                                        String? targetOrderId = currentOrderId;
+
+                                                        if (targetOrderId == null || targetOrderId.isEmpty) {
+                                                          final history = await SmsPoolService().getOrderHistory();
+                                                          for (final item in history) {
+                                                            final itemPhone = (item['phonenumber']?.toString() ?? item['number']?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+                                                            if (itemPhone.isNotEmpty && (itemPhone.contains(rawPhone) || rawPhone.contains(itemPhone))) {
+                                                              targetOrderId = item['order_code']?.toString() ?? item['order_id']?.toString() ?? item['orderid']?.toString();
+                                                              if (targetOrderId != null && targetOrderId.isNotEmpty) {
+                                                                break;
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+
+                                                        if (targetOrderId == null || targetOrderId.isEmpty) {
+                                                          if (dialogCtx.mounted) {
+                                                            AppToast.error(dialogCtx, 'Không tìm thấy mã đơn thuê trước đây của số này trên hệ thống để kích hoạt thuê lại.');
+                                                          }
+                                                          return;
+                                                        }
+
+                                                        final res = await SmsPoolService().resendSms(orderId: targetOrderId);
+                                                        if (res['success'] == 1) {
+                                                          final newOrderId = res['order_id']?.toString() ?? targetOrderId;
+                                                          currentOrderId = newOrderId;
+                                                          autoSyncPhoneToDevice = true;
+                                                          latestOtpCode = null;
+
+                                                          final currentP = _personas[persona.ip] ?? persona;
+                                                          final updated = currentP.copyWith(
+                                                            phoneNumber: phoneCtrl.text.trim(),
+                                                            smsOrderId: newOrderId,
+                                                          );
+                                                          await _personaService.updatePersona(updated);
+                                                          if (mounted) {
+                                                            setState(() {
+                                                              _personas[persona.ip] = updated;
+                                                            });
+                                                          }
+
+                                                          if (newOrderId.isNotEmpty && dialogCtx.mounted) {
+                                                            startOtpPolling(newOrderId, setDialogState, dialogCtx);
+                                                          }
+
+                                                          if (dialogCtx.mounted) {
+                                                            AppToast.success(dialogCtx, 'Đã thuê lại thành công số ${phoneCtrl.text.trim()}! Đang chờ mã OTP mới...');
+                                                          }
+                                                        } else {
+                                                          if (dialogCtx.mounted) {
+                                                            final msg = res['message']?.toString();
+                                                            AppToast.error(dialogCtx, (msg != null && msg.isNotEmpty) ? msg : 'Nhà cung cấp không cho phép thuê lại số điện thoại này vào thời điểm này.');
+                                                          }
+                                                        }
+                                                      } catch (e) {
+                                                        if (dialogCtx.mounted) {
+                                                          AppToast.error(dialogCtx, 'Lỗi khi yêu cầu thuê lại số điện thoại: $e');
+                                                        }
+                                                      } finally {
+                                                        setDialogState(() {
+                                                          isReordering = false;
+                                                        });
+                                                      }
+                                                    },
+                                              icon: isReordering
+                                                  ? const SizedBox(
+                                                      width: 12,
+                                                      height: 12,
+                                                      child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                                                    )
+                                                  : const Icon(Icons.sync_rounded, size: 13),
+                                              label: Text(
+                                                isReordering ? 'Đang thuê lại...' : 'Thuê lại số này',
+                                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF059669),
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                      ],
                                    ),
                                   // Phần kiểm tra mã OTP khi đã có orderId từ SMSPool
@@ -1517,6 +1623,51 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                 AppToast.info(dialogCtx, 'Đã sao chép: $latestOtpCode');
                                               },
                                             ),
+                                          IconButton(
+                                            tooltip: 'Thuê lại số này (Gửi lại OTP)',
+                                            icon: isReordering
+                                                ? const SizedBox(
+                                                    width: 14,
+                                                    height: 14,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 1.5,
+                                                      color: Color(0xFF059669),
+                                                    ),
+                                                  )
+                                                : const Icon(Icons.sync_rounded, size: 16, color: Color(0xFF059669)),
+                                            onPressed: (isReordering || currentOrderId == null)
+                                                ? null
+                                                : () async {
+                                                    setDialogState(() {
+                                                      isReordering = true;
+                                                    });
+                                                    try {
+                                                      final res = await SmsPoolService().resendSms(orderId: currentOrderId!);
+                                                      if (res['success'] == 1) {
+                                                        final newOrderId = res['order_id']?.toString() ?? currentOrderId!;
+                                                        currentOrderId = newOrderId;
+                                                        latestOtpCode = null;
+                                                        if (dialogCtx.mounted) {
+                                                          startOtpPolling(newOrderId, setDialogState, dialogCtx);
+                                                          AppToast.success(dialogCtx, 'Đã yêu cầu thuê lại số thành công! Đang chờ mã OTP mới...');
+                                                        }
+                                                      } else {
+                                                        if (dialogCtx.mounted) {
+                                                          final msg = res['message']?.toString();
+                                                          AppToast.error(dialogCtx, (msg != null && msg.isNotEmpty) ? msg : 'Không thể thuê lại số vào lúc này.');
+                                                        }
+                                                      }
+                                                    } catch (e) {
+                                                      if (dialogCtx.mounted) {
+                                                        AppToast.error(dialogCtx, 'Lỗi khi yêu cầu thuê lại: $e');
+                                                      }
+                                                    } finally {
+                                                      setDialogState(() {
+                                                        isReordering = false;
+                                                      });
+                                                    }
+                                                  },
+                                          ),
                                           IconButton(
                                             tooltip: 'Hoàn tiền / Hủy đơn (Refund)',
                                             icon: isRefunding

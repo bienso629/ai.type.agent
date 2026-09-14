@@ -156,4 +156,62 @@ class SmsPoolService {
     } catch (_) {}
     return {'status': 0};
   }
+
+  /// Thuê lại số điện thoại đã từng nhận SMS từ SMSPool (Re-send / Rent again)
+  /// Nhận lại mã OTP mới trên cùng một số điện thoại đã thuê trước đó
+  Future<Map<String, dynamic>> resendSms({
+    String apiKey = defaultApiKey,
+    required String orderId,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/sms/resend'),
+        body: {
+          'key': apiKey,
+          'orderid': orderId.trim(),
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(utf8.decode(res.bodyBytes));
+      if (data is Map<String, dynamic>) {
+        final successVal = data['success'];
+        final isSuccess = successVal == 1 || successVal == true;
+        String msg = data['message']?.toString() ?? '';
+        if (msg.isEmpty && data['errors'] is List && (data['errors'] as List).isNotEmpty) {
+          final firstErr = (data['errors'] as List).first;
+          if (firstErr is Map && firstErr['message'] != null) {
+            msg = firstErr['message'].toString();
+          }
+        }
+        return {
+          'success': isSuccess ? 1 : 0,
+          'message': msg.isNotEmpty ? stripHtml(msg) : (isSuccess ? 'Đã yêu cầu thuê lại số điện thoại thành công!' : 'Không thể thuê lại số điện thoại này.'),
+          'order_id': data['order_id'] ?? data['orderid'] ?? orderId,
+          'expiration': data['expiration'],
+        };
+      }
+    } catch (e) {
+      return {'success': 0, 'message': 'Lỗi kết nối tới SMSPool khi thuê lại: $e'};
+    }
+    return {'success': 0, 'message': 'Không nhận được dữ liệu phản hồi từ SMSPool.'};
+  }
+
+  /// Tra cứu lịch sử đơn hàng từ SMSPool để tìm mã đơn (order_id) gắn với số điện thoại
+  Future<List<Map<String, dynamic>>> getOrderHistory({
+    String apiKey = defaultApiKey,
+  }) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/request/history?key=$apiKey'),
+      ).timeout(const Duration(seconds: 15));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (data is List) {
+          return data.whereType<Map<String, dynamic>>().toList();
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
 }
