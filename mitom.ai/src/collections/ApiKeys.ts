@@ -27,8 +27,8 @@ export const ApiKeys: CollectionConfig = {
           record.permissions = record.permissions.join(', ')
         }
 
-        // Khi Admin tạo key mới trên CMS (chưa có keyId từ AstraFlow)
-        if (operation === 'create' && !record.keyId) {
+        // Khi Admin tạo key mới trên CMS (chưa có secretKey hoặc chưa có rawResponse từ AstraFlow)
+        if (operation === 'create' && (!record.secretKey || !record.rawResponse)) {
           const pubKey = process.env.ASTRAFLOW_PUBLIC_KEY || process.env.UCLOUD_PUBLIC_KEY
           const privKey = process.env.ASTRAFLOW_PRIVATE_KEY || process.env.UCLOUD_PRIVATE_KEY
 
@@ -159,10 +159,9 @@ export const ApiKeys: CollectionConfig = {
       type: 'text',
       unique: true,
       label: 'Mã định danh khóa',
-      defaultValue: () => `uminferapikey-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`,
       admin: {
         readOnly: true,
-        description: 'Hệ thống tự động khởi tạo mã định danh duy nhất',
+        description: 'Hệ thống tự động khởi tạo hoặc lấy mã định danh từ AstraFlow',
       },
     },
     {

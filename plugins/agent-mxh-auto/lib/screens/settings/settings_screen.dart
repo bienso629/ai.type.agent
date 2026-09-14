@@ -4,6 +4,7 @@ import '../../core/services/api_service.dart';
 import '../../core/services/cli_scanner_service.dart';
 import '../../core/services/local_config_service.dart';
 import '../../core/services/native_ssh_service.dart';
+import '../../core/services/socks5_proxy_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/model_picker_dialog.dart';
@@ -33,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _activeCliAgent = 'antigravity-cli';
   List<LocalCliAgent> _installedCliAgents = [];
   bool _isScanningCli = false;
+  bool _isRepairing = false;
 
   @override
   void initState() {
@@ -1465,6 +1467,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: _buildInfoBox('Giao Thức Terminal', 'WebSocket xterm-256color PTY Live Stream'),
                             ),
                           ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // GROUP 5: SYSTEM REPAIR & PROFILE MAINTENANCE
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.borderDark),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.build_circle_rounded, size: 18, color: AppColors.accentCyan),
+                                SizedBox(width: 8),
+                                Text(
+                                  '5. Bảo Trì & Sửa Chữa Môi Trường (System Repair)',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _isRepairing
+                                  ? null
+                                  : () async {
+                                      final currentContext = context;
+                                      setState(() {
+                                        _isRepairing = true;
+                                      });
+                                      AppToast.info(currentContext, 'Đang quét và sửa chữa môi trường profiles...');
+                                      try {
+                                        final res = await Socks5ProxyService().repairBrowserProfilesAndEnvironment();
+                                        if (currentContext.mounted) {
+                                          final msg = res['message']?.toString() ?? 'Đã hoàn tất sửa chữa profiles!';
+                                          AppToast.success(currentContext, msg);
+                                        }
+                                      } catch (e) {
+                                        if (currentContext.mounted) {
+                                          AppToast.error(currentContext, 'Lỗi sửa chữa: $e');
+                                        }
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() {
+                                            _isRepairing = false;
+                                          });
+                                        }
+                                      }
+                                    },
+                              icon: _isRepairing
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF070B14)),
+                                    )
+                                  : const Icon(Icons.auto_fix_high_rounded, size: 16),
+                              label: Text(
+                                _isRepairing ? 'Đang sửa chữa...' : 'Quét & Sửa lỗi Profile / Trình duyệt',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.accentCyan,
+                                foregroundColor: const Color(0xFF070B14),
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.inputBg,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppColors.borderDark),
+                          ),
+                          child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.info_outline_rounded, size: 16, color: AppColors.accentCyan),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Chức Năng Sửa Chữa Toàn Diện: Tự động phát hiện và bứng sạch toàn bộ dangling symlink (SingletonLock, SingletonCookie, SingletonSocket) bị kẹt do trình duyệt tắt đột ngột, dọn dẹp tiến trình treo Chrome ngầm và khôi phục cài đặt Tiếng Việt cho toàn bộ profile IP của người dùng.',
+                                  style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),

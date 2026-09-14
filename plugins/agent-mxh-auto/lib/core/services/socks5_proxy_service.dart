@@ -18,6 +18,8 @@ class Socks5Session {
   Process? httpBridgeProcess;
   int? emulatorPort;
   String? remoteDeviceAddress;
+  DateTime createdAt = DateTime.now();
+  DateTime? browserLaunchedAt;
 
   Socks5Session({
     required this.localPort,
@@ -56,6 +58,8 @@ class Socks5ProxyService extends ChangeNotifier {
 
   Socks5ProxyService._internal() {
     _startWatchdog();
+    // Tự động kiểm tra và dọn dẹp các lock file rác, tiến trình zombie khi khởi chạy app
+    repairBrowserProfilesAndEnvironment().catchError((_) => <String, dynamic>{});
   }
 
   void _startWatchdog() {
@@ -70,8 +74,25 @@ class Socks5ProxyService extends ChangeNotifier {
   void _checkTerminatedBrowsers() {
     if (_activeSessions.isEmpty) return;
     final deadIps = <String>[];
+    final now = DateTime.now();
+
     for (final entry in _activeSessions.entries) {
       final ip = entry.key;
+      final session = entry.value;
+
+      // Thời gian ân hạn 10 giây sau khi tạo session hoặc vừa mở trình duyệt
+      // Tránh trường hợp watchdog quét trúng lúc trình duyệt đang khởi động (chưa kịp ghi /proc/*/cmdline)
+      final timeSinceCreated = now.difference(session.createdAt);
+      if (timeSinceCreated < const Duration(seconds: 10)) {
+        continue;
+      }
+      if (session.browserLaunchedAt != null) {
+        final timeSinceLaunch = now.difference(session.browserLaunchedAt!);
+        if (timeSinceLaunch < const Duration(seconds: 10)) {
+          continue;
+        }
+      }
+
       // Kiểm tra thực tế trên hệ thống xem profile IP này còn tiến trình trình duyệt hoặc device nào không
       if (!_isSystemProcessAliveForIp(ip) && !_isDeviceProcessAliveForIp(ip)) {
         deadIps.add(ip);
@@ -622,6 +643,35 @@ class Socks5ProxyService extends ChangeNotifier {
       }
     }
 
+    // Dọn dẹp triệt để các lock file Singleton và tiến trình cũ của profile này nếu bị crash trước đó
+    try {
+      if (profileDir.existsSync()) {
+        for (final entity in profileDir.listSync(followLinks: false)) {
+          final baseName = entity.path.split('/').last;
+          if (baseName.startsWith('Singleton')) {
+            try {
+              final type = FileSystemEntity.typeSync(entity.path, followLinks: false);
+              if (type == FileSystemEntityType.link) {
+                Link(entity.path).deleteSync();
+              } else if (type == FileSystemEntityType.file) {
+                File(entity.path).deleteSync();
+              } else if (type == FileSystemEntityType.directory) {
+                Directory(entity.path).deleteSync(recursive: true);
+              }
+            } catch (_) {
+              try {
+                entity.deleteSync();
+              } catch (_) {}
+            }
+          }
+        }
+        // Gọi lệnh hệ thống để dọn sạch mọi symlink/socket Singleton còn sót lại
+        try {
+          Process.runSync('rm', ['-rf', '${profileDir.path}/SingletonLock', '${profileDir.path}/SingletonSocket', '${profileDir.path}/SingletonCookie']);
+        } catch (_) {}
+      }
+    } catch (_) {}
+
     final isFirefox = executable.contains('firefox');
     List<String> args;
     if (isFirefox) {
@@ -637,6 +687,7 @@ class Socks5ProxyService extends ChangeNotifier {
         '--test-type',
         '--disable-features=Translate,TranslateUI',
         '--disable-translate',
+        '--ozone-platform-hint=auto',
         if (socks5Proxy != null) '--proxy-server=$socks5Proxy',
         '--user-data-dir=${profileDir.path}',
         if (Directory(extDir).existsSync()) '--load-extension=$extDir',
@@ -648,9 +699,27 @@ class Socks5ProxyService extends ChangeNotifier {
       ];
     }
 
-    final browserEnv = Map<String, String>.from(Platform.environment);
+    // Lọc sạch toàn bộ biến môi trường Snap và GTK rác nếu ứng dụng đang chạy dưới Snap / Flatpak
+    final browserEnv = <String, String>{};
+    Platform.environment.forEach((k, v) {
+      if (!k.startsWith('SNAP') &&
+          k != 'GTK_MODULES' &&
+          k != 'GIO_MODULE_DIR' &&
+          k != 'GIO_LAUNCHED_DESKTOP_FILE' &&
+          k != 'GIO_LAUNCHED_DESKTOP_FILE_PID' &&
+          k != 'XDG_ACTIVATION_TOKEN') {
+        browserEnv[k] = v;
+      }
+    });
+
     if (!browserEnv.containsKey('DISPLAY') || browserEnv['DISPLAY']!.isEmpty) {
       browserEnv['DISPLAY'] = ':0';
+    }
+    if (!browserEnv.containsKey('WAYLAND_DISPLAY') || browserEnv['WAYLAND_DISPLAY']!.isEmpty) {
+      final waylandSock = File('/run/user/1000/wayland-0');
+      if (waylandSock.existsSync()) {
+        browserEnv['WAYLAND_DISPLAY'] = 'wayland-0';
+      }
     }
     if (homeDir.isNotEmpty) {
       browserEnv['HOME'] = homeDir;
@@ -661,15 +730,35 @@ class Socks5ProxyService extends ChangeNotifier {
     browserEnv['LC_ALL'] = 'vi_VN.UTF-8';
 
     try {
-      final proc = await Process.start(
-        executable,
-        args,
-        environment: browserEnv,
-        mode: ProcessStartMode.detached,
-      );
+      Process? proc;
+      final hasSystemdRun = File('/usr/bin/systemd-run').existsSync();
+      if (hasSystemdRun) {
+        final unitName = 'agy-browser-$sanitizedIp-${DateTime.now().millisecondsSinceEpoch}';
+        final systemdArgs = [
+          '--user',
+          '--unit=$unitName',
+          executable,
+          ...args,
+        ];
+        await Process.run(
+          '/usr/bin/systemd-run',
+          systemdArgs,
+          environment: browserEnv,
+          includeParentEnvironment: false,
+        );
+      } else {
+        proc = await Process.start(
+          executable,
+          args,
+          environment: browserEnv,
+          includeParentEnvironment: false,
+          mode: ProcessStartMode.detached,
+        );
+      }
 
       if (session != null) {
         session.browserProcess = proc;
+        session.browserLaunchedAt = DateTime.now();
       } else {
         // Lưu lại session cục bộ không SSH để theo dõi trạng thái tiến trình
         final localSession = _activeSessions[ip] ?? Socks5Session(
@@ -680,6 +769,7 @@ class Socks5ProxyService extends ChangeNotifier {
           askpassFile: null,
         );
         localSession.browserProcess = proc;
+        localSession.browserLaunchedAt = DateTime.now();
         _activeSessions[ip] = localSession;
       }
 
@@ -2016,6 +2106,18 @@ for root, _, files in os.walk(target_dir):
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
+      final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+      final profileDir = Directory('$homeDir/.agent_mxh_auto/browser_profiles/ip_$sanitizedIp');
+      if (profileDir.existsSync()) {
+        for (final entity in profileDir.listSync(followLinks: false)) {
+          final baseName = entity.path.split('/').last;
+          if (baseName.startsWith('Singleton')) {
+            try {
+              entity.deleteSync();
+            } catch (_) {}
+          }
+        }
+      }
     } catch (_) {}
 
     // Nếu device cũng không còn chạy thì giải phóng hoàn toàn session SOCKS5
@@ -2321,4 +2423,118 @@ for root, _, files in os.walk(target_dir):
       return false;
     }
   }
+
+  /// Chức năng sửa chữa hệ thống (System Repair):
+  /// Quét toàn bộ thư mục browser_profiles, bứng sạch các file symlink SingletonLock, SingletonCookie,
+  /// SingletonSocket bị kẹt (broken/dangling symlinks), dọn dẹp các tiến trình zombie Chrome/Emulator
+  /// và đồng bộ lại các extension tiếng Việt.
+  Future<Map<String, dynamic>> repairBrowserProfilesAndEnvironment() async {
+    int removedLocks = 0;
+    int fixedProfiles = 0;
+    int killedZombies = 0;
+    final List<String> details = [];
+
+    try {
+      final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+      final profilesRoot = Directory('$homeDir/.agent_mxh_auto/browser_profiles');
+
+      // 1. Quét các thư mục profile
+      if (profilesRoot.existsSync()) {
+        final entities = profilesRoot.listSync(followLinks: false);
+        for (final entity in entities) {
+          if (entity is Directory) {
+            bool profileRepaired = false;
+            for (final subEntity in entity.listSync(followLinks: false)) {
+              final base = subEntity.path.split('/').last;
+              if (base.startsWith('Singleton')) {
+                try {
+                  final type = FileSystemEntity.typeSync(subEntity.path, followLinks: false);
+                  if (type == FileSystemEntityType.link) {
+                    Link(subEntity.path).deleteSync();
+                  } else if (type == FileSystemEntityType.file) {
+                    File(subEntity.path).deleteSync();
+                  } else if (type == FileSystemEntityType.directory) {
+                    Directory(subEntity.path).deleteSync(recursive: true);
+                  }
+                  removedLocks++;
+                  profileRepaired = true;
+                } catch (_) {
+                  try {
+                    subEntity.deleteSync();
+                    removedLocks++;
+                    profileRepaired = true;
+                  } catch (_) {}
+                }
+              }
+            }
+
+            try {
+              Process.runSync('rm', ['-rf', '${entity.path}/SingletonLock', '${entity.path}/SingletonSocket', '${entity.path}/SingletonCookie']);
+            } catch (_) {}
+
+            // Đồng bộ / phục hồi Extension tiếng Việt cho Meta/Facebook nếu thiếu
+            try {
+              _ensureFacebookVietnameseCookie(entity.path);
+            } catch (_) {}
+
+            if (profileRepaired) {
+              fixedProfiles++;
+              details.add('Đã mở khóa profile: ${entity.path.split("/").last}');
+            }
+          }
+        }
+      }
+
+      // 2. Dọn dẹp tiến trình zombie kẹt ngầm
+      try {
+        final procDir = Directory('/proc');
+        if (procDir.existsSync()) {
+          final myPid = pid;
+          for (final entity in procDir.listSync(followLinks: false)) {
+            final baseName = entity.path.split('/').last;
+            final p = int.tryParse(baseName);
+            if (p == null || p == myPid) continue;
+            try {
+              final cmdFile = File('${entity.path}/cmdline');
+              if (cmdFile.existsSync()) {
+                final bytes = cmdFile.readAsBytesSync();
+                final cmd = String.fromCharCodes(bytes);
+                if (cmd.contains('browser_profiles/ip_') && cmd.contains('chrome') && !cmd.contains('agent_mxh_auto')) {
+                  // Kiểm tra xem tiến trình này có còn thuộc session active trong app không
+                  bool isInSession = false;
+                  for (final s in _activeSessions.values) {
+                    if (s.browserProcess?.pid == p) {
+                      isInSession = true;
+                      break;
+                    }
+                  }
+                  if (!isInSession) {
+                    Process.killPid(p);
+                    killedZombies++;
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      notifyListeners();
+
+      return {
+        'success': true,
+        'removed_locks': removedLocks,
+        'fixed_profiles': fixedProfiles,
+        'killed_zombies': killedZombies,
+        'details': details,
+        'message': 'Đã sửa chữa thành công: giải phóng $removedLocks khóa lock, tối ưu $fixedProfiles profile, dọn dẹp $killedZombies tiến trình treo.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Lỗi khi chạy chức năng sửa chữa: $e',
+      };
+    }
+  }
 }
+

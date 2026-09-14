@@ -109,8 +109,13 @@ export async function GET(request: Request) {
 async function saveKeysToPayload(keysList: any[]): Promise<number> {
   if (!keysList || keysList.length === 0) return 0
   const payload = await getPayload({ config: configPromise })
+
+  const validKeyIds = new Set<string>()
+
   for (const item of keysList) {
     const keyId = item.KeyId || item.ResourceId || `key-${Date.now()}`
+    validKeyIds.add(keyId)
+
     const existing = await payload.find({
       collection: 'api-keys',
       where: { keyId: { equals: keyId } },
@@ -145,6 +150,26 @@ async function saveKeysToPayload(keysList: any[]): Promise<number> {
       })
     }
   }
+
+  // Tự động dọn dẹp các key đã bị xóa trên AstraFlow khỏi database Payload
+  try {
+    const allDbKeys = await payload.find({
+      collection: 'api-keys',
+      limit: 500,
+    })
+    for (const doc of allDbKeys.docs) {
+      if (doc.keyId && !validKeyIds.has(doc.keyId)) {
+        await payload.delete({
+          collection: 'api-keys',
+          id: doc.id,
+        })
+        console.log(`Đã tự động dọn dẹp key bị xóa trên AstraFlow: ${doc.keyId} (${doc.name})`)
+      }
+    }
+  } catch (cleanErr: any) {
+    console.error('Lỗi khi dọn dẹp key đã xóa:', cleanErr.message)
+  }
+
   return keysList.length
 }
 

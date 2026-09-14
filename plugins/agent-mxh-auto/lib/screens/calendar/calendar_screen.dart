@@ -351,7 +351,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         });
                                       },
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                        height: 28,
+                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                        alignment: Alignment.center,
                                         decoration: BoxDecoration(
                                           color: allInPageSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.cardBg,
                                           borderRadius: BorderRadius.circular(4),
@@ -362,6 +364,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.center,
                                           children: [
                                             Icon(
                                               allInPageSelected ? Icons.check_box_outlined : Icons.library_add_check_outlined,
@@ -373,6 +376,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                               allInPageSelected ? 'Bỏ chọn trang này' : 'Chọn trang này',
                                               style: TextStyle(
                                                 fontSize: 12,
+                                                height: 1.2,
                                                 fontWeight: FontWeight.bold,
                                                 color: allInPageSelected ? AppColors.primaryLight : AppColors.textBody,
                                               ),
@@ -395,7 +399,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     },
                                     borderRadius: BorderRadius.circular(4),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      height: 28,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      alignment: Alignment.center,
                                       decoration: BoxDecoration(
                                         color: AppColors.primary.withValues(alpha: 0.2),
                                         borderRadius: BorderRadius.circular(4),
@@ -403,6 +409,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.center,
                                         children: [
                                           Icon(
                                             selectedIps.length == totalPersonas ? Icons.clear_all_rounded : Icons.done_all_rounded,
@@ -414,6 +421,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                             selectedIps.length == totalPersonas ? 'Bỏ chọn hết' : 'Chọn tất cả',
                                             style: const TextStyle(
                                               fontSize: 12,
+                                              height: 1.2,
                                               fontWeight: FontWeight.bold,
                                               color: AppColors.primaryLight,
                                             ),

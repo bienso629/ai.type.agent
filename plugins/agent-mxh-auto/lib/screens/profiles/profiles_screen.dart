@@ -32,6 +32,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   Map<String, PersonaProfile> _personas = {};
   bool _isGeneratingPersonas = false;
+  bool _isRepairing = false;
   Set<String> _availableAvds = {};
 
   @override
@@ -1919,9 +1920,10 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       backgroundColor: AppColors.bgDark,
       body: Column(
         children: [
-          // 1. TOP TOOLBAR
+          // 1. TOP TOOLBAR (Height 66px - aligns with Left Sidebar Brand Header)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            height: 66,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             decoration: const BoxDecoration(
               color: AppColors.cardBg,
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
@@ -1931,7 +1933,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Row(
                         children: [
@@ -1943,19 +1945,73 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         selectedServer != null
                             ? 'Danh sách các IP trỏ vào VPS máy chủ [${selectedServer.name}] (${selectedServer.serverIp})'
                             : 'Danh sách các đầu IP đang trỏ vào hệ thống máy chủ SSH',
                         style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
 
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Nút "Sửa chữa Profiles / Browser" giúp user giải phóng lock và sửa lỗi treo Chrome
+                    OutlinedButton.icon(
+                      onPressed: _isRepairing
+                          ? null
+                          : () async {
+                              final currentContext = context;
+                              setState(() {
+                                _isRepairing = true;
+                              });
+                              AppToast.info(currentContext, 'Đang quét và sửa chữa môi trường profiles...');
+                              try {
+                                final res = await _socks5Service.repairBrowserProfilesAndEnvironment();
+                                if (currentContext.mounted) {
+                                  final msg = res['message']?.toString() ?? 'Đã hoàn tất sửa chữa profiles!';
+                                  AppToast.success(currentContext, msg);
+                                }
+                              } catch (e) {
+                                if (currentContext.mounted) {
+                                  AppToast.error(currentContext, 'Lỗi sửa chữa: $e');
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() {
+                                    _isRepairing = false;
+                                  });
+                                }
+                              }
+                            },
+                      icon: _isRepairing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
+                            )
+                          : const Icon(Icons.build_circle_outlined, size: 16, color: AppColors.accentCyan),
+                      label: Text(
+                        _isRepairing ? 'Đang sửa...' : 'Sửa lỗi Profile / Browser',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.accentCyan),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.accentCyan, width: 1.2),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        minimumSize: const Size(0, 36),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
                     // Nút "AI tạo profiles" thay thế tìm kiếm và quét lại IP
                     ElevatedButton.icon(
                       onPressed: _isGeneratingPersonas
@@ -1976,7 +2032,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         backgroundColor: AppColors.primary,
                         foregroundColor: const Color(0xFF070B14),
                         elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        minimumSize: const Size(0, 36),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(4),
                         ),
