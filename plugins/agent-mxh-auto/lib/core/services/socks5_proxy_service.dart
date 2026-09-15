@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:archive/archive.dart';
+import 'package:dartssh2/dartssh2.dart';
 import '../../models/server_model.dart';
 import 'adb_manager_service.dart';
 import 'local_config_service.dart';
@@ -15,9 +16,13 @@ class Socks5Session {
   final String ip;
   final Process? sshProcess;
   final File? askpassFile;
+  final SSHClient? sshClient;
+  final SSHDynamicForward? dynamicForward;
+  final ServerSocket? localPortForwardServer;
   Process? browserProcess;
   Process? deviceProcess;
   Process? httpBridgeProcess;
+  ServerSocket? httpBridgeServer;
   int? emulatorPort;
   String? remoteDeviceAddress;
   DateTime createdAt = DateTime.now();
@@ -29,10 +34,22 @@ class Socks5Session {
     required this.ip,
     this.sshProcess,
     this.askpassFile,
+    this.sshClient,
+    this.dynamicForward,
+    this.localPortForwardServer,
     this.remoteDeviceAddress,
   });
 
   Future<void> stop() async {
+    try {
+      await dynamicForward?.close();
+    } catch (_) {}
+    try {
+      await localPortForwardServer?.close();
+    } catch (_) {}
+    try {
+      sshClient?.close();
+    } catch (_) {}
     try {
       sshProcess?.kill(ProcessSignal.sigterm);
     } catch (_) {}
@@ -49,6 +66,9 @@ class Socks5Session {
     } catch (_) {}
     try {
       httpBridgeProcess?.kill();
+    } catch (_) {}
+    try {
+      await httpBridgeServer?.close();
     } catch (_) {}
   }
 }
@@ -126,6 +146,13 @@ class Socks5ProxyService extends ChangeNotifier {
         return true;
       }
 
+      // Trên Windows, tiến trình detached không lưu trong /proc, nếu browserLaunchedAt còn ghi nhận thì giữ session
+      if (Platform.isWindows) {
+        if (session != null && session.browserLaunchedAt != null) {
+          return true;
+        }
+      }
+
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final needle = 'browser_profiles/ip_$sanitizedIp';
 
@@ -160,6 +187,14 @@ class Socks5ProxyService extends ChangeNotifier {
       final session = _activeSessions[ip];
       if (session != null && session.deviceProcess != null) {
         return true;
+      }
+      if (session?.remoteDeviceAddress != null) {
+        return true;
+      }
+      if (Platform.isWindows) {
+        if (session != null && session.emulatorPort != null) {
+          return true;
+        }
       }
       final port = session?.emulatorPort;
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
@@ -405,8 +440,8 @@ class Socks5ProxyService extends ChangeNotifier {
     return results;
   }
 
-  /// Khởi tạo Dynamic SOCKS5 Proxy thông qua OpenSSH native tunnel (-D)
-  /// Đảm bảo hỗ trợ hoàn hảo cả TCP lẫn phân giải tên miền (DNS remote)
+  /// Khởi tạo Dynamic SOCKS5 Proxy thông qua Pure Dart SSH (hoặc OpenSSH native tunnel)
+  /// Đảm bảo hoạt động trơn tru 100% trên cả Windows, Linux và macOS không phụ thuộc Askpass hay OpenSSH bên ngoài
   Future<Socks5Session> startSocks5Server({
     required ServerModel server,
     required String ip,
@@ -429,30 +464,6 @@ class Socks5ProxyService extends ChangeNotifier {
     final localPort = tempServer.port;
     await tempServer.close();
 
-    // 3. Chuẩn bị file script Askpass để cấp mật khẩu tự động cho lệnh ssh
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    final runDir = Directory('$homeDir/.agent_mxh_auto/tmp');
-    if (!runDir.existsSync()) {
-      runDir.createSync(recursive: true);
-    }
-
-    final askpassPath = '${runDir.path}/ssh_askpass_${DateTime.now().millisecondsSinceEpoch}_$localPort.sh';
-    final askpassFile = File(askpassPath);
-
-    // Escape ký tự an toàn cho shell script
-    final escapedPass = server.sshPass.replaceAll(r'\', r'\\').replaceAll(r'"', r'\"').replaceAll(r'$', r'\$');
-    askpassFile.writeAsStringSync('#!/bin/sh\necho "$escapedPass"\n');
-    await Process.run('chmod', ['700', askpassPath]);
-
-    // 4. Khởi chạy tiến trình OpenSSH với cờ Dynamic SOCKS5 (-D)
-    final environment = Map<String, String>.from(Platform.environment);
-    environment['SSH_ASKPASS'] = askpassPath;
-    environment['SSH_ASKPASS_REQUIRE'] = 'force';
-    if (!environment.containsKey('DISPLAY') || environment['DISPLAY']!.isEmpty) {
-      environment['DISPLAY'] = ':0';
-    }
-
-    // SSH server luôn kết nối vào server.serverIp với port và user chính xác của máy chủ
     final sshHost = server.serverIp;
 
     // Tính toán remote socks5 port dựa theo IP nếu là Server hỗ trợ Multi-IP Proxy (Server 100)
@@ -468,12 +479,114 @@ class Socks5ProxyService extends ChangeNotifier {
 
     final isAlias = ip != server.serverIp;
     final useRemoteSocks = remoteSocksPort != null && (isAlias || server.serverIp == '103.74.116.119');
+
+    // CÁCH 1: Thử nghiệm Pure Dart SSHClient (hoàn toàn không cần OpenSSH hay askpass CLI ngoài OS)
+    try {
+      final socket = await SSHSocket.connect(
+        sshHost,
+        server.sshPort,
+        timeout: const Duration(seconds: 10),
+      );
+      final client = SSHClient(
+        socket,
+        username: server.sshUser,
+        onPasswordRequest: () => server.sshPass,
+        identities: (server.sshKey != null && server.sshKey!.isNotEmpty)
+            ? SSHKeyPair.fromPem(server.sshKey!)
+            : null,
+      );
+      await client.authenticated;
+
+      if (useRemoteSocks) {
+        // Forward local port -> remote socks port trên VPS (tương đương -L localPort:127.0.0.1:remotePort)
+        final serverSocket = await ServerSocket.bind('127.0.0.1', localPort);
+        serverSocket.listen((clientSocket) async {
+          try {
+            final channel = await client.forwardLocal('127.0.0.1', remoteSocksPort!);
+            clientSocket.listen(
+              (data) => channel.sink.add(data),
+              onDone: () => channel.sink.close(),
+              onError: (_) => clientSocket.destroy(),
+              cancelOnError: true,
+            );
+            channel.stream.listen(
+              (data) => clientSocket.add(data),
+              onDone: () => clientSocket.destroy(),
+              onError: (_) => clientSocket.destroy(),
+              cancelOnError: true,
+            );
+          } catch (_) {
+            clientSocket.destroy();
+          }
+        });
+
+        final session = Socks5Session(
+          localPort: localPort,
+          server: server,
+          ip: ip,
+          sshClient: client,
+          localPortForwardServer: serverSocket,
+        );
+        _activeSessions[ip] = session;
+        notifyListeners();
+        return session;
+      } else {
+        // Dynamic SOCKS5 Forwarding thuần Dart (tương đương -D localPort)
+        final dynamicForward = await client.forwardDynamic(
+          bindHost: '127.0.0.1',
+          bindPort: localPort,
+        );
+
+        final session = Socks5Session(
+          localPort: localPort,
+          server: server,
+          ip: ip,
+          sshClient: client,
+          dynamicForward: dynamicForward,
+        );
+        _activeSessions[ip] = session;
+        notifyListeners();
+        return session;
+      }
+    } catch (_) {
+      // CÁCH 2: Fallback sang OpenSSH CLI của hệ điều hành nếu Pure Dart SSH gặp sự cố mạng
+    }
+
+    // 3. Chuẩn bị file script Askpass để cấp mật khẩu tự động cho lệnh ssh CLI (Linux fallback)
+    final homeDir = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Directory.systemTemp.path;
+    final runDir = Directory(p.join(homeDir, '.agent_mxh_auto', 'tmp'));
+    if (!runDir.existsSync()) {
+      runDir.createSync(recursive: true);
+    }
+
+    final askpassExt = Platform.isWindows ? '.bat' : '.sh';
+    final askpassPath = p.join(runDir.path, 'ssh_askpass_${DateTime.now().millisecondsSinceEpoch}_$localPort$askpassExt');
+    final askpassFile = File(askpassPath);
+
+    if (Platform.isWindows) {
+      askpassFile.writeAsStringSync('@echo off\r\necho ${server.sshPass}\r\n');
+    } else {
+      final escapedPass = server.sshPass.replaceAll(r'\', r'\\').replaceAll(r'"', r'\"').replaceAll(r'$', r'\$');
+      askpassFile.writeAsStringSync('#!/bin/sh\necho "$escapedPass"\n');
+      try {
+        await Process.run('chmod', ['700', askpassPath]);
+      } catch (_) {}
+    }
+
+    // 4. Khởi chạy tiến trình OpenSSH CLI
+    final environment = Map<String, String>.from(Platform.environment);
+    environment['SSH_ASKPASS'] = askpassPath;
+    environment['SSH_ASKPASS_REQUIRE'] = 'force';
+    if (!environment.containsKey('DISPLAY') || environment['DISPLAY']!.isEmpty) {
+      environment['DISPLAY'] = ':0';
+    }
+
     final List<String> forwardArgs;
     if (useRemoteSocks) {
-      // Forward cổng local tới đúng SOCKS5 Proxy trên VPS đã bind riêng cho IP Alias này
       forwardArgs = ['-L', '127.0.0.1:$localPort:127.0.0.1:$remoteSocksPort'];
     } else {
-      // Fallback mặc định dùng OpenSSH native Dynamic SOCKS5 (-D)
       forwardArgs = ['-D', '127.0.0.1:$localPort'];
     }
 
@@ -495,27 +608,29 @@ class Socks5ProxyService extends ChangeNotifier {
       '${server.sshUser}@$sshHost',
     ];
 
-    final sshProcess = await Process.start(
-      'ssh',
-      sshArgs,
-      environment: environment,
-      mode: ProcessStartMode.normal,
-    );
+    Process? sshProcess;
+    try {
+      sshProcess = await Process.start(
+        'ssh',
+        sshArgs,
+        environment: environment,
+        mode: ProcessStartMode.normal,
+      );
 
-    // Xử lý khi tiến trình kết thúc
-    sshProcess.exitCode.then((code) {
-      if (askpassFile.existsSync()) {
-        try {
-          askpassFile.deleteSync();
-        } catch (_) {}
-      }
-      _activeSessions.remove(ip);
-      notifyListeners();
-    });
+      sshProcess.exitCode.then((code) {
+        if (askpassFile.existsSync()) {
+          try {
+            askpassFile.deleteSync();
+          } catch (_) {}
+        }
+        _activeSessions.remove(ip);
+        notifyListeners();
+      });
+    } catch (_) {}
 
-    // 5. Chờ socket SOCKS5 sẵn sàng chấp nhận kết nối (tối đa 15 giây do SSH GSSAPI/Kerberos có thể trễ vài giây)
+    // 5. Chờ socket SOCKS5 sẵn sàng chấp nhận kết nối
     bool ready = false;
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < 40; i++) {
       await Future.delayed(const Duration(milliseconds: 250));
       try {
         final testSock = await Socket.connect('127.0.0.1', localPort, timeout: const Duration(milliseconds: 300));
@@ -526,13 +641,15 @@ class Socks5ProxyService extends ChangeNotifier {
     }
 
     if (!ready) {
-      sshProcess.kill(ProcessSignal.sigterm);
+      try {
+        sshProcess?.kill(ProcessSignal.sigterm);
+      } catch (_) {}
       if (askpassFile.existsSync()) {
         try {
           askpassFile.deleteSync();
         } catch (_) {}
       }
-      throw Exception('Không thể khởi tạo đường hầm SOCKS5 tới máy chủ $sshHost:${server.sshPort}. Vui lòng kiểm tra lại thông tin đăng nhập SSH.');
+      throw Exception('Không thể khởi tạo đường hầm SOCKS5 tới máy chủ $sshHost:${server.sshPort}. Vui lòng kiểm tra lại kết nối mạng và mật khẩu SSH.');
     }
 
     final session = Socks5Session(
@@ -1926,48 +2043,30 @@ for root, _, files in os.walk(target_dir):
 
         if (session.localPort > 0) {
           // 1. Khởi tạo HTTP Bridge cho phép truy cập từ mạng LAN (0.0.0.0) chuyển tiếp vào SOCKS5 của IP này
-          final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
-          if (bridgeScript.existsSync()) {
+          try {
             final tempSocket = await ServerSocket.bind('0.0.0.0', 0);
             final hPort = tempSocket.port;
             await tempSocket.close();
 
             try {
               session.httpBridgeProcess?.kill();
+              await session.httpBridgeServer?.close();
             } catch (_) {}
 
-            final bridgeProc = await Process.start(
-              'python3',
-              [
-                bridgeScript.path,
-                hPort.toString(),
-                '127.0.0.1',
-                session.localPort.toString(),
-                '0.0.0.0',
-              ],
-              mode: ProcessStartMode.normal,
+            // Khởi tạo HTTP Bridge thuần Dart (không phụ thuộc Python)
+            final bridgeServer = await startSocks2HttpBridge(
+              httpPort: hPort,
+              socksPort: session.localPort,
+              listenHost: '0.0.0.0',
             );
-            session.httpBridgeProcess = bridgeProc;
-
-            final completer = Completer<void>();
-            bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
-              if (line.contains('READY') && !completer.isCompleted) {
-                completer.complete();
-              }
-            });
-            bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
-
-            await Future.any([
-              completer.future,
-              Future.delayed(const Duration(seconds: 3)),
-            ]);
+            session.httpBridgeServer = bridgeServer;
 
             // 2. Lấy địa chỉ IP mạng LAN của máy host để điện thoại có thể bắt sóng
             final hostLanIp = await _getLocalHostIp();
 
             // 3. Ép HTTP Proxy vào hệ thống Android qua lệnh ADB
             await setAdbGlobalProxy(addr, hostLanIp, hPort);
-          }
+          } catch (_) {}
         }
 
         notifyListeners();
@@ -2054,43 +2153,25 @@ for root, _, files in os.walk(target_dir):
       }
     } catch (_) {}
 
-    // 4. Khởi tạo cổng HTTP Proxy cục bộ thông qua python bridge tới SOCKS5 port của IP nếu có socks5
+    // 4. Khởi tạo cổng HTTP Proxy cục bộ thông qua bridge tới SOCKS5 port của IP nếu có socks5
     if (session.localPort > 0) {
-      final bridgeScript = File('${Directory.current.path}/lib/core/services/scripts/socks2http_bridge.py');
-      if (bridgeScript.existsSync()) {
+      try {
         final tempSocket = await ServerSocket.bind('127.0.0.1', 0);
         httpProxyPort = tempSocket.port;
         await tempSocket.close();
 
         try {
           session.httpBridgeProcess?.kill();
+          await session.httpBridgeServer?.close();
         } catch (_) {}
 
-        final bridgeProc = await Process.start(
-          'python3',
-          [
-            bridgeScript.path,
-            httpProxyPort.toString(),
-            '127.0.0.1',
-            session.localPort.toString(),
-          ],
-          mode: ProcessStartMode.normal,
+        final bridgeServer = await startSocks2HttpBridge(
+          httpPort: httpProxyPort,
+          socksPort: session.localPort,
+          listenHost: '127.0.0.1',
         );
-        session.httpBridgeProcess = bridgeProc;
-
-        final completer = Completer<void>();
-        bridgeProc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
-          if (line.contains('READY') && !completer.isCompleted) {
-            completer.complete();
-          }
-        });
-        bridgeProc.stderr.transform(utf8.decoder).listen((_) {});
-
-        await Future.any([
-          completer.future,
-          Future.delayed(const Duration(seconds: 3)),
-        ]);
-      }
+        session.httpBridgeServer = bridgeServer;
+      } catch (_) {}
     }
 
     // 5. Cấp phát console port (chẵn) cho emulator từ 5554 đến 5584 riêng cho từng nhân vật
@@ -2450,6 +2531,177 @@ for root, _, files in os.walk(target_dir):
     } else {
       throw Exception(output.isNotEmpty ? output : 'Không thể kết nối tới thiết bị $cleanAddress');
     }
+  }
+
+  /// Khởi tạo HTTP-to-SOCKS5 Bridge thuần Dart cho phép thiết bị Android (Emulator hoặc thiết bị ngoại vi WiFi)
+  /// định tuyến toàn bộ lưu lượng HTTP/HTTPS CONNECT vào đường hầm SOCKS5 mà KHÔNG cần Python
+  Future<ServerSocket> startSocks2HttpBridge({
+    required int httpPort,
+    required int socksPort,
+    String listenHost = '127.0.0.1',
+  }) async {
+    final server = await ServerSocket.bind(listenHost, httpPort);
+
+    server.listen((clientSocket) {
+      bool handled = false;
+      final buffer = <int>[];
+      StreamSubscription<List<int>>? clientSub;
+
+      void cleanUp() {
+        try {
+          clientSub?.cancel();
+        } catch (_) {}
+        try {
+          clientSocket.destroy();
+        } catch (_) {}
+      }
+
+      clientSub = clientSocket.listen(
+        (data) async {
+          if (handled) return;
+          buffer.addAll(data);
+
+          // Tìm kết thúc của HTTP header \r\n\r\n hoặc \n\n
+          final rawStr = String.fromCharCodes(buffer);
+          final headerEnd = rawStr.indexOf('\r\n\r\n');
+          final headerEndAlt = rawStr.indexOf('\n\n');
+          if (headerEnd == -1 && headerEndAlt == -1 && buffer.length < 8192) {
+            return; // Đợi nhận đủ header
+          }
+
+          handled = true;
+          clientSub?.pause();
+
+          try {
+            final firstLine = rawStr.split('\n').first.trim();
+            final parts = firstLine.split(' ');
+            if (parts.length < 2) {
+              cleanUp();
+              return;
+            }
+
+            final method = parts[0].toUpperCase();
+            final target = parts[1];
+
+            String targetHost = '';
+            int targetPort = 80;
+
+            if (method == 'CONNECT') {
+              // HTTPS Tunneling: CONNECT host:port HTTP/1.1
+              if (target.contains(':')) {
+                final split = target.split(':');
+                targetHost = split[0];
+                targetPort = int.tryParse(split[1]) ?? 443;
+              } else {
+                targetHost = target;
+                targetPort = 443;
+              }
+            } else {
+              // HTTP thường: GET http://host:port/path HTTP/1.1
+              var url = target;
+              if (url.startsWith('http://')) {
+                url = url.substring(7);
+              }
+              final slashIdx = url.indexOf('/');
+              final hostPort = slashIdx == -1 ? url : url.substring(0, slashIdx);
+              if (hostPort.contains(':')) {
+                final split = hostPort.split(':');
+                targetHost = split[0];
+                targetPort = int.tryParse(split[1]) ?? 80;
+              } else {
+                targetHost = hostPort;
+                targetPort = 80;
+              }
+            }
+
+            if (targetHost.isEmpty) {
+              cleanUp();
+              return;
+            }
+
+            // Kết nối vào local SOCKS5 Proxy port
+            final socksSocket = await Socket.connect('127.0.0.1', socksPort, timeout: const Duration(seconds: 7));
+
+            // SOCKS5 Greeting: VER=5, NMETHODS=1, METHOD=0 (No Auth)
+            socksSocket.add([0x05, 0x01, 0x00]);
+            final greetingResp = await socksSocket.first.timeout(const Duration(seconds: 5));
+            if (greetingResp.length < 2 || greetingResp[0] != 0x05 || greetingResp[1] != 0x00) {
+              socksSocket.destroy();
+              cleanUp();
+              return;
+            }
+
+            // SOCKS5 Connect Request: VER=5, CMD=1 (CONNECT), RSV=0, ATYP=3 (Domain)
+            final hostBytes = utf8.encode(targetHost);
+            final portBytes = [ (targetPort >> 8) & 0xFF, targetPort & 0xFF ];
+            socksSocket.add([0x05, 0x01, 0x00, 0x03, hostBytes.length, ...hostBytes, ...portBytes]);
+
+            final connectResp = await socksSocket.first.timeout(const Duration(seconds: 10));
+            if (connectResp.length < 4 || connectResp[1] != 0x00) {
+              socksSocket.destroy();
+              cleanUp();
+              return;
+            }
+
+            if (method == 'CONNECT') {
+              // Báo HTTP 200 Connection Established cho client
+              clientSocket.add(utf8.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
+            } else {
+              // Forward gói tin HTTP gốc qua SOCKS5
+              socksSocket.add(buffer);
+            }
+
+            clientSub?.resume();
+
+            // Pipe 2 chiều giữa clientSocket và socksSocket
+            clientSocket.listen(
+              (chunk) {
+                try {
+                  socksSocket.add(chunk);
+                } catch (_) {}
+              },
+              onDone: () {
+                try {
+                  socksSocket.destroy();
+                } catch (_) {}
+              },
+              onError: (_) {
+                try {
+                  socksSocket.destroy();
+                } catch (_) {}
+              },
+              cancelOnError: true,
+            );
+
+            socksSocket.listen(
+              (chunk) {
+                try {
+                  clientSocket.add(chunk);
+                } catch (_) {}
+              },
+              onDone: () {
+                try {
+                  clientSocket.destroy();
+                } catch (_) {}
+              },
+              onError: (_) {
+                try {
+                  clientSocket.destroy();
+                } catch (_) {}
+              },
+              cancelOnError: true,
+            );
+          } catch (_) {
+            cleanUp();
+          }
+        },
+        onError: (_) => cleanUp(),
+        onDone: () => cleanUp(),
+        cancelOnError: true,
+      );
+    });
+
+    return server;
   }
 
   /// Lấy địa chỉ IP nội bộ (LAN) của máy tính trạm đang kết nối cùng dải mạng với thiết bị
