@@ -2776,7 +2776,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     final currentP = _personas[item.ip] ?? persona;
                     final sanitizedIp = item.ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
                     final expectedPersonaAvd = 'Pixel_10_Pro_persona_$sanitizedIp';
-                    final bool hasLocalAvd = (currentP?.avdName != null && currentP!.avdName!.isNotEmpty && _availableAvds.contains(currentP.avdName)) ||
+                    final bool hasLocalAvd = (currentP?.avdName != null &&
+                            currentP!.avdName!.isNotEmpty &&
+                            (_availableAvds.contains(currentP.avdName) || currentP.avdName!.contains('persona_') || _availableAvds.isEmpty)) ||
                         _availableAvds.contains(expectedPersonaAvd);
                     final bool hasDeviceSetup = isExt || hasLocalAvd;
 

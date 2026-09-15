@@ -17,7 +17,9 @@ class PersonaService {
   bool _isLoaded = false;
 
   String get _storageFilePath {
-    final home = Platform.environment['HOME'] ?? '';
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Directory.systemTemp.path;
     final dir = p.join(home, '.agent_mxh_auto');
     if (!Directory(dir).existsSync()) {
       try {

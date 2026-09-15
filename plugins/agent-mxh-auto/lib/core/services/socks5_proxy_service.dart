@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:archive/archive.dart';
 import '../../models/server_model.dart';
 import 'adb_manager_service.dart';
 import 'local_config_service.dart';
@@ -939,18 +941,36 @@ except Exception:
     return launchPersonaBrowser(ip: ip, server: server, startUrl: startUrl);
   }
 
-  /// Tìm binary Android Emulator trên hệ thống
+  /// Thư mục chứa cấu hình và dữ liệu máy ảo Android AVD của người dùng
+  Directory getAndroidAvdDirectory() {
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Directory.systemTemp.path;
+    return Directory(p.join(home, '.android', 'avd'));
+  }
+
+  /// Tìm binary Android Emulator trên hệ thống (hỗ trợ Linux, macOS, Windows)
   String? _findAndroidEmulatorExecutable() {
-    final home = Platform.environment['HOME'] ?? '';
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Directory.systemTemp.path;
+    final exeExt = Platform.isWindows ? '.exe' : '';
+    final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+
     final candidates = [
-      '$home/Android/Sdk/emulator/emulator',
-      '$home/android-sdk/emulator/emulator',
+      if (Platform.isWindows && localAppData.isNotEmpty)
+        p.join(localAppData, 'Android', 'Sdk', 'emulator', 'emulator.exe'),
+      p.join(home, 'AppData', 'Local', 'Android', 'Sdk', 'emulator', 'emulator.exe'),
+      p.join(home, 'Android', 'Sdk', 'emulator', 'emulator$exeExt'),
+      p.join(home, 'android-sdk', 'emulator', 'emulator$exeExt'),
       '/opt/android-sdk/emulator/emulator',
+      if (Platform.isWindows) 'C:\\Android\\Sdk\\emulator\\emulator.exe',
+      if (Platform.isWindows) 'D:\\Android\\Sdk\\emulator\\emulator.exe',
       '/usr/bin/emulator',
       '/usr/local/bin/emulator',
-      '$home/.android-sdk/emulator/emulator',
-      '$home/.agent_mxh_auto/emulator/emulator',
-      '$home/.tadu_ai_agent/emulator/emulator',
+      p.join(home, '.android-sdk', 'emulator', 'emulator$exeExt'),
+      p.join(home, '.agent_mxh_auto', 'emulator', 'emulator$exeExt'),
+      p.join(home, '.tadu_ai_agent', 'emulator', 'emulator$exeExt'),
     ];
     for (final c in candidates) {
       if (File(c).existsSync()) {
@@ -961,29 +981,70 @@ except Exception:
   }
 
   /// Tìm danh sách AVD khả dụng trên máy tính
+  /// Quét đồng thời từ CLI emulator và quét trực tiếp file .ini trong thư mục ~/.android/avd/
   Future<List<String>> getAvailableAvds() async {
-    final emulatorBin = _findAndroidEmulatorExecutable();
-    if (emulatorBin == null) return [];
+    final avds = <String>{};
+
+    // 1. Quét trực tiếp thư mục ~/.android/avd/ (hoạt động 100% ngay cả khi chưa có Emulator CLI)
     try {
-      final res = await Process.run(emulatorBin, ['-list-avds']);
-      if (res.exitCode == 0) {
-        final lines = (res.stdout as String).split('\n');
-        return lines.map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+      final avdsDir = getAndroidAvdDirectory();
+      if (avdsDir.existsSync()) {
+        for (final entity in avdsDir.listSync()) {
+          final fileName = p.basename(entity.path);
+          if (fileName.endsWith('.ini')) {
+            final avdName = fileName.substring(0, fileName.length - 4);
+            // Kiểm tra thư mục .avd tương ứng có tồn tại không
+            final dataDir = Directory(p.join(avdsDir.path, '$avdName.avd'));
+            if (dataDir.existsSync()) {
+              avds.add(avdName);
+            }
+          }
+        }
       }
     } catch (_) {}
-    return [];
+
+    // 2. Bổ sung thêm từ emulator -list-avds nếu có binary emulator
+    final emulatorBin = _findAndroidEmulatorExecutable();
+    if (emulatorBin != null) {
+      try {
+        final res = await Process.run(emulatorBin, ['-list-avds']);
+        if (res.exitCode == 0) {
+          final lines = (res.stdout as String).split('\n');
+          for (final l in lines) {
+            final clean = l.trim();
+            if (clean.isNotEmpty) {
+              avds.add(clean);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    final result = avds.toList();
+    result.sort();
+    return result;
   }
 
   /// Tìm binary qemu-img đi kèm SDK Emulator
   String? _findQemuImgExecutable() {
-    final home = Platform.environment['HOME'] ?? '';
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Directory.systemTemp.path;
+    final exeExt = Platform.isWindows ? '.exe' : '';
+    final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+
     final candidates = [
-      '$home/Android/Sdk/emulator/qemu-img',
-      '$home/android-sdk/emulator/qemu-img',
+      if (Platform.isWindows && localAppData.isNotEmpty)
+        p.join(localAppData, 'Android', 'Sdk', 'emulator', 'qemu-img.exe'),
+      p.join(home, 'AppData', 'Local', 'Android', 'Sdk', 'emulator', 'qemu-img.exe'),
+      p.join(home, 'Android', 'Sdk', 'emulator', 'qemu-img$exeExt'),
+      p.join(home, 'android-sdk', 'emulator', 'qemu-img$exeExt'),
       '/opt/android-sdk/emulator/qemu-img',
+      if (Platform.isWindows) 'C:\\Android\\Sdk\\emulator\\qemu-img.exe',
+      if (Platform.isWindows) 'D:\\Android\\Sdk\\emulator\\qemu-img.exe',
       '/usr/bin/qemu-img',
       '/usr/local/bin/qemu-img',
-      '$home/.android-sdk/emulator/qemu-img',
+      p.join(home, '.android-sdk', 'emulator', 'qemu-img$exeExt'),
     ];
     for (final c in candidates) {
       if (File(c).existsSync()) {
@@ -1006,23 +1067,21 @@ except Exception:
     }
 
     // 2. Kiểm tra AVD trên máy local:
-    // Kiểm tra xem đã tồn tại AVD clone riêng cho IP này chưa (hoặc AVD được chỉ định cụ thể)
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-
-    final avdsDir = Directory('$homeDir/.android/avd');
+    final avdsDir = getAndroidAvdDirectory();
     if (!avdsDir.existsSync()) return false;
+
+    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
 
     // Quét xem có file .ini của persona hoặc clone của IP này không
     try {
       final entities = avdsDir.listSync();
       for (final e in entities) {
-        final name = e.path.split('/').last;
+        final name = p.basename(e.path);
         if (name.endsWith('.ini')) {
-          final iniName = name.replaceAll('.ini', '');
+          final iniName = name.substring(0, name.length - 4);
           if (iniName.contains('persona_$sanitizedIp')) {
             // Kiểm tra thư mục .avd tương ứng có tồn tại không
-            final avdFolder = Directory('$homeDir/.android/avd/$iniName.avd');
+            final avdFolder = Directory(p.join(avdsDir.path, '$iniName.avd'));
             if (avdFolder.existsSync()) return true;
           }
         }
@@ -1031,8 +1090,8 @@ except Exception:
 
     // Nếu nhân vật chỉ định đích danh avdName và avdName đó tồn tại
     if (avdName != null && avdName.trim().isNotEmpty) {
-      final specificIni = File('$homeDir/.android/avd/${avdName.trim()}.ini');
-      final specificDir = Directory('$homeDir/.android/avd/${avdName.trim()}.avd');
+      final specificIni = File(p.join(avdsDir.path, '${avdName.trim()}.ini'));
+      final specificDir = Directory(p.join(avdsDir.path, '${avdName.trim()}.avd'));
       if (specificIni.existsSync() && specificDir.existsSync()) {
         return true;
       }
@@ -1051,36 +1110,101 @@ except Exception:
       throw Exception('File backup không tồn tại: $archivePath');
     }
 
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    final avdsDir = Directory('$homeDir/.android/avd');
+    final avdsDir = getAndroidAvdDirectory();
     if (!avdsDir.existsSync()) {
       avdsDir.createSync(recursive: true);
     }
 
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     final targetAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
-    final targetAvdDir = Directory('${avdsDir.path}/$targetAvdName.avd');
-    final targetIniFile = File('${avdsDir.path}/$targetAvdName.ini');
+    final targetAvdDir = Directory(p.join(avdsDir.path, '$targetAvdName.avd'));
+    final targetIniFile = File(p.join(avdsDir.path, '$targetAvdName.ini'));
 
-    // 1. Tạo thư mục tạm trực tiếp trong ~/.android/avd/ (nằm trên ổ cứng chính thay vì /tmp RAM disk)
-    final tempExtractDir = Directory('${avdsDir.path}/.import_temp_${DateTime.now().millisecondsSinceEpoch}');
+    // 1. Tạo thư mục tạm trực tiếp trong ~/.android/avd/
+    final tempExtractDir = Directory(p.join(avdsDir.path, '.import_temp_${DateTime.now().millisecondsSinceEpoch}'));
     tempExtractDir.createSync(recursive: true);
 
     try {
-      // 2. Giải nén file backup bằng lệnh tar/unzip
-      ProcessResult res;
-      if (archivePath.endsWith('.tar.gz') || archivePath.endsWith('.tgz')) {
-        res = await Process.run('tar', ['-zxf', archivePath, '-C', tempExtractDir.path]);
-      } else if (archivePath.endsWith('.tar')) {
-        res = await Process.run('tar', ['-xf', archivePath, '-C', tempExtractDir.path]);
-      } else if (archivePath.endsWith('.zip')) {
-        res = await Process.run('unzip', ['-o', archivePath, '-d', tempExtractDir.path]);
+      // 2. Giải nén file backup: hỗ trợ cả tar, tar.gz, tgz, zip trên cả Windows và Linux
+      bool extractSuccess = false;
+      String? extractErr;
+
+      final lowerPath = archivePath.toLowerCase();
+      if (lowerPath.endsWith('.tar.gz') || lowerPath.endsWith('.tgz') || lowerPath.endsWith('.tar')) {
+        // Thử giải nén bằng tar (Windows 10/11 và Linux đều có sẵn tar)
+        try {
+          final tarFlags = (lowerPath.endsWith('.tar.gz') || lowerPath.endsWith('.tgz')) ? '-zxf' : '-xf';
+          final res = await Process.run('tar', [tarFlags, archivePath, '-C', tempExtractDir.path]);
+          if (res.exitCode == 0) {
+            extractSuccess = true;
+          } else {
+            extractErr = res.stderr?.toString();
+          }
+        } catch (e) {
+          extractErr = e.toString();
+        }
+
+        // Fallback thư viện archive thuần Dart nếu lệnh tar không thành công
+        if (!extractSuccess) {
+          try {
+            final bytes = file.readAsBytesSync();
+            final decompressed = (lowerPath.endsWith('.tar.gz') || lowerPath.endsWith('.tgz'))
+                ? GZipDecoder().decodeBytes(bytes)
+                : bytes;
+            final archive = TarDecoder().decodeBytes(decompressed);
+            for (final entry in archive) {
+              final outPath = p.join(tempExtractDir.path, entry.name);
+              if (entry.isFile) {
+                final outFile = File(outPath);
+                outFile.parent.createSync(recursive: true);
+                outFile.writeAsBytesSync(entry.content as List<int>);
+              } else {
+                Directory(outPath).createSync(recursive: true);
+              }
+            }
+            extractSuccess = true;
+          } catch (e) {
+            extractErr = 'Archive decode lỗi: $e';
+          }
+        }
+      } else if (lowerPath.endsWith('.zip')) {
+        // Giải nén file zip: thử unzip (Linux) hoặc tar (Windows tar hỗ trợ zip) hoặc PowerShell
+        try {
+          if (!Platform.isWindows) {
+            final res = await Process.run('unzip', ['-o', archivePath, '-d', tempExtractDir.path]);
+            if (res.exitCode == 0) extractSuccess = true;
+          } else {
+            final res = await Process.run('tar', ['-xf', archivePath, '-C', tempExtractDir.path]);
+            if (res.exitCode == 0) extractSuccess = true;
+          }
+        } catch (_) {}
+
+        // Fallback archive Dart thuần nếu chưa giải nén được
+        if (!extractSuccess) {
+          try {
+            final bytes = file.readAsBytesSync();
+            final archive = ZipDecoder().decodeBytes(bytes);
+            for (final entry in archive) {
+              final outPath = p.join(tempExtractDir.path, entry.name);
+              if (entry.isFile) {
+                final outFile = File(outPath);
+                outFile.parent.createSync(recursive: true);
+                outFile.writeAsBytesSync(entry.content as List<int>);
+              } else {
+                Directory(outPath).createSync(recursive: true);
+              }
+            }
+            extractSuccess = true;
+          } catch (e) {
+            extractErr = e.toString();
+          }
+        }
       } else {
         throw Exception('Định dạng file không được hỗ trợ (chỉ hỗ trợ .tar.gz, .tgz, .tar, .zip)');
       }
 
-      if (res.exitCode != 0) {
-        throw Exception('Lỗi khi giải nén backup: ${res.stderr}');
+      if (!extractSuccess) {
+        throw Exception('Lỗi khi giải nén backup: $extractErr');
       }
 
       // 3. Quét tìm thư mục .avd trong dữ liệu giải nén
@@ -1114,16 +1238,12 @@ except Exception:
         } catch (_) {}
       }
 
-      // Đổi tên hoặc di chuyển trực tiếp (move/rename cực nhanh vì cùng mount point)
       try {
         extractedAvdDir!.renameSync(targetAvdDir.path);
       } catch (_) {
-        // Fallback sang copy nếu rename khác mount point
+        // Sao chép đệ quy bằng Dart thuần (hoạt động 100% không phụ thuộc lệnh cp)
         targetAvdDir.createSync(recursive: true);
-        final cpRes = await Process.run('cp', ['-aT', extractedAvdDir!.path, targetAvdDir.path]);
-        if (cpRes.exitCode != 0) {
-          throw Exception('Lỗi khi sao chép dữ liệu AVD: ${cpRes.stderr}');
-        }
+        _copyDirectoryRecursiveSync(extractedAvdDir!, targetAvdDir);
       }
 
       // 5. Cập nhật hoặc tạo file .ini chuẩn chỉ đường dẫn path tới thư mục máy ảo vừa import
@@ -1139,13 +1259,12 @@ except Exception:
       if (qemuImgBin != null) {
         final qcowFiles = ['userdata-qemu.img.qcow2', 'cache.img.qcow2', 'encryptionkey.img.qcow2'];
         for (final qf in qcowFiles) {
-          final file = File('${targetAvdDir.path}/$qf');
+          final file = File(p.join(targetAvdDir.path, qf));
           if (file.existsSync()) {
             final baseRaw = qf.replaceAll('.qcow2', '');
-            final baseRawFile = File('${targetAvdDir.path}/$baseRaw');
+            final baseRawFile = File(p.join(targetAvdDir.path, baseRaw));
             if (baseRawFile.existsSync()) {
               try {
-                // Rebase backing file thành tên tương đối trong cùng thư mục
                 await Process.run(qemuImgBin, [
                   'rebase',
                   '-u',
@@ -1156,7 +1275,6 @@ except Exception:
               } catch (_) {}
             }
 
-            // Nếu qcow2 có snapshot default_boot, rollback về snapshot đó
             if (qf == 'userdata-qemu.img.qcow2') {
               try {
                 await Process.run(qemuImgBin, [
@@ -1171,27 +1289,18 @@ except Exception:
         }
       }
 
-      // 7. Đồng bộ và sửa tên AVD trong toàn bộ file cấu hình phần cứng và snapshot
+      // 7. Đồng bộ và sửa tên AVD trong toàn bộ file cấu hình text thuần bằng Dart
       try {
+        _patchPersonaNameInAvdDir(targetAvdDir, targetAvdName);
+      } catch (_) {}
+
+      // 8. Nếu hệ thống có python3, hỗ trợ thêm vá file nhị phân .pb
+      try {
+        final pythonBin = Platform.isWindows ? 'python' : 'python3';
         final patchScript = '''
 import os, re
-
 target_avd = "$targetAvdName"
-target_dir = "${targetAvdDir.path}"
-
-def patch_text_file(fpath):
-    if not os.path.exists(fpath): return
-    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-        content = f.read()
-    new_content = re.sub(r'Pixel_10_Pro_persona_[a-zA-Z0-9_-]+', target_avd, content)
-    with open(fpath, "w", encoding="utf-8") as f:
-        f.write(new_content)
-
-for root, _, files in os.walk(target_dir):
-    for fn in files:
-        if fn.endswith(".ini") or fn == "AVD.conf" or fn == "emu-launch-params.txt":
-            patch_text_file(os.path.join(root, fn))
-
+target_dir = r"${targetAvdDir.path}"
 def encode_varint(val):
     out = []
     while val > 0x7f:
@@ -1260,10 +1369,10 @@ for root, _, files in os.walk(target_dir):
             except Exception:
                 pass
 ''';
-        await Process.run('python3', ['-c', patchScript]);
+        await Process.run(pythonBin, ['-c', patchScript]);
       } catch (_) {}
 
-      // 8. Xóa các lock file và file trạng thái tạm thời cũ
+      // 9. Xóa các lock file và file trạng thái tạm thời cũ
       try {
         for (final f in targetAvdDir.listSync(recursive: true)) {
           if (f.path.endsWith('.lock') || f.path.endsWith('multiinstance.lock')) {
@@ -1285,22 +1394,58 @@ for root, _, files in os.walk(target_dir):
     }
   }
 
+  /// Hàm hỗ trợ sao chép đệ quy thư mục bằng Dart thuần (chạy độc lập nền tảng)
+  void _copyDirectoryRecursiveSync(Directory src, Directory dst) {
+    if (!dst.existsSync()) {
+      dst.createSync(recursive: true);
+    }
+    for (final entity in src.listSync(recursive: false)) {
+      final newPath = p.join(dst.path, p.basename(entity.path));
+      if (entity is Directory) {
+        _copyDirectoryRecursiveSync(entity, Directory(newPath));
+      } else if (entity is File) {
+        entity.copySync(newPath);
+      }
+    }
+  }
+
+  /// Vá chuỗi tên AVD trong các file cấu hình text (.ini, AVD.conf, txt) bằng Dart thuần
+  void _patchPersonaNameInAvdDir(Directory dir, String targetAvd) {
+    for (final entity in dir.listSync(recursive: true)) {
+      if (entity is File) {
+        final name = p.basename(entity.path);
+        if (name.endsWith('.ini') || name == 'AVD.conf' || name == 'emu-launch-params.txt') {
+          try {
+            final content = entity.readAsStringSync();
+            final updated = content.replaceAll(RegExp(r'Pixel_10_Pro_persona_[a-zA-Z0-9_-]+'), targetAvd);
+            if (updated != content) {
+              entity.writeAsStringSync(updated);
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
   /// Backup thiết bị máy ảo AVD thành file nén .tar.gz lưu trữ vào thư mục đích
   Future<String> backupPersonaDeviceAvd({
     required String avdName,
     String? destinationPath,
     void Function(String message)? onProgress,
   }) async {
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-    final avdDir = Directory('$homeDir/.android/avd/$avdName.avd');
-    final iniFile = File('$homeDir/.android/avd/$avdName.ini');
+    final avdsDir = getAndroidAvdDirectory();
+    final avdDir = Directory(p.join(avdsDir.path, '$avdName.avd'));
+    final iniFile = File(p.join(avdsDir.path, '$avdName.ini'));
 
     if (!avdDir.existsSync()) {
       throw Exception('Thư mục máy ảo $avdName không tồn tại trên hệ thống.');
     }
 
     // 1. Đảm bảo thư mục lưu backup tồn tại (mặc định là ~/Documents/devices)
-    final resolvedDefaultDir = Directory('$homeDir/Documents/devices').path;
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Directory.systemTemp.path;
+    final resolvedDefaultDir = Directory(p.join(home, 'Documents', 'devices')).path;
     final backupDir = Directory(destinationPath ?? resolvedDefaultDir);
     if (!backupDir.existsSync()) {
       backupDir.createSync(recursive: true);
@@ -1322,7 +1467,7 @@ for root, _, files in os.walk(target_dir):
     }
 
     final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[^0-9]'), '_');
-    final targetTarFile = File('${backupDir.path}/${avdName}_backup_$timestamp.tar.gz');
+    final targetTarFile = File(p.join(backupDir.path, '${avdName}_backup_$timestamp.tar.gz'));
 
     // 3. Dọn dẹp các file lock tạm thời trước khi đóng gói
     try {
@@ -1337,8 +1482,7 @@ for root, _, files in os.walk(target_dir):
 
     onProgress?.call('Đang nén dữ liệu máy ảo $avdName...');
 
-    // 4. Thực thi lệnh tar nén thư mục .avd và file .ini (loại trừ các file socket và lock)
-    final avdParent = Directory('$homeDir/.android/avd');
+    // 4. Thực thi nén thư mục .avd và file .ini
     final args = [
       '-czf',
       targetTarFile.path,
@@ -1347,7 +1491,7 @@ for root, _, files in os.walk(target_dir):
       '--exclude=modem_simulator/*.sock',
       '--exclude=modem_simulator/modem_nvram.json',
       '-C',
-      avdParent.path,
+      avdsDir.path,
       '$avdName.avd',
       if (iniFile.existsSync()) '$avdName.ini',
     ];
@@ -1367,10 +1511,10 @@ for root, _, files in os.walk(target_dir):
     String? baseAvd,
     void Function(String message)? onProgress,
   }) async {
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    final avdsDir = getAndroidAvdDirectory();
     String targetBase = baseAvd ?? '';
 
-    if (targetBase.isEmpty || !Directory('$homeDir/.android/avd/$targetBase.avd').existsSync()) {
+    if (targetBase.isEmpty || !Directory(p.join(avdsDir.path, '$targetBase.avd')).existsSync()) {
       final avds = await getAvailableAvds();
       if (avds.isEmpty) {
         throw Exception('Hệ thống chưa có Android AVD nào để làm mẫu nhân bản. Vui lòng import hoặc tạo một máy ảo trên Android Studio trước.');
@@ -1380,14 +1524,14 @@ for root, _, files in os.walk(target_dir):
       int maxScore = -1;
 
       for (final a in avds) {
-        final dir = Directory('$homeDir/.android/avd/$a.avd');
+        final dir = Directory(p.join(avdsDir.path, '$a.avd'));
         if (!dir.existsSync()) continue;
         int score = 0;
-        final snapFile = File('${dir.path}/snapshots/default_boot/ram.bin');
+        final snapFile = File(p.join(dir.path, 'snapshots', 'default_boot', 'ram.bin'));
         if (snapFile.existsSync() && snapFile.lengthSync() > 1000000) {
           score += 100;
         }
-        final qcowFile = File('${dir.path}/userdata-qemu.img.qcow2');
+        final qcowFile = File(p.join(dir.path, 'userdata-qemu.img.qcow2'));
         if (qcowFile.existsSync()) {
           score += (qcowFile.lengthSync() / (1024 * 1024 * 100)).toInt(); // cộng điểm theo dung lượng
         }
@@ -1439,27 +1583,31 @@ for root, _, files in os.walk(target_dir):
 
     // 3. Quét và dừng mọi tiến trình emulator / qemu đang chạy gắn với avdName hoặc IP này
     try {
-      await Process.run("pkill", ["-f", avdName]);
-      await Process.run("pkill", ["-9", "-f", avdName]);
-      if (dedicatedPersonaAvd.isNotEmpty) {
-        await Process.run("pkill", ["-f", dedicatedPersonaAvd]);
-        await Process.run("pkill", ["-9", "-f", dedicatedPersonaAvd]);
-      }
-      if (sanitizedIp.isNotEmpty) {
-        await Process.run("pkill", ["-f", "device_profiles/ip_$sanitizedIp"]);
-        await Process.run("pkill", ["-9", "-f", "device_profiles/ip_$sanitizedIp"]);
+      if (!Platform.isWindows) {
+        await Process.run("pkill", ["-f", avdName]);
+        await Process.run("pkill", ["-9", "-f", avdName]);
+        if (dedicatedPersonaAvd.isNotEmpty) {
+          await Process.run("pkill", ["-f", dedicatedPersonaAvd]);
+          await Process.run("pkill", ["-9", "-f", dedicatedPersonaAvd]);
+        }
+        if (sanitizedIp.isNotEmpty) {
+          await Process.run("pkill", ["-f", "device_profiles/ip_$sanitizedIp"]);
+          await Process.run("pkill", ["-9", "-f", "device_profiles/ip_$sanitizedIp"]);
+        }
+      } else {
+        await Process.run("taskkill", ["/F", "/IM", "emulator.exe"]);
+        await Process.run("taskkill", ["/F", "/IM", "qemu-system-x86_64.exe"]);
       }
     } catch (_) {}
 
-    // 4. Đợi để hệ điều hành Linux giải phóng hoàn toàn file lock
     await Future.delayed(const Duration(milliseconds: 500));
 
-    final homeDir = Platform.environment["HOME"] ?? Directory.systemTemp.path;
+    final avdsDir = getAndroidAvdDirectory();
     bool deleted = false;
 
     // 5. Xóa AVD được chỉ định
-    final avdDir = Directory("$homeDir/.android/avd/$avdName.avd");
-    final iniFile = File("$homeDir/.android/avd/$avdName.ini");
+    final avdDir = Directory(p.join(avdsDir.path, '$avdName.avd'));
+    final iniFile = File(p.join(avdsDir.path, '$avdName.ini'));
     try {
       if (avdDir.existsSync()) {
         avdDir.deleteSync(recursive: true);
@@ -1475,8 +1623,8 @@ for root, _, files in os.walk(target_dir):
 
     // 6. Xóa cả dedicated persona clone AVD nếu có
     if (dedicatedPersonaAvd.isNotEmpty && dedicatedPersonaAvd != avdName) {
-      final pDir = Directory("$homeDir/.android/avd/$dedicatedPersonaAvd.avd");
-      final pIni = File("$homeDir/.android/avd/$dedicatedPersonaAvd.ini");
+      final pDir = Directory(p.join(avdsDir.path, '$dedicatedPersonaAvd.avd'));
+      final pIni = File(p.join(avdsDir.path, '$dedicatedPersonaAvd.ini'));
       try {
         if (pDir.existsSync()) {
           pDir.deleteSync(recursive: true);
@@ -1502,13 +1650,13 @@ for root, _, files in os.walk(target_dir):
     String ip, {
     void Function(String message)? onProgress,
   }) async {
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    final avdsDir = getAndroidAvdDirectory();
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     final cloneAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
 
-    final baseAvdDir = Directory('$homeDir/.android/avd/$baseAvd.avd');
-    final cloneAvdDir = Directory('$homeDir/.android/avd/$cloneAvdName.avd');
-    final cloneIniFile = File('$homeDir/.android/avd/$cloneAvdName.ini');
+    final baseAvdDir = Directory(p.join(avdsDir.path, '$baseAvd.avd'));
+    final cloneAvdDir = Directory(p.join(avdsDir.path, '$cloneAvdName.avd'));
+    final cloneIniFile = File(p.join(avdsDir.path, '$cloneAvdName.ini'));
 
     // 1. Tạo thư mục AVD clone nếu chưa có
     if (!cloneAvdDir.existsSync()) {
@@ -1539,8 +1687,8 @@ for root, _, files in os.walk(target_dir):
         'encryptionkey.img',
       ];
       for (final cfg in configFiles) {
-        final src = File('${baseAvdDir.path}/$cfg');
-        final dst = File('${cloneAvdDir.path}/$cfg');
+        final src = File(p.join(baseAvdDir.path, cfg));
+        final dst = File(p.join(cloneAvdDir.path, cfg));
         if (src.existsSync() && !dst.existsSync()) {
           try {
             src.copySync(dst.path);
@@ -1549,17 +1697,17 @@ for root, _, files in os.walk(target_dir):
       }
 
       // Sao chép thư mục data và bootcompleted.ini nếu base có
-      final baseDataDir = Directory('${baseAvdDir.path}/data');
-      final cloneDataDir = Directory('${cloneAvdDir.path}/data');
+      final baseDataDir = Directory(p.join(baseAvdDir.path, 'data'));
+      final cloneDataDir = Directory(p.join(cloneAvdDir.path, 'data'));
       if (baseDataDir.existsSync() && !cloneDataDir.existsSync()) {
         try {
-          await Process.run('cp', ['-a', baseDataDir.path, cloneDataDir.path]);
+          _copyDirectoryRecursiveSync(baseDataDir, cloneDataDir);
         } catch (_) {}
       }
-      final baseBootCompleted = File('${baseAvdDir.path}/bootcompleted.ini');
+      final baseBootCompleted = File(p.join(baseAvdDir.path, 'bootcompleted.ini'));
       if (baseBootCompleted.existsSync()) {
         try {
-          baseBootCompleted.copySync('${cloneAvdDir.path}/bootcompleted.ini');
+          baseBootCompleted.copySync(p.join(cloneAvdDir.path, 'bootcompleted.ini'));
         } catch (_) {}
       }
 
@@ -1569,19 +1717,18 @@ for root, _, files in os.walk(target_dir):
       final qcowFiles = ['userdata-qemu.img.qcow2', 'cache.img.qcow2', 'encryptionkey.img.qcow2'];
 
       for (final qf in qcowFiles) {
-        final baseQcow = File('${baseAvdDir.path}/$qf');
-        final cloneQcow = File('${cloneAvdDir.path}/$qf');
+        final baseQcow = File(p.join(baseAvdDir.path, qf));
+        final cloneQcow = File(p.join(cloneAvdDir.path, qf));
         if (baseQcow.existsSync() && !cloneQcow.existsSync()) {
           try {
-            // Sao chép file qcow2 từ base
-            await Process.run('cp', ['-a', baseQcow.path, cloneQcow.path]);
+            baseQcow.copySync(cloneQcow.path);
           } catch (_) {}
         }
 
         // Rebase backing file thành tên tương đối trong cùng thư mục của máy ảo mới
         if (cloneQcow.existsSync() && qemuImgBin != null) {
           final baseRaw = qf.replaceAll('.qcow2', '');
-          final cloneRawFile = File('${cloneAvdDir.path}/$baseRaw');
+          final cloneRawFile = File(p.join(cloneAvdDir.path, baseRaw));
           if (cloneRawFile.existsSync()) {
             try {
               await Process.run(qemuImgBin, [
@@ -1597,37 +1744,28 @@ for root, _, files in os.walk(target_dir):
       }
 
       // 5. Sao chép thư mục snapshots (chứa default_boot) từ base sang máy ảo clone
-      final baseSnapshotsDir = Directory('${baseAvdDir.path}/snapshots');
-      final cloneSnapshotsDir = Directory('${cloneAvdDir.path}/snapshots');
+      final baseSnapshotsDir = Directory(p.join(baseAvdDir.path, 'snapshots'));
+      final cloneSnapshotsDir = Directory(p.join(cloneAvdDir.path, 'snapshots'));
       if (baseSnapshotsDir.existsSync() && !cloneSnapshotsDir.existsSync()) {
         onProgress?.call('Đang sao chép snapshot khởi động siêu tốc...');
         try {
-          await Process.run('cp', ['-aT', baseSnapshotsDir.path, cloneSnapshotsDir.path]);
+          _copyDirectoryRecursiveSync(baseSnapshotsDir, cloneSnapshotsDir);
         } catch (_) {}
       }
 
-      // 6. Vá toàn bộ cấu hình text và nhị phân .pb trỏ về tên máy ảo clone mới
+      // 6. Vá toàn bộ cấu hình text bằng Dart thuần
       onProgress?.call('Đang cấu hình định danh thiết bị...');
       try {
+        _patchPersonaNameInAvdDir(cloneAvdDir, cloneAvdName);
+      } catch (_) {}
+
+      // Vá thêm .pb nếu có python
+      try {
+        final pythonBin = Platform.isWindows ? 'python' : 'python3';
         final patchScript = '''
 import os, re
-
 target_avd = "$cloneAvdName"
-target_dir = "${cloneAvdDir.path}"
-
-def patch_text_file(fpath):
-    if not os.path.exists(fpath): return
-    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-        content = f.read()
-    new_content = re.sub(r'Pixel_10_Pro_persona_[a-zA-Z0-9_-]+', target_avd, content)
-    with open(fpath, "w", encoding="utf-8") as f:
-        f.write(new_content)
-
-for root, _, files in os.walk(target_dir):
-    for fn in files:
-        if fn.endswith(".ini") or fn == "AVD.conf" or fn == "emu-launch-params.txt":
-            patch_text_file(os.path.join(root, fn))
-
+target_dir = r"${cloneAvdDir.path}"
 def encode_varint(val):
     out = []
     while val > 0x7f:
@@ -1696,13 +1834,13 @@ for root, _, files in os.walk(target_dir):
             except Exception:
                 pass
 ''';
-        await Process.run('python3', ['-c', patchScript]);
+        await Process.run(pythonBin, ['-c', patchScript]);
       } catch (_) {}
     }
 
     // 7. Dọn dẹp lock file cũ và file sinh tự động không tương thích
     try {
-      final hwIni = File('${cloneAvdDir.path}/hardware-qemu.ini');
+      final hwIni = File(p.join(cloneAvdDir.path, 'hardware-qemu.ini'));
       if (hwIni.existsSync()) {
         try {
           hwIni.deleteSync();
@@ -1715,12 +1853,10 @@ for root, _, files in os.walk(target_dir):
           } catch (_) {}
         }
       }
-      // Đánh dấu cần dọn dẹp app của máy mẫu (Facebook, TikTok) khi khởi động lần đầu
-      final cleanFlag = File('${cloneAvdDir.path}/.clean_needed');
+      final cleanFlag = File(p.join(cloneAvdDir.path, '.clean_needed'));
       cleanFlag.writeAsStringSync('1');
 
-      // Đặt trước tên nhân vật vào config.ini của máy ảo vừa clone
-      final cfgFile = File('${cloneAvdDir.path}/config.ini');
+      final cfgFile = File(p.join(cloneAvdDir.path, 'config.ini'));
       if (cfgFile.existsSync()) {
         final persona = PersonaService().getPersona(ip);
         final title = (persona != null && persona.name.trim().isNotEmpty) ? persona.name.trim() : ip;
@@ -1849,7 +1985,7 @@ for root, _, files in os.walk(target_dir):
     }
 
     // 2. Xác định tên AVD để khởi chạy
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    final avdsDir = getAndroidAvdDirectory();
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     final dedicatedPersonaAvd = 'Pixel_10_Pro_persona_$sanitizedIp';
 
@@ -1857,14 +1993,14 @@ for root, _, files in os.walk(target_dir):
     // Kiểm tra xem persona đã có AVD riêng (từ Import hoặc Clone trước đó) hay chưa
     if (avdName != null && avdName.trim().isNotEmpty) {
       final requestedAvd = avdName.trim();
-      final requestedDir = Directory('$homeDir/.android/avd/$requestedAvd.avd');
+      final requestedDir = Directory(p.join(avdsDir.path, '$requestedAvd.avd'));
       if (requestedDir.existsSync()) {
         actualAvd = requestedAvd;
       }
     }
 
     if (actualAvd.isEmpty) {
-      final dedicatedDir = Directory('$homeDir/.android/avd/$dedicatedPersonaAvd.avd');
+      final dedicatedDir = Directory(p.join(avdsDir.path, '$dedicatedPersonaAvd.avd'));
       if (dedicatedDir.existsSync()) {
         actualAvd = dedicatedPersonaAvd;
       }
@@ -1888,7 +2024,7 @@ for root, _, files in os.walk(target_dir):
         }
       }
 
-      final avdConfigFile = File('$homeDir/.android/avd/$actualAvd.avd/config.ini');
+      final avdConfigFile = File(p.join(avdsDir.path, '$actualAvd.avd', 'config.ini'));
       if (avdConfigFile.existsSync()) {
         var cfgContent = avdConfigFile.readAsStringSync();
         if (cfgContent.contains('avd.ini.displayname=')) {
@@ -1903,7 +2039,7 @@ for root, _, files in os.walk(target_dir):
       }
 
       // Ghi cả vào file $actualAvd.ini ở thư mục cha ~/.android/avd/ vì Android Emulator đọc displayname từ file này để đặt Window Title
-      final outerIniFile = File('$homeDir/.android/avd/$actualAvd.ini');
+      final outerIniFile = File(p.join(avdsDir.path, '$actualAvd.ini'));
       if (outerIniFile.existsSync()) {
         var outerContent = outerIniFile.readAsStringSync();
         if (outerContent.contains('avd.ini.displayname=')) {
@@ -1959,17 +2095,17 @@ for root, _, files in os.walk(target_dir):
 
     // 5. Cấp phát console port (chẵn) cho emulator từ 5554 đến 5584 riêng cho từng nhân vật
     int consolePort = 5554;
-    for (int p = 5554; p <= 5584; p += 2) {
-      if (!_isPortInUse(p) && !_isPortInUse(p + 1)) {
-        consolePort = p;
+    for (int pPort = 5554; pPort <= 5584; pPort += 2) {
+      if (!_isPortInUse(pPort) && !_isPortInUse(pPort + 1)) {
+        consolePort = pPort;
         break;
       }
     }
     session.emulatorPort = consolePort;
 
     // Kiểm tra xem AVD có snapshot lưu trạng thái trước đó không (để nạp lại ngay thay vì cold boot)
-    final snapshotDir = Directory('$homeDir/.android/avd/$actualAvd.avd/snapshots/default_boot');
-    final hasSnapshot = snapshotDir.existsSync() && File('${snapshotDir.path}/ram.bin').existsSync();
+    final snapshotDir = Directory(p.join(avdsDir.path, '$actualAvd.avd', 'snapshots', 'default_boot'));
+    final hasSnapshot = snapshotDir.existsSync() && File(p.join(snapshotDir.path, 'ram.bin')).existsSync();
 
     final emulatorArgs = [
       '-avd', actualAvd,
@@ -2092,8 +2228,8 @@ for root, _, files in os.walk(target_dir):
 
         // 4. Kiểm tra xem có cờ .clean_needed của máy ảo vừa tạo mới không
         if (actualAvd != null && actualAvd.isNotEmpty) {
-          final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-          final cleanFlagFile = File('$homeDir/.android/avd/$actualAvd.avd/.clean_needed');
+          final avdsDir = getAndroidAvdDirectory();
+          final cleanFlagFile = File(p.join(avdsDir.path, '$actualAvd.avd', '.clean_needed'));
           if (cleanFlagFile.existsSync()) {
             try {
               // Gỡ bỏ hoàn toàn ứng dụng mẫu bên thứ ba (Facebook, TikTok)
@@ -2155,8 +2291,10 @@ for root, _, files in os.walk(target_dir):
     // Dừng triệt để các tiến trình trình duyệt gắn với profile của IP này nếu còn chạy ngầm
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
-      await Process.run('pkill', ['-f', 'ip_$sanitizedIp']);
+      if (!Platform.isWindows) {
+        await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
+        await Process.run('pkill', ['-f', 'ip_$sanitizedIp']);
+      }
     } catch (_) {}
     notifyListeners();
   }
@@ -2172,12 +2310,16 @@ for root, _, files in os.walk(target_dir):
     }
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
-      final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-      final profileDir = Directory('$homeDir/.agent_mxh_auto/browser_profiles/ip_$sanitizedIp');
+      if (!Platform.isWindows) {
+        await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
+      }
+      final homeDir = Platform.environment['USERPROFILE'] ??
+          Platform.environment['HOME'] ??
+          Directory.systemTemp.path;
+      final profileDir = Directory(p.join(homeDir, '.agent_mxh_auto', 'browser_profiles', 'ip_$sanitizedIp'));
       if (profileDir.existsSync()) {
         for (final entity in profileDir.listSync(followLinks: false)) {
-          final baseName = entity.path.split('/').last;
+          final baseName = p.basename(entity.path);
           if (baseName.startsWith('Singleton')) {
             try {
               entity.deleteSync();
