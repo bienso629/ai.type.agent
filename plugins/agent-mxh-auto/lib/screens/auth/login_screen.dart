@@ -118,120 +118,123 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           ),
         ),
         child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Container(
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBg, // Xanh đen Slate 900
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.borderDark, // Viền xanh slate 800
-                    width: 1,
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              physics: const ClampingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBg, // Xanh đen Slate 900
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.borderDark, // Viền xanh slate 800
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF020617).withValues(alpha: 0.8),
+                        blurRadius: 36,
+                        spreadRadius: 4,
+                        offset: const Offset(0, 18),
+                      ),
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.08), // Hào quang ánh vàng nhẹ
+                        blurRadius: 44,
+                        spreadRadius: -2,
+                        offset: const Offset(0, 0),
+                      ),
+                    ],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF020617).withValues(alpha: 0.8),
-                      blurRadius: 36,
-                      spreadRadius: 4,
-                      offset: const Offset(0, 18),
-                    ),
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.08), // Hào quang ánh vàng nhẹ
-                      blurRadius: 44,
-                      spreadRadius: -2,
-                      offset: const Offset(0, 0),
-                    ),
-                  ],
-                ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header Logo & Branding
-                      Center(
-                        child: Column(
-                          children: [
-                            AnimatedBuilder(
-                              animation: _glowAnimation,
-                              builder: (context, child) {
-                                final v = _glowAnimation.value;
-                                return Container(
-                                  width: 68,
-                                  height: 68,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.primary.withValues(alpha: 0.35 + 0.35 * v),
-                                        blurRadius: 10 + 14 * v,
-                                        spreadRadius: 1 + 3 * v,
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header Logo & Branding
+                        Center(
+                          child: Column(
+                            children: [
+                              AnimatedBuilder(
+                                animation: _glowAnimation,
+                                builder: (context, child) {
+                                  final v = _glowAnimation.value;
+                                  return Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primary.withValues(alpha: 0.35 + 0.35 * v),
+                                          blurRadius: 8 + 10 * v,
+                                          spreadRadius: 1 + 2 * v,
+                                        ),
+                                        BoxShadow(
+                                          color: AppColors.primaryLight.withValues(alpha: 0.15 + 0.25 * v),
+                                          blurRadius: 16 + 16 * v,
+                                          spreadRadius: 2 + 4 * v,
+                                        ),
+                                      ],
+                                    ),
+                                    child: child,
+                                  );
+                                },
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.asset(
+                                    'assets/logo.jpg',
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      color: AppColors.primaryDark,
+                                      child: const Icon(
+                                        Icons.cloud_sync_rounded,
+                                        color: Colors.white,
+                                        size: 26,
                                       ),
-                                      BoxShadow(
-                                        color: AppColors.primaryLight.withValues(alpha: 0.15 + 0.25 * v),
-                                        blurRadius: 20 + 22 * v,
-                                        spreadRadius: 3 + 6 * v,
-                                      ),
-                                    ],
-                                  ),
-                                  child: child,
-                                );
-                              },
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(14),
-                                child: Image.asset(
-                                  'assets/logo.jpg',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => Container(
-                                    color: AppColors.primaryDark,
-                                    child: const Icon(
-                                      Icons.cloud_sync_rounded,
-                                      color: Colors.white,
-                                      size: 32,
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Phần mềm AI quản lý MXH tự động',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textWhite,
-                                letterSpacing: 0.3,
+                              const SizedBox(height: 10),
+                              const Text(
+                                'Phần mềm AI quản lý MXH tự động',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 16.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textWhite,
+                                  letterSpacing: 0.3,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              'Đăng nhập tài khoản hệ thống Type.vn',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                color: AppColors.textMuted,
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Đăng nhập tài khoản hệ thống Type.vn',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textMuted,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Multi-account bar if any accounts saved
-                      if (auth.accounts.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        const Text(
-                          'Tài khoản đã lưu:',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textMuted,
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 8),
+
+                        // Multi-account bar if any accounts saved
+                        if (auth.accounts.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Tài khoản đã lưu:',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
@@ -285,12 +288,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ),
                       ],
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 14),
 
                       // Error Alert Banner
                       if (auth.errorMessage != null) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: AppColors.danger.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(6),
@@ -305,23 +308,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               const Icon(
                                 Icons.error_outline_rounded,
                                 color: AppColors.danger,
-                                size: 18,
+                                size: 16,
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   auth.errorMessage!,
                                   style: const TextStyle(
-                                    fontSize: 12.5,
+                                    fontSize: 12,
                                     color: AppColors.primaryLight,
-                                    height: 1.35,
+                                    height: 1.3,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 10),
                       ],
 
                       // Email Field
@@ -331,22 +334,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           const Text(
                             'Email tài khoản forum type.vn',
                             style: TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: AppColors.textBody,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             textInputAction: TextInputAction.next,
-                            style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                            style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
                             decoration: const InputDecoration(
                               hintText: 'admin@type.vn',
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               prefixIcon: Icon(
                                 Icons.mail_outline_rounded,
-                                size: 18,
+                                size: 16,
                                 color: AppColors.textDim,
                               ),
                             ),
@@ -360,7 +365,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ],
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Password Field
                       Column(
@@ -369,22 +374,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           const Text(
                             'Mật khẩu',
                             style: TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: AppColors.textBody,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           TextFormField(
                             controller: _passwordController,
                             obscureText: _obscurePassword,
                             textInputAction: TextInputAction.next,
-                            style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite),
+                            style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
                             decoration: InputDecoration(
                               hintText: '••••••••',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               prefixIcon: const Icon(
                                 Icons.lock_outline_rounded,
-                                size: 18,
+                                size: 16,
                                 color: AppColors.textDim,
                               ),
                               suffixIcon: IconButton(
@@ -392,7 +399,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   _obscurePassword
                                       ? Icons.visibility_outlined
                                       : Icons.visibility_off_outlined,
-                                  size: 18,
+                                  size: 16,
                                   color: AppColors.textDim,
                                 ),
                                 onPressed: () {
@@ -412,7 +419,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ],
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Server Selector Dropdown
                       Column(
@@ -421,12 +428,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           const Text(
                             'Máy chủ xác thực (Server)',
                             style: TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: AppColors.textBody,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             decoration: BoxDecoration(
@@ -438,8 +445,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               child: DropdownButton<String>(
                                 value: _selectedServer,
                                 isExpanded: true,
+                                isDense: true,
                                 dropdownColor: const Color(0xFF0F172A),
-                                style: const TextStyle(fontSize: 13, color: AppColors.textWhite),
+                                style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite),
                                 icon: const Icon(Icons.arrow_drop_down, color: AppColors.textDim),
                                 items: _servers.map((s) {
                                   return DropdownMenuItem<String>(
@@ -460,14 +468,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ],
                       ),
 
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 8),
 
                       // Remember Me Checkbox Row
                       Row(
                         children: [
                           SizedBox(
-                            width: 24,
-                            height: 24,
+                            width: 22,
+                            height: 22,
                             child: Checkbox(
                               value: _rememberMe,
                               activeColor: AppColors.primary,
@@ -492,7 +500,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             child: const Text(
                               'Ghi nhớ tài khoản',
                               style: TextStyle(
-                                fontSize: 12.5,
+                                fontSize: 12,
                                 color: AppColors.textMuted,
                               ),
                             ),
@@ -500,7 +508,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ],
                       ),
 
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 12),
 
                       // ==============================================================
                       // Modern Slide to Verify Captcha (Sang - Xịn - Mịn)
@@ -514,11 +522,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         },
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 14),
 
                       // Submit Login Button
                       SizedBox(
-                        height: 44,
+                        height: 40,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _isSlideVerified ? AppColors.primary : const Color(0xFF334155),
@@ -531,8 +539,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           onPressed: auth.isLoading ? null : _handleLogin,
                           child: auth.isLoading
                               ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
+                                  width: 18,
+                                  height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     color: Colors.white,
@@ -541,12 +549,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               : const Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.login_rounded, size: 18),
+                                    Icon(Icons.login_rounded, size: 16),
                                     SizedBox(width: 8),
                                     Text(
                                       'Truy cập ứng dụng',
                                       style: TextStyle(
-                                        fontSize: 14,
+                                        fontSize: 13.5,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
@@ -555,7 +563,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ),
                       ),
 
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 12),
 
                       // Footer
                       Center(
@@ -564,14 +572,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           children: [
                             Icon(
                               Icons.verified_user_outlined,
-                              size: 13,
+                              size: 12,
                               color: AppColors.accent.withValues(alpha: 0.8),
                             ),
                             const SizedBox(width: 6),
                             const Text(
                               'Phần mềm AI quản lý MXH tự động',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 10.5,
                                 color: AppColors.textDim,
                               ),
                             ),
@@ -586,6 +594,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
