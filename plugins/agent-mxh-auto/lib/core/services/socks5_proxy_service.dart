@@ -118,25 +118,34 @@ class Socks5ProxyService extends ChangeNotifier {
   /// Quét xem trên hệ thống OS có tiến trình trình duyệt nào đang chạy profile của IP này không
   bool _isSystemProcessAliveForIp(String ip) {
     try {
+      final session = _activeSessions[ip];
+      // Nếu có đối tượng Process đang giữ và chưa thoát
+      if (session != null && session.browserProcess != null) {
+        return true;
+      }
+
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final needle = 'browser_profiles/ip_$sanitizedIp';
-      final procDir = Directory('/proc');
-      if (procDir.existsSync()) {
-        final myPid = pid;
-        for (final entity in procDir.listSync(followLinks: false)) {
-          final baseName = entity.path.split('/').last;
-          final p = int.tryParse(baseName);
-          if (p == null || p == myPid) continue;
-          try {
-            final cmdFile = File('${entity.path}/cmdline');
-            if (cmdFile.existsSync()) {
-              final bytes = cmdFile.readAsBytesSync();
-              final cmd = String.fromCharCodes(bytes);
-              if (cmd.contains(needle) && !cmd.contains('device_profiles') && !cmd.contains('python') && !cmd.contains('pgrep')) {
-                return true;
+
+      if (Platform.isLinux) {
+        final procDir = Directory('/proc');
+        if (procDir.existsSync()) {
+          final myPid = pid;
+          for (final entity in procDir.listSync(followLinks: false)) {
+            final baseName = entity.path.split('/').last;
+            final p = int.tryParse(baseName);
+            if (p == null || p == myPid) continue;
+            try {
+              final cmdFile = File('${entity.path}/cmdline');
+              if (cmdFile.existsSync()) {
+                final bytes = cmdFile.readAsBytesSync();
+                final cmd = String.fromCharCodes(bytes);
+                if (cmd.contains(needle) && !cmd.contains('device_profiles') && !cmd.contains('python') && !cmd.contains('pgrep')) {
+                  return true;
+                }
               }
-            }
-          } catch (_) {}
+            } catch (_) {}
+          }
         }
       }
     } catch (_) {}
@@ -147,30 +156,36 @@ class Socks5ProxyService extends ChangeNotifier {
   bool _isDeviceProcessAliveForIp(String ip) {
     try {
       final session = _activeSessions[ip];
+      if (session != null && session.deviceProcess != null) {
+        return true;
+      }
       final port = session?.emulatorPort;
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final needleProfile = 'device_profiles/ip_$sanitizedIp';
       final needlePersonaAvd = 'persona_$sanitizedIp';
       final needlePort = port != null ? '-port\x00$port' : null;
-      final procDir = Directory('/proc');
-      if (procDir.existsSync()) {
-        final myPid = pid;
-        for (final entity in procDir.listSync(followLinks: false)) {
-          final baseName = entity.path.split('/').last;
-          final p = int.tryParse(baseName);
-          if (p == null || p == myPid) continue;
-          try {
-            final cmdFile = File('${entity.path}/cmdline');
-            if (cmdFile.existsSync()) {
-              final bytes = cmdFile.readAsBytesSync();
-              final cmd = String.fromCharCodes(bytes);
-              final matchesProfile = cmd.contains(needleProfile) || cmd.contains(needlePersonaAvd);
-              final matchesPort = needlePort != null && cmd.contains(needlePort);
-              if ((matchesProfile || matchesPort) && !cmd.contains('python') && !cmd.contains('pgrep')) {
-                return true;
+
+      if (Platform.isLinux) {
+        final procDir = Directory('/proc');
+        if (procDir.existsSync()) {
+          final myPid = pid;
+          for (final entity in procDir.listSync(followLinks: false)) {
+            final baseName = entity.path.split('/').last;
+            final p = int.tryParse(baseName);
+            if (p == null || p == myPid) continue;
+            try {
+              final cmdFile = File('${entity.path}/cmdline');
+              if (cmdFile.existsSync()) {
+                final bytes = cmdFile.readAsBytesSync();
+                final cmd = String.fromCharCodes(bytes);
+                final matchesProfile = cmd.contains(needleProfile) || cmd.contains(needlePersonaAvd);
+                final matchesPort = needlePort != null && cmd.contains(needlePort);
+                if ((matchesProfile || matchesPort) && !cmd.contains('python') && !cmd.contains('pgrep')) {
+                  return true;
+                }
               }
-            }
-          } catch (_) {}
+            } catch (_) {}
+          }
         }
       }
     } catch (_) {}
@@ -531,8 +546,47 @@ class Socks5ProxyService extends ChangeNotifier {
     return session;
   }
 
-  /// Tìm binary trình duyệt khả dụng trên hệ thống Linux
+  /// Tìm binary trình duyệt khả dụng trên hệ thống Windows hoặc Linux
   String? findBrowserExecutable() {
+    if (Platform.isWindows) {
+      final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+      final programFiles = Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
+      final programFilesX86 = Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
+
+      final windowsCandidates = [
+        // Google Chrome
+        '$programFiles\\Google\\Chrome\\Application\\chrome.exe',
+        '$programFilesX86\\Google\\Chrome\\Application\\chrome.exe',
+        if (localAppData.isNotEmpty) '$localAppData\\Google\\Chrome\\Application\\chrome.exe',
+
+        // Microsoft Edge (luôn có sẵn 100% trên Windows 10/11)
+        '$programFiles (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        '$programFiles\\Microsoft\\Edge\\Application\\msedge.exe',
+        '$programFilesX86\\Microsoft\\Edge\\Application\\msedge.exe',
+
+        // Brave Browser
+        '$programFiles\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+        '$programFilesX86\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+        if (localAppData.isNotEmpty) '$localAppData\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+
+        // Opera & Opera GX
+        if (localAppData.isNotEmpty) '$localAppData\\Programs\\Opera GX\\opera.exe',
+        if (localAppData.isNotEmpty) '$localAppData\\Programs\\Opera\\opera.exe',
+        '$programFiles\\Opera\\launcher.exe',
+
+        // Mozilla Firefox
+        '$programFiles\\Mozilla Firefox\\firefox.exe',
+        '$programFilesX86\\Mozilla Firefox\\firefox.exe',
+      ];
+
+      for (final b in windowsCandidates) {
+        if (File(b).existsSync()) {
+          return b;
+        }
+      }
+      return null;
+    }
+
     final browserCandidates = [
       '/usr/bin/google-chrome',
       '/usr/bin/google-chrome-stable',
@@ -553,6 +607,15 @@ class Socks5ProxyService extends ChangeNotifier {
     return null;
   }
 
+  /// Lấy thư mục gốc lưu trữ browser profiles đa nền tảng
+  Directory getBrowserProfilesDirectory() {
+    final homeDir = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Platform.environment['LOCALAPPDATA'] ??
+        Directory.systemTemp.path;
+    return Directory('$homeDir/.agent_mxh_auto/browser_profiles');
+  }
+
   /// Mở trình duyệt độc lập cho Persona IP (có proxy socks5 nếu có Server, hoặc mở local trực tiếp)
   Future<bool> launchPersonaBrowser({
     required String ip,
@@ -561,13 +624,12 @@ class Socks5ProxyService extends ChangeNotifier {
   }) async {
     final executable = findBrowserExecutable();
     if (executable == null) {
-      throw Exception('Không tìm thấy trình duyệt khả dụng (Chrome, Opera, Chromium, Firefox) trên hệ thống local.');
+      throw Exception('Không tìm thấy trình duyệt khả dụng (Chrome, Edge, Opera, Brave, Firefox) trên hệ thống local.');
     }
 
     // Đường dẫn thư mục dữ liệu riêng cho từng IP để cô lập profile không ảnh hưởng trình duyệt gốc
-    final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final profileDir = Directory('$homeDir/.agent_mxh_auto/browser_profiles/ip_$sanitizedIp');
+    final profileDir = Directory('${getBrowserProfilesDirectory().path}/ip_$sanitizedIp');
     if (!profileDir.existsSync()) {
       profileDir.createSync(recursive: true);
     }
@@ -647,7 +709,7 @@ class Socks5ProxyService extends ChangeNotifier {
     try {
       if (profileDir.existsSync()) {
         for (final entity in profileDir.listSync(followLinks: false)) {
-          final baseName = entity.path.split('/').last;
+          final baseName = entity.path.split(Platform.isWindows ? r'\' : '/').last;
           if (baseName.startsWith('Singleton')) {
             try {
               final type = FileSystemEntity.typeSync(entity.path, followLinks: false);
@@ -660,19 +722,25 @@ class Socks5ProxyService extends ChangeNotifier {
               }
             } catch (_) {
               try {
-                entity.deleteSync();
+                entity.deleteSync(recursive: true);
               } catch (_) {}
             }
           }
         }
-        // Gọi lệnh hệ thống để dọn sạch mọi symlink/socket Singleton còn sót lại
-        try {
-          Process.runSync('rm', ['-rf', '${profileDir.path}/SingletonLock', '${profileDir.path}/SingletonSocket', '${profileDir.path}/SingletonCookie']);
-        } catch (_) {}
+        for (final lockName in ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+          try {
+            final f = File('${profileDir.path}/$lockName');
+            if (f.existsSync()) f.deleteSync();
+          } catch (_) {}
+          try {
+            final l = Link('${profileDir.path}/$lockName');
+            if (l.existsSync()) l.deleteSync();
+          } catch (_) {}
+        }
       }
     } catch (_) {}
 
-    final isFirefox = executable.contains('firefox');
+    final isFirefox = executable.toLowerCase().contains('firefox');
     List<String> args;
     if (isFirefox) {
       args = [
@@ -687,10 +755,8 @@ class Socks5ProxyService extends ChangeNotifier {
         '--test-type',
         '--disable-features=Translate,TranslateUI',
         '--disable-translate',
-        // Ép chạy qua X11 (XWayland) thay vì Wayland native:
-        // Wayland native + NVIDIA bị xung đột Vulkan -> GPU acceleration hỏng -> trang web giật lag.
-        // X11/XWayland dùng GLX/EGL hoạt động ổn định với driver NVIDIA.
-        '--ozone-platform=x11',
+        // Chỉ thêm ozone platform x11 trên Linux để tránh xung đột Wayland NVIDIA
+        if (Platform.isLinux) '--ozone-platform=x11',
         if (socks5Proxy != null) '--proxy-server=$socks5Proxy',
         '--user-data-dir=${profileDir.path}',
         if (Directory(extDir).existsSync()) '--load-extension=$extDir',
@@ -702,36 +768,37 @@ class Socks5ProxyService extends ChangeNotifier {
       ];
     }
 
-    // Lọc sạch toàn bộ biến môi trường Snap và GTK rác nếu ứng dụng đang chạy dưới Snap / Flatpak
-    final browserEnv = <String, String>{};
-    Platform.environment.forEach((k, v) {
-      if (!k.startsWith('SNAP') &&
-          k != 'GTK_MODULES' &&
-          k != 'GIO_MODULE_DIR' &&
-          k != 'GIO_LAUNCHED_DESKTOP_FILE' &&
-          k != 'GIO_LAUNCHED_DESKTOP_FILE_PID' &&
-          k != 'XDG_ACTIVATION_TOKEN') {
-        browserEnv[k] = v;
-      }
-    });
+    // Thiết lập biến môi trường
+    Map<String, String>? browserEnv;
+    if (Platform.isLinux) {
+      browserEnv = <String, String>{};
+      Platform.environment.forEach((k, v) {
+        if (!k.startsWith('SNAP') &&
+            k != 'GTK_MODULES' &&
+            k != 'GIO_MODULE_DIR' &&
+            k != 'GIO_LAUNCHED_DESKTOP_FILE' &&
+            k != 'GIO_LAUNCHED_DESKTOP_FILE_PID' &&
+            k != 'XDG_ACTIVATION_TOKEN') {
+          browserEnv![k] = v;
+        }
+      });
 
-    if (!browserEnv.containsKey('DISPLAY') || browserEnv['DISPLAY']!.isEmpty) {
-      browserEnv['DISPLAY'] = ':0';
+      if (!browserEnv.containsKey('DISPLAY') || browserEnv['DISPLAY']!.isEmpty) {
+        browserEnv['DISPLAY'] = ':0';
+      }
+      browserEnv.remove('WAYLAND_DISPLAY');
+      final home = Platform.environment['HOME'];
+      if (home != null && home.isNotEmpty) {
+        browserEnv['HOME'] = home;
+      }
+      browserEnv['LANG'] = 'vi_VN.UTF-8';
+      browserEnv['LANGUAGE'] = 'vi_VN:vi';
+      browserEnv['LC_ALL'] = 'vi_VN.UTF-8';
     }
-    // Không truyền WAYLAND_DISPLAY cho trình duyệt:
-    // Chrome sẽ ưu tiên Wayland native nếu thấy biến này, gây lỗi Vulkan trên NVIDIA.
-    browserEnv.remove('WAYLAND_DISPLAY');
-    if (homeDir.isNotEmpty) {
-      browserEnv['HOME'] = homeDir;
-    }
-    // Thiết lập môi trường tiếng Việt
-    browserEnv['LANG'] = 'vi_VN.UTF-8';
-    browserEnv['LANGUAGE'] = 'vi_VN:vi';
-    browserEnv['LC_ALL'] = 'vi_VN.UTF-8';
 
     try {
       Process? proc;
-      final hasSystemdRun = File('/usr/bin/systemd-run').existsSync();
+      final hasSystemdRun = Platform.isLinux && File('/usr/bin/systemd-run').existsSync();
       if (hasSystemdRun) {
         final unitName = 'agy-browser-$sanitizedIp-${DateTime.now().millisecondsSinceEpoch}';
         final systemdArgs = [
@@ -751,7 +818,7 @@ class Socks5ProxyService extends ChangeNotifier {
           executable,
           args,
           environment: browserEnv,
-          includeParentEnvironment: false,
+          includeParentEnvironment: browserEnv == null,
           mode: ProcessStartMode.detached,
         );
       }
@@ -2435,8 +2502,7 @@ for root, _, files in os.walk(target_dir):
     final List<String> details = [];
 
     try {
-      final homeDir = Platform.environment['HOME'] ?? Directory.systemTemp.path;
-      final profilesRoot = Directory('$homeDir/.agent_mxh_auto/browser_profiles');
+      final profilesRoot = getBrowserProfilesDirectory();
 
       // 1. Quét các thư mục profile
       if (profilesRoot.existsSync()) {
@@ -2445,7 +2511,7 @@ for root, _, files in os.walk(target_dir):
           if (entity is Directory) {
             bool profileRepaired = false;
             for (final subEntity in entity.listSync(followLinks: false)) {
-              final base = subEntity.path.split('/').last;
+              final base = subEntity.path.split(Platform.isWindows ? r'\' : '/').last;
               if (base.startsWith('Singleton')) {
                 try {
                   final type = FileSystemEntity.typeSync(subEntity.path, followLinks: false);
@@ -2460,7 +2526,7 @@ for root, _, files in os.walk(target_dir):
                   profileRepaired = true;
                 } catch (_) {
                   try {
-                    subEntity.deleteSync();
+                    subEntity.deleteSync(recursive: true);
                     removedLocks++;
                     profileRepaired = true;
                   } catch (_) {}
@@ -2468,9 +2534,24 @@ for root, _, files in os.walk(target_dir):
               }
             }
 
-            try {
-              Process.runSync('rm', ['-rf', '${entity.path}/SingletonLock', '${entity.path}/SingletonSocket', '${entity.path}/SingletonCookie']);
-            } catch (_) {}
+            for (final lockName in ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+              try {
+                final f = File('${entity.path}/$lockName');
+                if (f.existsSync()) {
+                  f.deleteSync();
+                  removedLocks++;
+                  profileRepaired = true;
+                }
+              } catch (_) {}
+              try {
+                final l = Link('${entity.path}/$lockName');
+                if (l.existsSync()) {
+                  l.deleteSync();
+                  removedLocks++;
+                  profileRepaired = true;
+                }
+              } catch (_) {}
+            }
 
             // Đồng bộ / phục hồi Extension tiếng Việt cho Meta/Facebook nếu thiếu
             try {
@@ -2479,45 +2560,48 @@ for root, _, files in os.walk(target_dir):
 
             if (profileRepaired) {
               fixedProfiles++;
-              details.add('Đã mở khóa profile: ${entity.path.split("/").last}');
+              final profileName = entity.path.split(Platform.isWindows ? r'\' : '/').last;
+              details.add('Đã mở khóa profile: $profileName');
             }
           }
         }
       }
 
-      // 2. Dọn dẹp tiến trình zombie kẹt ngầm
-      try {
-        final procDir = Directory('/proc');
-        if (procDir.existsSync()) {
-          final myPid = pid;
-          for (final entity in procDir.listSync(followLinks: false)) {
-            final baseName = entity.path.split('/').last;
-            final p = int.tryParse(baseName);
-            if (p == null || p == myPid) continue;
-            try {
-              final cmdFile = File('${entity.path}/cmdline');
-              if (cmdFile.existsSync()) {
-                final bytes = cmdFile.readAsBytesSync();
-                final cmd = String.fromCharCodes(bytes);
-                if (cmd.contains('browser_profiles/ip_') && cmd.contains('chrome') && !cmd.contains('agent_mxh_auto')) {
-                  // Kiểm tra xem tiến trình này có còn thuộc session active trong app không
-                  bool isInSession = false;
-                  for (final s in _activeSessions.values) {
-                    if (s.browserProcess?.pid == p) {
-                      isInSession = true;
-                      break;
+      // 2. Dọn dẹp tiến trình zombie kẹt ngầm (trên Linux)
+      if (Platform.isLinux) {
+        try {
+          final procDir = Directory('/proc');
+          if (procDir.existsSync()) {
+            final myPid = pid;
+            for (final entity in procDir.listSync(followLinks: false)) {
+              final baseName = entity.path.split('/').last;
+              final p = int.tryParse(baseName);
+              if (p == null || p == myPid) continue;
+              try {
+                final cmdFile = File('${entity.path}/cmdline');
+                if (cmdFile.existsSync()) {
+                  final bytes = cmdFile.readAsBytesSync();
+                  final cmd = String.fromCharCodes(bytes);
+                  if (cmd.contains('browser_profiles/ip_') && cmd.contains('chrome') && !cmd.contains('agent_mxh_auto')) {
+                    // Kiểm tra xem tiến trình này có còn thuộc session active trong app không
+                    bool isInSession = false;
+                    for (final s in _activeSessions.values) {
+                      if (s.browserProcess?.pid == p) {
+                        isInSession = true;
+                        break;
+                      }
+                    }
+                    if (!isInSession) {
+                      Process.killPid(p);
+                      killedZombies++;
                     }
                   }
-                  if (!isInSession) {
-                    Process.killPid(p);
-                    killedZombies++;
-                  }
                 }
-              }
-            } catch (_) {}
+              } catch (_) {}
+            }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
 
       notifyListeners();
 
