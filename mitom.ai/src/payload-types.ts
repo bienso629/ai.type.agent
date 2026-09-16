@@ -261,6 +261,15 @@ export interface Order {
   companyTaxCode?: string | null;
   companyAddress?: string | null;
   note?: string | null;
+  /**
+   * Key được tạo tự động từ AstraFlow khi thanh toán thành công
+   */
+  apiKey?: string | null;
+  /**
+   * Mã số hóa đơn khởi tạo tự động (ví dụ: HD-2026-0001)
+   */
+  invoiceCode?: string | null;
+  invoiceIssuedAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -316,7 +325,7 @@ export interface ApiKey {
   permissions?: string | null;
   status?: ('Normal' | 'Disabled' | 'Expired') | null;
   /**
-   * Hệ thống tự động khởi tạo mã định danh duy nhất
+   * Hệ thống tự động khởi tạo hoặc lấy mã định danh từ AstraFlow
    */
   keyId?: string | null;
   maskedKey?: string | null;
@@ -553,6 +562,9 @@ export interface OrdersSelect<T extends boolean = true> {
   companyTaxCode?: T;
   companyAddress?: T;
   note?: T;
+  apiKey?: T;
+  invoiceCode?: T;
+  invoiceIssuedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -58,6 +58,9 @@ export async function GET(request: Request) {
       paymentStatus: doc.paymentStatus,
       fulfillmentStatus: doc.fulfillmentStatus,
       deliveryInfo: doc.paymentStatus === 'paid' ? doc.deliveryInfo : null,
+      apiKey: doc.paymentStatus === 'paid' ? doc.apiKey : null,
+      invoiceCode: doc.paymentStatus === 'paid' ? doc.invoiceCode : null,
+      invoiceIssuedAt: doc.paymentStatus === 'paid' ? doc.invoiceIssuedAt : null,
       createdAt: doc.createdAt,
     }))
 

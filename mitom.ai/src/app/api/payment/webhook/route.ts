@@ -177,11 +177,51 @@ export async function POST(request: Request) {
         })
       }
 
+      // Tìm đơn hàng liên kết nếu nội dung chuyển khoản chứa mã đơn hàng MT-...
+      let matchedOrderDoc: any = null
+      const matchOrderCode = contentUpper.match(/MT-[0-9A-Z]+/i)
+      if (matchOrderCode) {
+        const orderCodeToFind = matchOrderCode[0].toUpperCase()
+        const orderQuery = await payload.find({
+          collection: 'orders',
+          where: {
+            orderCode: {
+              equals: orderCodeToFind,
+            },
+          },
+          limit: 1,
+        })
+        if (orderQuery.docs.length > 0) {
+          matchedOrderDoc = orderQuery.docs[0]
+        }
+      }
+
+      // Nếu tìm thấy đơn hàng tương ứng, cập nhật đơn hàng sang đã thanh toán 'paid'
+      // Khi Order chuyển sang paid, hook afterChange trong Orders.ts sẽ tự động:
+      // 1. Tạo API Key trên AstraFlow
+      // 2. Tạo mã hóa đơn điện tử
+      // 3. Cập nhật giao hàng và gửi email cho khách
+      if (matchedOrderDoc && matchedOrderDoc.paymentStatus !== 'paid') {
+        try {
+          await payload.update({
+            collection: 'orders',
+            id: matchedOrderDoc.id,
+            data: {
+              paymentStatus: 'paid',
+            },
+          })
+          console.log(`[Payment Webhook] Đã kích hoạt thanh toán thành công cho đơn hàng: ${matchedOrderDoc.orderCode}`)
+        } catch (orderUpdateErr: any) {
+          console.error(`[Payment Webhook Error] Cập nhật đơn hàng ${matchedOrderDoc.orderCode} thất bại:`, orderUpdateErr.message)
+        }
+      }
+
       // Lưu bản ghi Giao dịch vào collection Transactions
       const newTransaction = await payload.create({
         collection: 'transactions',
         data: {
           transactionId,
+          order: matchedOrderDoc ? matchedOrderDoc.id : undefined,
           user: matchedUserDoc ? matchedUserDoc.id : undefined,
           amount,
           vatRate,
@@ -202,6 +242,7 @@ export async function POST(request: Request) {
         creditedUser: matchedUserDoc ? matchedUserDoc.email : null,
         userCustomerCode: matchedUserDoc ? matchedUserDoc.customerCode : null,
         newBalance: updatedBalance,
+        matchedOrder: matchedOrderDoc ? matchedOrderDoc.orderCode : null,
         transactionDate,
         status: 'success',
       })
