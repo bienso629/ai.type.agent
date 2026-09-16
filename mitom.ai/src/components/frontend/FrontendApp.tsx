@@ -557,7 +557,7 @@ function TopUpPage({
               <div className="mt-6 flex flex-col items-center justify-center">
                 <QrMock
                   amount={Math.round(topup.amount * 1.1)}
-                  memo={user?.customerCode || (user?.id ? `MITO${String(user.id).padStart(6, '0')}` : 'MITO')}
+                  memo={user?.customerCode || 'MITO'}
                 />
               </div>
             </div>

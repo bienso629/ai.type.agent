@@ -118,40 +118,26 @@ export async function POST(request: Request) {
       }
 
       // Trích xuất mã khách hàng MITO... từ chuỗi content
-      // Ví dụ: "MITO000123 GD 6246MSCBD2DKLKJI 030926-13:27:11" hoặc "MITO12"
+      // Ví dụ: "MITO8K3N9P GD 6246MSCBD2DKLKJI" hoặc "MITO000123" (hỗ trợ cả mã cũ và mã mới ngẫu nhiên)
       const contentUpper = (content || '').toUpperCase()
       let matchedUserDoc: any = null
 
       for (const u of allUsers.docs) {
         const uCode = (u.customerCode || '').toUpperCase()
-        const uIdCode = `MITO${u.id}`.toUpperCase()
-        const uIdPadded = `MITO${String(u.id).padStart(6, '0')}`.toUpperCase()
-
-        if (
-          (uCode && contentUpper.includes(uCode)) ||
-          contentUpper.includes(uIdCode) ||
-          contentUpper.includes(uIdPadded)
-        ) {
+        if (uCode && contentUpper.includes(uCode)) {
           matchedUserDoc = u
           break
         }
       }
 
-      // Nếu không khớp qua vòng lặp, thử quét regex bắt chuỗi MITO[0-9A-Z]{1,10}
+      // Nếu không khớp chuỗi trực tiếp, dùng regex tìm chuỗi định dạng MITO[0-9A-Z]{4,10}
       if (!matchedUserDoc) {
-        const matchMito = contentUpper.match(/MITO([0-9A-Z]+)/)
+        const matchMito = contentUpper.match(/MITO([0-9A-Z]{4,10})/)
         if (matchMito) {
-          const rawSuffix = matchMito[1]
-          // Thử tìm theo ID số nguyên (bỏ các số 0 ở đầu nếu có)
-          const parsedId = parseInt(rawSuffix, 10)
-          if (!isNaN(parsedId)) {
-            matchedUserDoc = allUsers.docs.find((u) => u.id === parsedId)
-          }
-          if (!matchedUserDoc) {
-            matchedUserDoc = allUsers.docs.find(
-              (u) => (u.customerCode || '').toUpperCase() === matchMito[0]
-            )
-          }
+          const fullCode = matchMito[0]
+          matchedUserDoc = allUsers.docs.find(
+            (u) => (u.customerCode || '').toUpperCase() === fullCode
+          )
         }
       }
 

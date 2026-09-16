@@ -133,7 +133,7 @@ export function UserProfileModal({
                 <span>Mã khách hàng</span>
               </div>
               <div className="text-sm font-bold text-primary font-mono select-all">
-                {user.customerCode || `MITO${String(user.id).padStart(6, '0')}`}
+                {user.customerCode || 'MITO'}
               </div>
             </div>
 

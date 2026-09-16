@@ -1,10 +1,11 @@
 import type { CollectionConfig } from 'payload'
+import { generateCustomerCode } from '@/lib/customerCode'
 
 export const Users: CollectionConfig = {
   slug: 'users',
   admin: {
     useAsTitle: 'email',
-    defaultColumns: ['email', 'name', 'authProvider', 'balance', 'role', 'createdAt'],
+    defaultColumns: ['email', 'name', 'authProvider', 'customerCode', 'balance', 'role', 'createdAt'],
   },
   auth: true,
   access: {
@@ -24,27 +25,13 @@ export const Users: CollectionConfig = {
     delete: ({ req }) => req.user?.role === 'admin',
   },
   hooks: {
-    afterChange: [
-      async ({ doc, req, operation }) => {
-        // Tự động gán mã khách hàng chuẩn MITO + pad(id, 6)
-        if (doc && doc.id) {
-          const expectedCode = `MITO${String(doc.id).padStart(6, '0')}`
-          if (doc.customerCode !== expectedCode) {
-            try {
-              await req.payload.update({
-                collection: 'users',
-                id: doc.id,
-                data: {
-                  customerCode: expectedCode,
-                },
-              })
-              doc.customerCode = expectedCode
-            } catch (e) {
-              // Bỏ qua nếu đang trong transaction lock
-            }
-          }
+    beforeChange: [
+      async ({ data, operation }) => {
+        // Tự động sinh mã định danh khách hàng ngẫu nhiên bảo mật (không lộ ID tuần tự)
+        if (operation === 'create' || (data && !data.customerCode)) {
+          data.customerCode = data.customerCode || generateCustomerCode()
         }
-        return doc
+        return data
       },
     ],
   },

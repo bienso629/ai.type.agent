@@ -2543,33 +2543,46 @@ for root, _, files in os.walk(target_dir):
     final server = await ServerSocket.bind(listenHost, httpPort);
 
     server.listen((clientSocket) {
-      bool handled = false;
-      final buffer = <int>[];
-      StreamSubscription<List<int>>? clientSub;
+      StreamSubscription<Uint8List>? clientSub;
+      StreamSubscription<Uint8List>? socksSub;
+      Socket? socksSocket;
+      bool isClosed = false;
 
       void cleanUp() {
-        try {
-          clientSub?.cancel();
-        } catch (_) {}
-        try {
-          clientSocket.destroy();
-        } catch (_) {}
+        if (isClosed) return;
+        isClosed = true;
+        try { clientSub?.cancel(); } catch (_) {}
+        try { socksSub?.cancel(); } catch (_) {}
+        try { clientSocket.destroy(); } catch (_) {}
+        try { socksSocket?.destroy(); } catch (_) {}
       }
+
+      int stage = 0; // 0: wait header, 1: greeting, 2: connecting, 3: streaming
+      final clientBuffer = <int>[];
+      String method = '';
+      String targetHost = '';
+      int targetPort = 80;
 
       clientSub = clientSocket.listen(
         (data) async {
-          if (handled) return;
-          buffer.addAll(data);
-
-          // Tìm kết thúc của HTTP header \r\n\r\n hoặc \n\n
-          final rawStr = String.fromCharCodes(buffer);
-          final headerEnd = rawStr.indexOf('\r\n\r\n');
-          final headerEndAlt = rawStr.indexOf('\n\n');
-          if (headerEnd == -1 && headerEndAlt == -1 && buffer.length < 8192) {
-            return; // Đợi nhận đủ header
+          if (isClosed) return;
+          if (stage == 3) {
+            try {
+              socksSocket?.add(data);
+            } catch (_) {
+              cleanUp();
+            }
+            return;
           }
 
-          handled = true;
+          clientBuffer.addAll(data);
+          final rawStr = String.fromCharCodes(clientBuffer);
+          final headerEnd = rawStr.indexOf('\r\n\r\n');
+          final headerEndAlt = rawStr.indexOf('\n\n');
+          if (headerEnd == -1 && headerEndAlt == -1 && clientBuffer.length < 8192) {
+            return;
+          }
+
           clientSub?.pause();
 
           try {
@@ -2580,14 +2593,10 @@ for root, _, files in os.walk(target_dir):
               return;
             }
 
-            final method = parts[0].toUpperCase();
+            method = parts[0].toUpperCase();
             final target = parts[1];
 
-            String targetHost = '';
-            int targetPort = 80;
-
             if (method == 'CONNECT') {
-              // HTTPS Tunneling: CONNECT host:port HTTP/1.1
               if (target.contains(':')) {
                 final split = target.split(':');
                 targetHost = split[0];
@@ -2597,11 +2606,8 @@ for root, _, files in os.walk(target_dir):
                 targetPort = 443;
               }
             } else {
-              // HTTP thường: GET http://host:port/path HTTP/1.1
               var url = target;
-              if (url.startsWith('http://')) {
-                url = url.substring(7);
-              }
+              if (url.startsWith('http://')) url = url.substring(7);
               final slashIdx = url.indexOf('/');
               final hostPort = slashIdx == -1 ? url : url.substring(0, slashIdx);
               if (hostPort.contains(':')) {
@@ -2619,84 +2625,76 @@ for root, _, files in os.walk(target_dir):
               return;
             }
 
-            // Kết nối vào local SOCKS5 Proxy port
-            final socksSocket = await Socket.connect('127.0.0.1', socksPort, timeout: const Duration(seconds: 7));
+            socksSocket = await Socket.connect('127.0.0.1', socksPort, timeout: const Duration(seconds: 7));
+            stage = 1; // greeting
 
-            // SOCKS5 Greeting: VER=5, NMETHODS=1, METHOD=0 (No Auth)
-            socksSocket.add([0x05, 0x01, 0x00]);
-            final greetingResp = await socksSocket.first.timeout(const Duration(seconds: 5));
-            if (greetingResp.length < 2 || greetingResp[0] != 0x05 || greetingResp[1] != 0x00) {
-              socksSocket.destroy();
-              cleanUp();
-              return;
-            }
+            socksSub = socksSocket!.listen(
+              (sData) {
+                if (isClosed) return;
+                if (stage == 1) {
+                  if (sData.length < 2 || sData[0] != 0x05 || sData[1] != 0x00) {
+                    cleanUp();
+                    return;
+                  }
+                  stage = 2; // connecting
+                  final hostBytes = utf8.encode(targetHost);
+                  final portBytes = [(targetPort >> 8) & 0xFF, targetPort & 0xFF];
+                  socksSocket!.add([0x05, 0x01, 0x00, 0x03, hostBytes.length, ...hostBytes, ...portBytes]);
+                  return;
+                }
 
-            // SOCKS5 Connect Request: VER=5, CMD=1 (CONNECT), RSV=0, ATYP=3 (Domain)
-            final hostBytes = utf8.encode(targetHost);
-            final portBytes = [ (targetPort >> 8) & 0xFF, targetPort & 0xFF ];
-            socksSocket.add([0x05, 0x01, 0x00, 0x03, hostBytes.length, ...hostBytes, ...portBytes]);
+                if (stage == 2) {
+                  if (sData.length < 4 || sData[1] != 0x00) {
+                    cleanUp();
+                    return;
+                  }
+                  stage = 3; // streaming
 
-            final connectResp = await socksSocket.first.timeout(const Duration(seconds: 10));
-            if (connectResp.length < 4 || connectResp[1] != 0x00) {
-              socksSocket.destroy();
-              cleanUp();
-              return;
-            }
+                  if (method == 'CONNECT') {
+                    clientSocket.add(utf8.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
+                  } else {
+                    socksSocket!.add(clientBuffer);
+                  }
 
-            if (method == 'CONNECT') {
-              // Báo HTTP 200 Connection Established cho client
-              clientSocket.add(utf8.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
-            } else {
-              // Forward gói tin HTTP gốc qua SOCKS5
-              socksSocket.add(buffer);
-            }
+                  int respLen = 4;
+                  final atyp = sData[3];
+                  if (atyp == 1) {
+                    respLen = 10;
+                  } else if (atyp == 3) {
+                    respLen = 4 + 1 + sData[4] + 2;
+                  } else if (atyp == 4) {
+                    respLen = 22;
+                  }
 
-            clientSub?.resume();
+                  if (sData.length > respLen) {
+                    clientSocket.add(sData.sublist(respLen));
+                  }
 
-            // Pipe 2 chiều giữa clientSocket và socksSocket
-            clientSocket.listen(
-              (chunk) {
-                try {
-                  socksSocket.add(chunk);
-                } catch (_) {}
+                  clientSub?.resume();
+                  return;
+                }
+
+                if (stage == 3) {
+                  try {
+                    clientSocket.add(sData);
+                  } catch (_) {
+                    cleanUp();
+                  }
+                }
               },
-              onDone: () {
-                try {
-                  socksSocket.destroy();
-                } catch (_) {}
-              },
-              onError: (_) {
-                try {
-                  socksSocket.destroy();
-                } catch (_) {}
-              },
+              onDone: () => cleanUp(),
+              onError: (_) => cleanUp(),
               cancelOnError: true,
             );
 
-            socksSocket.listen(
-              (chunk) {
-                try {
-                  clientSocket.add(chunk);
-                } catch (_) {}
-              },
-              onDone: () {
-                try {
-                  clientSocket.destroy();
-                } catch (_) {}
-              },
-              onError: (_) {
-                try {
-                  clientSocket.destroy();
-                } catch (_) {}
-              },
-              cancelOnError: true,
-            );
+            // Send SOCKS5 Greeting
+            socksSocket!.add([0x05, 0x01, 0x00]);
           } catch (_) {
             cleanUp();
           }
         },
-        onError: (_) => cleanUp(),
         onDone: () => cleanUp(),
+        onError: (_) => cleanUp(),
         cancelOnError: true,
       );
     });
