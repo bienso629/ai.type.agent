@@ -143,7 +143,19 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     Timer? otpTimer;
     String? latestOtpCode;
     int selectedSmsService = 924; // 924: TikTok, 395: Gmail/Google, 329: Facebook
-    int selectedSmsCountry = 11; // 11: Việt Nam (+84)
+    int detectCountryIdFromPhone(String? phone) {
+      if (phone == null || phone.trim().isEmpty) return 11;
+      final clean = phone.trim().replaceAll(RegExp(r'[\s\-\(\)]'), '');
+      if (clean.startsWith('+1') || (clean.startsWith('1') && clean.length == 11)) return 1;
+      if (clean.startsWith('+84') || (clean.startsWith('84') && clean.length >= 11) || clean.startsWith('0')) return 11;
+      for (final c in SmsPoolService.popularCountries) {
+        if (clean.startsWith('+${c.cc}') || clean.startsWith(c.cc)) {
+          return c.id;
+        }
+      }
+      return 11;
+    }
+    int selectedSmsCountry = detectCountryIdFromPhone(persona.phoneNumber);
     String? currentOrderId = persona.smsOrderId;
     String selectedDeviceType = persona.deviceType; // 'mobile' | 'tablet'
     String? selectedAvd = persona.avdName;
@@ -1184,12 +1196,18 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Row(
+                                      Row(
                                         children: [
                                           Icon(Icons.phone_android_rounded, size: 14, color: AppColors.accent),
                                           SizedBox(width: 6),
                                           Text(
-                                            'Thuê số điện thoại Việt Nam',
+                                            () {
+                                              final countryObj = SmsPoolService.popularCountries.firstWhere(
+                                                (c) => c.id == selectedSmsCountry,
+                                                orElse: () => SmsPoolService.popularCountries.first,
+                                              );
+                                              return 'Thuê số điện thoại ${countryObj.name} (+${countryObj.cc})';
+                                            }(),
                                             style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                           ),
                                         ],

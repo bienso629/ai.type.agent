@@ -162,16 +162,20 @@ class ChatProvider extends ChangeNotifier {
   }
 
   String? get currentSessionScope => _currentSession?.workingDirScope;
+  List<String> get currentSessionDocFiles => _currentSession?.docFiles ?? const [];
 
-  Future<void> setScopeForCurrentSession(String? scope) async {
+  Future<void> setScopeForCurrentSession(String? scope, {List<String>? docFiles}) async {
     if (_currentSession == null) {
       await createNewSession();
     }
     final cleanScope = (scope != null && scope.trim().isNotEmpty) ? scope.trim() : null;
+    final cleanDocs = docFiles ?? _currentSession!.docFiles;
     final now = DateTime.now();
     final updated = _currentSession!.copyWith(
       workingDirScope: cleanScope,
       clearWorkingDirScope: cleanScope == null,
+      docFiles: cleanDocs,
+      clearDocFiles: cleanScope == null && docFiles == null,
       updatedAt: now,
     );
     _currentSession = updated;
@@ -181,7 +185,7 @@ class ChatProvider extends ChangeNotifier {
       _sortSessions();
     }
     notifyListeners();
-    await _api.updateChatSessionScope(updated.id, cleanScope);
+    await _api.updateChatSessionScope(updated.id, cleanScope, docFiles: updated.docFiles);
     if (cleanScope != null && cleanScope.isNotEmpty) {
       await StorageService().addRecentScope(cleanScope);
     }
@@ -470,6 +474,7 @@ class ChatProvider extends ChangeNotifier {
       attachments: attachments,
       history: historySnap,
       workingDir: workingDir ?? _currentSession?.workingDirScope,
+      docFiles: _currentSession?.docFiles,
       targetServer: targetServer ?? _currentSession?.targetServer,
       onToken: (token) {
         assistantMsg.content += token;

@@ -501,22 +501,56 @@ class Socks5ProxyService extends ChangeNotifier {
         // Forward local port -> remote socks port trên VPS (tương đương -L localPort:127.0.0.1:remotePort)
         final serverSocket = await ServerSocket.bind('127.0.0.1', localPort);
         serverSocket.listen((clientSocket) async {
+          bool isClientClosed = false;
+          void closeClient() {
+            if (isClientClosed) return;
+            isClientClosed = true;
+            try {
+              clientSocket.destroy();
+            } catch (_) {}
+          }
+
+          // QUAN TRỌNG: Lỗi EPIPE/ECONNRESET khi write socket KHÔNG nổ tại chỗ gọi add()
+          // mà bị đẩy bất đồng bộ qua Future done của socket. Phải nuốt lỗi trên done,
+          // nếu không sẽ nổ Unhandled Exception (Broken pipe) làm rung cả zone.
+          unawaited(clientSocket.done.catchError((_) {}));
+          void safeWriteClient(List<int> data) {
+            if (isClientClosed) return;
+            try {
+              clientSocket.add(data);
+            } catch (_) {
+              closeClient();
+            }
+          }
+
           try {
             final channel = await client.forwardLocal('127.0.0.1', remoteSocksPort!);
             clientSocket.listen(
-              (data) => channel.sink.add(data),
-              onDone: () => channel.sink.close(),
-              onError: (_) => clientSocket.destroy(),
+              (data) {
+                try {
+                  channel.sink.add(data);
+                } catch (_) {
+                  closeClient();
+                }
+              },
+              onDone: () {
+                try {
+                  channel.sink.close();
+                } catch (_) {}
+              },
+              onError: (_) => closeClient(),
               cancelOnError: true,
             );
             channel.stream.listen(
-              (data) => clientSocket.add(data),
-              onDone: () => clientSocket.destroy(),
-              onError: (_) => clientSocket.destroy(),
+              (data) {
+                safeWriteClient(data);
+              },
+              onDone: () => closeClient(),
+              onError: (_) => closeClient(),
               cancelOnError: true,
             );
           } catch (_) {
-            clientSocket.destroy();
+            closeClient();
           }
         });
 
@@ -2134,6 +2168,35 @@ for root, _, files in os.walk(target_dir):
         } else {
           cfgContent = 'avd.ini.displayname=$personaTitle\n$cfgContent';
         }
+
+        // Tối ưu hóa tối đa cấu hình thiết bị: Giảm CPU/RAM, tắt camera và toàn bộ cảm biến thừa (giữ lại âm thanh)
+        final optimizations = {
+          'hw.cpu.ncore': '2',
+          'hw.ramSize': '1536',
+          'vm.heapSize': '192',
+          'hw.camera.back': 'none',
+          'hw.camera.front': 'none',
+          'hw.accelerometer': 'no',
+          'hw.gyroscope': 'no',
+          'hw.sensors.light': 'no',
+          'hw.sensors.magnetic_field': 'no',
+          'hw.sensors.orientation': 'no',
+          'hw.sensors.pressure': 'no',
+          'hw.sensors.proximity': 'no',
+          'hw.audioInput': 'yes',
+          'hw.audioOutput': 'yes',
+        };
+
+        for (final entry in optimizations.entries) {
+          final key = entry.key;
+          final val = entry.value;
+          if (cfgContent.contains('$key=')) {
+            cfgContent = cfgContent.replaceAll(RegExp('$key=.*'), '$key=$val');
+          } else {
+            cfgContent = '$key=$val\n$cfgContent';
+          }
+        }
+
         avdConfigFile.writeAsStringSync(cfgContent);
       }
 
@@ -2198,6 +2261,8 @@ for root, _, files in os.walk(target_dir):
       '-netspeed', 'full',
       '-gpu', 'host',
       '-no-boot-anim',
+      '-camera-back', 'none',
+      '-camera-front', 'none',
       if (hasSnapshot) ...[
         '-snapshot', 'default_boot',
       ] else ...[
@@ -2306,6 +2371,13 @@ for root, _, files in os.walk(target_dir):
         await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'keyevent', '82']);
         // 3. Vuốt nhẹ lên mở khóa phòng trường hợp màn hình khóa cần vuốt
         await Process.run(adbBin, ['-s', serial, 'shell', 'input', 'swipe', '500', '1500', '500', '500', '200']);
+
+        // Tối ưu hóa tối đa đồ họa: Tắt hoàn toàn hiệu ứng chuyển cảnh (Window/Transition/Animator scale) để máy ảo nhẹ và phản hồi ngay lập tức
+        try {
+          await Process.run(adbBin, ['-s', serial, 'shell', 'settings', 'put', 'global', 'window_animation_scale', '0']);
+          await Process.run(adbBin, ['-s', serial, 'shell', 'settings', 'put', 'global', 'transition_animation_scale', '0']);
+          await Process.run(adbBin, ['-s', serial, 'shell', 'settings', 'put', 'global', 'animator_duration_scale', '0']);
+        } catch (_) {}
 
         // 4. Kiểm tra xem có cờ .clean_needed của máy ảo vừa tạo mới không
         if (actualAvd != null && actualAvd.isNotEmpty) {
@@ -2557,6 +2629,27 @@ for root, _, files in os.walk(target_dir):
         try { socksSocket?.destroy(); } catch (_) {}
       }
 
+      // Nuốt lỗi EPIPE bất đồng bộ trên Future done của socket client
+      unawaited(clientSocket.done.catchError((_) {}));
+      void safeWriteClient(List<int> data) {
+        if (isClosed) return;
+        try {
+          clientSocket.add(data);
+        } catch (_) {
+          cleanUp();
+        }
+      }
+      void safeWriteSocks(List<int> data) {
+        if (isClosed) return;
+        final s = socksSocket;
+        if (s == null) return;
+        try {
+          s.add(data);
+        } catch (_) {
+          cleanUp();
+        }
+      }
+
       int stage = 0; // 0: wait header, 1: greeting, 2: connecting, 3: streaming
       final clientBuffer = <int>[];
       String method = '';
@@ -2568,7 +2661,7 @@ for root, _, files in os.walk(target_dir):
           if (isClosed) return;
           if (stage == 3) {
             try {
-              socksSocket?.add(data);
+              safeWriteSocks(data);
             } catch (_) {
               cleanUp();
             }
@@ -2626,6 +2719,7 @@ for root, _, files in os.walk(target_dir):
             }
 
             socksSocket = await Socket.connect('127.0.0.1', socksPort, timeout: const Duration(seconds: 7));
+            unawaited(socksSocket!.done.catchError((_) {}));
             stage = 1; // greeting
 
             socksSub = socksSocket!.listen(
@@ -2639,7 +2733,7 @@ for root, _, files in os.walk(target_dir):
                   stage = 2; // connecting
                   final hostBytes = utf8.encode(targetHost);
                   final portBytes = [(targetPort >> 8) & 0xFF, targetPort & 0xFF];
-                  socksSocket!.add([0x05, 0x01, 0x00, 0x03, hostBytes.length, ...hostBytes, ...portBytes]);
+                  safeWriteSocks([0x05, 0x01, 0x00, 0x03, hostBytes.length, ...hostBytes, ...portBytes]);
                   return;
                 }
 
@@ -2651,9 +2745,9 @@ for root, _, files in os.walk(target_dir):
                   stage = 3; // streaming
 
                   if (method == 'CONNECT') {
-                    clientSocket.add(utf8.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
+                    safeWriteClient(utf8.encode('HTTP/1.1 200 Connection Established\r\n\r\n'));
                   } else {
-                    socksSocket!.add(clientBuffer);
+                    safeWriteSocks(clientBuffer);
                   }
 
                   int respLen = 4;
@@ -2667,7 +2761,7 @@ for root, _, files in os.walk(target_dir):
                   }
 
                   if (sData.length > respLen) {
-                    clientSocket.add(sData.sublist(respLen));
+                    safeWriteClient(sData.sublist(respLen));
                   }
 
                   clientSub?.resume();
@@ -2676,7 +2770,7 @@ for root, _, files in os.walk(target_dir):
 
                 if (stage == 3) {
                   try {
-                    clientSocket.add(sData);
+                    safeWriteClient(sData);
                   } catch (_) {
                     cleanUp();
                   }
@@ -2688,7 +2782,7 @@ for root, _, files in os.walk(target_dir):
             );
 
             // Send SOCKS5 Greeting
-            socksSocket!.add([0x05, 0x01, 0x00]);
+            safeWriteSocks([0x05, 0x01, 0x00]);
           } catch (_) {
             cleanUp();
           }

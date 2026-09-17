@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "agent.chatbot.app2026"
+    namespace = "ai.type.agent.chatbot"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "agent.chatbot.app2026"
+        applicationId = "ai.type.agent.chatbot"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

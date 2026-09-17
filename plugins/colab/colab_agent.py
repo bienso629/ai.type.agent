@@ -272,18 +272,10 @@ def parse_pdf(req: ParsePdfRequest):
         
     return res
 
-@app.get("/auth_status")
-def get_auth_status():
-    """Kiểm tra trạng thái đăng nhập Google Colab CLI"""
-    token_path = Path.home() / ".config" / "colab-cli" / "token.json"
-    is_authenticated = token_path.exists()
-    return {
-        "authenticated": is_authenticated,
-        "token_path": str(token_path)
-    }
-
-class ExchangeTokenRequest(BaseModel):
-    code: str
+# --- MULTI-ACCOUNT MANAGEMENT ---
+ACCOUNTS_DIR = Path.home() / ".config" / "colab-cli" / "accounts"
+ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+ACCOUNTS_INDEX_FILE = ACCOUNTS_DIR / "accounts.json"
 
 GOOGLE_CLIENT_CONFIG = {
     "installed": {
@@ -306,14 +298,128 @@ PUBLIC_OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
 ]
 
+class ExchangeTokenRequest(BaseModel):
+    code: str
+
+class SwitchAccountRequest(BaseModel):
+    email: str
+
+class RemoveAccountRequest(BaseModel):
+    email: str
+
+def load_accounts_index() -> Dict[str, Any]:
+    if ACCOUNTS_INDEX_FILE.exists():
+        try:
+            with open(ACCOUNTS_INDEX_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"active_email": "", "accounts": []}
+
+def save_accounts_index(data: Dict[str, Any]):
+    try:
+        with open(ACCOUNTS_INDEX_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Lỗi lưu accounts.json: {e}")
+
+def get_account_userinfo(token_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Lấy thông tin Google profile từ token_data (refresh nếu hết hạn)"""
+    try:
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        creds = Credentials(
+            token=token_data.get("token"),
+            refresh_token=token_data.get("refresh_token"),
+            token_uri=token_data.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id=token_data.get("client_id", GOOGLE_CLIENT_CONFIG["installed"]["client_id"]),
+            client_secret=token_data.get("client_secret", GOOGLE_CLIENT_CONFIG["installed"]["client_secret"]),
+            scopes=PUBLIC_OAUTH_SCOPES
+        )
+        if creds.expired or not creds.valid:
+            try:
+                creds.refresh(Request())
+                token_data["token"] = creds.token
+                token_data["expiry"] = creds.expiry.isoformat() if creds.expiry else ""
+            except Exception as re:
+                logger.warning(f"Lỗi refresh token: {re}")
+
+        resp = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {creds.token}"},
+            timeout=8
+        )
+        if resp.status_code == 200:
+            info = resp.json()
+            return {
+                "email": info.get("email", ""),
+                "name": info.get("name", ""),
+                "picture": info.get("picture", ""),
+                "updated_token": token_data
+            }
+    except Exception as e:
+        logger.warning(f"Không thể lấy userinfo từ Google: {e}")
+    return {"email": "", "name": "", "picture": "", "updated_token": token_data}
+
+def sync_existing_token():
+    """Đồng bộ token.json hiện có vào danh sách đa tài khoản nếu chưa có"""
+    token_path = Path.home() / ".config" / "colab-cli" / "token.json"
+    if not token_path.exists():
+        return
+    try:
+        with open(token_path, "r", encoding="utf-8") as f:
+            token_data = json.load(f)
+        idx = load_accounts_index()
+        info = get_account_userinfo(token_data)
+        email = info.get("email")
+        if not email:
+            return
+        account_token_file = ACCOUNTS_DIR / f"{email}.json"
+        with open(account_token_file, "w", encoding="utf-8") as f:
+            json.dump(info.get("updated_token", token_data), f, ensure_ascii=False, indent=2)
+
+        existing = next((a for a in idx.get("accounts", []) if a.get("email") == email), None)
+        if existing:
+            existing["name"] = info.get("name") or existing.get("name") or email.split("@")[0]
+            existing["picture"] = info.get("picture") or existing.get("picture") or ""
+        else:
+            idx.setdefault("accounts", []).append({
+                "email": email,
+                "name": info.get("name") or email.split("@")[0],
+                "picture": info.get("picture") or "",
+                "status": "ready"
+            })
+        if not idx.get("active_email"):
+            idx["active_email"] = email
+        save_accounts_index(idx)
+    except Exception as e:
+        logger.error(f"Lỗi sync existing token: {e}")
+
+# Chạy sync ngay khi khởi động
+sync_existing_token()
+
+@app.get("/auth_status")
+def get_auth_status():
+    """Kiểm tra trạng thái đăng nhập và danh sách tài khoản Google Colab"""
+    sync_existing_token()
+    idx = load_accounts_index()
+    token_path = Path.home() / ".config" / "colab-cli" / "token.json"
+    is_auth = token_path.exists() and len(idx.get("accounts", [])) > 0
+    return {
+        "authenticated": is_auth,
+        "token_path": str(token_path),
+        "active_email": idx.get("active_email", ""),
+        "accounts": idx.get("accounts", [])
+    }
+
 @app.get("/auth_url")
 def get_google_auth_url():
-    """Tạo đường dẫn đăng nhập Google OAuth2"""
+    """Tạo đường dẫn đăng nhập Google OAuth2 (buộc hiện màn hình chọn tài khoản prompt=select_account)"""
     try:
         from google_auth_oauthlib.flow import InstalledAppFlow
         flow = InstalledAppFlow.from_client_config(GOOGLE_CLIENT_CONFIG, PUBLIC_OAUTH_SCOPES)
         flow.redirect_uri = "https://sdk.cloud.google.com/applicationdefaultauthcode.html"
-        auth_url, _ = flow.authorization_url(prompt="consent", token_usage="remote")
+        auth_url, _ = flow.authorization_url(prompt="select_account consent", token_usage="remote")
         state.oauth_flow = flow
         return {"success": True, "auth_url": auth_url}
     except Exception as e:
@@ -322,30 +428,129 @@ def get_google_auth_url():
 
 @app.post("/exchange_token")
 def exchange_google_token(req: ExchangeTokenRequest):
-    """Xác thực mã Authorization Code và lưu token cho google-colab-cli"""
+    """Xác thực mã Authorization Code, lấy email và lưu vào danh sách đa tài khoản"""
     try:
         if not state.oauth_flow:
             raise ValueError("Không tìm thấy phiên xác thực OAuth đang chờ. Vui lòng bấm mở lại link đăng nhập.")
 
         state.oauth_flow.fetch_token(code=req.code.strip())
+        creds = state.oauth_flow.credentials
+        token_data = json.loads(creds.to_json())
 
+        # Lấy thông tin user (email, avatar)
+        info = get_account_userinfo(token_data)
+        email = info.get("email") or f"user_{int(time.time())}@google.com"
+        name = info.get("name") or email.split("@")[0]
+        picture = info.get("picture") or ""
+        saved_token = info.get("updated_token", token_data)
+
+        # Lưu token riêng theo email
+        account_token_file = ACCOUNTS_DIR / f"{email}.json"
+        with open(account_token_file, "w", encoding="utf-8") as f:
+            json.dump(saved_token, f, ensure_ascii=False, indent=2)
+
+        # Cập nhật token.json chính cho colab-cli
         token_dir = Path.home() / ".config" / "colab-cli"
         token_dir.mkdir(parents=True, exist_ok=True)
-        token_file = token_dir / "token.json"
-        with open(token_file, "w", encoding="utf-8") as f:
-            f.write(state.oauth_flow.credentials.to_json())
+        main_token_file = token_dir / "token.json"
+        with open(main_token_file, "w", encoding="utf-8") as f:
+            json.dump(saved_token, f, ensure_ascii=False, indent=2)
 
-        state.log("Đã đăng nhập và lưu token Google Colab CLI thành công!")
-        return {"success": True, "message": "Đã liên kết Google Colab thành công!"}
+        # Cập nhật danh sách accounts
+        idx = load_accounts_index()
+        existing = next((a for a in idx.get("accounts", []) if a.get("email") == email), None)
+        if existing:
+            existing["name"] = name
+            existing["picture"] = picture
+            existing["status"] = "ready"
+        else:
+            idx.setdefault("accounts", []).append({
+                "email": email,
+                "name": name,
+                "picture": picture,
+                "status": "ready"
+            })
+        idx["active_email"] = email
+        save_accounts_index(idx)
+
+        state.log(f"Đã liên kết tài khoản Google Colab: {email} ({name})")
+        return {
+            "success": True,
+            "message": f"Đã liên kết tài khoản {email} thành công!",
+            "account": {"email": email, "name": name, "picture": picture},
+            "accounts": idx.get("accounts", []),
+            "active_email": email
+        }
     except Exception as e:
         logger.error(f"Lỗi exchange token: {e}")
         return {"success": False, "error": str(e)}
+
+@app.post("/switch_account")
+def switch_google_account(req: SwitchAccountRequest):
+    """Chuyển đổi tài khoản Google Colab đang hoạt động"""
+    target_email = req.email.strip()
+    account_token_file = ACCOUNTS_DIR / f"{target_email}.json"
+    if not account_token_file.exists():
+        return {"success": False, "error": f"Không tìm thấy token của tài khoản: {target_email}"}
+
+    try:
+        with open(account_token_file, "r", encoding="utf-8") as f:
+            token_data = json.load(f)
+
+        main_token_file = Path.home() / ".config" / "colab-cli" / "token.json"
+        with open(main_token_file, "w", encoding="utf-8") as f:
+            json.dump(token_data, f, ensure_ascii=False, indent=2)
+
+        idx = load_accounts_index()
+        idx["active_email"] = target_email
+        for acc in idx.get("accounts", []):
+            if acc.get("email") == target_email:
+                acc["status"] = "active"
+            elif acc.get("status") == "active":
+                acc["status"] = "ready"
+        save_accounts_index(idx)
+
+        state.log(f"Đã chuyển sang tài khoản Colab: {target_email}")
+        return {"success": True, "active_email": target_email, "accounts": idx.get("accounts", [])}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/remove_account")
+def remove_google_account(req: RemoveAccountRequest):
+    """Xóa tài khoản khỏi danh sách"""
+    target_email = req.email.strip()
+    account_token_file = ACCOUNTS_DIR / f"{target_email}.json"
+    if account_token_file.exists():
+        try:
+            account_token_file.unlink()
+        except Exception:
+            pass
+
+    idx = load_accounts_index()
+    idx["accounts"] = [a for a in idx.get("accounts", []) if a.get("email") != target_email]
+    if idx.get("active_email") == target_email:
+        if len(idx["accounts"]) > 0:
+            new_active = idx["accounts"][0]["email"]
+            idx["active_email"] = new_active
+            new_file = ACCOUNTS_DIR / f"{new_active}.json"
+            if new_file.exists():
+                with open(new_file, "r") as nf, open(Path.home() / ".config" / "colab-cli" / "token.json", "w") as tf:
+                    tf.write(nf.read())
+        else:
+            idx["active_email"] = ""
+            main_token = Path.home() / ".config" / "colab-cli" / "token.json"
+            if main_token.exists():
+                main_token.unlink()
+
+    save_accounts_index(idx)
+    state.log(f"Đã xóa tài khoản: {target_email}")
+    return {"success": True, "active_email": idx.get("active_email", ""), "accounts": idx.get("accounts", [])}
 
 def format_colab_cli_error(raw_err: str) -> str:
     if not raw_err:
         return "Lỗi tạo phiên Colab không xác định."
     if "TooManyAssignmentsError" in raw_err or "412" in raw_err or "Too many assignments" in raw_err:
-        return "Tài khoản Google đã đạt giới hạn cấp phát GPU hôm nay từ Google Colab. Vui lòng thử lại sau vài giờ."
+        return "Tài khoản Google đã đạt giới hạn cấp phát GPU hôm nay từ Google Colab. Vui lòng đổi sang tài khoản Google khác."
     if "Unauthenticated" in raw_err or "401" in raw_err or "invalid_grant" in raw_err:
         return "Phiên đăng nhập Google Colab đã hết hạn. Vui lòng liên kết lại mã xác thực Google Colab."
     if "ResourceExhausted" in raw_err or "no accelerators" in raw_err.lower():
@@ -356,9 +561,74 @@ def format_colab_cli_error(raw_err: str) -> str:
             return line[:120]
     return raw_err[:120]
 
+def try_allocate_gpu_with_account_rotation(colab_bin: str) -> Dict[str, Any]:
+    """Thử khởi tạo GPU T4. Nếu tài khoản đạt giới hạn quota, tự động luân phiên sang tài khoản khác"""
+    import subprocess
+    idx = load_accounts_index()
+    accounts = idx.get("accounts", [])
+    active_email = idx.get("active_email", "")
+
+    # Sắp xếp danh sách tài khoản, đưa tài khoản đang active lên đầu
+    ordered_accounts = []
+    if active_email:
+        curr = next((a for a in accounts if a.get("email") == active_email), None)
+        if curr:
+            ordered_accounts.append(curr)
+    for a in accounts:
+        if a not in ordered_accounts:
+            ordered_accounts.append(a)
+
+    if not ordered_accounts:
+        # Thử với token.json mặc định
+        state.log("Đang tạo mới Colab VM GPU T4 (colab new -s aitype --gpu T4)...")
+        n_res = subprocess.run([colab_bin, "new", "-s", "aitype", "--gpu", "T4"], capture_output=True, text=True, timeout=90)
+        if n_res.returncode != 0:
+            return {"success": False, "error": format_colab_cli_error(n_res.stderr or n_res.stdout)}
+        return {"success": True}
+
+    last_error = ""
+    for acc in ordered_accounts:
+        email = acc.get("email")
+        state.log(f"Đang kiểm tra và kích hoạt tài khoản Colab: {email}...")
+        
+        # Nạp token của tài khoản này vào token.json
+        acc_file = ACCOUNTS_DIR / f"{email}.json"
+        if acc_file.exists():
+            with open(acc_file, "r") as af, open(Path.home() / ".config" / "colab-cli" / "token.json", "w") as tf:
+                tf.write(af.read())
+            idx["active_email"] = email
+            save_accounts_index(idx)
+
+        state.log(f"Thử cấp phát Colab VM GPU T4 với tài khoản {email}...")
+        n_res = subprocess.run([colab_bin, "new", "-s", "aitype", "--gpu", "T4"], capture_output=True, text=True, timeout=90)
+        if n_res.returncode == 0:
+            acc["status"] = "active"
+            save_accounts_index(idx)
+            state.log(f"Đã cấp phát máy ảo GPU T4 thành công với tài khoản: {email}!")
+            return {"success": True, "active_email": email}
+
+        raw_out = (n_res.stderr or "") + "\n" + (n_res.stdout or "")
+        clean_err = format_colab_cli_error(raw_out)
+        last_error = clean_err
+
+        # Đánh dấu trạng thái tài khoản
+        if "TooManyAssignmentsError" in raw_out or "412" in raw_out or "Too many assignments" in raw_out:
+            acc["status"] = "limit_reached"
+            state.log(f"Tài khoản {email} đã đạt giới hạn quota Colab hôm nay. Đang chuyển sang tài khoản tiếp theo...")
+            save_accounts_index(idx)
+            continue
+        elif "Unauthenticated" in raw_out or "401" in raw_out:
+            acc["status"] = "expired"
+            save_accounts_index(idx)
+            continue
+        else:
+            return {"success": False, "error": clean_err}
+
+    return {"success": False, "error": f"Tất cả tài khoản Google đã đạt giới hạn hôm nay: {last_error}"}
+
 @app.post("/start_gpu")
 def start_gpu_session():
-    """Khởi chạy VM GPU qua Google Colab CLI và kết nối Tunnel tự động"""
+    """Khởi chạy VM GPU qua Google Colab CLI và kết nối Tunnel tự động (hỗ trợ luân chuyển tài khoản)"""
     import subprocess
     import re
     try:
@@ -371,12 +641,9 @@ def start_gpu_session():
         s_res = subprocess.run([colab_bin, "sessions"], capture_output=True, text=True, timeout=15)
         has_aitype = "aitype" in (s_res.stdout or "")
         if not has_aitype:
-            state.log("Đang tạo mới Colab VM GPU T4 (colab new -s aitype --gpu T4)...")
-            n_res = subprocess.run([colab_bin, "new", "-s", "aitype", "--gpu", "T4"], capture_output=True, text=True, timeout=90)
-            if n_res.returncode != 0:
-                clean_err = format_colab_cli_error(n_res.stderr or n_res.stdout)
-                return {"success": False, "error": clean_err}
-            state.log("Đã cấp phát máy ảo GPU T4 thành công!")
+            alloc_res = try_allocate_gpu_with_account_rotation(colab_bin)
+            if not alloc_res.get("success"):
+                return alloc_res
 
         # 2. Thực thi script worker nền trên session aitype
         state.log("Đang khởi động MinerU GPU & Cloudflare Tunnel trên Colab...")

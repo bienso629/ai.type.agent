@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models/attachment_item.dart';
@@ -132,6 +133,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     List<AttachmentItem>? attachments,
     List<Map<String, dynamic>>? history,
     String? workingDir,
+    List<String>? docFiles,
     String? targetServer,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
@@ -158,10 +160,10 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         ServerModel? targetServerModel;
         final allServers = await _configService.getServers();
         if (targetServer != null && targetServer.isNotEmpty && targetServer != 'Local Machine' && targetServer != 'Local' && targetServer != '127.0.0.1') {
-          final matches = allServers.where((s) => s.name == targetServer || s.id == targetServer || s.serverIp == targetServer);
-          if (matches.isNotEmpty) {
-            targetServerModel = matches.first;
-          }
+          targetServerModel = allServers.firstWhere(
+            (s) => s.id == targetServer || s.name == targetServer || s.serverIp == targetServer,
+            orElse: () => ServerModel(id: targetServer, name: targetServer, serverIp: targetServer),
+          );
         }
 
         // Save user message to database
@@ -183,6 +185,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             prompt: message,
             history: history,
             workingDir: workingDir,
+            docFiles: docFiles,
             targetServerModel: targetServerModel,
             onToken: onToken,
             onStatus: onStatus,
@@ -218,6 +221,14 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         if (workingDir != null && workingDir.isNotEmpty) {
           sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
           sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
+        }
+        if (docFiles != null && docFiles.isNotEmpty) {
+          sysPrompt += '\n\n📚 TÀI LIỆU DỰ ÁN (SCOPE DOCUMENTATION):';
+          sysPrompt += '\nĐây là danh sách các tệp tài liệu đặc tả, yêu cầu kỹ thuật thuộc phạm vi dự án này:';
+          for (final doc in docFiles) {
+            sysPrompt += '\n- `$doc`';
+          }
+          sysPrompt += '\nKHI THỰC HIỆN CÁC YÊU CẦU: Hãy chủ động đọc hoặc tham chiếu nội dung từ các file tài liệu trên khi cần thiết để hiểu đúng kiến trúc, nghiệp vụ và quy chuẩn dự án.';
         }
 
         final messages = <Map<String, dynamic>>[
@@ -563,6 +574,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     required String prompt,
     List<Map<String, dynamic>>? history,
     String? workingDir,
+    List<String>? docFiles,
     ServerModel? targetServerModel,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
@@ -665,6 +677,38 @@ fi
 - Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
 - TUYỆT ĐỐI CẤM TRUY CẬP, ĐỌC, IN RA MÀN HÌNH HOẶC GIẢI MÃ BẤT KỲ FILE CẤU HÌNH TÀI KHOẢN NÀO (như config*.json, ~/.ai_type_agent/config*.json, ~/.tadu_ai_agent/config*.json, .env, chat_history*.db, các khóa bảo mật hệ thống). Nếu người dùng yêu cầu đọc file config tài khoản, phải từ chối vì lý do bảo mật.
 - Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''';
+      }
+
+      // Đọc và đính kèm nội dung các file tài liệu / rules được chọn vào prompt
+      if (docFiles != null && docFiles.isNotEmpty) {
+        final docsBuffer = StringBuffer();
+        docsBuffer.writeln('\n\n=== TÀI LIỆU DỰ ÁN & RULES BẮT BUỘC THAM CHIẾU (SCOPE DOCS) ===');
+        docsBuffer.writeln('Người dùng đã chỉ định các tệp tài liệu và rules dưới đây để Agent tuân thủ và hiểu rõ yêu cầu dự án:\n');
+
+        for (final docPath in docFiles) {
+          final file = File(docPath);
+          final docName = p.basename(docPath);
+          if (file.existsSync()) {
+            try {
+              final len = file.lengthSync();
+              // Nếu file < 150KB, đọc trực tiếp nội dung nạp vào prompt để Agent hiểu ngay tức khắc
+              if (len <= 150 * 1024) {
+                final content = file.readAsStringSync();
+                docsBuffer.writeln('--- TẬP TIN: $docName ($docPath) ---');
+                docsBuffer.writeln(content);
+                docsBuffer.writeln('--- HẾT TẬP TIN: $docName ---\n');
+              } else {
+                docsBuffer.writeln('- Đường dẫn file tài liệu: `$docPath` (Kích thước lớn: ${(len / 1024).round()} KB, Agent hãy chủ động đọc khi cần)');
+              }
+            } catch (_) {
+              docsBuffer.writeln('- Đường dẫn file tài liệu: `$docPath`');
+            }
+          } else {
+            docsBuffer.writeln('- File tài liệu: `$docPath`');
+          }
+        }
+        docsBuffer.writeln('=== KẾT THÚC TÀI LIỆU SCOPE ===');
+        promptSuffix = '$promptSuffix\n\n${docsBuffer.toString()}';
       }
 
       final cleanPrompt = '$prompt\n\n$promptSuffix';

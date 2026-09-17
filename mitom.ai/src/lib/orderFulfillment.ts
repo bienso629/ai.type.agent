@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import path from 'path'
 import fs from 'fs'
 import { callUCloudApi } from './ucloudClient'
+import { convertVndToUsd, getSystemUsdRate } from './currency'
 import type { Payload } from 'payload'
 
 export interface FulfillmentOptions {
@@ -73,21 +74,85 @@ export async function fulfillPaidOrder(options: FulfillmentOptions): Promise<Ful
     console.warn('[Fulfillment] Kiểm tra user tồn tại cảnh báo:', err.message)
   }
 
+  // Tính toán số tiền nạp VNĐ và quy đổi sang USD theo tỷ giá hệ thống
+  const addedCredit = Number(order.subtotal) || Number(order.totalAmount) || 0
+  const usdRate = getSystemUsdRate()
+  const addedCreditUsd = convertVndToUsd(addedCredit, usdRate)
+  let userNewBalance: number | null = null
+  let totalAllowedUsdStr = String(addedCreditUsd)
+
   const isTopUp = Boolean(existingUser && existingUser.apiKey)
   if (isTopUp) {
     // Tài khoản đã có Key -> Tái sử dụng key duy nhất của user
     createdApiKey = existingUser.apiKey
     createdKeyId = `user-key-${existingUser.id}`
-    console.log(`[Fulfillment] Khách hàng ${order.customerEmail} đã có API Key: ${createdApiKey}. Giữ nguyên Key và tiến hành tăng số dư.`)
+
+    // Tính toán lại tổng hạn mức mới sau khi nạp thêm (Balance cũ + tiền nạp mới)
+    const currentBalance = Number(existingUser.balance) || 0
+    userNewBalance = currentBalance + addedCredit
+    const totalBalanceUsd = convertVndToUsd(userNewBalance, usdRate)
+    totalAllowedUsdStr = String(totalBalanceUsd)
+
+    console.log(`[Fulfillment] Khách hàng ${order.customerEmail} đã có API Key: ${createdApiKey}. Giữ nguyên Key, tăng số dư: ${currentBalance} -> ${userNewBalance} VNĐ (~$${totalAllowedUsdStr} USD).`)
+
+    // Đồng bộ cập nhật hạn mức lên AstraFlow
+    try {
+      if (pubKey && privKey) {
+        // Tìm KeyId thật trên AstraFlow qua maskedKey hoặc name
+        const existingKeyDocs = await payload.find({
+          collection: 'api-keys',
+          where: {
+            or: [
+              { maskedKey: { equals: createdApiKey } },
+              { secretKey: { equals: createdApiKey } },
+              { name: { equals: existingUser.email } },
+            ],
+          },
+          limit: 1,
+        })
+
+        let actualAstraKeyId = ''
+        if (existingKeyDocs.docs.length > 0 && existingKeyDocs.docs[0].keyId) {
+          actualAstraKeyId = existingKeyDocs.docs[0].keyId
+        }
+
+        if (actualAstraKeyId && actualAstraKeyId.startsWith('uminferapikey-')) {
+          console.log(`[Fulfillment] Đang cập nhật hạn mức mới $${totalAllowedUsdStr} USD cho key ${actualAstraKeyId} trên AstraFlow...`)
+          await callUCloudApi(
+            {
+              Action: 'UpdateUMInferAPIKey',
+              KeyId: actualAstraKeyId,
+              MonthlyLimitAmount: totalAllowedUsdStr,
+            },
+            { publicKey: pubKey, privateKey: privKey },
+          )
+
+          // Cập nhật lại bản ghi trong CMS Admin
+          await payload.update({
+            collection: 'api-keys',
+            id: existingKeyDocs.docs[0].id,
+            data: {
+              monthlyLimit: totalAllowedUsdStr,
+            },
+          })
+          createdKeyId = actualAstraKeyId
+        }
+      }
+    } catch (limitErr: any) {
+      console.error('[Fulfillment] Lỗi khi cập nhật hạn mức trên AstraFlow cho key nạp thêm:', limitErr.message)
+    }
   } else {
-    // Khách hàng mới hoặc chưa có Key -> Gọi AstraFlow tạo API Key mới
+    // Khách hàng mới hoặc chưa có Key -> Gọi AstraFlow tạo API Key mới với hạn mức USD quy đổi
     const keyName = `mitom-${order.orderCode.toLowerCase()}`
     try {
       if (pubKey && privKey) {
+        console.log(`[Fulfillment] Đang tạo API Key mới trên AstraFlow với hạn mức $${totalAllowedUsdStr} USD (tương đương ${addedCredit} VNĐ, tỷ giá ${usdRate})...`)
         const res = await callUCloudApi(
           {
             Action: 'CreateUMInferAPIKey',
             Name: keyName,
+            DailyLimitAmount: '0',
+            MonthlyLimitAmount: totalAllowedUsdStr,
           },
           { publicKey: pubKey, privateKey: privKey },
         )
@@ -108,7 +173,7 @@ export async function fulfillPaidOrder(options: FulfillmentOptions): Promise<Ful
                 status: 'Normal',
                 permissions: 'Sandbox, Modelverse',
                 dailyLimit: 'Không giới hạn',
-                monthlyLimit: 'Không giới hạn',
+                monthlyLimit: totalAllowedUsdStr,
                 modelAccessMode: 'All Models',
                 expiryTime: 'Vĩnh viễn',
                 rawResponse: res.Data,
@@ -132,9 +197,6 @@ export async function fulfillPaidOrder(options: FulfillmentOptions): Promise<Ful
   }
 
   // 2. Tính toán và tăng số dư tài khoản cho người dùng
-  const addedCredit = Number(order.subtotal) || Number(order.totalAmount) || 0
-  let userNewBalance: number | null = null
-
   if (existingUser) {
     try {
       const currentBalance = Number(existingUser.balance) || 0
@@ -148,7 +210,7 @@ export async function fulfillPaidOrder(options: FulfillmentOptions): Promise<Ful
           balance: userNewBalance,
         },
       })
-      console.log(`[Fulfillment] Đã cập nhật số dư cho user ${existingUser.email}: ${currentBalance} -> ${userNewBalance} VNĐ`)
+      console.log(`[Fulfillment] Đã cập nhật số dư cho user ${existingUser.email}: ${currentBalance} -> ${userNewBalance} VNĐ (~$${totalAllowedUsdStr} USD)`)
     } catch (updateErr: any) {
       console.error('[Fulfillment] Lỗi cập nhật số dư user:', updateErr.message)
     }
@@ -171,6 +233,7 @@ export async function fulfillPaidOrder(options: FulfillmentOptions): Promise<Ful
   const deliveryInfo = `Mã đơn: ${order.orderCode}
 Loại giao dịch: ${isTopUp ? 'Nạp thêm số dư vào tài khoản' : 'Khởi tạo tài khoản & Cấp mới API Key'}
 API Key: ${createdApiKey}
+Hạn mức cấp trên AstraFlow: $${totalAllowedUsdStr} USD (Tỷ giá quy đổi: ${new Intl.NumberFormat('vi-VN').format(usdRate)} đ/USD)
 ${userNewBalance !== null ? `Số dư tài khoản sau nạp: ${new Intl.NumberFormat('vi-VN').format(userNewBalance)} đ\n` : ''}Số hóa đơn: ${invoiceCode}
 Ngày xuất: ${invoiceDateStr}
 Trạng thái: Đã kích hoạt`
