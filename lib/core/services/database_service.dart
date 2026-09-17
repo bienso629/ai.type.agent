@@ -69,6 +69,9 @@ class DatabaseService {
       await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN working_dir TEXT;');
     } catch (_) {}
     try {
+      await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN doc_files TEXT;');
+    } catch (_) {}
+    try {
       await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN target_server TEXT;');
     } catch (_) {}
     try {
@@ -117,7 +120,7 @@ class DatabaseService {
     try {
       final db = await _getDb();
       final rows = await db.rawQuery(
-        'SELECT id, title, is_pinned, working_dir, target_server, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
+        'SELECT id, title, is_pinned, working_dir, doc_files, target_server, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
       );
 
       final result = <ChatSessionModel>[];
@@ -127,6 +130,19 @@ class DatabaseService {
         final decTitle = _enc.decryptValue(rawTitle);
         final rawScope = row['working_dir']?.toString();
         final decScope = (rawScope != null && rawScope.isNotEmpty) ? _enc.decryptValue(rawScope) : null;
+        final rawDocs = row['doc_files']?.toString();
+        final decDocs = (rawDocs != null && rawDocs.isNotEmpty) ? _enc.decryptValue(rawDocs) : null;
+        List<String> docList = const [];
+        if (decDocs != null && decDocs.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(decDocs);
+            if (decoded is List) {
+              docList = decoded.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+            }
+          } catch (_) {
+            docList = decDocs.split(';').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          }
+        }
         final rawServer = row['target_server']?.toString();
         final decServer = (rawServer != null && rawServer.isNotEmpty)
             ? _enc.decryptValue(rawServer)
@@ -163,6 +179,7 @@ class DatabaseService {
             questionCount: qCount,
             answerCount: aCount,
             workingDirScope: decScope,
+            docFiles: docList,
             targetServer: decServer,
           ),
         );
@@ -232,17 +249,22 @@ class DatabaseService {
     }
   }
 
-  Future<bool> updateSessionScope(String id, String? scope) async {
+  Future<bool> updateSessionScope(String id, String? scope, {List<String>? docFiles}) async {
     try {
       final db = await _getDb();
       final encScope = (scope != null && scope.isNotEmpty) ? _enc.encryptValue(scope) : null;
+      final encDocs = (docFiles != null && docFiles.isNotEmpty) ? _enc.encryptValue(jsonEncode(docFiles)) : null;
       final now = DateTime.now().toIso8601String();
+      final Map<String, dynamic> values = {
+        'working_dir': encScope,
+        'updated_at': now,
+      };
+      if (docFiles != null) {
+        values['doc_files'] = encDocs;
+      }
       await db.update(
         'chat_sessions',
-        {
-          'working_dir': encScope,
-          'updated_at': now,
-        },
+        values,
         where: 'id = ?',
         whereArgs: [id],
       );

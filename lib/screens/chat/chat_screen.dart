@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -848,10 +849,13 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (ctx) => _ScopePickerDialog(
         currentScope: chat.currentSessionScope,
-        onSelect: (val) {
-          chat.setScopeForCurrentSession(val);
+        currentDocFiles: chat.currentSessionDocFiles,
+        onSelect: (val, docs) {
+          chat.setScopeForCurrentSession(val, docFiles: docs);
           if (val != null) {
-            AppToast.success(context, 'Đã gán Scope cho cuộc hội thoại này: $val');
+            final docCount = docs.length;
+            final docNote = docCount > 0 ? ' (Kèm $docCount file tài liệu)' : '';
+            AppToast.success(context, 'Đã gán Scope cho cuộc hội thoại này: $val$docNote');
           } else {
             AppToast.info(context, 'Đã xóa giới hạn Scope của cuộc hội thoại');
           }
@@ -1936,6 +1940,32 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                             ),
                           ),
+                          if (chat.currentSessionDocFiles.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: AppColors.accentCyan.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(3),
+                                border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.description_rounded, size: 11, color: AppColors.accentCyan),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${chat.currentSessionDocFiles.length} tài liệu',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.accentCyan,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(width: 8),
                           Tooltip(
                             message: 'Xóa Scope',
@@ -2378,10 +2408,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
 class _ScopePickerDialog extends StatefulWidget {
   final String? currentScope;
-  final ValueChanged<String?> onSelect;
+  final List<String> currentDocFiles;
+  final void Function(String? scope, List<String> docFiles) onSelect;
 
   const _ScopePickerDialog({
     required this.currentScope,
+    this.currentDocFiles = const [],
     required this.onSelect,
   });
 
@@ -2396,6 +2428,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
   final FocusNode _dialogFocusNode = FocusNode();
   List<String> _suggestions = [];
   List<String> _recentScopes = [];
+  List<String> _selectedDocs = [];
   bool _isLoading = false;
   int _selectedIndex = 0;
   Timer? _debounce;
@@ -2419,6 +2452,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.currentScope ?? '');
+    _selectedDocs = List<String>.from(widget.currentDocFiles);
     _dialogFocusNode.onKeyEvent = _handleDialogKeyEvent;
     _loadRecentScopes();
     _loadSuggestions(_controller.text);
@@ -2466,7 +2500,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
         } else if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
           if (_selectedIndex >= 0 && _selectedIndex < _suggestions.length) {
             final val = _suggestions[_selectedIndex];
-            widget.onSelect(val);
+            widget.onSelect(val, _selectedDocs);
             Navigator.pop(context);
             return KeyEventResult.handled;
           }
@@ -2507,6 +2541,52 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
           _controller.text = selectedDirectory;
         });
         _loadSuggestions(selectedDirectory);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pickDocFiles() async {
+    try {
+      final initialDir = _controller.text.isNotEmpty && Directory(_controller.text).existsSync()
+          ? _controller.text
+          : (Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '/');
+
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        dialogTitle: 'Chọn các tệp tài liệu cho Scope dự án',
+        initialDirectory: initialDir,
+        type: FileType.custom,
+        allowedExtensions: [
+          'md',
+          'txt',
+          'pdf',
+          'doc',
+          'docx',
+          'json',
+          'yaml',
+          'yml',
+          'sql',
+          'html',
+          'xml',
+          'csv',
+        ],
+      );
+
+      if (result != null && result.paths.isNotEmpty) {
+        final validPaths = result.paths
+            .where((p) => p != null && p.trim().isNotEmpty)
+            .cast<String>()
+            .toList();
+
+        if (validPaths.isNotEmpty) {
+          setState(() {
+            for (final path in validPaths) {
+              if (!_selectedDocs.contains(path)) {
+                _selectedDocs.add(path);
+              }
+            }
+          });
+        }
       }
     } catch (_) {}
   }
@@ -2815,13 +2895,150 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                       },
                     ),
             ),
+            const SizedBox(height: 14),
+
+            // Section: Scope Documentation Files
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.menu_book_rounded, size: 14, color: AppColors.accentCyan),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Tài liệu dự án đính kèm (Scope Docs):',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textWhite,
+                      ),
+                    ),
+                    if (_selectedDocs.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentCyan.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(
+                          '${_selectedDocs.length}',
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.accentCyan,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardBg,
+                    side: const BorderSide(color: AppColors.accentCyan),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.note_add_rounded, size: 14, color: AppColors.accentCyan),
+                  label: const Text(
+                    'Chọn nhiều file...',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.accentCyan),
+                  ),
+                  onPressed: _pickDocFiles,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Các file được chọn sẽ được tự động nạp vào chỉ thị bối cảnh của Scope để Agent tham chiếu khi làm việc:',
+              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 8),
+
+            if (_selectedDocs.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.borderDark, width: 0.8),
+                ),
+                child: const Text(
+                  'Chưa chọn file tài liệu nào (Hỗ trợ .md, .txt, .pdf, .json, .yaml, .doc...)',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontStyle: FontStyle.italic),
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 110),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4), width: 0.8),
+                ),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _selectedDocs.map((docPath) {
+                      final fileName = p.basename(docPath);
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.6)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.description_rounded, size: 12, color: AppColors.accentCyan),
+                            const SizedBox(width: 5),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 240),
+                              child: Tooltip(
+                                message: docPath,
+                                child: Text(
+                                  fileName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                    color: AppColors.textBody,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _selectedDocs.remove(docPath);
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(3),
+                              child: const Padding(
+                                padding: EdgeInsets.all(1),
+                                child: Icon(Icons.close_rounded, size: 12, color: AppColors.danger),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: () {
-            widget.onSelect(null);
+            widget.onSelect(null, const []);
             Navigator.pop(context);
           },
           child: const Text('Xóa giới hạn', style: TextStyle(color: AppColors.danger)),
@@ -2829,7 +3046,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
         ElevatedButton(
           onPressed: () {
             final val = _controller.text.trim();
-            widget.onSelect(val.isEmpty ? null : val);
+            widget.onSelect(val.isEmpty ? null : val, _selectedDocs);
             Navigator.pop(context);
           },
           child: const Text('Áp dụng Scope'),

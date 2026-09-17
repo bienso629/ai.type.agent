@@ -475,9 +475,9 @@ class ApiService {
     return true;
   }
 
-  Future<bool> updateChatSessionScope(String sessionId, String? scope) async {
+  Future<bool> updateChatSessionScope(String sessionId, String? scope, {List<String>? docFiles}) async {
     if (await _isNativeMode()) {
-      return await _db.updateSessionScope(sessionId, scope);
+      return await _db.updateSessionScope(sessionId, scope, docFiles: docFiles);
     }
     return true;
   }
@@ -613,6 +613,7 @@ class ApiService {
     List<AttachmentItem>? attachments,
     List<Map<String, dynamic>>? history,
     String? workingDir,
+    List<String>? docFiles,
     String? targetServer,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
@@ -631,6 +632,7 @@ class ApiService {
           attachments: attachments,
           history: history,
           workingDir: workingDir,
+          docFiles: docFiles,
           targetServer: targetServer,
           onToken: onToken,
           onStatus: onStatus,

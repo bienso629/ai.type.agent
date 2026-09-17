@@ -6,7 +6,7 @@ cd "$SOURCE_DIR"
 
 APP_NAME="ai-type-agent"
 PKG_NAME="ai-type-agent"
-VERSION="1.0.0"
+VERSION="1.4.0"
 ARCH="amd64"
 DIST_DIR="$SOURCE_DIR/dist"
 BUNDLE_DIR="$SOURCE_DIR/build/linux/x64/release/bundle"
