@@ -155,15 +155,33 @@ def _start_socks5_for_ip(ip):
     if not server or not server.get("server_ip") or not server.get("ssh_pass"):
         return None
 
-    # Tìm cổng local trống
     import socket
+    tmp_dir = os.path.join(DATA_DIR, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    meta_file = os.path.join(tmp_dir, f"socks_{ip.replace('.', '_')}.json")
+
+    # Tái sử dụng hầm SSH SOCKS5 nếu đang còn sống và lắng nghe
+    if os.path.exists(meta_file):
+        try:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            pid = meta.get("pid")
+            lport = meta.get("local_port")
+            if pid and os.path.exists(f"/proc/{pid}") and lport:
+                ts = socket.socket()
+                ts.settimeout(0.3)
+                ts.connect(("127.0.0.1", lport))
+                ts.close()
+                return f"socks5://127.0.0.1:{lport}"
+        except Exception:
+            pass
+
+    # Tìm cổng local trống
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     local_port = s.getsockname()[1]
     s.close()
 
-    tmp_dir = os.path.join(DATA_DIR, "tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
     askpass_file = os.path.join(tmp_dir, f"ssh_askpass_{ip.replace('.', '_')}_{local_port}.sh")
     escaped_pass = server["ssh_pass"].replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\$", "\\\\\$")
     with open(askpass_file, "w", encoding="utf-8") as f:

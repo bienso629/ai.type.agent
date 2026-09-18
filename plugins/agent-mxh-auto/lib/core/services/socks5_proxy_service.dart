@@ -2259,7 +2259,7 @@ for root, _, files in os.walk(target_dir):
       '-port', consolePort.toString(),
       '-netdelay', 'none',
       '-netspeed', 'full',
-      '-gpu', 'host',
+      '-gpu', 'auto',
       '-no-boot-anim',
       '-camera-back', 'none',
       '-camera-front', 'none',

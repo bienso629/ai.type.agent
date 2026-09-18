@@ -1,8 +1,26 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { User, LogOut, Key, Wallet, Shield, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp, Globe } from 'lucide-react'
+import {
+  User,
+  LogOut,
+  Wallet,
+  Shield,
+  ExternalLink,
+  RefreshCw,
+  X,
+  Lock,
+  ChevronDown,
+  ChevronUp,
+  Globe,
+  Activity,
+  History,
+  TrendingDown,
+  CheckCircle2,
+  Clock,
+  FileText
+} from 'lucide-react'
 
 export function UserProfileModal({
   isOpen,
@@ -16,6 +34,18 @@ export function UserProfileModal({
   const { user, logout, refreshUser } = useAuth()
   const [refreshing, setRefreshing] = useState(false)
 
+  // State Dữ liệu Tiêu thụ & Lịch sử nạp
+  const [usageStats, setUsageStats] = useState<{
+    dailyUsedVnd: number
+    monthlyUsedVnd: number
+    dailyUsedUsd: string
+    monthlyUsedUsd: string
+    keyStatus: string
+    lastUpdated: string | null
+  } | null>(null)
+  const [topupHistory, setTopupHistory] = useState<any[]>([])
+  const [loadingUsage, setLoadingUsage] = useState(false)
+
   // State AstraFlow Cookies
   const [astraLoading, setAstraLoading] = useState(false)
   const [astraMsg, setAstraMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -27,6 +57,31 @@ export function UserProfileModal({
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const fetchUsageData = useCallback(async () => {
+    if (!isOpen) return
+    setLoadingUsage(true)
+    try {
+      const res = await fetch('/api/user/usage')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success) {
+          setUsageStats(data.usageStats)
+          setTopupHistory(data.topupHistory || [])
+        }
+      }
+    } catch {
+      // Ignored
+    } finally {
+      setLoadingUsage(false)
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchUsageData()
+    }
+  }, [isOpen, fetchUsageData])
 
 
 
@@ -76,7 +131,7 @@ export function UserProfileModal({
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    await refreshUser()
+    await Promise.all([refreshUser(), fetchUsageData()])
     setRefreshing(false)
   }
 
@@ -85,11 +140,11 @@ export function UserProfileModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
+        className="relative w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-base overflow-hidden border border-primary/30">
               {user.avatar ? (
@@ -122,9 +177,8 @@ export function UserProfileModal({
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 space-y-5">
-          {/* Badge phương thức và số dư */}
+        {/* Body (Scrollable) */}
+        <div className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-140px)]">
           {/* Badge phương thức, mã khách hàng và số dư */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-border bg-secondary/30 p-3.5">
@@ -147,7 +201,7 @@ export function UserProfileModal({
                   onClick={handleRefresh}
                   disabled={refreshing}
                   className="hover:text-primary transition-colors"
-                  title="Làm mới số dư"
+                  title="Làm mới số dư & dữ liệu sử dụng"
                 >
                   <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
                 </button>
@@ -158,19 +212,103 @@ export function UserProfileModal({
             </div>
           </div>
 
-          {/* Thong tin API Key gui qua email */}
-          <div className="rounded-lg border border-border bg-secondary/40 p-4">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground mb-1.5">
-              <Key size={14} className="text-primary" />
-              API Key sử dụng AI
+          {/* Block Mức tiêu thụ API AstraFlow */}
+          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                <Activity size={14} className="text-primary" />
+                <span>Mức tiêu thụ API Key (AstraFlow)</span>
+              </div>
+              {usageStats?.keyStatus && (
+                <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-emerald">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald animate-pulse" />
+                  {usageStats.keyStatus}
+                </span>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              API Key được gửi bảo mật trực tiếp vào email đăng ký của bạn (<span className="text-foreground font-medium">{user.email}</span>). Vui lòng kiểm tra hòm thư (bao gồm cả thư mục Spam/Quảng cáo).
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-2">
-              Base URL tích hợp hệ thống: <code className="text-primary font-mono font-bold">https://api-vn-sg.mitom.ai/v1</code>
-            </p>
+
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <div className="rounded-md border border-border/80 bg-background/60 p-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Clock size={12} />
+                  <span>Tiêu thụ hôm nay</span>
+                </div>
+                <div className="mt-1 font-mono font-bold text-sm text-foreground">
+                  {formatVnd(usageStats?.dailyUsedVnd || 0)}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border/80 bg-background/60 p-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <TrendingDown size={12} className="text-amber-400" />
+                  <span>Tiêu thụ tháng này</span>
+                </div>
+                <div className="mt-1 font-mono font-bold text-sm text-foreground">
+                  {formatVnd(usageStats?.monthlyUsedVnd || 0)}
+                </div>
+              </div>
+            </div>
           </div>
+
+          {/* Block Danh sách chi tiết các lần nạp tiền */}
+          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                <History size={14} className="text-primary" />
+                <span>Lịch sử nạp số dư</span>
+              </div>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {topupHistory.length} giao dịch
+              </span>
+            </div>
+
+            {loadingUsage ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                Đang tải dữ liệu lịch sử...
+              </div>
+            ) : topupHistory.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border py-5 text-center text-xs text-muted-foreground">
+                Chưa có giao dịch nạp tiền nào được ghi nhận.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {topupHistory.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-md border border-border/70 bg-background/60 p-2.5 text-xs transition-colors hover:border-border"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 size={13} className="text-emerald shrink-0" />
+                        <span className="font-semibold text-foreground">
+                          {item.planName || 'Nạp số dư'}
+                        </span>
+                        {item.invoiceCode && (
+                          <span className="rounded bg-primary/10 border border-primary/20 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-primary">
+                            {item.invoiceCode}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                        <span>{item.code}</span>
+                        <span>•</span>
+                        <span>{new Date(item.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono font-bold text-emerald">
+                        +{formatVnd(item.amount)}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        {item.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
 
           {/* Khu vực Đăng nhập & Đồng bộ Cookie AstraFlow (Chỉ dành cho Admin) */}
           {user.role === 'admin' && (
