@@ -40,7 +40,7 @@ def custom_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
             return _orig_getaddrinfo(_dns_cache[host], port, family, type, proto, flags)
         for doh_url in [f"https://1.1.1.1/dns-query?name={host}&type=A", f"https://8.8.8.8/resolve?name={host}&type=A"]:
             try:
-                req = urllib.request.Request(doh_url, headers={"accept": "application/dns-json"})
+                req = urllib.request.Request(doh_url, headers={"accept": "application/dns-json", "User-Agent": "Mozilla/5.0"})
                 with urllib.request.urlopen(req, timeout=3) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     for ans in data.get("Answer", []):
@@ -661,7 +661,7 @@ def start_gpu_session():
         if not script_path:
             return {"success": False, "error": "Không tìm thấy script colab_mineru_mcp.py"}
 
-        e_res = subprocess.run([colab_bin, "exec", "-s", "aitype", "-f", str(script_path), "--timeout", "60"], capture_output=True, text=True, timeout=75)
+        e_res = subprocess.run([colab_bin, "exec", "-s", "aitype", "-f", str(script_path), "--timeout", "120"], capture_output=True, text=True, timeout=135)
         out = (e_res.stdout or "") + "\n" + (e_res.stderr or "")
         state.log(f"Colab exec output:\n{out}")
 

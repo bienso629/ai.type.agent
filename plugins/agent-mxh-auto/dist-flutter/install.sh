@@ -23,6 +23,15 @@ if dpkg -s mxh-tu-dong >/dev/null 2>&1; then
     sudo dpkg -P mxh-tu-dong || true
 fi
 
+# Xoa thu muc cai dat cu va symlink neu ton tai
+echo "Dang xoa cac file cai dat cu con sot..."
+sudo rm -rf /opt/mxh-tu-dong
+sudo rm -f /usr/bin/mxh-tu-dong
+sudo rm -f /usr/share/applications/mxh-tu-dong.desktop
+sudo rm -f /usr/share/icons/hicolor/*/apps/mxh-tu-dong.*
+sudo rm -f /usr/share/icons/hicolor/*/apps/agent.mxh.auto.*
+sudo rm -f /usr/share/icons/hicolor/*/apps/agent_mxh_auto.*
+
 # Xoa cac file de lai trong user local neu co
 rm -f ~/.local/share/applications/mxh-tu-dong.desktop
 rm -f ~/.local/share/applications/agent.mxh.auto.desktop

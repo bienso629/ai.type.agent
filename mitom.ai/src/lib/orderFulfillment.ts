@@ -233,7 +233,7 @@ export async function fulfillPaidOrder(options: FulfillmentOptions): Promise<Ful
   const deliveryInfo = `Mã đơn: ${order.orderCode}
 Loại giao dịch: ${isTopUp ? 'Nạp thêm số dư vào tài khoản' : 'Khởi tạo tài khoản & Cấp mới API Key'}
 API Key: ${createdApiKey}
-Hạn mức cấp trên AstraFlow: $${totalAllowedUsdStr} USD (Tỷ giá quy đổi: ${new Intl.NumberFormat('vi-VN').format(usdRate)} đ/USD)
+Số tiền nạp: ${new Intl.NumberFormat('vi-VN').format(addedCredit)} đ
 ${userNewBalance !== null ? `Số dư tài khoản sau nạp: ${new Intl.NumberFormat('vi-VN').format(userNewBalance)} đ\n` : ''}Số hóa đơn: ${invoiceCode}
 Ngày xuất: ${invoiceDateStr}
 Trạng thái: Đã kích hoạt`

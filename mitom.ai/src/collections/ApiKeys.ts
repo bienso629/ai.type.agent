@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload'
-import { callUCloudApi } from '@/lib/ucloudClient'
+import { callUCloudApi, type UCloudApiParams } from '@/lib/ucloudClient'
 
 export const ApiKeys: CollectionConfig = {
   slug: 'api-keys',
@@ -34,7 +34,7 @@ export const ApiKeys: CollectionConfig = {
 
           if (pubKey && privKey) {
             try {
-              const createParams: Record<string, any> = {
+              const createParams: UCloudApiParams = {
                 Action: 'CreateUMInferAPIKey',
                 Name: record.name || 'AstraFlow API Key',
               }
@@ -81,7 +81,7 @@ export const ApiKeys: CollectionConfig = {
 
             if (hasLimitChanged) {
               try {
-                const updateParams: Record<string, any> = {
+                const updateParams: UCloudApiParams = {
                   Action: 'UpdateUMInferAPIKey',
                   KeyId: doc.keyId,
                 }
