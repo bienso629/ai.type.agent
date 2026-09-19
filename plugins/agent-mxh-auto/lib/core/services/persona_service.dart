@@ -132,6 +132,7 @@ Mỗi nhân vật phải gồm:
 - age: Tuổi (từ 18 đến 45)
 - gender: Giới tính ("Nam" hoặc "Nữ")
 - bio: Mô tả cá tính, tính cách, sở thích và phong cách sống (khoảng 1 - 2 câu súc tích)
+- email: Địa chỉ email tự nhiên phù hợp với tên nhân vật (ví dụ: nam.nguyenhoang98@gmail.com, triet.leminh89@outlook.com...)
 - agent_info: Vai trò, nhiệm vụ chính của nhân vật này trong hệ thống MXH (ví dụ: "Seeding bài viết ẩm thực, bình luận chia sẻ kinh nghiệm quán ăn, tạo tương tác tự nhiên với khách hàng", hoặc "Review đồ công nghệ, trả lời giải đáp thắc mắc người xem livestream", hoặc "Chăm sóc khách hàng, tương tác thân thiện trong group cộng đồng"...)
 - avatar_prompt: Một prompt chi tiết bằng tiếng Anh chuyên dùng cho AI vẽ ảnh (Midjourney/FLUX/Stable Diffusion) để tạo chân dung cận cảnh avatar cho nhân vật này. ĐẶC BIỆT: Prompt ảnh BẮT BUỘC PHẢI THỂ HIỆN RÕ CÁ TÍNH, VAI TRÒ VÀ NHIỆM VỤ của nhân vật từ bio và agent_info (ví dụ về trang phục, biểu cảm khuôn mặt, ánh mắt, bối cảnh làm việc hoặc môi trường phù hợp với vai trò của họ). Ví dụ: "Close-up portrait of a 24-year-old Vietnamese female food reviewer, vibrant cheerful expression, stylish casual hoodie, holding a subtle coffee cup, blurred modern cafe background with warm bokeh lights, cinematic sunlight, hyperrealistic 8k".
 
@@ -143,6 +144,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
     "age": 25,
     "gender": "Nam",
     "bio": "...",
+    "email": "...",
     "agent_info": "...",
     "avatar_prompt": "..."
   }
@@ -241,6 +243,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
                 gender: item['gender']?.toString() ?? 'Nam',
                 bio: item['bio']?.toString() ?? 'Người dùng mạng xã hội',
                 agentInfo: item['agent_info']?.toString() ?? item['agentInfo']?.toString() ?? 'Tương tác mạng xã hội tự nhiên',
+                email: item['email']?.toString(),
                 avatarPrompt: item['avatar_prompt']?.toString() ?? item['avatarPrompt']?.toString() ?? 'Portrait photo, photorealistic 8k',
               );
             }

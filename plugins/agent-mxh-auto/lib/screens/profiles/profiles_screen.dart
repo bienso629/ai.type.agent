@@ -135,6 +135,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final externalDeviceCtrl = TextEditingController(text: persona.externalDeviceAddress ?? '192.168.1.227:38233');
     bool useExternalDevice = persona.useExternalDevice;
     final phoneCtrl = TextEditingController(text: persona.phoneNumber ?? '');
+    final emailCtrl = TextEditingController(text: persona.email ?? '');
     bool autoSyncPhoneToDevice = persona.autoSyncPhoneToDevice;
     bool isPurchasingPhone = false;
     bool isReordering = false;
@@ -503,6 +504,25 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                               decoration: const InputDecoration(
                                 contentPadding: EdgeInsets.all(10),
                                 hintText: 'Mô tả nghề nghiệp, sở thích, tính cách...',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Email nhân vật
+                            const Text('Email', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                            const SizedBox(height: 5),
+                            SizedBox(
+                              height: 36,
+                              child: TextField(
+                                controller: emailCtrl,
+                                keyboardType: TextInputType.emailAddress,
+                                style: const TextStyle(fontSize: 12),
+                                decoration: const InputDecoration(
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  hintText: 'vidu@gmail.com',
+                                  prefixIcon: Icon(Icons.email_outlined, size: 14, color: AppColors.textDim),
+                                  prefixIconConstraints: BoxConstraints(minWidth: 30, minHeight: 30),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -1835,6 +1855,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     avdName: selectedAvd,
                                     deviceType: selectedDeviceType,
                                     agentInfo: agentInfoCtrl.text.trim(),
+                                    email: emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
                                     phoneNumber: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
                                     autoSyncPhoneToDevice: autoSyncPhoneToDevice,
                                     smsOrderId: currentOrderId,
@@ -2385,14 +2406,17 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                   ),
                                   if (persona != null) ...[
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      height: 18,
+                                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                                      alignment: Alignment.center,
                                       decoration: BoxDecoration(
                                         color: AppColors.primary.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(3),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.35), width: 0.6),
                                       ),
                                       child: Text(
                                         '${persona.gender} · ${persona.age}t',
-                                        style: const TextStyle(fontSize: 9.5, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                        style: const TextStyle(fontSize: 9.5, color: AppColors.primaryLight, fontWeight: FontWeight.bold, height: 1.1),
                                       ),
                                     ),
                                     if (persona.useExternalDevice && (persona.externalDeviceAddress?.trim().isNotEmpty ?? false)) ...[
@@ -2400,20 +2424,23 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                       Tooltip(
                                         message: 'Thiết bị ngoại vi: ${persona.externalDeviceAddress}',
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          height: 18,
+                                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                                          alignment: Alignment.center,
                                           decoration: BoxDecoration(
                                             color: const Color(0xFF0284C7).withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(3),
+                                            borderRadius: BorderRadius.circular(4),
                                             border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.5), width: 0.6),
                                           ),
                                           child: const Row(
                                             mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.center,
                                             children: [
-                                              Icon(Icons.wifi_tethering_rounded, size: 9.5, color: Color(0xFF38BDF8)),
-                                              SizedBox(width: 2),
+                                              Icon(Icons.wifi_tethering_rounded, size: 10.5, color: Color(0xFF38BDF8)),
+                                              SizedBox(width: 2.5),
                                               Text(
                                                 'EXT',
-                                                style: TextStyle(fontSize: 9, color: Color(0xFF38BDF8), fontWeight: FontWeight.bold),
+                                                style: TextStyle(fontSize: 9, color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, height: 1.1),
                                               ),
                                             ],
                                           ),
@@ -2425,23 +2452,32 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                       Tooltip(
                                         message: 'Số điện thoại: ${persona.phoneNumber}${persona.autoSyncPhoneToDevice ? ' (Đã bật tự động gắn vào máy)' : ''}',
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          height: 18,
+                                          width: 18,
+                                          alignment: Alignment.center,
                                           decoration: BoxDecoration(
                                             color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(3),
+                                            borderRadius: BorderRadius.circular(4),
                                             border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5), width: 0.6),
                                           ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(Icons.phone_rounded, size: 9, color: Color(0xFF34D399)),
-                                              const SizedBox(width: 2),
-                                              Text(
-                                                persona.phoneNumber!,
-                                                style: const TextStyle(fontSize: 8.5, color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                                              ),
-                                            ],
+                                          child: const Icon(Icons.phone_rounded, size: 10.5, color: Color(0xFF34D399)),
+                                        ),
+                                      ),
+                                    ],
+                                    if (persona.email != null && persona.email!.isNotEmpty) ...[
+                                      const SizedBox(width: 4),
+                                      Tooltip(
+                                        message: 'Email: ${persona.email}',
+                                        child: Container(
+                                          height: 18,
+                                          width: 18,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5), width: 0.6),
                                           ),
+                                          child: const Icon(Icons.email_rounded, size: 10.5, color: Color(0xFFA78BFA)),
                                         ),
                                       ),
                                     ],

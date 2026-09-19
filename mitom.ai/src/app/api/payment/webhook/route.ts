@@ -1,23 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import configPromise from '@payload-config'
-
-// Bảng khuyến mãi nạp tiền đồng bộ với Frontend
-const TOPUP_BONUS_TIERS = [
-  { amount: 50000, bonusPct: 0 },
-  { amount: 100000, bonusPct: 5 },
-  { amount: 200000, bonusPct: 10 },
-  { amount: 500000, bonusPct: 15 },
-  { amount: 1000000, bonusPct: 20 },
-  { amount: 2000000, bonusPct: 25 },
-]
-
-function calculateBonus(amount: number): number {
-  const sorted = [...TOPUP_BONUS_TIERS].sort((a, b) => b.amount - a.amount)
-  const matched = sorted.find((tier) => amount >= tier.amount)
-  if (!matched || matched.bonusPct <= 0) return 0
-  return Math.round((amount * matched.bonusPct) / 100)
-}
+import { sendMail, buildOrderPaidEmail } from '@/lib/mailer'
+import { fulfillOrder } from '@/lib/orderFulfillment'
+import { getOrCreateAstraFlowKey } from '@/lib/orderFulfillment'
 
 interface WebhookTransaction {
   id: number | string
@@ -28,8 +14,11 @@ interface WebhookTransaction {
   content?: string
   transferType?: string
   transferAmount?: number | string
-  checksum?: string
   [key: string]: any
+}
+
+function generateInvoiceNumber(orderCode: string): string {
+  return `INV-${orderCode}`
 }
 
 export async function POST(request: Request) {
@@ -37,10 +26,13 @@ export async function POST(request: Request) {
     const body = await request.json()
     const payload = await getPayload({ config: configPromise })
 
-    // Chuẩn hóa danh sách giao dịch từ body:
-    // Hỗ trợ cả 2 định dạng:
-    // 1. { "transactions": [ { ... } ] }
-    // 2. { id, gateway, content, transferAmount, ... } (giao dịch đơn)
+    // Load trước 1 product mặc định cho đơn nạp tiền qua webhook (orders.product là bắt buộc)
+    let defaultDepositProduct: any = null
+    try {
+      const prodRes = await payload.find({ collection: 'products', limit: 1 })
+      defaultDepositProduct = prodRes.docs && prodRes.docs.length > 0 ? prodRes.docs[0] : null
+    } catch { defaultDepositProduct = null }
+
     let transactionsList: WebhookTransaction[] = []
 
     if (body && Array.isArray(body.transactions)) {
@@ -56,7 +48,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Lấy trước toàn bộ users trong hệ thống để đối soát nhanh
     const allUsers = await payload.find({
       collection: 'users',
       limit: 500,
@@ -70,145 +61,344 @@ export async function POST(request: Request) {
         gateway = 'ACB',
         transactionDate,
         transactionNumber,
-        accountNumber,
         content = '',
         transferType = 'IN',
         transferAmount,
       } = tx
 
-      // Bỏ qua giao dịch tiền ra (chỉ xử lý tiền vào IN / in)
       if (transferType && transferType.toUpperCase() !== 'IN') {
-        results.push({
-          id: txId,
-          status: 'skipped',
-          reason: 'transferType != IN',
-        })
+        results.push({ id: txId, status: 'skipped', reason: 'transferType != IN' })
         continue
       }
 
       const amount = Number(transferAmount)
       if (!amount || amount <= 0) {
-        results.push({
-          id: txId,
-          status: 'skipped',
-          reason: 'Số tiền giao dịch không hợp lệ.',
-        })
+        results.push({ id: txId, status: 'skipped', reason: 'Số tiền giao dịch không hợp lệ.' })
         continue
       }
 
-      // Kiểm tra trùng lặp giao dịch (Idempotency)
       const transactionId = `BANK-${gateway}-${txId || transactionNumber || Date.now()}`
+
+      // Idempotency: bỏ qua nếu giao dịch đã xử lý
       const existingTx = await payload.find({
         collection: 'transactions',
-        where: {
-          transactionId: {
-            equals: transactionId,
-          },
-        },
+        where: { transactionId: { equals: transactionId } },
         limit: 1,
       })
-
       if (existingTx.docs && existingTx.docs.length > 0) {
-        results.push({
-          id: txId,
-          status: 'already_processed',
-          transactionId,
-        })
+        results.push({ id: txId, status: 'already_processed', transactionId })
         continue
       }
 
-      // Trích xuất mã khách hàng MITO... từ chuỗi content
-      // Ví dụ: "MITO8K3N9P GD 6246MSCBD2DKLKJI" hoặc "MITO000123" (hỗ trợ cả mã cũ và mã mới ngẫu nhiên)
+      // Nhận diện user qua mã MITO... trong nội dung chuyển khoản
       const contentUpper = (content || '').toUpperCase()
       let matchedUserDoc: any = null
 
       for (const u of allUsers.docs) {
         const uCode = (u.customerCode || '').toUpperCase()
-        if (uCode && contentUpper.includes(uCode)) {
+        const uIdCode = `MITO${u.id}`.toUpperCase()
+        const uIdPadded = `MITO${String(u.id).padStart(6, '0')}`.toUpperCase()
+        if (
+          (uCode && contentUpper.includes(uCode)) ||
+          contentUpper.includes(uIdCode) ||
+          contentUpper.includes(uIdPadded)
+        ) {
           matchedUserDoc = u
           break
         }
       }
-
-      // Nếu không khớp chuỗi trực tiếp, dùng regex tìm chuỗi định dạng MITO[0-9A-Z]{4,10}
       if (!matchedUserDoc) {
-        const matchMito = contentUpper.match(/MITO([0-9A-Z]{4,10})/)
+        const matchMito = contentUpper.match(/MITO([0-9A-Z]+)/)
         if (matchMito) {
-          const fullCode = matchMito[0]
-          matchedUserDoc = allUsers.docs.find(
-            (u) => (u.customerCode || '').toUpperCase() === fullCode
-          )
+          const parsedId = parseInt(matchMito[1], 10)
+          if (!isNaN(parsedId)) {
+            matchedUserDoc = allUsers.docs.find((u: any) => u.id === parsedId)
+          }
+          if (!matchedUserDoc) {
+            matchedUserDoc = allUsers.docs.find(
+              (u: any) => (u.customerCode || '').toUpperCase() === matchMito[0]
+            )
+          }
         }
       }
 
-      // Tính toán khuyến mãi và thuế VAT (10%)
-      const bonus = calculateBonus(amount)
-      const totalCredit = amount + bonus
-      const vatRate = 10
-      const vatAmount = Math.round(amount - amount / (1 + vatRate / 100))
-
-      let updatedBalance: number | null = null
-
-      // Cộng tiền vào tài khoản người dùng nếu nhận diện được
-      if (matchedUserDoc) {
-        const currentBalance = Number(matchedUserDoc.balance) || 0
-        updatedBalance = currentBalance + totalCredit
-
-        await payload.update({
-          collection: 'users',
-          id: matchedUserDoc.id,
-          data: {
-            balance: updatedBalance,
-          },
-        })
-      }
-
-      // Tìm đơn hàng liên kết nếu nội dung chuyển khoản chứa mã đơn hàng MT-...
-      let matchedOrderDoc: any = null
-      const matchOrderCode = contentUpper.match(/MT-[0-9A-Z]+/i)
-      if (matchOrderCode) {
-        const orderCodeToFind = matchOrderCode[0].toUpperCase()
-        const orderQuery = await payload.find({
+      // ===== NHÁNH 1: THANH TOÁN ĐƠN HÀNG (content chứa mã đơn MT-...) =====
+      const matchOrder = contentUpper.match(/MT-[0-9A-Z]{6,20}/)
+      let matchedOrder: any = null
+      if (matchOrder) {
+        const orderRes = await payload.find({
           collection: 'orders',
-          where: {
-            orderCode: {
-              equals: orderCodeToFind,
-            },
-          },
+          where: { orderCode: { equals: matchOrder[0] } },
           limit: 1,
         })
-        if (orderQuery.docs.length > 0) {
-          matchedOrderDoc = orderQuery.docs[0]
+        if (orderRes.docs && orderRes.docs.length > 0) {
+          matchedOrder = orderRes.docs[0]
         }
       }
 
-      // Nếu tìm thấy đơn hàng tương ứng, cập nhật đơn hàng sang đã thanh toán 'paid'
-      // Khi Order chuyển sang paid, hook afterChange trong Orders.ts sẽ tự động:
-      // 1. Tạo API Key trên AstraFlow
-      // 2. Tạo mã hóa đơn điện tử
-      // 3. Cập nhật giao hàng và gửi email cho khách
-      if (matchedOrderDoc && matchedOrderDoc.paymentStatus !== 'paid') {
-        try {
-          await payload.update({
-            collection: 'orders',
-            id: matchedOrderDoc.id,
+      if (matchedOrder) {
+        const order = matchedOrder
+
+        // Đơn đã paid trước đó: chỉ ghi nhận giao dịch, không lập hóa đơn trùng
+        if (order.paymentStatus === 'paid') {
+          await payload.create({
+            collection: 'transactions',
             data: {
-              paymentStatus: 'paid',
+              transactionId,
+              order: order.id,
+              user: matchedUserDoc ? matchedUserDoc.id : undefined,
+              amount,
+              vatRate: Number(order.vatRate) || 10,
+              paymentMethod: 'vietqr',
+              status: 'success',
+              rawResponse: tx,
             },
           })
-          console.log(`[Payment Webhook] Đã kích hoạt thanh toán thành công cho đơn hàng: ${matchedOrderDoc.orderCode}`)
-        } catch (orderUpdateErr: any) {
-          console.error(`[Payment Webhook Error] Cập nhật đơn hàng ${matchedOrderDoc.orderCode} thất bại:`, orderUpdateErr.message)
+          results.push({
+            transactionId,
+            orderCode: order.orderCode,
+            status: 'order_already_paid',
+            message: 'Đơn hàng đã thanh toán trước đó, chỉ ghi nhận giao dịch.',
+          })
+          continue
+        }
+
+        const expected = Number(order.totalAmount)
+        const amountOk = amount === expected
+
+        // Cập nhật trạng thái đơn hàng
+        await payload.update({
+          collection: 'orders',
+          id: order.id,
+          data: {
+            paymentStatus: amountOk ? 'paid' : order.paymentStatus,
+            note: `${order.note ? order.note + ' | ' : ''}Thanh toán ${amount.toLocaleString('vi-VN')}đ qua ${gateway} lúc ${transactionDate || new Date().toISOString()}${amountOk ? '' : ` (LƯU Ý: đơn yêu cầu ${expected.toLocaleString('vi-VN')}đ)`}`,
+          },
+        })
+
+        // Ghi nhận giao dịch gắn với đơn
+        await payload.create({
+          collection: 'transactions',
+          data: {
+            transactionId,
+            order: order.id,
+            user: matchedUserDoc ? matchedUserDoc.id : undefined,
+            amount,
+            vatRate: Number(order.vatRate) || 10,
+            vatAmount: Number(order.vatAmount) || 0,
+            paymentMethod: 'vietqr',
+            status: 'success',
+            rawResponse: tx,
+          },
+        })
+
+        // ===== TẠO HÓA ĐƠN (1 thanh toán = 1 hóa đơn) =====
+        const invoiceNumber = generateInvoiceNumber(order.orderCode)
+        let invoiceCreated = true
+        try {
+          await payload.create({
+            collection: 'invoices',
+            data: {
+              invoiceNumber,
+              order: order.id,
+              customerType: order.customerType || 'personal',
+              customerName: order.customerName || '',
+              identityNumber: order.identityNumber || '',
+              companyName: order.companyName || '',
+              companyTaxCode: order.companyTaxCode || '',
+              companyAddress: order.companyAddress || '',
+              invoiceEmail: order.invoiceEmail || order.customerEmail,
+              subtotal: Number(order.subtotal) || 0,
+              vatRate: Number(order.vatRate) || 10,
+              vatAmount: Number(order.vatAmount) || 0,
+              totalAmount: Number(order.totalAmount) || amount,
+              status: 'issued',
+              emailSent: false,
+            },
+          })
+        } catch (e: any) {
+          if (!String(e?.message || '').includes('unique')) {
+            invoiceCreated = false
+          }
+        }
+
+        // ===== FULFILLMENT: cấp key AstraFlow / cộng dư số dư + email brand mitom.ai =====
+        let fulfillment: any = null
+        let fulfillmentError: string | null = null
+        try {
+          fulfillment = await fulfillOrder(payload, order, {
+            transactionId,
+            gateway,
+            invoiceNumber,
+          })
+          if (fulfillment.emailSent) {
+            const invRes = await payload.find({
+              collection: 'invoices',
+              where: { invoiceNumber: { equals: invoiceNumber } },
+              limit: 1,
+            })
+            if (invRes.docs && invRes.docs.length > 0) {
+              await payload.update({
+                collection: 'invoices',
+                id: invRes.docs[0].id,
+                data: { emailSent: true },
+              })
+            }
+            await payload.update({
+              collection: 'orders',
+              id: order.id,
+              data: { fulfillmentStatus: 'fulfilled' },
+            })
+          }
+        } catch (e: any) {
+          fulfillmentError = e?.message || String(e)
+          console.error('[Fulfillment Error]:', fulfillmentError)
+        }
+
+        results.push({
+          transactionId,
+          orderCode: order.orderCode,
+          invoiceNumber: invoiceCreated ? invoiceNumber : null,
+          amount,
+          expectedAmount: expected,
+          amountMatched: amountOk,
+          fulfillmentMode: fulfillment ? fulfillment.mode : null,
+          apiKeyMasked: fulfillment && fulfillment.apiKey
+            ? fulfillment.apiKey.slice(0, 10) + '...' + fulfillment.apiKey.slice(-4)
+            : null,
+          newBalance: fulfillment ? fulfillment.newBalance : null,
+          emailedTo: fulfillment && fulfillment.emailSent ? order.invoiceEmail || order.customerEmail : null,
+          emailStatus: fulfillment ? (fulfillment.emailSent ? 'sent' : 'failed') : 'skipped',
+          emailError: fulfillment ? fulfillment.emailError || fulfillmentError : fulfillmentError,
+          status: fulfillment && fulfillment.ok ? 'order_payment_success' : 'order_payment_fulfillment_failed',
+        })
+        continue
+      }
+
+      // ===== KIỂM TRA ĐIỀU KIỆN CHẤP NHẬN GIAO DỊCH =====
+      // Chỉ chấp nhận:
+      // 1. Giao dịch thanh toán đơn hàng (chứa mã MT-...) -> đã xử lý ở trên
+      // 2. Giao dịch nạp tiền tài khoản (chứa mã MITO...) -> matchedUserDoc phải tồn tại
+      if (!matchedUserDoc) {
+        results.push({
+          id: txId,
+          status: "skipped",
+          reason: "Giao dịch không hợp lệ: nội dung không chứa mã đơn hàng MT-... hoặc mã tài khoản MITO...",
+          content,
+        });
+        continue;
+      }
+
+      // ===== NHÁNH 2: NẠP TIỀN VÀO TÀI KHOẢN (có mã MITO...) =====
+      const bonus = 0
+      const vatRate = 10
+      // amount từ callback là TỔNG khách đã chuyển (gói nạp + VAT), theo đúng hiển thị web
+      const vatAmount = Math.round(amount * vatRate / (100 + vatRate))
+      const netAmount = amount - vatAmount
+      const totalCredit = netAmount
+
+      // Tạo Order + Invoice tương ứng 1 giao dịch nạp tiền
+      const orderCode = `MT-${Date.now().toString().slice(-4)}${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+      const userDoc = matchedUserDoc
+      const invoiceEmail = userDoc.email
+      const customerName = userDoc.name || userDoc.email.split('@')[0]
+
+      let depositOrder: any = null
+      try {
+        depositOrder = await payload.create({
+          collection: 'orders',
+          data: {
+            orderCode,
+            customerEmail: invoiceEmail,
+            product: defaultDepositProduct?.id,
+            planName: 'Nạp tiền tài khoản (webhook)',
+            subtotal: netAmount,
+            vatRate,
+            vatAmount,
+            totalAmount: amount,
+            paymentStatus: 'paid',
+            fulfillmentStatus: 'unfulfilled',
+            customerType: 'personal',
+            customerName,
+            invoiceEmail,
+            note: `Nạp tiền tự động qua webhook ${gateway} - GD ${transactionId} - Mã KH ${userDoc.customerCode}`,
+          },
+        })
+      } catch (e: any) {
+        console.error('[Webhook Deposit] Tạo order lỗi:', e?.message)
+      }
+
+      // Cộng dồn số dư NGAY (tiền nạp thuộc về user, không phụ thuộc việc cấp key)
+      const currentBalance = Number(userDoc.balance) || 0
+      const newBalance = currentBalance + totalCredit
+      await payload.update({
+        collection: 'users',
+        id: userDoc.id,
+        data: { balance: newBalance },
+      })
+
+      // Cấp/tái sử dụng API Key AstraFlow + gửi email xác nhận
+      let fulfillment: any = null
+      let fulfillmentError: string | null = null
+      try {
+        const freshUser = await payload.findByID({ collection: 'users', id: userDoc.id })
+        fulfillment = await getOrCreateAstraFlowKey(payload, freshUser || userDoc, netAmount, {
+          transactionId,
+          gateway,
+          invoiceNumber: `INV-${orderCode}`,
+          newBalance,
+        })
+        if (fulfillment.ok && depositOrder) {
+          await payload.update({
+            collection: 'orders',
+            id: depositOrder.id,
+            data: {
+              fulfillmentStatus: 'fulfilled',
+              deliveryInfo: fulfillment.isNewKey
+                ? `API Key moi: ${fulfillment.apiKey}`
+                : `Tai su dung API Key hien co: ${fulfillment.apiKey}`,
+            },
+          })
+        }
+      } catch (e: any) {
+        fulfillmentError = e?.message || String(e)
+        console.error('[Webhook Deposit] Fulfillment lỗi:', fulfillmentError)
+      }
+
+      // Tạo Invoice cho giao dịch nạp tiền
+      let invoiceCreated = false
+      try {
+        await payload.create({
+          collection: 'invoices',
+          data: {
+            invoiceNumber: `INV-${orderCode}`,
+            order: depositOrder?.id,
+            customerType: 'personal',
+            customerName,
+            invoiceEmail,
+            subtotal: netAmount,
+            vatRate,
+            vatAmount,
+            totalAmount: amount,
+            status: 'issued',
+            emailSent: fulfillment ? fulfillment.emailSent : false,
+          },
+        })
+        invoiceCreated = true
+      } catch (e: any) {
+        if (!String(e?.message || '').includes('unique')) {
+          console.error('[Webhook Deposit] Tạo invoice lỗi:', e?.message)
+        } else {
+          invoiceCreated = true
         }
       }
 
-      // Lưu bản ghi Giao dịch vào collection Transactions
-      const newTransaction = await payload.create({
+      await payload.create({
         collection: 'transactions',
         data: {
           transactionId,
-          order: matchedOrderDoc ? matchedOrderDoc.id : undefined,
-          user: matchedUserDoc ? matchedUserDoc.id : undefined,
+          order: depositOrder?.id,
+          user: userDoc.id,
           amount,
           vatRate,
           vatAmount,
@@ -219,18 +409,26 @@ export async function POST(request: Request) {
       })
 
       results.push({
-        transactionId: newTransaction.transactionId,
+        transactionId,
         gateway,
         amount,
         bonus,
         totalCredit,
         vatAmount,
-        creditedUser: matchedUserDoc ? matchedUserDoc.email : null,
-        userCustomerCode: matchedUserDoc ? matchedUserDoc.customerCode : null,
-        newBalance: updatedBalance,
-        matchedOrder: matchedOrderDoc ? matchedOrderDoc.orderCode : null,
+        orderCode: depositOrder ? depositOrder.orderCode : null,
+        invoiceNumber: invoiceCreated ? `INV-${orderCode}` : null,
+        creditedUser: userDoc.email,
+        userCustomerCode: userDoc.customerCode,
+        apiKeyMasked: fulfillment && fulfillment.apiKey
+          ? fulfillment.apiKey.slice(0, 10) + '...' + fulfillment.apiKey.slice(-4)
+          : null,
+        isNewKey: fulfillment ? fulfillment.isNewKey : false,
+        newBalance,
+        emailedTo: fulfillment && fulfillment.emailSent ? invoiceEmail : null,
+        emailStatus: fulfillment ? (fulfillment.emailSent ? 'sent' : 'failed') : 'skipped',
+        emailError: fulfillment ? fulfillment.emailError || fulfillmentError : fulfillmentError,
         transactionDate,
-        status: 'success',
+        status: fulfillment && fulfillment.ok ? 'deposit_success' : 'deposit_fulfillment_failed',
       })
     }
 

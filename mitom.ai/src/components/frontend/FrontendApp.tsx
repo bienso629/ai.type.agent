@@ -5,12 +5,12 @@ import Image from 'next/image'
 import { ApiModel, ALL_MODELS } from '@/data/models-parser'
 import { ModelsSection } from './ModelsSection'
 import { useAuth } from '@/context/AuthContext'
-import { UserProfileModal } from './UserProfileModal'
+import { ProfilePage } from './ProfilePage'
 import { LoginModal } from './LoginModal'
 import { GuideTopupPage, ApiDocsPage, TermsPage, PrivacyPage } from './StaticPages'
 import { User, ChevronLeft, ChevronRight, Sparkles, Copy, Check, X, Key } from 'lucide-react'
 
-export type Page = 'home' | 'models' | 'topup' | 'success' | 'guide-topup' | 'api-docs' | 'terms' | 'privacy'
+export type Page = 'home' | 'models' | 'topup' | 'success' | 'profile' | 'guide-topup' | 'api-docs' | 'terms' | 'privacy'
 
 export interface TopUp {
   amount: number
@@ -93,7 +93,7 @@ export function HeroModelSlider({
   if (!currentModel) return null
 
   return (
-    <div className="w-full max-w-md lg:max-w-lg rounded-2xl border border-border bg-card p-6 md:p-7 shadow-2xl shadow-black/40 relative overflow-hidden transition-all duration-300">
+    <div className="w-full max-w-md lg:max-w-lg rounded-md border border-border/80 bg-card p-6 md:p-7 shadow-2xl shadow-black/40 relative overflow-hidden transition-all duration-300">
       {/* Background glow theo màu accent của model */}
       <div
         className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full opacity-20 blur-3xl transition-all duration-500"
@@ -101,7 +101,7 @@ export function HeroModelSlider({
       />
 
       {/* Header thanh điều hướng Slide */}
-      <div className="flex items-center justify-between pb-4 border-b border-border">
+      <div className="flex items-center justify-between pb-4 border-b border-border/60">
         <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
           Mô hình mới nhất
         </span>
@@ -113,7 +113,7 @@ export function HeroModelSlider({
             type="button"
             onClick={handlePrev}
             title="Model trước"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
+            className="flex h-8 w-8 items-center justify-center rounded border border-border/70 bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
           >
             <ChevronLeft size={18} />
           </button>
@@ -121,7 +121,7 @@ export function HeroModelSlider({
             type="button"
             onClick={handleNext}
             title="Model tiếp theo"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
+            className="flex h-8 w-8 items-center justify-center rounded border border-border/70 bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
           >
             <ChevronRight size={18} />
           </button>
@@ -233,6 +233,7 @@ function TopUpPage({
   const [companyName, setCompanyName] = useState('')
   const [taxCode, setTaxCode] = useState('')
   const [companyAddress, setCompanyAddress] = useState('')
+  const [wantInvoice, setWantInvoice] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -268,6 +269,13 @@ function TopUpPage({
           customerPhone: phone,
           customerEmail: email,
           customerNote: note,
+          wantInvoice,
+          customerType: wantInvoice ? customerType : 'personal',
+          identityNumber: wantInvoice && customerType === 'personal' ? identityNumber.trim() : '',
+          invoiceEmail: wantInvoice ? invoiceEmail.trim() : email.trim(),
+          companyName: wantInvoice && customerType === 'company' ? companyName.trim() : '',
+          companyTaxCode: wantInvoice && customerType === 'company' ? taxCode.trim() : '',
+          companyAddress: wantInvoice && customerType === 'company' ? companyAddress.trim() : '',
         }),
       })
 
@@ -378,12 +386,31 @@ function TopUpPage({
               <p className="text-xs text-muted-foreground mt-1">Thông tin kích hoạt tài khoản và nhận hóa đơn VAT điện tử</p>
               
               <div className="mt-6 space-y-4">
+                {/* Checkbox nhan hoa don */}
+                <label className="flex cursor-pointer select-none items-center gap-3 rounded-lg border border-border bg-secondary/40 px-4 py-3 transition-colors hover:border-primary/50">
+                  <input
+                    type="checkbox"
+                    className="peer sr-only"
+                    checked={wantInvoice}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setWantInvoice(checked)
+                      if (checked && !invoiceEmail) setInvoiceEmail(email)
+                    }}
+                  />
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border bg-secondary transition-all peer-checked:border-primary peer-checked:bg-primary">
+                    <Check size={13} className={`text-primary-foreground transition-opacity ${wantInvoice ? 'opacity-100' : 'opacity-0'}`} />
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">Nhận hóa đơn điện tử (VAT 10%)</span>
+                </label>
+
                 {/* Chọn đối tượng khách hàng - Tab Tone Màu Đen không viền */}
+                {wantInvoice && (
                 <div>
                   <span className="block text-xs font-semibold text-muted-foreground mb-2">
                     Đối tượng xuất hóa đơn VAT (10%)
                   </span>
-                  <div className="flex rounded-xl bg-black/80 p-1.5 gap-1.5 shadow-inner">
+                  <div className="flex rounded-lg bg-black/80 p-1.5 gap-1.5 shadow-inner">
                     <button
                       type="button"
                       onClick={() => setCustomerType('personal')}
@@ -409,6 +436,8 @@ function TopUpPage({
                   </div>
                 </div>
 
+                )}
+
                 {/* Số điện thoại / Zalo (Chung cho cả 2) */}
                 <div>
                   <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -424,7 +453,22 @@ function TopUpPage({
                   </label>
                 </div>
 
-                {customerType === 'personal' ? (
+                {/* Email nhan API Key - luon hien thi */}
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Email nhận API Key <span className="text-primary">*</span>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="ban@gmail.com"
+                      className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                </div>
+
+                {wantInvoice && (customerType === 'personal' ? (
                   <>
                     <div>
                       <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -455,16 +499,13 @@ function TopUpPage({
 
                     <div>
                       <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        Email nhận hóa đơn & API Key <span className="text-primary">*</span>
+                        Email nhận hóa đơn <span className="text-primary">*</span>
                         <input
                           type="email"
                           required
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value)
-                            setInvoiceEmail(e.target.value)
-                          }}
-                          placeholder="ban@gmail.com"
+                          value={invoiceEmail}
+                          onChange={(e) => setInvoiceEmail(e.target.value)}
+                          placeholder="ketoan@gmail.com"
                           className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                         />
                       </label>
@@ -520,18 +561,15 @@ function TopUpPage({
                         <input
                           type="email"
                           required
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value)
-                            setInvoiceEmail(e.target.value)
-                          }}
+                          value={invoiceEmail}
+                          onChange={(e) => setInvoiceEmail(e.target.value)}
                           placeholder="ketoan@congty.com"
                           className="mt-1.5 w-full rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                         />
                       </label>
                     </div>
                   </>
-                )}
+                ))}
 
                 <div>
                   <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -886,7 +924,6 @@ export function FrontendApp({
   const [orderInfo, setOrderInfo] = useState<any>(null)
   const [openFaq, setOpenFaq] = useState<number | null>(0)
   const [isLookupOpen, setIsLookupOpen] = useState(false)
-  const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isLoginOpen, setIsLoginOpen] = useState(false)
 
   const navigate = (p: Page) => {
@@ -945,6 +982,8 @@ export function FrontendApp({
         onNavigate={navigate}
       />
     )
+  } else if (page === 'profile') {
+    content = <ProfilePage onNavigate={navigate} />
   } else if (page === 'guide-topup') {
     content = <GuideTopupPage onNavigate={navigate} />
   } else if (page === 'api-docs') {
@@ -1010,7 +1049,7 @@ export function FrontendApp({
                     </a>
 
                     <button
-                      onClick={() => setIsProfileOpen(true)}
+                      onClick={() => navigate('profile')}
                       className="hidden sm:flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/20 transition-all cursor-pointer"
                       title="Mở bảng điều khiển Admin & Đồng bộ Cookie AstraFlow"
                     >
@@ -1020,7 +1059,7 @@ export function FrontendApp({
                   </>
                 )}
                 <button
-                  onClick={() => setIsProfileOpen(true)}
+                  onClick={() => navigate('profile')}
                   className="flex items-center gap-2 rounded-lg border border-border bg-secondary/60 px-3.5 py-2 text-xs font-bold text-foreground transition-all hover:border-primary/50"
                 >
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[11px] text-primary overflow-hidden font-mono font-bold">
@@ -1130,11 +1169,6 @@ export function FrontendApp({
       </footer>
 
       <OrderLookupModal isOpen={isLookupOpen} onClose={() => setIsLookupOpen(false)} />
-      <UserProfileModal
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-        onLogout={() => navigate('home')}
-      />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </div>
   )
@@ -1239,7 +1273,7 @@ function HomePage({
             ['03', 'Chọn Model tương thích', 'Sao chép mã Model từ danh mục (hơn 130 models) và đưa vào cấu hình.'],
             ['04', 'Gọi API & Tối ưu', 'Trừ theo lượng token/lượt sinh thực tế, hỗ trợ kỹ thuật 24/7 khi cần.'],
           ].map(([n, t, d]) => (
-            <div key={n} className="relative rounded-xl border border-border bg-card p-6">
+            <div key={n} className="relative rounded-md border border-border/80 bg-card/60 p-6">
               <span className="font-mono text-3xl font-bold text-primary/30">{n}</span>
               <h3 className="mt-3 font-display text-lg font-bold">{t}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{d}</p>
@@ -1249,7 +1283,7 @@ function HomePage({
       </section>
 
       {/* Pricing — nạp tiền */}
-      <section id="pricing" className="border-y border-border bg-secondary/30">
+      <section id="pricing" className="border-y border-border/60 bg-secondary/20">
         <div className="mx-auto max-w-7xl px-5 py-20 md:px-8">
           <div className="text-center">
             <span className="font-mono text-xs uppercase tracking-widest text-primary">// Nạp tiền số dư</span>
@@ -1267,19 +1301,19 @@ function HomePage({
               return (
                 <div
                   key={t.amount}
-                  className={`relative flex flex-col rounded-xl border p-6 transition-transform hover:-translate-y-1 ${
-                    t.highlight ? 'border-primary bg-card shadow-2xl shadow-primary/10' : 'border-border bg-card'
+                  className={`relative flex flex-col rounded-md border p-6 transition-transform hover:-translate-y-1 ${
+                    t.highlight ? 'border-primary/80 bg-card shadow-xl shadow-primary/5' : 'border-border/80 bg-card/70'
                   }`}
                 >
                   {t.highlight && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-sm bg-primary px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-xs bg-primary px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
                       Chọn nhiều nhất
                     </span>
                   )}
                   <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">{t.label}</span>
                   <div className="mt-3 font-display text-3xl font-black">{formatVnd(t.amount)}</div>
                   {t.bonusPct > 0 ? (
-                    <div className="mt-2 inline-flex h-6 w-fit items-center gap-1.5 rounded-sm bg-emerald/15 px-2.5 text-xs font-bold text-emerald">
+                    <div className="mt-2 inline-flex h-6 w-fit items-center gap-1.5 rounded-xs bg-emerald/15 px-2.5 text-xs font-bold text-emerald">
                       +{t.bonusPct}% tặng {formatVnd(bonus)}
                     </div>
                   ) : (
@@ -1287,14 +1321,14 @@ function HomePage({
                       Nạp tối thiểu, không kỳ hạn
                     </div>
                   )}
-                  <div className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">Số dư nhận được</div>
+                  <div className="mt-5 border-t border-border/60 pt-4 text-xs text-muted-foreground">Số dư nhận được</div>
                   <div className="font-mono text-lg font-bold text-primary">{formatVnd(t.amount + bonus)}</div>
                   <button
                     onClick={() => onTopup(t)}
                     className={`glow-button mt-6 rounded-md py-3 text-sm font-bold transition-transform hover:scale-[1.02] ${
                       t.highlight
                         ? 'bg-primary text-primary-foreground'
-                        : 'border border-border bg-secondary text-secondary-foreground hover:border-primary/60'
+                        : 'border border-border/80 bg-secondary text-secondary-foreground hover:border-primary/60'
                     }`}
                   >
                     Nạp {formatVnd(t.amount)}
@@ -1310,8 +1344,8 @@ function HomePage({
               ['Tính theo lượt gọi thực tế', 'Mỗi lượt gọi API được trừ chính xác vào số dư theo bảng giá niêm yết.'],
               ['Nạp thêm tự động trong 30 giây', 'Nạp qua VietQR, Momo hay ZaloPay được kích hoạt tức thì 24/7.'],
             ].map(([t, d]) => (
-              <div key={t} className="flex gap-3 rounded-xl border border-border bg-card p-5">
-                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-sm bg-primary/15 text-primary">
+              <div key={t} className="flex gap-3 rounded-md border border-border/70 bg-card/60 p-5">
+                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-xs bg-primary/15 text-primary">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -1327,7 +1361,7 @@ function HomePage({
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="bg-secondary/30">
+      <section id="faq" className="bg-secondary/20">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 md:px-8 lg:grid-cols-2">
           <div>
             <span className="font-mono text-xs uppercase tracking-widest text-primary">// Hỏi đáp</span>
@@ -1336,7 +1370,7 @@ function HomePage({
               Chưa tìm thấy câu trả lời? <a href={ZALO} target="_blank" rel="noreferrer" className="font-semibold text-primary underline underline-offset-4 hover:opacity-80">Nhắn Zalo hỗ trợ ngay</a> để được đội ngũ kỹ thuật hỗ trợ.
             </p>
           </div>
-          <div className="divide-y divide-border rounded-xl border border-border bg-card">
+          <div className="divide-y divide-border/60 rounded-md border border-border/70 bg-card/70">
             {FAQS.map((item, i) => (
               <button
                 key={item.q}

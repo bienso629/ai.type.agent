@@ -2256,6 +2256,7 @@ for root, _, files in os.walk(target_dir):
       if (httpProxyPort != null) ...[
         '-http-proxy', 'http://127.0.0.1:$httpProxyPort',
       ],
+      '-dns-server', '8.8.8.8,1.1.1.1',
       '-port', consolePort.toString(),
       '-netdelay', 'none',
       '-netspeed', 'full',
@@ -2355,11 +2356,16 @@ for root, _, files in os.walk(target_dir):
           }
         }
 
-        // ÉP CẤU HÌNH PROXY QUA ADB SETTINGS:
+        // ÉP CẤU HÌNH PROXY QUA ADB SETTINGS HOẶC GỠ SẠCH PROXY CHO IP LOCAL:
         // Android Emulator mặc định dùng 10.0.2.2 làm địa chỉ loopback quay về máy trạm (host)
         if (proxyPort != null && proxyPort > 0) {
           try {
             await setAdbGlobalProxy(serial, '10.0.2.2', proxyPort);
+          } catch (_) {}
+        } else {
+          // Trường hợp chạy local không dùng proxy: Phải xóa sạch proxy cũ tránh rớt mạng
+          try {
+            await clearAdbGlobalProxy(serial);
           } catch (_) {}
         }
 

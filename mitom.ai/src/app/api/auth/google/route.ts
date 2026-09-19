@@ -84,10 +84,10 @@ export async function POST(request: Request) {
     })
 
     let localUser: any
-    const { generateCustomerCode } = await import('@/lib/customerCode')
 
     if (existingUsers.docs && existingUsers.docs.length > 0) {
       const currentDoc = existingUsers.docs[0]
+      const expectedCustomerCode = currentDoc.customerCode || generateCustomerCode()
       localUser = await payload.update({
         collection: 'users',
         id: currentDoc.id,
@@ -96,8 +96,8 @@ export async function POST(request: Request) {
           avatar: userAvatar || currentDoc.avatar,
           authProvider: 'google',
           googleId: googleId || currentDoc.googleId,
-          customerCode: currentDoc.customerCode || generateCustomerCode(),
-          apiKey: currentDoc.apiKey || generateApiKey(),
+          customerCode: currentDoc.customerCode || expectedCustomerCode,
+          apiKey: currentDoc.apiKey || '',
         },
       })
     } else {
@@ -110,12 +110,16 @@ export async function POST(request: Request) {
           avatar: userAvatar,
           authProvider: 'google',
           googleId,
-          customerCode: generateCustomerCode(),
           balance: 0,
           role: 'user',
-          apiKey: generateApiKey(),
+          apiKey: '',
+        customerCode: generateCustomerCode(),
         },
       })
+
+      // Cập nhật customerCode chuẩn theo User ID vừa tạo
+      
+      
     }
 
     // 3. Khởi tạo Session JWT và thiết lập Cookie

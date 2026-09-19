@@ -74,6 +74,7 @@ export interface Config {
     orders: Order;
     transactions: Transaction;
     'api-keys': ApiKey;
+    invoices: Invoice;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -88,6 +89,7 @@ export interface Config {
     orders: OrdersSelect<false> | OrdersSelect<true>;
     transactions: TransactionsSelect<false> | TransactionsSelect<true>;
     'api-keys': ApiKeysSelect<false> | ApiKeysSelect<true>;
+    invoices: InvoicesSelect<false> | InvoicesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -144,9 +146,20 @@ export interface User {
   googleId?: string | null;
   balance?: number | null;
   /**
-   * Mã nhận diện nạp tiền tự động qua cổng ngân hàng
+   * Giới hạn chi tiêu mỗi ngày qua API AI. Nhập 0 để không giới hạn.
+   */
+  dailyLimit?: number | null;
+  /**
+   * Giới hạn chi tiêu mỗi tháng qua API AI. Nhập 0 để không giới hạn.
+   */
+  monthlyLimit?: number | null;
+  /**
+   * Mã nhận diện ngẫu nhiên bảo mật nạp tiền tự động qua ngân hàng
    */
   customerCode?: string | null;
+  /**
+   * Khóa API AstraFlow được cấp cho người dùng
+   */
   apiKey?: string | null;
   role?: ('admin' | 'user') | null;
   resetOtp?: string | null;
@@ -261,15 +274,6 @@ export interface Order {
   companyTaxCode?: string | null;
   companyAddress?: string | null;
   note?: string | null;
-  /**
-   * Key được tạo tự động từ AstraFlow khi thanh toán thành công
-   */
-  apiKey?: string | null;
-  /**
-   * Mã số hóa đơn khởi tạo tự động (ví dụ: HD-2026-0001)
-   */
-  invoiceCode?: string | null;
-  invoiceIssuedAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -350,6 +354,31 @@ export interface ApiKey {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "invoices".
+ */
+export interface Invoice {
+  id: number;
+  invoiceNumber: string;
+  order?: (number | null) | Order;
+  customerType?: ('personal' | 'company') | null;
+  customerName?: string | null;
+  identityNumber?: string | null;
+  companyName?: string | null;
+  companyTaxCode?: string | null;
+  companyAddress?: string | null;
+  invoiceEmail?: string | null;
+  subtotal?: number | null;
+  vatRate?: number | null;
+  vatAmount?: number | null;
+  totalAmount?: number | null;
+  status?: ('issued' | 'canceled') | null;
+  emailSent?: boolean | null;
+  note?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -399,6 +428,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'api-keys';
         value: number | ApiKey;
+      } | null)
+    | ({
+        relationTo: 'invoices';
+        value: number | Invoice;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -453,6 +486,8 @@ export interface UsersSelect<T extends boolean = true> {
   taduUserId?: T;
   googleId?: T;
   balance?: T;
+  dailyLimit?: T;
+  monthlyLimit?: T;
   customerCode?: T;
   apiKey?: T;
   role?: T;
@@ -562,9 +597,6 @@ export interface OrdersSelect<T extends boolean = true> {
   companyTaxCode?: T;
   companyAddress?: T;
   note?: T;
-  apiKey?: T;
-  invoiceCode?: T;
-  invoiceIssuedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -604,6 +636,30 @@ export interface ApiKeysSelect<T extends boolean = true> {
   monthlySpend?: T;
   expiryTime?: T;
   rawResponse?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "invoices_select".
+ */
+export interface InvoicesSelect<T extends boolean = true> {
+  invoiceNumber?: T;
+  order?: T;
+  customerType?: T;
+  customerName?: T;
+  identityNumber?: T;
+  companyName?: T;
+  companyTaxCode?: T;
+  companyAddress?: T;
+  invoiceEmail?: T;
+  subtotal?: T;
+  vatRate?: T;
+  vatAmount?: T;
+  totalAmount?: T;
+  status?: T;
+  emailSent?: T;
+  note?: T;
   updatedAt?: T;
   createdAt?: T;
 }

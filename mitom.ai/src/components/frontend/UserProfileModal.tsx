@@ -1,26 +1,39 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import {
-  User,
-  LogOut,
-  Wallet,
-  Shield,
-  ExternalLink,
-  RefreshCw,
-  X,
-  Lock,
-  ChevronDown,
-  ChevronUp,
-  Globe,
-  Activity,
-  History,
-  TrendingDown,
-  CheckCircle2,
-  Clock,
-  FileText
-} from 'lucide-react'
+import { User, LogOut, Wallet, Shield, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp, Globe, Gauge } from 'lucide-react'
+
+
+interface UsageAstraflow {
+  connected: boolean
+  keyName: string
+  maskedKey: string
+  status: string
+  dailyUsedVnd: number
+  monthlyUsedVnd: number
+  dailyLimitVnd: number
+  monthlyLimitVnd: number
+  updateTime: string
+}
+
+interface UsageHistoryItem {
+  id: number
+  orderCode: string
+  planName: string
+  subtotal: number
+  vatAmount: number
+  totalAmount: number
+  invoiceNumber: string
+  date: string
+  status: string
+}
+
+interface UsageData {
+  astraflow: UsageAstraflow
+  history: UsageHistoryItem[]
+  stats: { totalDeposited: number; depositCount: number }
+}
 
 export function UserProfileModal({
   isOpen,
@@ -34,18 +47,6 @@ export function UserProfileModal({
   const { user, logout, refreshUser } = useAuth()
   const [refreshing, setRefreshing] = useState(false)
 
-  // State Dữ liệu Tiêu thụ & Lịch sử nạp
-  const [usageStats, setUsageStats] = useState<{
-    dailyUsedVnd: number
-    monthlyUsedVnd: number
-    dailyUsedUsd: string
-    monthlyUsedUsd: string
-    keyStatus: string
-    lastUpdated: string | null
-  } | null>(null)
-  const [topupHistory, setTopupHistory] = useState<any[]>([])
-  const [loadingUsage, setLoadingUsage] = useState(false)
-
   // State AstraFlow Cookies
   const [astraLoading, setAstraLoading] = useState(false)
   const [astraMsg, setAstraMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -58,34 +59,107 @@ export function UserProfileModal({
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const fetchUsageData = useCallback(async () => {
+  // State hạn mức chi tiêu API
+  const [limits, setLimits] = useState<{ balance: number; dailyLimit: number; monthlyLimit: number } | null>(null)
+  const [limitsLoading, setLimitsLoading] = useState(false)
+  const [limitsSaving, setLimitsSaving] = useState(false)
+  const [dailyInput, setDailyInput] = useState('')
+  const [monthlyInput, setMonthlyInput] = useState('')
+  const [limitsMsg, setLimitsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // Tải hạn mức + số dư mỗi khi mở modal
+  useEffect(() => {
     if (!isOpen) return
-    setLoadingUsage(true)
-    try {
-      const res = await fetch('/api/user/usage')
-      if (res.ok) {
+    let cancelled = false
+    const load = async () => {
+      setLimitsLoading(true)
+      setLimitsMsg(null)
+      try {
+        const res = await fetch('/api/account/limits', { cache: 'no-store' })
         const data = await res.json()
-        if (data.success) {
-          setUsageStats(data.usageStats)
-          setTopupHistory(data.topupHistory || [])
+        if (!cancelled && res.ok && data.success) {
+          setLimits({ balance: data.balance, dailyLimit: data.dailyLimit, monthlyLimit: data.monthlyLimit })
+          setDailyInput(String(data.dailyLimit ?? 0))
+          setMonthlyInput(String(data.monthlyLimit ?? 0))
         }
+      } catch {
+        // bo qua loi mang tam thoi
+      } finally {
+        if (!cancelled) setLimitsLoading(false)
       }
-    } catch {
-      // Ignored
-    } finally {
-      setLoadingUsage(false)
+    }
+    load()
+    return () => {
+      cancelled = true
     }
   }, [isOpen])
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchUsageData()
+  // ===== Muc tieu thu API AstraFlow + Lich su nap so du =====
+  const [usage, setUsage] = useState<UsageData | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+
+  const loadUsage = async () => {
+    setUsageLoading(true)
+    try {
+      const res = await fetch('/api/user/usage', { cache: 'no-store' })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setUsage({ astraflow: data.astraflow, history: data.history || [], stats: data.stats })
+      }
+    } catch {
+      // bo qua loi mang tam thoi
+    } finally {
+      setUsageLoading(false)
     }
-  }, [isOpen, fetchUsageData])
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+    loadUsage()
+  }, [isOpen])
+
+  const handleSaveLimits = async () => {
+    setLimitsSaving(true)
+    setLimitsMsg(null)
+    try {
+      const res = await fetch('/api/account/limits', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dailyLimit: Number(dailyInput) || 0, monthlyLimit: Number(monthlyInput) || 0 }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setLimits({ balance: data.balance, dailyLimit: data.dailyLimit, monthlyLimit: data.monthlyLimit })
+        setLimitsMsg({ type: 'success', text: data.message || 'Đã lưu hạn mức thành công.' })
+        refreshUser()
+      } else {
+        setLimitsMsg({ type: 'error', text: data.error || 'Lưu hạn mức thất bại.' })
+      }
+    } catch (e: any) {
+      setLimitsMsg({ type: 'error', text: e.message || 'Lỗi kết nối máy chủ.' })
+    } finally {
+      setLimitsSaving(false)
+    }
+  }
 
 
 
   if (!isOpen || !user) return null
+
+  const handleReloadUsage = async () => {
+    setUsageLoading(true)
+    try {
+      const res = await fetch('/api/user/usage', { cache: 'no-store' })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setUsage({ astraflow: data.astraflow, history: data.history || [], stats: data.stats })
+      }
+    } catch {
+      // bo qua loi mang tam thoi
+    } finally {
+      setUsageLoading(false)
+    }
+  }
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,7 +205,7 @@ export function UserProfileModal({
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    await Promise.all([refreshUser(), fetchUsageData()])
+    await refreshUser()
     setRefreshing(false)
   }
 
@@ -140,11 +214,11 @@ export function UserProfileModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
+        className="relative w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-base overflow-hidden border border-primary/30">
               {user.avatar ? (
@@ -177,8 +251,9 @@ export function UserProfileModal({
           </button>
         </div>
 
-        {/* Body (Scrollable) */}
-        <div className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-140px)]">
+        {/* Body */}
+        <div className="p-6 space-y-5">
+          {/* Badge phương thức và số dư */}
           {/* Badge phương thức, mã khách hàng và số dư */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-border bg-secondary/30 p-3.5">
@@ -187,7 +262,7 @@ export function UserProfileModal({
                 <span>Mã khách hàng</span>
               </div>
               <div className="text-sm font-bold text-primary font-mono select-all">
-                {user.customerCode || 'MITO'}
+                {user.customerCode || '---'}
               </div>
             </div>
 
@@ -201,7 +276,7 @@ export function UserProfileModal({
                   onClick={handleRefresh}
                   disabled={refreshing}
                   className="hover:text-primary transition-colors"
-                  title="Làm mới số dư & dữ liệu sử dụng"
+                  title="Làm mới số dư"
                 >
                   <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
                 </button>
@@ -212,103 +287,174 @@ export function UserProfileModal({
             </div>
           </div>
 
-          {/* Block Mức tiêu thụ API AstraFlow */}
-          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+          {/* Hạn mức chi tiêu API (tự điều chỉnh) */}
+          <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-                <Activity size={14} className="text-primary" />
-                <span>Mức tiêu thụ API Key (AstraFlow)</span>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <Gauge size={14} className="text-primary" />
+                Hạn mức chi tiêu API
               </div>
-              {usageStats?.keyStatus && (
-                <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-emerald">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald animate-pulse" />
-                  {usageStats.keyStatus}
+              <span className="text-[11px] text-muted-foreground font-mono">
+                Số dư: {formatVnd(limits?.balance ?? user.balance ?? 0)}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                  Hạn mức ngày (VNĐ)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={dailyInput}
+                  onChange={(e) => setDailyInput(e.target.value)}
+                  placeholder="0 = không giới hạn"
+                  className="w-full rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                  Hạn mức tháng (VNĐ)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={monthlyInput}
+                  onChange={(e) => setMonthlyInput(e.target.value)}
+                  placeholder="0 = không giới hạn"
+                  className="w-full rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Nhập 0 để không giới hạn. Hạn mức áp dụng cho toàn bộ chi tiêu qua API AI của tài khoản.
+            </p>
+            {limitsMsg && (
+              <div
+                className={`rounded-lg p-3 text-xs font-medium ${
+                  limitsMsg.type === 'success'
+                    ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                    : 'border border-rose-500/30 bg-rose-500/10 text-rose-400'
+                }`}
+              >
+                {limitsMsg.text}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleSaveLimits}
+              disabled={limitsSaving || limitsLoading}
+              className="glow-button flex w-full items-center justify-center gap-2 rounded-md bg-primary py-3 text-sm font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+            >
+              {limitsSaving ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                  Đang lưu...
+                </span>
+              ) : (
+                'Lưu hạn mức'
+              )}
+            </button>
+          </div>
+
+          {/* Muc tieu thu API AstraFlow */}
+          <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <Gauge size={14} className="text-primary" />
+                Mức tiêu thụ API (AstraFlow)
+              </div>
+              <button
+                type="button"
+                onClick={handleReloadUsage}
+                disabled={usageLoading}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={usageLoading ? 'animate-spin' : ''} />
+                Làm mới
+              </button>
+            </div>
+
+            {usage?.astraflow?.connected ? (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-mono text-muted-foreground select-all">{usage.astraflow.maskedKey}</span>
+                  <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-semibold text-emerald-400">
+                    {usage.astraflow.status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md border border-border bg-background/60 p-2.5">
+                    <div className="text-[10px] text-muted-foreground mb-0.5">Tiêu thụ hôm nay</div>
+                    <div className="text-sm font-bold text-foreground font-display">
+                      {formatVnd(usage.astraflow.dailyUsedVnd || 0)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Hạn mức: {formatVnd(usage.astraflow.dailyLimitVnd || 0)}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-background/60 p-2.5">
+                    <div className="text-[10px] text-muted-foreground mb-0.5">Tiêu thụ tháng này</div>
+                    <div className="text-sm font-bold text-foreground font-display">
+                      {formatVnd(usage.astraflow.monthlyUsedVnd || 0)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Hạn mức: {formatVnd(usage.astraflow.monthlyLimitVnd || 0)}
+                    </div>
+                  </div>
+                </div>
+                {usage.astraflow.updateTime && (
+                  <div className="text-[10px] text-muted-foreground">Cập nhật lúc: {usage.astraflow.updateTime}</div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Chưa phát hiện API Key hoạt động trên AstraFlow.</p>
+            )}
+          </div>
+
+          {/* Lich su nap so du */}
+          <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Wallet size={14} className="text-primary" />
+              Lịch sử nạp số dư
+              {usage?.stats && (
+                <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+                  Tổng nạp: <span className="font-bold text-emerald">{formatVnd(usage.stats.totalDeposited || 0)}</span>
+                  {' · '}
+                  {usage.stats.depositCount} lần
                 </span>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
-              <div className="rounded-md border border-border/80 bg-background/60 p-2.5">
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <Clock size={12} />
-                  <span>Tiêu thụ hôm nay</span>
-                </div>
-                <div className="mt-1 font-mono font-bold text-sm text-foreground">
-                  {formatVnd(usageStats?.dailyUsedVnd || 0)}
-                </div>
-              </div>
-
-              <div className="rounded-md border border-border/80 bg-background/60 p-2.5">
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <TrendingDown size={12} className="text-amber-400" />
-                  <span>Tiêu thụ tháng này</span>
-                </div>
-                <div className="mt-1 font-mono font-bold text-sm text-foreground">
-                  {formatVnd(usageStats?.monthlyUsedVnd || 0)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Block Danh sách chi tiết các lần nạp tiền */}
-          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-                <History size={14} className="text-primary" />
-                <span>Lịch sử nạp số dư</span>
-              </div>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {topupHistory.length} giao dịch
-              </span>
-            </div>
-
-            {loadingUsage ? (
-              <div className="py-6 text-center text-xs text-muted-foreground">
-                Đang tải dữ liệu lịch sử...
-              </div>
-            ) : topupHistory.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border py-5 text-center text-xs text-muted-foreground">
-                Chưa có giao dịch nạp tiền nào được ghi nhận.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {topupHistory.map((item) => (
+            {usage && usage.history.length > 0 ? (
+              <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                {usage.history.map((h) => (
                   <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-md border border-border/70 bg-background/60 p-2.5 text-xs transition-colors hover:border-border"
+                    key={h.id}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border bg-background/60 p-2.5"
                   >
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 size={13} className="text-emerald shrink-0" />
-                        <span className="font-semibold text-foreground">
-                          {item.planName || 'Nạp số dư'}
-                        </span>
-                        {item.invoiceCode && (
-                          <span className="rounded bg-primary/10 border border-primary/20 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-primary">
-                            {item.invoiceCode}
-                          </span>
-                        )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-foreground truncate">{h.planName}</div>
+                      <div className="text-[10px] text-muted-foreground font-mono truncate">
+                        {h.invoiceNumber} · {h.orderCode}
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
-                        <span>{item.code}</span>
-                        <span>•</span>
-                        <span>{new Date(item.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      <div className="text-[10px] text-muted-foreground">
+                        {new Date(h.date).toLocaleString('vi-VN')}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-mono font-bold text-emerald">
-                        +{formatVnd(item.amount)}
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-bold text-emerald font-display">+{formatVnd(h.subtotal || 0)}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        TT: {formatVnd(h.totalAmount || 0)} (gồm VAT {formatVnd(h.vatAmount || 0)})
                       </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        {item.status}
-                      </span>
                     </div>
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Chưa có lịch sử nạp số dư nào.</p>
             )}
           </div>
-
 
           {/* Khu vực Đăng nhập & Đồng bộ Cookie AstraFlow (Chỉ dành cho Admin) */}
           {user.role === 'admin' && (
@@ -367,7 +513,7 @@ export function UserProfileModal({
                     setAstraLoading(false)
                   }
                 }}
-                className="glow-button flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+                className="glow-button flex w-full items-center justify-center gap-2 rounded-md bg-primary py-3 text-sm font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
               >
                 {astraLoading ? (
                   <span className="flex items-center gap-1.5">

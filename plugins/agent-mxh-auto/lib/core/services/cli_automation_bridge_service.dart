@@ -730,7 +730,8 @@ if __name__ == "__main__":
     if (personas.isNotEmpty) {
       buffer.writeln('DANH SÁCH TOÀN BỘ NHÂN VẬT & IP TRÊN HỆ THỐNG:');
       for (final p in personas.values) {
-        buffer.writeln('- IP: ${p.ip} | Tên: ${p.name} | Giới tính: ${p.gender} | Tuổi: ${p.age}');
+        final emailStr = (p.email != null && p.email!.isNotEmpty) ? ' | Email: ${p.email}' : '';
+        buffer.writeln('- IP: ${p.ip} | Tên: ${p.name} | Giới tính: ${p.gender} | Tuổi: ${p.age}$emailStr');
         if (p.bio.isNotEmpty) {
           buffer.writeln('  Tiểu sử: ${p.bio}');
         }
@@ -757,6 +758,11 @@ if __name__ == "__main__":
     buffer.writeln('- BẮT BUỘC phải thực thi lệnh terminal thực tế để mở cửa sổ trình duyệt trên màn hình người dùng.');
     buffer.writeln('- TUYỆT ĐỐI KHÔNG giải thích vòng vo về headless mode hay khuyên người dùng tự mở lệnh.');
     buffer.writeln('- Sau khi thực thi lệnh, hãy báo cáo chi tiết danh sách tất cả các nhân vật/IP đã được mở trình duyệt thành công.');
+    buffer.writeln('');
+    buffer.writeln('QUY TẮC ĐỌC BÀI BÁO & XEM VIDEO TRÊN WEBSITE (AGENT RULES):');
+    buffer.writeln('1. Khi đọc bài báo: Mở bằng profile của nhân vật, đóng quảng cáo pop-up, cuộn đọc từng đoạn với độ trễ tự nhiên (3-8 giây mỗi đoạn), cuộn tối thiểu 70% trang, trích xuất luận điểm chính.');
+    buffer.writeln('2. Khi xem video: Định vị phần tử video/iframe, cuộn vào giữa khung nhìn, kích hoạt phát, duy trì thời gian xem tối thiểu (45 giây - 2 phút hoặc 80% video ngắn), nắm bắt tiêu đề/phụ đề để hiểu nội dung.');
+    buffer.writeln('3. Khi tóm tắt hoặc viết bình luận tương tác: Bắt buộc bám sát tính cách, lứa tuổi và tiểu sử của đúng nhân vật được giao.');
 
     return buffer.toString();
   }

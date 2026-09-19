@@ -1,57 +1,10 @@
 import type { CollectionConfig } from 'payload'
-import { fulfillPaidOrder } from '@/lib/orderFulfillment'
 
 export const Orders: CollectionConfig = {
   slug: 'orders',
   admin: {
     useAsTitle: 'orderCode',
     defaultColumns: ['orderCode', 'customerEmail', 'product', 'totalAmount', 'paymentStatus', 'fulfillmentStatus', 'createdAt'],
-  },
-  hooks: {
-    afterChange: [
-      async ({ doc, previousDoc, req, operation }) => {
-        // Tự động kích hoạt khi đơn hàng chuyển sang 'paid' và chưa được cấp phát (chưa có apiKey hoặc unfulfilled)
-        const isPaidNow = doc.paymentStatus === 'paid'
-        const wasNotPaid = !previousDoc || previousDoc.paymentStatus !== 'paid'
-        const needsFulfillment = !doc.apiKey || doc.fulfillmentStatus !== 'fulfilled'
-
-        if (isPaidNow && (wasNotPaid || needsFulfillment)) {
-          try {
-            console.log(`[Orders Hook] Đơn hàng ${doc.orderCode} đã thanh toán thành công. Đang tiến hành tạo API Key AstraFlow và gửi hóa đơn...`)
-            const res = await fulfillPaidOrder({
-              payload: req.payload,
-              order: {
-                id: doc.id,
-                orderCode: doc.orderCode,
-                customerEmail: doc.customerEmail,
-                customerPhone: doc.customerPhone,
-                customerName: doc.customerName,
-                customerType: doc.customerType,
-                identityNumber: doc.identityNumber,
-                invoiceEmail: doc.invoiceEmail,
-                companyName: doc.companyName,
-                companyTaxCode: doc.companyTaxCode,
-                companyAddress: doc.companyAddress,
-                planName: doc.planName,
-                subtotal: doc.subtotal,
-                vatRate: doc.vatRate,
-                vatAmount: doc.vatAmount,
-                totalAmount: doc.totalAmount,
-              },
-            })
-            if (res.success) {
-              doc.fulfillmentStatus = 'fulfilled'
-              doc.apiKey = res.apiKey
-              doc.invoiceCode = res.invoiceCode
-              doc.invoiceIssuedAt = new Date().toISOString()
-            }
-          } catch (e: any) {
-            console.error(`[Orders Hook Error] Lỗi tự động cấp phát đơn ${doc.orderCode}:`, e.message)
-          }
-        }
-        return doc
-      },
-    ],
   },
   access: {
     read: ({ req }) => {
@@ -208,27 +161,6 @@ export const Orders: CollectionConfig = {
       name: 'note',
       type: 'textarea',
       label: 'Ghi chú đơn hàng',
-    },
-    {
-      name: 'apiKey',
-      type: 'text',
-      label: 'API Key cấp cho khách hàng',
-      admin: {
-        description: 'Key được tạo tự động từ AstraFlow khi thanh toán thành công',
-      },
-    },
-    {
-      name: 'invoiceCode',
-      type: 'text',
-      label: 'Số hóa đơn điện tử',
-      admin: {
-        description: 'Mã số hóa đơn khởi tạo tự động (ví dụ: HD-2026-0001)',
-      },
-    },
-    {
-      name: 'invoiceIssuedAt',
-      type: 'date',
-      label: 'Thời gian xuất hóa đơn',
     },
   ],
 }

@@ -43,7 +43,6 @@ export async function POST(request: Request) {
 
     let customerCode = user.customerCode
     if (!customerCode) {
-      const { generateCustomerCode } = await import('@/lib/customerCode')
       customerCode = generateCustomerCode()
       try {
         await payload.update({
@@ -76,6 +75,7 @@ export async function POST(request: Request) {
         avatar: user.avatar || '',
         authProvider: user.authProvider || 'local',
         balance: user.balance ?? 0,
+        customerCode,
         apiKey: user.apiKey,
         role: user.role || 'user',
       },

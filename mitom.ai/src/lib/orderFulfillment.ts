@@ -1,418 +1,438 @@
-import nodemailer from 'nodemailer'
-import path from 'path'
+// Module fulfillment sau thanh toán mitom.ai
+// Logic: 1 tài khoản - duy nhất 1 API Key. Các lần nạp tiếp theo KHÔNG tạo key mới,
+// chỉ cộng dồn số dư tài khoản và gửi email thông báo kèm hóa đơn.
+// Email bàn giao thiết kế theo brand mitom.ai (dark theme, rounded-sm, logo inline CID).
 import fs from 'fs'
-import { callUCloudApi } from './ucloudClient'
-import { convertVndToUsd, getSystemUsdRate } from './currency'
-import type { Payload } from 'payload'
+import path from 'path'
+import { callUCloudApi } from '@/lib/ucloudClient'
+import { convertVndToUsd, formatUsdLimitForVnd } from '@/lib/currency'
+import { sendMail } from '@/lib/mailer'
 
-export interface FulfillmentOptions {
-  payload: Payload
-  order: {
-    id: string | number
-    orderCode: string
-    customerEmail: string
-    customerPhone?: string | null
-    customerName?: string | null
-    customerType?: string | null
-    identityNumber?: string | null
-    invoiceEmail?: string | null
-    companyName?: string | null
-    companyTaxCode?: string | null
-    companyAddress?: string | null
-    planName?: string | null
-    subtotal?: number | null
-    vatRate?: number | null
-    vatAmount?: number | null
-    totalAmount: number
-    productName?: string | null
+const C = {
+  bg: '#08090c',
+  card: '#101319',
+  cardAlt: '#13161d',
+  border: '#23282f',
+  primary: '#f5c451',
+  success: '#34d399',
+  text: '#e5e7eb',
+  muted: '#9ca3af',
+}
+
+export interface LogoAttachment {
+  filename: string
+  content: Buffer
+  cid: string
+}
+
+export function getLogoAttachment(): LogoAttachment | null {
+  try {
+    const logoPath = path.join(process.cwd(), 'public', 'logo.png')
+    return { filename: 'logo.png', content: fs.readFileSync(logoPath), cid: 'mitomlogo' }
+  } catch {
+    return null
   }
+}
+
+function esc(s: unknown): string {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function money(n: number): string {
+  return (Number(n) || 0).toLocaleString('vi-VN') + ' đ'
+}
+
+function row(label: string, value: string, strong = false): string {
+  return (
+    '<tr>' +
+    `<td style="padding:10px 16px;color:${C.muted};font-size:13px;white-space:nowrap;border-bottom:1px solid ${C.border}">${esc(label)}</td>` +
+    `<td style="padding:10px 16px;text-align:right;font-size:14px;border-bottom:1px solid ${C.border};${strong ? `font-weight:700;color:${C.primary}` : `color:${C.text}`}">${value}</td>` +
+    '</tr>'
+  )
+}
+
+function keyBox(key: string): string {
+  return (
+    `<div style="margin:16px 0;padding:14px 16px;background:${C.cardAlt};border:1px dashed ${C.primary};border-radius:2px;">` +
+    `<div style="color:${C.muted};font-size:12px;margin-bottom:6px;">API KEY CỦA BẠN</div>` +
+    `<div style="font-family:'JetBrains Mono',Consolas,monospace;font-size:14px;color:${C.success};word-break:break-all;">${esc(key)}</div>` +
+    '</div>'
+  )
+}
+
+function noteBox(text: string): string {
+  return (
+    `<div style="margin:16px 0;padding:12px 16px;background:${C.card};border-left:3px solid ${C.primary};border-radius:2px;color:${C.muted};font-size:13px;line-height:1.6;">${text}</div>`
+  )
+}
+
+export function buildBrandEmail(title: string, bodyInner: string, footerNote: string): string {
+  return (
+    '<!DOCTYPE html><html><head><meta charset="utf-8"></head>' +
+    `<body style="margin:0;padding:24px 12px;background:${C.bg};font-family:'Segoe UI',Arial,sans-serif;">` +
+    '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;margin:0 auto;">' +
+    // Header: logo + brand
+    `<tr><td style="padding:0 0 20px 0;background:${C.bg};">` +
+    '<table role="presentation" cellpadding="0" cellspacing="0"><tr>' +
+    `<td style="width:48px;"><img src="cid:mitomlogo" alt="MiTom AI" width="48" style="width:48px;height:auto;display:block;border:1px solid ${C.border};border-radius:2px;"></td>` +
+    '<td style="padding-left:12px;">' +
+    `<div style="color:${C.primary};font-size:18px;font-weight:700;letter-spacing:0.5px;">MiTom AI</div>` +
+    `<div style="color:${C.muted};font-size:13px;margin-top:2px;">${esc(title)}</div>` +
+    '</td></tr></table></td></tr>' +
+    // Body
+    `<tr><td style="background:${C.bg};">${bodyInner}</td></tr>` +
+    // Footer
+    `<tr><td style="padding:20px 0 0 0;background:${C.bg};">` +
+    `<div style="padding:14px 16px;background:${C.card};border:1px solid ${C.border};border-radius:2px;color:${C.muted};font-size:12px;line-height:1.6;">${footerNote}</div>` +
+    '<div style="padding:16px 4px 0 4px;color:#4b5563;font-size:11px;text-align:center;">Email tự động từ hệ thống MiTom AI &mdash; mitom.ai</div>' +
+    '</td></tr>' +
+    '</table></body></html>'
+  )
 }
 
 export interface FulfillmentResult {
-  success: boolean
-  apiKey: string
-  keyId: string
-  invoiceCode: string
+  ok: boolean
+  mode: 'new_key' | 'topup' | 'error'
+  apiKey?: string
+  keyId?: string
+  isNewKey: boolean
+  newBalance?: number
   emailSent: boolean
-  error?: string
+  emailError?: string
+  message: string
 }
 
-/**
- * Hàm tự động hóa toàn diện sau khi thanh toán thành công:
- * 1. Gọi AstraFlow API để khởi tạo API Key chính thức (sử dụng HMAC-SHA1 signature).
- * 2. Lưu Key mới vào collection ApiKeys của Payload CMS Admin.
- * 3. Tạo mã số Hóa đơn điện tử (VD: HD-YYMM-XXXXXX).
- * 4. Cập nhật Order (paymentStatus = 'paid', fulfillmentStatus = 'fulfilled', apiKey, deliveryInfo, invoiceCode, invoiceIssuedAt).
- * 5. Cập nhật apiKey và số dư (nếu có user khớp email) trong collection Users.
- * 6. Gửi Email thông báo bàn giao API Key kèm Hóa đơn điện tử chi tiết qua SMTP cho khách hàng.
- */
-export async function fulfillPaidOrder(options: FulfillmentOptions): Promise<FulfillmentResult> {
-  const { payload, order } = options
-  const pubKey = process.env.ASTRAFLOW_PUBLIC_KEY || process.env.UCLOUD_PUBLIC_KEY || ''
-  const privKey = process.env.ASTRAFLOW_PRIVATE_KEY || process.env.UCLOUD_PRIVATE_KEY || ''
+function sanitizeKeyName(email: string, orderCode: string): string {
+  const local = (email.split('@')[0] || 'user').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)
+  const suffix = orderCode.replace(/[^a-zA-Z0-9]/g, '').slice(-8)
+  return `mitom-${local}-${suffix}`
+}
 
-  let createdApiKey = ''
-  let createdKeyId = ''
+export async function fulfillOrder(
+  payload: any,
+  order: any,
+  opts: { transactionId?: string; gateway?: string; invoiceNumber?: string } = {},
+): Promise<FulfillmentResult> {
+  const email = String(order.customerEmail || '').toLowerCase().trim()
+  const orderCode = String(order.orderCode || '')
+  const invoiceNumber = opts.invoiceNumber || `INV-${orderCode}`
+  const totalAmount = Number(order.totalAmount) || 0
+  // Số tiền dịch vụ thực nhận cộng vào số dư tài khoản (chưa bao gồm thuế VAT)
+  const creditAmount = order.subtotal !== undefined && order.subtotal !== null && Number(order.subtotal) > 0
+    ? Number(order.subtotal)
+    : Math.round(totalAmount / 1.1)
 
-  // 1. Kiểm tra tài khoản người dùng theo email trước để áp dụng chính sách:
-  // "Mỗi tài khoản chỉ có duy nhất 1 key, những lần nạp tiền tiếp theo chỉ tăng số dư"
-  let existingUser: any = null
-  try {
-    const userQuery = await payload.find({
-      collection: 'users',
-      where: {
-        email: {
-          equals: order.customerEmail.toLowerCase().trim(),
-        },
-      },
-      limit: 1,
+  if (!email || !email.includes('@')) {
+    return { ok: false, mode: 'error', isNewKey: false, emailSent: false, message: 'Email khách hàng không hợp lệ' }
+  }
+
+  // ===== 1. Tra cứu tài khoản khách theo email =====
+  const userRes = await payload.find({
+    collection: 'users',
+    where: { email: { equals: email } },
+    limit: 1,
+  })
+  const user = userRes.docs && userRes.docs.length > 0 ? userRes.docs[0] : null
+
+  // ===== 2. Xác định API Key: đã có thì tái sử dụng, chưa có thì cấp mới =====
+  let apiKey = (user && user.apiKey) || ''
+  let keyId = ''
+  let isNewKey = false
+
+  if (!apiKey && user) {
+    // Phòng hờ: user có key trong bảng api-keys nhưng chưa được gán ngược
+    const keyRes = await payload.find({
+      collection: 'api-keys',
+      where: { secretKey: { not_equals: '' } },
+      limit: 500,
     })
-    if (userQuery.docs.length > 0) {
-      existingUser = userQuery.docs[0]
-    }
-  } catch (err: any) {
-    console.warn('[Fulfillment] Kiểm tra user tồn tại cảnh báo:', err.message)
+    const found = (keyRes.docs || []).find((k: any) => k.secretKey && user.apiKey && k.secretKey === user.apiKey)
+    if (found) apiKey = found.secretKey
   }
 
-  // Tính toán số tiền nạp VNĐ và quy đổi sang USD theo tỷ giá hệ thống
-  const addedCredit = Number(order.subtotal) || Number(order.totalAmount) || 0
-  const usdRate = getSystemUsdRate()
-  const addedCreditUsd = convertVndToUsd(addedCredit, usdRate)
-  let userNewBalance: number | null = null
-  let totalAllowedUsdStr = String(addedCreditUsd)
+  // Hạn mức hiệu dụng (VNĐ): ưu tiên hạn mức user tự cấu hình, nếu chưa có thì theo số tiền nạp/dư mới
+  const dailyProfileVnd = Number(user && user.dailyLimit) || 0
+  const monthlyProfileVnd = Number(user && user.monthlyLimit) || 0
+  const balanceAfterDeposit = user ? (Number(user.balance) || 0) + creditAmount : creditAmount
+  const effectiveDailyVnd = dailyProfileVnd > 0 ? dailyProfileVnd : balanceAfterDeposit
+  const effectiveMonthlyVnd = monthlyProfileVnd > 0 ? monthlyProfileVnd : balanceAfterDeposit
 
-  const isTopUp = Boolean(existingUser && existingUser.apiKey)
-  if (isTopUp) {
-    // Tài khoản đã có Key -> Tái sử dụng key duy nhất của user
-    createdApiKey = existingUser.apiKey
-    createdKeyId = `user-key-${existingUser.id}`
-
-    // Tính toán lại tổng hạn mức mới sau khi nạp thêm (Balance cũ + tiền nạp mới)
-    const currentBalance = Number(existingUser.balance) || 0
-    userNewBalance = currentBalance + addedCredit
-    const totalBalanceUsd = convertVndToUsd(userNewBalance, usdRate)
-    totalAllowedUsdStr = String(totalBalanceUsd)
-
-    console.log(`[Fulfillment] Khách hàng ${order.customerEmail} đã có API Key: ${createdApiKey}. Giữ nguyên Key, tăng số dư: ${currentBalance} -> ${userNewBalance} VNĐ (~$${totalAllowedUsdStr} USD).`)
-
-    // Đồng bộ cập nhật hạn mức lên AstraFlow
-    try {
-      if (pubKey && privKey) {
-        // Tìm KeyId thật trên AstraFlow qua maskedKey hoặc name
-        const existingKeyDocs = await payload.find({
-          collection: 'api-keys',
-          where: {
-            or: [
-              { maskedKey: { equals: createdApiKey } },
-              { secretKey: { equals: createdApiKey } },
-              { name: { equals: existingUser.email } },
-            ],
-          },
-          limit: 1,
-        })
-
-        let actualAstraKeyId = ''
-        if (existingKeyDocs.docs.length > 0 && existingKeyDocs.docs[0].keyId) {
-          actualAstraKeyId = existingKeyDocs.docs[0].keyId
-        }
-
-        if (actualAstraKeyId && actualAstraKeyId.startsWith('uminferapikey-')) {
-          console.log(`[Fulfillment] Đang cập nhật hạn mức mới $${totalAllowedUsdStr} USD cho key ${actualAstraKeyId} trên AstraFlow...`)
-          await callUCloudApi(
-            {
-              Action: 'UpdateUMInferAPIKey',
-              KeyId: actualAstraKeyId,
-              MonthlyLimitAmount: totalAllowedUsdStr,
-            },
-            { publicKey: pubKey, privateKey: privKey },
-          )
-
-          // Cập nhật lại bản ghi trong CMS Admin
-          await payload.update({
-            collection: 'api-keys',
-            id: existingKeyDocs.docs[0].id,
-            data: {
-              monthlyLimit: totalAllowedUsdStr,
-            },
-          })
-          createdKeyId = actualAstraKeyId
-        }
-      }
-    } catch (limitErr: any) {
-      console.error('[Fulfillment] Lỗi khi cập nhật hạn mức trên AstraFlow cho key nạp thêm:', limitErr.message)
+  if (!apiKey) {
+    // Hạn mức key trên AstraFlow tính bằng USD: quy đổi từ số tiền nạp/hạn mức (VNĐ) làm tròn xuống để không vượt quá số dư
+    const res = await callUCloudApi({
+      Action: 'CreateUMInferAPIKey',
+      Name: sanitizeKeyName(email, orderCode),
+      DailyLimitAmount: formatUsdLimitForVnd(effectiveDailyVnd),
+      MonthlyLimitAmount: formatUsdLimitForVnd(effectiveMonthlyVnd),
+    })
+    if (!res || !res.Data || !res.Data.Key) {
+      throw new Error('AstraFlow AstraFlow không trả về API Key: ' + JSON.stringify(res).slice(0, 200))
     }
-  } else {
-    // Khách hàng mới hoặc chưa có Key -> Gọi AstraFlow tạo API Key mới với hạn mức USD quy đổi
-    const keyName = `mitom-${order.orderCode.toLowerCase()}`
-    try {
-      if (pubKey && privKey) {
-        console.log(`[Fulfillment] Đang tạo API Key mới trên AstraFlow với hạn mức $${totalAllowedUsdStr} USD (tương đương ${addedCredit} VNĐ, tỷ giá ${usdRate})...`)
-        const res = await callUCloudApi(
-          {
-            Action: 'CreateUMInferAPIKey',
-            Name: keyName,
-            DailyLimitAmount: '0',
-            MonthlyLimitAmount: totalAllowedUsdStr,
-          },
-          { publicKey: pubKey, privateKey: privKey },
-        )
+    apiKey = res.Data.Key
+    keyId = res.Data.KeyId || ''
+    isNewKey = true
 
-        if (res?.Data?.Key) {
-          createdApiKey = res.Data.Key
-          createdKeyId = res.Data.KeyId || `uminferapikey-${Date.now().toString(36)}`
+    // Lưu key vào CMS (đủ secretKey + rawResponse để hook ApiKeys bỏ qua việc tự tạo key)
+    await payload.create({
+      collection: 'api-keys',
+      data: {
+        name: `Key cho ${email}`,
+        keyId: keyId || undefined,
+        maskedKey: apiKey.length > 14 ? apiKey.slice(0, 10) + '...' + apiKey.slice(-4) : apiKey,
+        secretKey: apiKey,
+        rawResponse: res.Data,
+        permissions: 'Sandbox, Modelverse',
+        status: res.Data.Status === 2 ? 'Disabled' : 'Normal',
+      },
+    })
 
-          // Lưu vào collection api-keys trong Payload CMS Admin
-          try {
-            await payload.create({
-              collection: 'api-keys',
-              data: {
-                name: keyName,
-                keyId: createdKeyId,
-                maskedKey: createdApiKey,
-                secretKey: createdApiKey,
-                status: 'Normal',
-                permissions: 'Sandbox, Modelverse',
-                dailyLimit: 'Không giới hạn',
-                monthlyLimit: totalAllowedUsdStr,
-                modelAccessMode: 'All Models',
-                expiryTime: 'Vĩnh viễn',
-                rawResponse: res.Data,
-              } as any,
-            })
-          } catch (dbErr: any) {
-            console.warn('[Fulfillment] Lưu api-keys collection cảnh báo:', dbErr.message)
-          }
-        }
-      }
-    } catch (err: any) {
-      console.error('[Fulfillment] Lỗi khi gọi tạo Key trên AstraFlow:', err.message)
-    }
-
-    // Nếu gọi thất bại hoặc môi trường offline, fallback sinh key định dạng an toàn
-    if (!createdApiKey) {
-      const fallbackRand = Math.random().toString(36).substring(2, 10).toUpperCase()
-      createdApiKey = `sk-mitom-${Date.now().toString(36)}-${fallbackRand}`
-      createdKeyId = `uminferapikey-${Date.now().toString(36)}`
+    // Gán key duy nhất vào tài khoản
+    if (user) {
+      await payload.update({ collection: 'users', id: user.id, data: { apiKey } })
     }
   }
 
-  // 2. Tính toán và tăng số dư tài khoản cho người dùng
-  if (existingUser) {
-    try {
-      const currentBalance = Number(existingUser.balance) || 0
-      userNewBalance = currentBalance + addedCredit
-
-      await payload.update({
-        collection: 'users',
-        id: existingUser.id,
-        data: {
-          apiKey: createdApiKey, // Đảm bảo gán key nếu trước đó chưa có
-          balance: userNewBalance,
-        },
-      })
-      console.log(`[Fulfillment] Đã cập nhật số dư cho user ${existingUser.email}: ${currentBalance} -> ${userNewBalance} VNĐ (~$${totalAllowedUsdStr} USD)`)
-    } catch (updateErr: any) {
-      console.error('[Fulfillment] Lỗi cập nhật số dư user:', updateErr.message)
-    }
+  // ===== 3. Cộng dồn số dư tài khoản (chỉ cộng tiền dịch vụ trước thuế) =====
+  let newBalance: number | undefined
+  if (user) {
+    newBalance = (Number(user.balance) || 0) + creditAmount
+    await payload.update({ collection: 'users', id: user.id, data: { balance: newBalance } })
   }
 
-  // 3. Tạo mã số Hóa đơn điện tử định dạng HD-YYMM-XXXX
-  const now = new Date()
-  const yearMonth = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`
-  const randNum = Math.floor(1000 + Math.random() * 9000)
-  const invoiceCode = `HD-${yearMonth}-${randNum}`
-  const invoiceDateStr = now.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  // ===== 4. Cập nhật thông tin bàn giao + trạng thái đơn =====
+  const deliveryInfo = isNewKey
+    ? `API Key: ${apiKey}${keyId ? ` (KeyId: ${keyId})` : ''}`
+    : `Tái sử dụng API Key hiện có: ${apiKey} | Số dư sau nạp: ${money(newBalance || 0)}`
+  await payload.update({
+    collection: 'orders',
+    id: order.id,
+    data: { deliveryInfo, fulfillmentStatus: 'fulfilled' },
   })
 
-  // 4. Cập nhật Order trong Payload CMS
-  const deliveryInfo = `Mã đơn: ${order.orderCode}
-Loại giao dịch: ${isTopUp ? 'Nạp thêm số dư vào tài khoản' : 'Khởi tạo tài khoản & Cấp mới API Key'}
-API Key: ${createdApiKey}
-Số tiền nạp: ${new Intl.NumberFormat('vi-VN').format(addedCredit)} đ
-${userNewBalance !== null ? `Số dư tài khoản sau nạp: ${new Intl.NumberFormat('vi-VN').format(userNewBalance)} đ\n` : ''}Số hóa đơn: ${invoiceCode}
-Ngày xuất: ${invoiceDateStr}
-Trạng thái: Đã kích hoạt`
+  // ===== 5. Soạn nội dung email theo brand mitom.ai =====
+  const customerLabel =
+    order.customerType === 'company'
+      ? order.companyName || 'Quý khách hàng'
+      : order.customerName || 'Quý khách'
 
-  try {
-    await payload.update({
-      collection: 'orders',
-      id: order.id,
-      data: {
-        paymentStatus: 'paid',
-        fulfillmentStatus: 'fulfilled',
-        apiKey: createdApiKey,
-        deliveryInfo,
-        invoiceCode,
-        invoiceIssuedAt: now.toISOString(),
-      },
-    })
-  } catch (err: any) {
-    console.error('[Fulfillment] Lỗi khi cập nhật order:', err.message)
-  }
+  const rowsTable =
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.border};border-radius:2px;">` +
+    row('Mã đơn hàng', esc(orderCode), true) +
+    row('Gói dịch vụ', esc(order.planName)) +
+    row('Mã hóa đơn', esc(invoiceNumber), true) +
+    row('Số dư cộng tài khoản', money(creditAmount), true) +
+    row('Thuế VAT (10%)', money(totalAmount - creditAmount)) +
+    row('Tổng thanh toán', money(totalAmount), true) +
+    (opts.transactionId ? row('Mã giao dịch', esc(opts.transactionId) + (opts.gateway ? ` (${esc(opts.gateway)})` : '')) : '') +
+    (newBalance !== undefined ? row('Số dư tài khoản mới', money(newBalance), true) : '') +
+    '</table>'
 
-  // 5. Gửi Email bàn giao API Key và Hóa đơn điện tử cho khách hàng qua SMTP
-  let emailSent = false
-  const targetEmail = order.invoiceEmail || order.customerEmail
+  const bodyInner = isNewKey
+    ? `<div style="padding:20px;background:${C.card};border:1px solid ${C.border};border-radius:2px;color:${C.text};font-size:14px;line-height:1.6;">` +
+      `Kính gửi <strong style="color:${C.primary}">${esc(customerLabel)}</strong>,<br><br>` +
+      `Đơn hàng <strong>${esc(orderCode)}</strong> đã được thanh toán thành công. MiTom AI trân trọng bàn giao API Key của bạn:` +
+      '</div>' +
+      keyBox(apiKey) +
+      rowsTable +
+      noteBox('Hãy giữ bí mật API Key. Bạn có thể quản lý hạn mức và theo dõi chi tiêu bất kỳ lúc nào tại mitom.ai.')
+    : `<div style="padding:20px;background:${C.card};border:1px solid ${C.border};border-radius:2px;color:${C.text};font-size:14px;line-height:1.6;">` +
+      `Kính gửi <strong style="color:${C.primary}">${esc(customerLabel)}</strong>,<br><br>` +
+      `Hệ thống đã nhận thanh toán nạp tiền cho đơn hàng <strong>${esc(orderCode)}</strong>. Số dư tài khoản của bạn đã được cộng dồn thành công.` +
+      '</div>' +
+      rowsTable +
+      noteBox(`Tài khoản của bạn tiếp tục sử dụng API Key hiện có (không thay đổi). Số dư khả dụng mới: <strong style="color:${C.success}">${money(newBalance || 0)}</strong>.`)
 
-  try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.hopthu.vn',
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: Number(process.env.SMTP_PORT) === 465,
-      auth: {
-        user: process.env.SMTP_USER || 'support@mitom.ai',
-        pass: process.env.SMTP_PASS || '',
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    })
+  const footerNote =
+    `Đây là email tự động từ hệ thống MiTom AI. ` +
+    (isNewKey
+      ? 'Nếu bạn không thực hiện đơn hàng này, vui lòng liên hệ support@mitom.ai ngay lập tức.'
+      : 'Cảm ơn bạn đã tin tưởng sử dụng dịch vụ của MiTom AI.')
 
-    const formatVnd = (num: number) => new Intl.NumberFormat('vi-VN').format(num) + ' đ'
-    const subtotalFormatted = formatVnd(order.subtotal || order.totalAmount)
-    const vatAmountFormatted = formatVnd(order.vatAmount || Math.round(order.totalAmount * 0.1))
-    const totalFormatted = formatVnd(order.totalAmount)
+  const subject = isNewKey
+    ? `[MiTom AI] Bàn giao API Key - Đơn hàng ${orderCode} - Hóa đơn ${invoiceNumber}`
+    : `[MiTom AI] Nạp tiền thành công - Đơn hàng ${orderCode} - Hóa đơn ${invoiceNumber}`
 
-    const buyerInfoHtml =
-      order.customerType === 'company'
-        ? `
-        <p style="margin: 4px 0;"><strong>Đơn vị mua hàng:</strong> ${order.companyName || 'Khách hàng Doanh Nghiệp'}</p>
-        <p style="margin: 4px 0;"><strong>Mã số thuế (MST):</strong> ${order.companyTaxCode || 'N/A'}</p>
-        <p style="margin: 4px 0;"><strong>Địa chỉ xuất hóa đơn:</strong> ${order.companyAddress || 'N/A'}</p>
-      `
-        : `
-        <p style="margin: 4px 0;"><strong>Khách hàng:</strong> ${order.customerName || order.customerEmail}</p>
-        <p style="margin: 4px 0;"><strong>Số CCCD / CMND:</strong> ${order.identityNumber || 'N/A'}</p>
-      `
+  const html = buildBrandEmail(
+    isNewKey ? 'Bàn giao API Key và hóa đơn điện tử' : 'Xác nhận nạp tiền và hóa đơn điện tử',
+    bodyInner,
+    footerNote,
+  )
 
-    const htmlContent = `
-      <div style="background-color: #08090c; padding: 32px 12px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #eef0f3;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #101319; border: 1px solid #23282f; border-radius: 2px; overflow: hidden; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);">
-          
-          <!-- Header Thương hiệu với Logo chính thức của mitom.ai -->
-          <div style="padding: 28px 24px; border-bottom: 1px solid #23282f; background-color: #0b0d12; text-align: center;">
-            <a href="https://mitom.ai" target="_blank" style="text-decoration: none; display: inline-block;">
-              <img src="cid:mitomlogo" alt="Mì Tôm AI Logo" width="48" style="display: block; width: 48px; height: auto; margin: 0 auto 12px auto; border-radius: 2px;" />
-            </a>
-            <h1 style="margin: 0; font-size: 20px; font-weight: 800; color: #f5c451; letter-spacing: -0.3px; text-transform: uppercase;">
-              Mì Tôm AI // Bàn Giao Dịch Vụ
-            </h1>
-            <p style="margin: 6px 0 0 0; font-size: 13px; color: #8a92a1;">
-              Hệ thống xác nhận thanh toán đơn hàng <span style="font-family: monospace; color: #f5c451; font-weight: 700;">#${order.orderCode}</span> thành công
-            </p>
-          </div>
-
-          <div style="padding: 28px 24px;">
-            <!-- Khung API Key nổi bật tone Dark / Gold / JetBrains Mono -->
-            <div style="background-color: #171b23; border: 1px solid #f5c451; border-radius: 2px; padding: 20px; text-align: center; margin-bottom: 24px;">
-              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #f5c451; letter-spacing: 1.5px; font-family: monospace;">
-                ${isTopUp ? '// API KEY HIỆN TẠI CỦA BẠN (DUY NHẤT)' : '// ASTRAFLOW MODELVERSE API KEY'}
-              </div>
-              <div style="background-color: #08090c; border: 1px solid #23282f; color: #34d399; font-family: 'JetBrains Mono', monospace, Courier; font-size: 15px; font-weight: 700; padding: 14px 16px; border-radius: 2px; margin: 14px 0; word-break: break-all; letter-spacing: 0.5px;">
-                ${createdApiKey}
-              </div>
-              <p style="margin: 0; font-size: 12px; color: #8a92a1; line-height: 1.5;">
-                ${isTopUp ? `<span style="color: #34d399; font-weight: 700;">Đã nạp thêm +${formatVnd(addedCredit)} vào tài khoản.</span> Số dư khả dụng hiện tại: <strong style="color: #f5c451;">${formatVnd(userNewBalance || 0)}</strong><br>` : ''}
-                Base URL tương thích OpenAI: <code style="color: #f5c451; background: #101319; padding: 2px 6px; border-radius: 2px; font-family: monospace;">https://api.scloudsg.com/v1</code>
-              </p>
-            </div>
-
-            <!-- Khung Hóa đơn điện tử -->
-            <div style="background-color: #13161d; border: 1px solid #23282f; border-radius: 2px; padding: 20px; margin-bottom: 24px;">
-              <div style="border-bottom: 1px solid #23282f; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 13px; font-weight: 800; color: #eef0f3; text-transform: uppercase; letter-spacing: 0.5px;">
-                  Hóa Đơn Điện Tử: <span style="color: #f5c451; font-family: monospace;">${invoiceCode}</span>
-                </span>
-                <span style="font-size: 12px; color: #8a92a1; font-family: monospace;">${invoiceDateStr}</span>
-              </div>
-
-              <div style="font-size: 13px; line-height: 1.7; color: #c7ccd6;">
-                <p style="margin: 3px 0;"><strong>Gói dịch vụ:</strong> <span style="color: #eef0f3;">${order.planName || 'Gói dịch vụ AI'}</span></p>
-                <p style="margin: 3px 0;"><strong>Mã đơn hàng:</strong> <span style="color: #eef0f3; font-family: monospace;">${order.orderCode}</span></p>
-                ${buyerInfoHtml}
-                <p style="margin: 3px 0;"><strong>Email nhận hóa đơn:</strong> <span style="color: #eef0f3;">${targetEmail}</span></p>
-              </div>
-
-              <!-- Bảng giá chi tiết VAT -->
-              <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;">
-                <thead>
-                  <tr style="border-bottom: 1px solid #23282f; color: #8a92a1; text-align: left;">
-                    <th style="padding: 8px 0; font-weight: 600;">Hạng mục</th>
-                    <th style="padding: 8px 0; text-align: right; font-weight: 600;">Thành tiền</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style="padding: 10px 0; border-bottom: 1px solid rgba(35, 40, 47, 0.6); color: #c7ccd6;">Tiền dịch vụ (chưa VAT)</td>
-                    <td style="padding: 10px 0; text-align: right; border-bottom: 1px solid rgba(35, 40, 47, 0.6); font-family: monospace; color: #eef0f3;">${subtotalFormatted}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 10px 0; border-bottom: 1px solid #23282f; color: #c7ccd6;">Thuế suất VAT (${order.vatRate || 10}%)</td>
-                    <td style="padding: 10px 0; text-align: right; border-bottom: 1px solid #23282f; font-family: monospace; color: #34d399;">+${vatAmountFormatted}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 12px 0 0 0; font-weight: 800; font-size: 14px; color: #f5c451; text-transform: uppercase;">Tổng thanh toán</td>
-                    <td style="padding: 12px 0 0 0; text-align: right; font-weight: 800; font-size: 16px; font-family: monospace; color: #f5c451;">${totalFormatted}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Box chỉ dẫn sử dụng -->
-            <div style="background-color: #0b0d12; border-left: 2px solid #f5c451; border-radius: 2px; padding: 14px 16px; font-size: 12px; color: #8a92a1; line-height: 1.6;">
-              <strong style="color: #eef0f3;">Lưu ý kích hoạt:</strong> API Key được cấp quyền truy cập các mô hình AI trên cụm hạ tầng AstraFlow Modelverse. Quý khách có thể bắt đầu gọi API ngay lập tức. Cần hỗ trợ xin liên hệ Zalo hoặc gửi về hòm thư support@mitom.ai.
-            </div>
-
-            <!-- Footer -->
-            <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #23282f; text-align: center; font-size: 11px; color: #5a6270;">
-              <p style="margin: 0 0 4px 0;">Mì Tôm AI (mitom.ai) - Nền tảng phân phối API AI tốc độ cao</p>
-              <p style="margin: 0;">Email tự động gửi từ hệ thống máy chủ Mì Tôm AI. Vui lòng không phản hồi thư này.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    `
-
-    // Đính kèm ảnh logo inline để tất cả trình duyệt email (kể cả Gmail chặn ảnh ngoài) đều hiển thị 100%
-    const logoFilePath = path.resolve(process.cwd(), 'public/logo.png')
-    const attachments = fs.existsSync(logoFilePath)
-      ? [
-          {
-            filename: 'logo.png',
-            path: logoFilePath,
-            cid: 'mitomlogo',
-          },
-        ]
-      : []
-
-    const emailSubject = isTopUp
-      ? `[Mì Tôm AI] Nạp tiền thành công & Hóa đơn điện tử ${invoiceCode} (Đơn hàng ${order.orderCode})`
-      : `[Mì Tôm AI] Bàn giao API Key & Hóa đơn điện tử ${invoiceCode} (Đơn hàng ${order.orderCode})`
-
-    await transporter.sendMail({
-      from: `"Mì Tôm AI Support" <${process.env.SMTP_USER || 'support@mitom.ai'}>`,
-      to: targetEmail,
-      subject: emailSubject,
-      html: htmlContent,
-      attachments,
-    })
-
-    emailSent = true
-    console.log(`[Fulfillment] Đã gửi email bàn giao API Key và Hóa đơn ${invoiceCode} tới ${targetEmail} thành công.`)
-  } catch (mailErr: any) {
-    console.error('[Fulfillment] Lỗi khi gửi email qua SMTP:', mailErr.message)
-  }
+  // ===== 6. Gửi email (logo nhúng inline CID) =====
+  const logo = getLogoAttachment()
+  const mailRes = await sendMail(email, subject, html, logo ? [logo] : undefined)
 
   return {
-    success: true,
-    apiKey: createdApiKey,
-    keyId: createdKeyId,
-    invoiceCode,
-    emailSent,
+    ok: true,
+    mode: isNewKey ? 'new_key' : 'topup',
+    apiKey,
+    keyId: keyId || undefined,
+    isNewKey,
+    newBalance,
+    emailSent: mailRes.ok,
+    emailError: mailRes.ok ? undefined : mailRes.error,
+    message: isNewKey
+      ? 'Đã cấp API Key mới và gửi email bàn giao.'
+      : 'Đã cộng dồn số dư và gửi email xác nhận nạp tiền.',
+  }
+}
+
+// ============================================================
+// NẠP TIỀN QUA WEBHOOK: cấp key AstraFlow (nếu chưa có key thật)
+// + gửi email xác nhận nạp tiền theo brand mitom.ai
+// LƯU Ý: số dư đã được cộng ở route gọi hàm này (opts.newBalance)
+// ============================================================
+export interface DepositKeyResult {
+  ok: boolean
+  apiKey?: string
+  keyId?: string
+  isNewKey: boolean
+  newBalance?: number
+  emailSent: boolean
+  emailError?: string
+  message: string
+}
+
+export async function getOrCreateAstraFlowKey(
+  payload: any,
+  user: any,
+  amount: number,
+  opts: { transactionId?: string; gateway?: string; invoiceNumber?: string; newBalance?: number } = {},
+): Promise<DepositKeyResult> {
+  const email = String(user.email || '').toLowerCase().trim()
+  const newBalance = opts.newBalance !== undefined ? opts.newBalance : Number(user.balance) || 0
+  const invoiceNumber = opts.invoiceNumber || 'INV-DEPOSIT'
+  const orderCode = invoiceNumber.replace(/^INV-/, '')
+
+  if (!email || !email.includes('@')) {
+    return { ok: false, isNewKey: false, emailSent: false, message: 'Email khách hàng không hợp lệ' }
+  }
+
+  // 1. Kiểm tra key hiện có: nếu user đã có apiKey hợp lệ thì tái sử dụng, không tạo mới
+  let apiKey = String(user.apiKey || '').trim()
+  let keyId = ''
+  let isNewKey = false
+
+  const isValidRealKey = apiKey.length >= 20
+
+  // Hạn mức hiệu dụng (VNĐ): ưu tiên hạn mức user tự cấu hình, nếu chưa có thì theo số dư sau nạp
+  const dailyProfileVnd = Number(user.dailyLimit) || 0
+  const monthlyProfileVnd = Number(user.monthlyLimit) || 0
+  const effectiveDailyVnd = dailyProfileVnd > 0 ? dailyProfileVnd : newBalance
+  const effectiveMonthlyVnd = monthlyProfileVnd > 0 ? monthlyProfileVnd : newBalance
+
+  if (!isValidRealKey) {
+    // Key rác (mt_...) hoặc trống: gọi AstraFlow cấp key thật, gắn hạn mức USD theo số dư sau nạp làm tròn xuống
+    const res = await callUCloudApi({
+      Action: 'CreateUMInferAPIKey',
+      Name: sanitizeKeyName(email, orderCode),
+      DailyLimitAmount: formatUsdLimitForVnd(effectiveDailyVnd),
+      MonthlyLimitAmount: formatUsdLimitForVnd(effectiveMonthlyVnd),
+    })
+    if (!res || !res.Data || !res.Data.Key) {
+      throw new Error('AstraFlow không trả về API Key: ' + JSON.stringify(res).slice(0, 200))
+    }
+    apiKey = res.Data.Key
+    keyId = res.Data.KeyId || ''
+    isNewKey = true
+
+    await payload.create({
+      collection: 'api-keys',
+      data: {
+        name: `Key cho ${email}`,
+        keyId: keyId || undefined,
+        maskedKey: apiKey.length > 14 ? apiKey.slice(0, 10) + '...' + apiKey.slice(-4) : apiKey,
+        secretKey: apiKey,
+        rawResponse: res.Data,
+        permissions: 'Sandbox, Modelverse',
+        status: res.Data.Status === 2 ? 'Disabled' : 'Normal',
+      },
+    })
+
+    await payload.update({ collection: 'users', id: user.id, data: { apiKey } })
+  } else {
+    // Nạp thêm vào key cũ: nâng hạn mức ngày/tháng trên AstraFlow theo số dư mới (quy đổi USD làm tròn xuống)
+    try {
+      const keyRes = await payload.find({
+        collection: 'api-keys',
+        where: { secretKey: { equals: apiKey } },
+        limit: 1,
+      })
+      const existingKeyId = (keyRes?.docs?.[0] as any)?.keyId || ''
+      if (existingKeyId) {
+        await callUCloudApi({
+          Action: 'UpdateUMInferAPIKey',
+          KeyId: existingKeyId,
+          DailyLimitAmount: formatUsdLimitForVnd(effectiveDailyVnd),
+          MonthlyLimitAmount: formatUsdLimitForVnd(effectiveMonthlyVnd),
+        })
+      }
+    } catch (err) {
+      console.error('[AstraFlow] Khong nang duoc han muc key cu (nap tien van binh thuong):', err)
+    }
+  }
+
+  // 2. Soạn email theo brand mitom.ai
+  const customerLabel = user.name || email.split('@')[0]
+  const rowsTable =
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.border};border-radius:2px;">` +
+    row('Mã hóa đơn', esc(invoiceNumber), true) +
+    row('Gói nạp', money(amount), true) +
+    row('Thuế VAT (10%)', money(Math.round(amount * 0.1))) +
+    (opts.transactionId ? row('Mã giao dịch', esc(opts.transactionId) + (opts.gateway ? ` (${esc(opts.gateway)})` : '')) : '') +
+    row('Tổng đã chuyển khoản', money(Math.round(amount * 1.1))) +
+    row('Mã khách hàng', esc(user.customerCode || '')) +
+    row('Số dư khả dụng', money(newBalance), true) +
+    '</table>'
+
+  const bodyInner = isNewKey
+    ? `<div style="padding:20px;background:${C.card};border:1px solid ${C.border};border-radius:2px;color:${C.text};font-size:14px;line-height:1.6;">` +
+      `Kính gửi <strong style="color:${C.primary}">${esc(customerLabel)}</strong>,<br><br>` +
+      `Hệ thống đã nhận thanh toán nạp tiền thành công. MiTom AI trân trọng bàn giao API Key của bạn:` +
+      '</div>' +
+      keyBox(apiKey) +
+      rowsTable +
+      noteBox('Hãy giữ bí mật API Key. Bạn có thể quản lý hạn mức và theo dõi chi tiêu bất kỳ lúc nào tại mitom.ai.')
+    : `<div style="padding:20px;background:${C.card};border:1px solid ${C.border};border-radius:2px;color:${C.text};font-size:14px;line-height:1.6;">` +
+      `Kính gửi <strong style="color:${C.primary}">${esc(customerLabel)}</strong>,<br><br>` +
+      `Hệ thống đã nhận thanh toán nạp tiền thành công. Số dư tài khoản của bạn đã được cộng dồn.` +
+      '</div>' +
+      rowsTable +
+      noteBox(`Tài khoản của bạn tiếp tục sử dụng API Key hiện có (không thay đổi). Số dư khả dụng mới: <strong style="color:${C.success}">${money(newBalance)}</strong>.`)
+
+  const footerNote =
+    `Đây là email tự động từ hệ thống MiTom AI. ` +
+    (isNewKey
+      ? 'Nếu bạn không thực hiện giao dịch này, vui lòng liên hệ support@mitom.ai ngay lập tức.'
+      : 'Cảm ơn bạn đã tin tưởng sử dụng dịch vụ của MiTom AI.')
+
+  const subject = isNewKey
+    ? `[MiTom AI] Bàn giao API Key - Nạp tiền thành công - Hóa đơn ${invoiceNumber}`
+    : `[MiTom AI] Nạp tiền thành công - Hóa đơn ${invoiceNumber}`
+
+  const html = buildBrandEmail(
+    isNewKey ? 'Bàn giao API Key và hóa đơn điện tử' : 'Xác nhận nạp tiền và hóa đơn điện tử',
+    bodyInner,
+    footerNote,
+  )
+
+  // 3. Gửi email (logo inline CID)
+  const logo = getLogoAttachment()
+  const mailRes = await sendMail(email, subject, html, logo ? [logo] : undefined)
+
+  return {
+    ok: true,
+    apiKey,
+    keyId: keyId || undefined,
+    isNewKey,
+    newBalance,
+    emailSent: mailRes.ok,
+    emailError: mailRes.ok ? undefined : mailRes.error,
+    message: isNewKey
+      ? 'Đã cấp API Key AstraFlow mới và gửi email bàn giao.'
+      : 'Đã xác nhận nạp tiền, tái sử dụng API Key hiện có và gửi email.',
   }
 }

@@ -1,26 +1,57 @@
 {
-  "targetUrl": "https://astraflow.scloudsg.com/en-us/modelverse/api-keys",
-  "source": "Firefox profile vjuuwdz5.default",
-  "extractedAt": "2026-09-13T14:07:50Z",
-  "cookieCount": 17,
-  "cookieHeader": "das_session=5cfef289-0b63-4dfe-bc61-ae012c427188; _pk_id.21.a685=027f0c20e3faec64.1787034670.; U_LANG=en_US; CN_lang=en_US; _lang=EN; _pk_id.21.6016=7e3ecc48aa8cad67.1787035749.; c_last_region_ducdung_tadu_vn=%7B%22region%22%3A%22vn-sng%22%2C%22zone%22%3A%22vn-sng-01%22%7D; is_dark_theme_on=0; _pk_ref.21.a685=%5B%22%22%2C%22%22%2C1789292017%2C%22https%3A%2F%2Fconsole.scloudsg.com%2F%22%5D; _pk_ses.21.a685=1; channel_key=; _gcl_au=1.1.1925657178.1787034670.703693307.1789292018.1789292018.342785623.1789292018.1789292018; _pk_id.21.ca32=08bbea488595d40b.1783326244.; _pk_ref.21.6016=%5B%22%22%2C%22%22%2C1789304557%2C%22https%3A%2F%2Fpassport.scloudsg.com%2Flogin%22%5D; _pk_ses.21.6016=1; _pk_ref.21.ca32=%5B%22%22%2C%22%22%2C1789308279%2C%22https%3A%2F%2Fconsole.scloudsg.com%2F%22%5D; _pk_ses.21.ca32=1",
+  "targetUrl": "https://astraflow.scloudsg.com",
+  "finalUrl": "https://astraflow.scloudsg.com/en-us/experience-modelverse/api-keys",
+  "title": "AstraFlow",
+  "extractedAt": "2026-09-19T09:00:21.829Z",
+  "cookieCount": 15,
+  "cookieHeader": "das_session=5af2b0b5-f3ad-430c-9e4d-2f96b8424c72; _pk_id.21.ca32=90f8d0b71ddb20c5.1789198611.; _pk_id.21.a685=10aa4b3b2cef9d29.1789213748.; _lang=EN; CN_lang=en_US; U_LANG=en_US; is_dark_theme_on=0; channel_key=; IDE=AHWqTUm2xitKUl9eML4l3xWLjsK3MPRTqpSbnGdZFQGKD1DYyumvzDlPQm0KQ5br; captcha_v4_user=fd0ecb3d55c240e8ad0fcadc9fd68394; _pk_id.21.6016=082163968777ba9b.1789213831.; c_last_region_ducdung_tadu_vn=%7B%22region%22%3A%22vn-sng%22%2C%22zone%22%3A%22vn-sng-01%22%7D; _gcl_au=1.1.1232889220.1789213748.1196765747.1789296376.1789296376.341545149.1789213799.1789296376; _pk_ref.21.6016=%5B%22%22%2C%22%22%2C1789296392%2C%22https%3A%2F%2Fpassport.scloudsg.com%2F%22%5D; _pk_ses.21.ca32=1",
   "cookies": [
     {
       "name": "das_session",
-      "value": "5cfef289-0b63-4dfe-bc61-ae012c427188",
+      "value": "5af2b0b5-f3ad-430c-9e4d-2f96b8424c72",
       "domain": ".scloudsg.com",
       "path": "/",
-      "expires": 1814862243000,
+      "expires": 1820734611,
       "httpOnly": false,
       "secure": false,
-      "sameSite": "Strict"
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_pk_id.21.ca32",
+      "value": "90f8d0b71ddb20c5.1789198611.",
+      "domain": "astraflow.scloudsg.com",
+      "path": "/",
+      "expires": 1823153811,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
     },
     {
       "name": "_pk_id.21.a685",
-      "value": "027f0c20e3faec64.1787034670.",
+      "value": "10aa4b3b2cef9d29.1789213748.",
       "domain": "passport.scloudsg.com",
       "path": "/",
-      "expires": 1820989870000,
+      "expires": 1823168948,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_lang",
+      "value": "EN",
+      "domain": ".scloudsg.com",
+      "path": "/",
+      "expires": 1823773748.523714,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "CN_lang",
+      "value": "en_US",
+      "domain": ".scloudsg.com",
+      "path": "/",
+      "expires": 1823773748.52381,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
@@ -30,77 +61,17 @@
       "value": "en_US",
       "domain": ".scloudsg.com",
       "path": "/",
-      "expires": 1823227043912,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Strict"
-    },
-    {
-      "name": "CN_lang",
-      "value": "en_US",
-      "domain": ".scloudsg.com",
-      "path": "/",
-      "expires": 1823227043912,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Strict"
-    },
-    {
-      "name": "_lang",
-      "value": "EN",
-      "domain": ".scloudsg.com",
-      "path": "/",
-      "expires": 1823227043912,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Strict"
-    },
-    {
-      "name": "_pk_id.21.6016",
-      "value": "7e3ecc48aa8cad67.1787035749.",
-      "domain": "console.scloudsg.com",
-      "path": "/",
-      "expires": 1820990949000,
+      "expires": 1823773748.523912,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
-    },
-    {
-      "name": "c_last_region_ducdung_tadu_vn",
-      "value": "%7B%22region%22%3A%22vn-sng%22%2C%22zone%22%3A%22vn-sng-01%22%7D",
-      "domain": ".console.scloudsg.com",
-      "path": "/",
-      "expires": 1789892259000,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Strict"
     },
     {
       "name": "is_dark_theme_on",
       "value": "0",
       "domain": ".scloudsg.com",
       "path": "/",
-      "expires": 1823852017010,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Strict"
-    },
-    {
-      "name": "_pk_ref.21.a685",
-      "value": "%5B%22%22%2C%22%22%2C1789292017%2C%22https%3A%2F%2Fconsole.scloudsg.com%2F%22%5D",
-      "domain": "passport.scloudsg.com",
-      "path": "/",
-      "expires": 1805060017000,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_pk_ses.21.a685",
-      "value": "1",
-      "domain": "passport.scloudsg.com",
-      "path": "/",
-      "expires": 1789293817000,
+      "expires": 1823856797.451158,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
@@ -110,57 +81,67 @@
       "value": "",
       "domain": ".scloudsg.com",
       "path": "/",
-      "expires": 1823852017480,
+      "expires": 1823856797.472153,
       "httpOnly": false,
       "secure": false,
-      "sameSite": "Strict"
+      "sameSite": "Lax"
+    },
+    {
+      "name": "IDE",
+      "value": "AHWqTUm2xitKUl9eML4l3xWLjsK3MPRTqpSbnGdZFQGKD1DYyumvzDlPQm0KQ5br",
+      "domain": ".doubleclick.net",
+      "path": "/",
+      "expires": 1823773799.624481,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "captcha_v4_user",
+      "value": "fd0ecb3d55c240e8ad0fcadc9fd68394",
+      "domain": "gcaptcha4.geetest.com",
+      "path": "/",
+      "expires": 1820749815.899828,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_pk_id.21.6016",
+      "value": "082163968777ba9b.1789213831.",
+      "domain": "console.scloudsg.com",
+      "path": "/",
+      "expires": 1823169031,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "c_last_region_ducdung_tadu_vn",
+      "value": "%7B%22region%22%3A%22vn-sng%22%2C%22zone%22%3A%22vn-sng-01%22%7D",
+      "domain": ".console.scloudsg.com",
+      "path": "/",
+      "expires": 1789890760,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
     },
     {
       "name": "_gcl_au",
-      "value": "1.1.1925657178.1787034670.703693307.1789292018.1789292018.342785623.1789292018.1789292018",
+      "value": "1.1.1232889220.1789213748.1196765747.1789296376.1789296376.341545149.1789213799.1789296376",
       "domain": ".scloudsg.com",
       "path": "/",
-      "expires": 1794810670000,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Strict"
-    },
-    {
-      "name": "_pk_id.21.ca32",
-      "value": "08bbea488595d40b.1783326244.",
-      "domain": "astraflow.scloudsg.com",
-      "path": "/",
-      "expires": 1817281444000,
+      "expires": 1796989748,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
     },
     {
       "name": "_pk_ref.21.6016",
-      "value": "%5B%22%22%2C%22%22%2C1789304557%2C%22https%3A%2F%2Fpassport.scloudsg.com%2Flogin%22%5D",
+      "value": "%5B%22%22%2C%22%22%2C1789296392%2C%22https%3A%2F%2Fpassport.scloudsg.com%2F%22%5D",
       "domain": "console.scloudsg.com",
       "path": "/",
-      "expires": 1805072556000,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_pk_ses.21.6016",
-      "value": "1",
-      "domain": "console.scloudsg.com",
-      "path": "/",
-      "expires": 1789306357000,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
-      "name": "_pk_ref.21.ca32",
-      "value": "%5B%22%22%2C%22%22%2C1789308279%2C%22https%3A%2F%2Fconsole.scloudsg.com%2F%22%5D",
-      "domain": "astraflow.scloudsg.com",
-      "path": "/",
-      "expires": 1805076279000,
+      "expires": 1805064391,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
@@ -170,7 +151,7 @@
       "value": "1",
       "domain": "astraflow.scloudsg.com",
       "path": "/",
-      "expires": 1789310079000,
+      "expires": 1789810217,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"

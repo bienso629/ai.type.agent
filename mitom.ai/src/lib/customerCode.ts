@@ -1,16 +1,21 @@
 import crypto from 'crypto'
 
 /**
- * Sinh mã khách hàng ngẫu nhiên bảo mật định dạng: MITO-XXXXXX (ví dụ: MITO-8K3N9P)
- * Không chứa các ký tự dễ nhầm lẫn như 0, O, 1, I, L.
- * Đảm bảo tuyệt đối không lộ ID tăng dần tuần tự của User trong cơ sở dữ liệu.
+ * Tập ký tự loại bỏ các ký tự dễ gây nhầm lẫn:
+ * Không có 0 (số không) và O (chữ O)
+ * Không có 1 (số một), I (chữ I hoa), L (chữ L hoa)
+ */
+const CHARSET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+
+/**
+ * Sinh mã khách hàng ngẫu nhiên định dạng: MITO + 6 ký tự
+ * Ví dụ: MITOT35R5M, MITOQEY57S
  */
 export function generateCustomerCode(): string {
-  const chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
-  let result = ''
   const bytes = crypto.randomBytes(6)
+  let code = 'MITO'
   for (let i = 0; i < 6; i++) {
-    result += chars[bytes[i] % chars.length]
+    code += CHARSET[bytes[i] % CHARSET.length]
   }
-  return `MITO${result}`
+  return code
 }

@@ -20,9 +20,9 @@ export function ModelCard({
   }
 
   return (
-    <article className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-5 transition-all duration-300 hover:border-primary/50 hover:-translate-y-1">
+    <article className="group relative flex flex-col justify-between overflow-hidden rounded-md border border-border/70 bg-card p-5 transition-all duration-300 hover:border-primary/50 hover:-translate-y-1">
       <div
-        className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-xl opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-20"
+        className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-md opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-20"
         style={{ background: model.accent }}
       />
 

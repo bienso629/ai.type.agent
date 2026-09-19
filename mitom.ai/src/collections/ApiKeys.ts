@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload'
-import { callUCloudApi, type UCloudApiParams } from '@/lib/ucloudClient'
+import { callUCloudApi } from '@/lib/ucloudClient'
 
 export const ApiKeys: CollectionConfig = {
   slug: 'api-keys',
@@ -34,18 +34,13 @@ export const ApiKeys: CollectionConfig = {
 
           if (pubKey && privKey) {
             try {
-              const createParams: UCloudApiParams = {
-                Action: 'CreateUMInferAPIKey',
-                Name: record.name || 'AstraFlow API Key',
-              }
-              if (record.dailyLimit && record.dailyLimit !== 'Không giới hạn') {
-                createParams.DailyLimitAmount = String(record.dailyLimit).replace(/[^0-9.]/g, '')
-              }
-              if (record.monthlyLimit && record.monthlyLimit !== 'Không giới hạn') {
-                createParams.MonthlyLimitAmount = String(record.monthlyLimit).replace(/[^0-9.]/g, '')
-              }
-
-              const res = await callUCloudApi(createParams, { publicKey: pubKey, privateKey: privKey })
+              const res = await callUCloudApi(
+                {
+                  Action: 'CreateUMInferAPIKey',
+                  Name: record.name || 'AstraFlow API Key',
+                },
+                { publicKey: pubKey, privateKey: privKey },
+              )
 
               if (res?.Data) {
                 record.keyId = res.Data.KeyId
@@ -65,41 +60,6 @@ export const ApiKeys: CollectionConfig = {
           }
         }
         return record
-      },
-    ],
-    afterChange: [
-      async ({ doc, previousDoc, operation }) => {
-        // Khi Admin sửa key (cập nhật hạn mức hoặc đổi tên), đồng bộ ngay lên AstraFlow
-        if (operation === 'update' && doc?.keyId && doc.keyId.startsWith('uminferapikey-')) {
-          const pubKey = process.env.ASTRAFLOW_PUBLIC_KEY || process.env.UCLOUD_PUBLIC_KEY
-          const privKey = process.env.ASTRAFLOW_PRIVATE_KEY || process.env.UCLOUD_PRIVATE_KEY
-
-          if (pubKey && privKey) {
-            const hasLimitChanged =
-              doc.monthlyLimit !== previousDoc?.monthlyLimit ||
-              doc.dailyLimit !== previousDoc?.dailyLimit
-
-            if (hasLimitChanged) {
-              try {
-                const updateParams: UCloudApiParams = {
-                  Action: 'UpdateUMInferAPIKey',
-                  KeyId: doc.keyId,
-                }
-                if (doc.dailyLimit) {
-                  updateParams.DailyLimitAmount = doc.dailyLimit === 'Không giới hạn' ? '0' : String(doc.dailyLimit).replace(/[^0-9.]/g, '')
-                }
-                if (doc.monthlyLimit) {
-                  updateParams.MonthlyLimitAmount = doc.monthlyLimit === 'Không giới hạn' ? '0' : String(doc.monthlyLimit).replace(/[^0-9.]/g, '')
-                }
-
-                await callUCloudApi(updateParams, { publicKey: pubKey, privateKey: privKey })
-                console.log(`[ApiKeys Hook] Đã đồng bộ hạn mức mới lên AstraFlow cho key ${doc.keyId} (${doc.name}): Ngày: ${updateParams.DailyLimitAmount || 'N/A'}, Tháng: ${updateParams.MonthlyLimitAmount || 'N/A'}`)
-              } catch (upErr: any) {
-                console.error(`[ApiKeys Hook] Lỗi cập nhật hạn mức key ${doc.keyId} trên AstraFlow:`, upErr.message)
-              }
-            }
-          }
-        }
       },
     ],
     afterDelete: [

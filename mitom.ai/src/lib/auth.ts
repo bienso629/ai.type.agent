@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 import crypto from 'crypto'
+import { generateCustomerCode as genCode } from './customerCode'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.PAYLOAD_SECRET || 'mitom-secret-key-super-secure-payload-token-2026'
@@ -52,9 +53,6 @@ export function generateApiKey(): string {
   return `mt_${crypto.randomBytes(24).toString('hex')}`
 }
 
-export function generateCustomerCode(userId?: number | string): string {
-  if (userId) {
-    return `MITO${String(userId).padStart(6, '0')}`
-  }
-  return `MITO${Math.floor(100000 + Math.random() * 900000)}`
+export function generateCustomerCode(): string {
+  return genCode()
 }

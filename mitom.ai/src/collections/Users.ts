@@ -5,7 +5,7 @@ export const Users: CollectionConfig = {
   slug: 'users',
   admin: {
     useAsTitle: 'email',
-    defaultColumns: ['email', 'name', 'authProvider', 'customerCode', 'balance', 'role', 'createdAt'],
+    defaultColumns: ['email', 'name', 'customerCode', 'authProvider', 'balance', 'role', 'createdAt'],
   },
   auth: true,
   access: {
@@ -26,10 +26,26 @@ export const Users: CollectionConfig = {
   },
   hooks: {
     beforeChange: [
-      async ({ data, operation }) => {
-        // Tự động sinh mã định danh khách hàng ngẫu nhiên bảo mật (không lộ ID tuần tự)
-        if (operation === 'create' || (data && !data.customerCode)) {
-          data.customerCode = data.customerCode || generateCustomerCode()
+      async ({ data, req, operation }) => {
+        // Tự động sinh mã khách hàng ngẫu nhiên an toàn nếu chưa có
+        if (!data?.customerCode) {
+          let code = generateCustomerCode()
+          if (req.payload) {
+            let exists = true
+            while (exists) {
+              const found = await req.payload.find({
+                collection: 'users',
+                where: { customerCode: { equals: code } },
+                limit: 1,
+              })
+              if (found.docs.length === 0) {
+                exists = false
+              } else {
+                code = generateCustomerCode()
+              }
+            }
+          }
+          data.customerCode = code
         }
         return data
       },
@@ -83,12 +99,31 @@ export const Users: CollectionConfig = {
       },
     },
     {
+      name: 'dailyLimit',
+      type: 'number',
+      defaultValue: 0,
+      label: 'Hạn mức ngày (USD)',
+      admin: {
+        description: 'Giới hạn chi tiêu mỗi ngày qua API AI. Nhập 0 để không giới hạn.',
+      },
+    },
+    {
+      name: 'monthlyLimit',
+      type: 'number',
+      defaultValue: 0,
+      label: 'Hạn mức tháng (USD)',
+      admin: {
+        description: 'Giới hạn chi tiêu mỗi tháng qua API AI. Nhập 0 để không giới hạn.',
+      },
+    },
+    {
       name: 'customerCode',
       type: 'text',
       index: true,
+      unique: true,
       label: 'Mã khách hàng hoặc cú pháp nạp',
       admin: {
-        description: 'Mã nhận diện nạp tiền tự động qua cổng ngân hàng',
+        description: 'Mã nhận diện ngẫu nhiên bảo mật nạp tiền tự động qua ngân hàng',
       },
     },
     {
@@ -96,6 +131,10 @@ export const Users: CollectionConfig = {
       type: 'text',
       index: true,
       label: 'API Key truy cập',
+      admin: {
+        readOnly: true,
+        description: 'Khóa API AstraFlow được cấp cho người dùng',
+      },
     },
     {
       name: 'role',

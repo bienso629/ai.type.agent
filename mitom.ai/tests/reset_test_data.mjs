@@ -27,17 +27,28 @@ async function cleanTestData() {
     await payload.delete({ collection: 'transactions', id: doc.id })
   }
 
-  // 3. Xóa các API Keys test (những key sinh từ đơn hàng mitom-mt-...)
+  // 3. Xóa toàn bộ Invoices
+  const invoices = await payload.find({ collection: 'invoices', limit: 1000 })
+  console.log(`Dang xoa ${invoices.totalDocs} hoa don...`)
+  for (const doc of invoices.docs) {
+    await payload.delete({ collection: 'invoices', id: doc.id })
+  }
+
+  // 4. Xóa các API Keys test
   const apiKeys = await payload.find({ collection: 'api-keys', limit: 1000 })
   console.log(`Dang kiem tra ${apiKeys.totalDocs} API Keys trong CMS...`)
   for (const doc of apiKeys.docs) {
-    if (doc.name.startsWith('mitom-mt-') || doc.name.startsWith('test-')) {
+    if (
+      doc.name.startsWith('mitom-mt-') ||
+      doc.name.startsWith('test-') ||
+      doc.name.includes('buctuong2000')
+    ) {
       console.log(`- Xoa key test: ${doc.name} (${doc.keyId})`)
       await payload.delete({ collection: 'api-keys', id: doc.id })
     }
   }
 
-  // 4. Xóa user test buctuong2000@gmail.com
+  // 5. Xóa user test buctuong2000@gmail.com
   const testUsers = await payload.find({
     collection: 'users',
     where: {
