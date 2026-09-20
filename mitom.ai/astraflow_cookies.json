@@ -2,9 +2,9 @@
   "targetUrl": "https://astraflow.scloudsg.com",
   "finalUrl": "https://astraflow.scloudsg.com/en-us/experience-modelverse/api-keys",
   "title": "AstraFlow",
-  "extractedAt": "2026-09-20T06:30:21.543Z",
-  "cookieCount": 15,
-  "cookieHeader": "das_session=5af2b0b5-f3ad-430c-9e4d-2f96b8424c72; _pk_id.21.ca32=90f8d0b71ddb20c5.1789198611.; _pk_id.21.a685=10aa4b3b2cef9d29.1789213748.; _lang=EN; CN_lang=en_US; U_LANG=en_US; is_dark_theme_on=0; channel_key=; IDE=AHWqTUm2xitKUl9eML4l3xWLjsK3MPRTqpSbnGdZFQGKD1DYyumvzDlPQm0KQ5br; captcha_v4_user=fd0ecb3d55c240e8ad0fcadc9fd68394; _pk_id.21.6016=082163968777ba9b.1789213831.; c_last_region_ducdung_tadu_vn=%7B%22region%22%3A%22vn-sng%22%2C%22zone%22%3A%22vn-sng-01%22%7D; _gcl_au=1.1.1232889220.1789213748.1196765747.1789296376.1789296376.341545149.1789213799.1789296376; _pk_ref.21.6016=%5B%22%22%2C%22%22%2C1789296392%2C%22https%3A%2F%2Fpassport.scloudsg.com%2F%22%5D; _pk_ses.21.ca32=1",
+  "extractedAt": "2026-09-20T09:00:22.756Z",
+  "cookieCount": 14,
+  "cookieHeader": "das_session=5af2b0b5-f3ad-430c-9e4d-2f96b8424c72; _pk_id.21.ca32=90f8d0b71ddb20c5.1789198611.; _pk_id.21.a685=10aa4b3b2cef9d29.1789213748.; _lang=EN; CN_lang=en_US; U_LANG=en_US; is_dark_theme_on=0; channel_key=; IDE=AHWqTUm2xitKUl9eML4l3xWLjsK3MPRTqpSbnGdZFQGKD1DYyumvzDlPQm0KQ5br; captcha_v4_user=fd0ecb3d55c240e8ad0fcadc9fd68394; _pk_id.21.6016=082163968777ba9b.1789213831.; _gcl_au=1.1.1232889220.1789213748.1196765747.1789296376.1789296376.341545149.1789213799.1789296376; _pk_ref.21.6016=%5B%22%22%2C%22%22%2C1789296392%2C%22https%3A%2F%2Fpassport.scloudsg.com%2F%22%5D; _pk_ses.21.ca32=1",
   "cookies": [
     {
       "name": "das_session",
@@ -117,16 +117,6 @@
       "sameSite": "Lax"
     },
     {
-      "name": "c_last_region_ducdung_tadu_vn",
-      "value": "%7B%22region%22%3A%22vn-sng%22%2C%22zone%22%3A%22vn-sng-01%22%7D",
-      "domain": ".console.scloudsg.com",
-      "path": "/",
-      "expires": 1789890760,
-      "httpOnly": false,
-      "secure": false,
-      "sameSite": "Lax"
-    },
-    {
       "name": "_gcl_au",
       "value": "1.1.1232889220.1789213748.1196765747.1789296376.1789296376.341545149.1789213799.1789296376",
       "domain": ".scloudsg.com",
@@ -151,7 +141,7 @@
       "value": "1",
       "domain": "astraflow.scloudsg.com",
       "path": "/",
-      "expires": 1789887616,
+      "expires": 1789896617,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"

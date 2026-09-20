@@ -50,11 +50,22 @@ export async function PATCH(request: Request) {
     const body = await request.json().catch(() => ({}))
     const data: Record<string, number> = {}
 
+    const userBalance = Number(user.balance) || 0
+
     if (body.dailyLimit !== undefined) {
       const v = Number(body.dailyLimit)
       if (!Number.isFinite(v) || v < 0 || v > 100000000) {
         return NextResponse.json(
           { success: false, error: 'Hạn mức ngày không hợp lệ (0 - 100.000.000 VNĐ).' },
+          { status: 400 },
+        )
+      }
+      if (v > userBalance) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Hạn mức ngày (${v.toLocaleString('vi-VN')} đ) không được vượt quá số dư tài khoản hiện có (${userBalance.toLocaleString('vi-VN')} đ).`,
+          },
           { status: 400 },
         )
       }
@@ -66,6 +77,15 @@ export async function PATCH(request: Request) {
       if (!Number.isFinite(v) || v < 0 || v > 1000000000) {
         return NextResponse.json(
           { success: false, error: 'Hạn mức tháng không hợp lệ (0 - 1.000.000.000 VNĐ).' },
+          { status: 400 },
+        )
+      }
+      if (v > userBalance) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Hạn mức tháng (${v.toLocaleString('vi-VN')} đ) không được vượt quá số dư tài khoản hiện có (${userBalance.toLocaleString('vi-VN')} đ).`,
+          },
           { status: 400 },
         )
       }

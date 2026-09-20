@@ -102,14 +102,22 @@ export async function GET(request: Request) {
 
     // Đọc lịch sử tiêu thụ theo ngày từ database CMS bảng api-keys
     let historyMap: Record<string, number> = {}
+    let dbKeyDoc: any = null
     try {
       const dbKeyRes = await payload.find({
         collection: 'api-keys',
-        where: { secretKey: { equals: userKey } },
+        where: {
+          or: [
+            { secretKey: { equals: userKey } },
+            { maskedKey: { equals: userKey } },
+            { keyId: { equals: keyData?.KeyId || 'not-matched' } },
+          ],
+        },
         limit: 1,
       })
       if (dbKeyRes.docs.length > 0) {
-        const h = (dbKeyRes.docs[0] as any).usageHistory
+        dbKeyDoc = dbKeyRes.docs[0]
+        const h = (dbKeyDoc as any).usageHistory
         if (h && typeof h === 'object') {
           historyMap = { ...h }
         } else if (typeof h === 'string') {
@@ -131,9 +139,27 @@ export async function GET(request: Request) {
       const currentDailyUsd = Number(keyData.DailyUsedAmount) || 0
       historyMap[todayStr] = currentDailyUsd
 
-      // Nếu user tự cài hạn mức VNĐ cụ thể (> 0) thì dùng số đó, nếu là mặc định theo số dư (0) thì hiển thị khít 100% bằng số dư tài khoản
-      const displayDailyLimit = userDaily > 0 ? userDaily : userBalance
-      const displayMonthlyLimit = userMonthly > 0 ? userMonthly : userBalance
+      // Tự động lưu cập nhật historyMap vào database nếu có thay đổi
+      if (dbKeyDoc && dbKeyDoc.id) {
+        try {
+          await payload.update({
+            collection: 'api-keys',
+            id: dbKeyDoc.id,
+            data: {
+              secretKey: userKey,
+              dailySpend: String(currentDailyUsd),
+              monthlySpend: String(keyData.MonthlyUsedAmount || '0'),
+              usageHistory: historyMap,
+            } as any,
+          })
+        } catch {
+          // Bo qua loi update ngam
+        }
+      }
+
+      // Nếu user tự cài hạn mức VNĐ cụ thể (> 0) thì dùng số đó nhưng không vượt quá số dư hiện có, nếu là 0 thì mặc định bằng 100% số dư tài khoản
+      const displayDailyLimit = userDaily > 0 ? Math.min(userDaily, userBalance) : userBalance
+      const displayMonthlyLimit = userMonthly > 0 ? Math.min(userMonthly, userBalance) : userBalance
 
       // Danh sách tiêu thụ theo từng ngày quy đổi ra List Price (VNĐ)
       const dailyHistory = Object.entries(historyMap)

@@ -133,17 +133,41 @@ export function UserProfileModal({
     setSelectedCustomDate(newDate)
     if (newDate) {
       loadUsage(newDate)
+    } else {
+      loadUsage()
     }
   }
 
   const handleSaveLimits = async () => {
     setLimitsSaving(true)
     setLimitsMsg(null)
+    const curBalance = limits?.balance ?? user?.balance ?? 0
+    const dVal = Number(dailyInput) || 0
+    const mVal = Number(monthlyInput) || 0
+
+    if (dVal > curBalance) {
+      setLimitsMsg({
+        type: 'error',
+        text: `Hạn mức ngày (${formatVnd(dVal)}) không được vượt quá số dư hiện có (${formatVnd(curBalance)}).`,
+      })
+      setLimitsSaving(false)
+      return
+    }
+
+    if (mVal > curBalance) {
+      setLimitsMsg({
+        type: 'error',
+        text: `Hạn mức tháng (${formatVnd(mVal)}) không được vượt quá số dư hiện có (${formatVnd(curBalance)}).`,
+      })
+      setLimitsSaving(false)
+      return
+    }
+
     try {
       const res = await fetch('/api/account/limits', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dailyLimit: Number(dailyInput) || 0, monthlyLimit: Number(monthlyInput) || 0 }),
+        body: JSON.stringify({ dailyLimit: dVal, monthlyLimit: mVal }),
       })
       const data = await res.json()
       if (res.ok && data.success) {
@@ -324,9 +348,10 @@ export function UserProfileModal({
                 <input
                   type="number"
                   min={0}
+                  max={limits?.balance ?? user.balance ?? 0}
                   value={dailyInput}
                   onChange={(e) => setDailyInput(e.target.value)}
-                  placeholder="0 = không giới hạn"
+                  placeholder="0 = theo số dư"
                   className="w-full rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
@@ -337,15 +362,16 @@ export function UserProfileModal({
                 <input
                   type="number"
                   min={0}
+                  max={limits?.balance ?? user.balance ?? 0}
                   value={monthlyInput}
                   onChange={(e) => setMonthlyInput(e.target.value)}
-                  placeholder="0 = không giới hạn"
+                  placeholder="0 = theo số dư"
                   className="w-full rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Nhập 0 để không giới hạn. Hạn mức áp dụng cho toàn bộ chi tiêu qua API AI của tài khoản.
+              Nhập 0 để dùng toàn bộ số dư. Hạn mức ngày và tháng không được vượt quá số dư tài khoản hiện có.
             </p>
             {limitsMsg && (
               <div
