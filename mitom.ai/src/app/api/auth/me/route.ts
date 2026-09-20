@@ -88,6 +88,8 @@ export async function GET() {
             name: userDoc.name || session.name,
             avatar: userDoc.avatar || session.avatar,
             authProvider: userDoc.authProvider || session.authProvider,
+            googleId: userDoc.googleId || (session as any).googleId || null,
+            taduUserId: userDoc.taduUserId || (session as any).taduUserId || null,
             balance: userDoc.balance ?? session.balance ?? 0,
             customerCode: userDoc.customerCode || ``,
             apiKey: userDoc.apiKey || session.apiKey,

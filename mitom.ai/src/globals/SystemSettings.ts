@@ -22,6 +22,16 @@ export const SystemSettings: GlobalConfig = {
       },
     },
     {
+      name: 'listPriceMultiplier',
+      type: 'number',
+      label: 'Hệ số giá niêm yết bán ra (List Price Multiplier)',
+      defaultValue: 1,
+      min: 1,
+      admin: {
+        description: 'Hệ số nhân từ giá vốn đại lý sang giá niêm yết (List Price) hiển thị cho khách hàng. Mặc định 1 (hoặc ví dụ 1.25, 1.5, 2 tùy chính sách đại lý).',
+      },
+    },
+    {
       name: 'siteName',
       type: 'text',
       label: 'Tên hệ thống',

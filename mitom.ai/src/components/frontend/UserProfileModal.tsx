@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { User, LogOut, Wallet, Shield, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp, Globe, Gauge } from 'lucide-react'
+import { User, LogOut, Wallet, Shield, ExternalLink, RefreshCw, X, Lock, ChevronDown, ChevronUp, Globe, Gauge, Calendar } from 'lucide-react'
 
 
 interface UsageAstraflow {
@@ -15,6 +15,9 @@ interface UsageAstraflow {
   dailyLimitVnd: number
   monthlyLimitVnd: number
   updateTime: string
+  dailyHistory?: { date: string; usedVnd: number }[]
+  selectedDate?: string | null
+  selectedDateUsedVnd?: number | null
 }
 
 interface UsageHistoryItem {
@@ -97,11 +100,18 @@ export function UserProfileModal({
   // ===== Muc tieu thu API AstraFlow + Lich su nap so du =====
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
+  const [selectedCustomDate, setSelectedCustomDate] = useState<string>('')
+  const [customDateLoading, setCustomDateLoading] = useState(false)
 
-  const loadUsage = async () => {
-    setUsageLoading(true)
+  const loadUsage = async (targetDate?: string) => {
+    if (targetDate) {
+      setCustomDateLoading(true)
+    } else {
+      setUsageLoading(true)
+    }
     try {
-      const res = await fetch('/api/user/usage', { cache: 'no-store' })
+      const url = targetDate ? `/api/user/usage?date=${encodeURIComponent(targetDate)}` : '/api/user/usage'
+      const res = await fetch(url, { cache: 'no-store' })
       const data = await res.json()
       if (res.ok && data.success) {
         setUsage({ astraflow: data.astraflow, history: data.history || [], stats: data.stats })
@@ -110,6 +120,7 @@ export function UserProfileModal({
       // bo qua loi mang tam thoi
     } finally {
       setUsageLoading(false)
+      setCustomDateLoading(false)
     }
   }
 
@@ -117,6 +128,13 @@ export function UserProfileModal({
     if (!isOpen) return
     loadUsage()
   }, [isOpen])
+
+  const handleCustomDateChange = (newDate: string) => {
+    setSelectedCustomDate(newDate)
+    if (newDate) {
+      loadUsage(newDate)
+    }
+  }
 
   const handleSaveLimits = async () => {
     setLimitsSaving(true)
@@ -344,11 +362,11 @@ export function UserProfileModal({
               type="button"
               onClick={handleSaveLimits}
               disabled={limitsSaving || limitsLoading}
-              className="glow-button flex w-full items-center justify-center gap-2 rounded-md bg-primary py-3 text-sm font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+              className="glow-button flex w-full items-center justify-center gap-2 rounded-md py-3 text-sm font-bold transition-all disabled:opacity-50 cursor-pointer mt-2"
             >
               {limitsSaving ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
                   Đang lưu...
                 </span>
               ) : (
@@ -359,35 +377,47 @@ export function UserProfileModal({
 
           {/* Muc tieu thu API AstraFlow */}
           <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <Gauge size={14} className="text-primary" />
-                Mức tiêu thụ API (AstraFlow)
+                Mức tiêu thụ API
               </div>
-              <button
-                type="button"
-                onClick={handleReloadUsage}
-                disabled={usageLoading}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw size={11} className={usageLoading ? 'animate-spin' : ''} />
-                Làm mới
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 rounded border border-border/80 bg-background/80 px-2 py-0.5">
+                  <input
+                    type="date"
+                    title="Chọn ngày để xem tiêu thụ"
+                    value={selectedCustomDate}
+                    onChange={(e) => handleCustomDateChange(e.target.value)}
+                    className="bg-transparent text-[11px] font-mono text-foreground focus:outline-none cursor-pointer"
+                  />
+                  {selectedCustomDate && (
+                    <button
+                      type="button"
+                      onClick={() => handleCustomDateChange('')}
+                      className="text-muted-foreground hover:text-foreground text-[10px] ml-0.5"
+                      title="Xóa chọn ngày"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {usage?.astraflow?.connected ? (
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-mono text-muted-foreground select-all">{usage.astraflow.maskedKey}</span>
-                  <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-semibold text-emerald-400">
-                    {usage.astraflow.status}
-                  </span>
-                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-md border border-border bg-background/60 p-2.5">
-                    <div className="text-[10px] text-muted-foreground mb-0.5">Tiêu thụ hôm nay</div>
+                    <div className="text-[10px] text-muted-foreground mb-0.5">
+                      {selectedCustomDate ? `Tiêu thụ ngày ${selectedCustomDate}` : 'Tiêu thụ hôm nay'}
+                    </div>
                     <div className="text-sm font-bold text-foreground font-display">
-                      {formatVnd(usage.astraflow.dailyUsedVnd || 0)}
+                      {customDateLoading ? (
+                        <RefreshCw size={12} className="animate-spin inline" />
+                      ) : (
+                        formatVnd(selectedCustomDate ? (usage.astraflow.selectedDateUsedVnd || 0) : (usage.astraflow.dailyUsedVnd || 0))
+                      )}
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
                       Hạn mức: {formatVnd(usage.astraflow.dailyLimitVnd || 0)}
@@ -403,12 +433,9 @@ export function UserProfileModal({
                     </div>
                   </div>
                 </div>
-                {usage.astraflow.updateTime && (
-                  <div className="text-[10px] text-muted-foreground">Cập nhật lúc: {usage.astraflow.updateTime}</div>
-                )}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Chưa phát hiện API Key hoạt động trên AstraFlow.</p>
+              <p className="text-xs text-muted-foreground">Chưa phát hiện API Key hoạt động.</p>
             )}
           </div>
 
@@ -543,7 +570,7 @@ export function UserProfileModal({
             >
               <span className="flex items-center gap-2">
                 <Lock size={16} className="text-primary" />
-                Thay đổi mật khẩu
+                {user.authProvider === 'google' || user.googleId ? 'Hướng dẫn đăng nhập' : 'Thay đổi mật khẩu'}
               </span>
               {showChangePassword ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </button>
@@ -562,7 +589,11 @@ export function UserProfileModal({
                   </div>
                 )}
 
-                {user.authProvider === 'local' && (
+                {user.authProvider === 'google' || user.googleId ? (
+                  <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
+                    Tài khoản được liên kết với Google. Bạn có thể thiết lập mật khẩu tại đây để đăng nhập trực tiếp bằng email và mật khẩu khi cần.
+                  </div>
+                ) : (
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                       Mật khẩu hiện tại
@@ -625,6 +656,8 @@ export function UserProfileModal({
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
                       Đang cập nhật...
                     </span>
+                  ) : user.authProvider === 'google' || user.googleId ? (
+                    'Thiết lập mật khẩu'
                   ) : (
                     'Lưu mật khẩu mới'
                   )}
@@ -646,7 +679,7 @@ export function UserProfileModal({
                 window.location.href = '/'
               }
             }}
-            className="flex items-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-rose-400 hover:underline transition-colors cursor-pointer"
           >
             <LogOut size={14} />
             Đăng xuất

@@ -213,5 +213,14 @@ export const ApiKeys: CollectionConfig = {
         readOnly: true,
       },
     },
+    {
+      name: 'usageHistory',
+      type: 'json',
+      label: 'Lịch sử tiêu thụ theo ngày',
+      admin: {
+        readOnly: true,
+        description: 'Bản ghi tiêu thụ List Price từng ngày: { "YYYY-MM-DD": usedAmountUsd }',
+      },
+    },
   ],
 }

@@ -4,7 +4,7 @@ import { getPayload } from 'payload'
 import configPromise from '@payload-config'
 import { verifySessionToken } from '@/lib/auth'
 import { callUCloudApi } from '@/lib/ucloudClient'
-import { getSystemUsdRate } from '@/lib/currency'
+import { getSystemUsdRate, getListPriceMultiplier, convertCostToCustomerListPrice } from '@/lib/currency'
 import fs from 'fs'
 import path from 'path'
 
@@ -13,11 +13,12 @@ export const revalidate = 0
 
 const KEYS_CACHE_FILE = path.resolve(process.cwd(), 'astraflow_keys.json')
 
-// Quy doi USD (don vi ghi nhan tren AstraFlow) ve VNĐ de hien thi
-function usdToVnd(usd: number | string | undefined | null): number {
+// Quy đổi USD (đơn vị ghi nhận gốc trên AstraFlow) về VNĐ theo giá niêm yết bán lẻ (List Price) mà khách hàng chi trả
+function usdCostToListPriceVnd(usd: number | string | undefined | null, multiplier: number): number {
   const v = Number(usd)
   if (!Number.isFinite(v) || v <= 0) return 0
-  return Math.round(v * getSystemUsdRate())
+  const costVnd = v * getSystemUsdRate()
+  return Math.round(convertCostToCustomerListPrice(costVnd, multiplier))
 }
 
 async function getCurrentUser() {
@@ -36,13 +37,15 @@ async function getCurrentUser() {
 }
 
 // GET: Muc tieu thu API Key tren AstraFlow + lich su cac lan nap so du
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await getCurrentUser()
     if (!user) {
       return NextResponse.json({ success: false, error: 'Chưa xác thực.' }, { status: 401 })
     }
     const payload = await getPayload({ config: configPromise })
+    const { searchParams } = new URL(request.url)
+    const queryDate = searchParams.get('date')?.trim() // YYYY-MM-DD
 
     // ===== 1. Thong tin su dung API Key tren AstraFlow (UCloud API) =====
     let astraflow: any = {
@@ -55,6 +58,9 @@ export async function GET() {
       dailyLimitVnd: 0,
       monthlyLimitVnd: 0,
       updateTime: '',
+      dailyHistory: [] as { date: string; usedVnd: number }[],
+      selectedDate: queryDate || null,
+      selectedDateUsedVnd: null as number | null,
     }
 
     const userKey = String((user as any).apiKey || '').trim()
@@ -83,28 +89,82 @@ export async function GET() {
         }
       }
 
-      if (keyData) {
-        const updateTimeRaw = Number(keyData.UpdateTime) || 0
-        const userBalance = Number((user as any).balance) || 0
-        const userDaily = Number((user as any).dailyLimit) || 0
-        const userMonthly = Number((user as any).monthlyLimit) || 0
+    // Lấy cài đặt hệ thống về hệ số List Price của đại lý
+    let listPriceMultiplier = getListPriceMultiplier()
+    try {
+      const settings = await payload.findGlobal({ slug: 'system-settings' })
+      if (settings && (settings as any).listPriceMultiplier && Number((settings as any).listPriceMultiplier) >= 1) {
+        listPriceMultiplier = Number((settings as any).listPriceMultiplier)
+      }
+    } catch {
+      // Fallback theo biến môi trường
+    }
 
-        // Nếu user tự cài hạn mức VNĐ cụ thể (> 0) thì dùng số đó, nếu là mặc định theo số dư (0) thì hiển thị khít 100% bằng số dư tài khoản
-        const displayDailyLimit = userDaily > 0 ? userDaily : userBalance
-        const displayMonthlyLimit = userMonthly > 0 ? userMonthly : userBalance
-
-        astraflow = {
-          connected: true,
-          keyName: String(keyData.Name || ''),
-          maskedKey: astraflow.maskedKey,
-          status: Number(keyData.Status) === 1 ? 'Hoạt động' : 'Tạm khóa',
-          dailyUsedVnd: usdToVnd(keyData.DailyUsedAmount),
-          monthlyUsedVnd: usdToVnd(keyData.MonthlyUsedAmount),
-          dailyLimitVnd: displayDailyLimit,
-          monthlyLimitVnd: displayMonthlyLimit,
-          updateTime: updateTimeRaw > 0 ? new Date(updateTimeRaw * 1000).toLocaleString('vi-VN') : '',
+    // Đọc lịch sử tiêu thụ theo ngày từ database CMS bảng api-keys
+    let historyMap: Record<string, number> = {}
+    try {
+      const dbKeyRes = await payload.find({
+        collection: 'api-keys',
+        where: { secretKey: { equals: userKey } },
+        limit: 1,
+      })
+      if (dbKeyRes.docs.length > 0) {
+        const h = (dbKeyRes.docs[0] as any).usageHistory
+        if (h && typeof h === 'object') {
+          historyMap = { ...h }
+        } else if (typeof h === 'string') {
+          historyMap = JSON.parse(h)
         }
       }
+    } catch {
+      historyMap = {}
+    }
+
+    if (keyData) {
+      const updateTimeRaw = Number(keyData.UpdateTime) || 0
+      const userBalance = Number((user as any).balance) || 0
+      const userDaily = Number((user as any).dailyLimit) || 0
+      const userMonthly = Number((user as any).monthlyLimit) || 0
+
+      // Cập nhật ngày hôm nay vào historyMap
+      const todayStr = new Date().toISOString().split('T')[0]
+      const currentDailyUsd = Number(keyData.DailyUsedAmount) || 0
+      historyMap[todayStr] = currentDailyUsd
+
+      // Nếu user tự cài hạn mức VNĐ cụ thể (> 0) thì dùng số đó, nếu là mặc định theo số dư (0) thì hiển thị khít 100% bằng số dư tài khoản
+      const displayDailyLimit = userDaily > 0 ? userDaily : userBalance
+      const displayMonthlyLimit = userMonthly > 0 ? userMonthly : userBalance
+
+      // Danh sách tiêu thụ theo từng ngày quy đổi ra List Price (VNĐ)
+      const dailyHistory = Object.entries(historyMap)
+        .map(([date, usd]) => ({
+          date,
+          usedVnd: usdCostToListPriceVnd(usd, listPriceMultiplier),
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date))
+
+      // Nếu khách chọn một ngày bất kỳ, tra cứu số tiền tiêu thụ của ngày đó
+      let selectedDateUsedVnd: number | null = null
+      if (queryDate) {
+        const foundDay = dailyHistory.find((d) => d.date === queryDate)
+        selectedDateUsedVnd = foundDay ? foundDay.usedVnd : 0
+      }
+
+      astraflow = {
+        connected: true,
+        keyName: String(keyData.Name || ''),
+        maskedKey: astraflow.maskedKey,
+        status: Number(keyData.Status) === 1 ? 'Hoạt động' : 'Tạm khóa',
+        dailyUsedVnd: usdCostToListPriceVnd(keyData.DailyUsedAmount, listPriceMultiplier),
+        monthlyUsedVnd: usdCostToListPriceVnd(keyData.MonthlyUsedAmount, listPriceMultiplier),
+        dailyLimitVnd: displayDailyLimit,
+        monthlyLimitVnd: displayMonthlyLimit,
+        updateTime: updateTimeRaw > 0 ? new Date(updateTimeRaw * 1000).toLocaleString('vi-VN') : '',
+        dailyHistory,
+        selectedDate: queryDate || null,
+        selectedDateUsedVnd,
+      }
+    }
     }
 
     // ===== 2. Lich su nap so du: cac don hang da thanh toan cua chinh user =====

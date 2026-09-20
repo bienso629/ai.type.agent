@@ -55,8 +55,9 @@ export async function POST(request: Request) {
 
     const user = users.docs[0]
 
-    // Nếu tài khoản dùng local và đã có mật khẩu thì kiểm tra mật khẩu hiện tại
-    if (user.authProvider === 'local') {
+    // Chỉ kiểm tra mật khẩu hiện tại khi tài khoản thuần local (không phải liên kết Google)
+    const isGoogleUser = user.authProvider === 'google' || Boolean(user.googleId)
+    if (!isGoogleUser && user.authProvider === 'local') {
       if (!currentPassword) {
         return NextResponse.json(
           { success: false, message: 'Vui lòng nhập mật khẩu hiện tại.' },

@@ -1,4 +1,5 @@
 import rawModelsData from './models.json'
+export { rawModelsData }
 
 export type ModelCategory = 'all' | 'chat' | 'code' | 'image' | 'video' | 'audio' | 'embedding' | 'doc'
 
@@ -143,7 +144,7 @@ function getBadge(id: string): string | undefined {
   return undefined
 }
 
-function parsePricing(rawPricing: any[]): { conditions: ModelPricingCondition[]; highlight?: string } {
+function parsePricing(rawPricing: any[], multiplier: number = 1): { conditions: ModelPricingCondition[]; highlight?: string } {
   if (!rawPricing || !Array.isArray(rawPricing) || rawPricing.length === 0) {
     return { conditions: [] }
   }
@@ -153,9 +154,11 @@ function parsePricing(rawPricing: any[]): { conditions: ModelPricingCondition[];
     const rates: ModelPricingRate[] = (cond.Rates || []).map((r: any) => {
       const itemDesc = r.ChargeItemDescriptionEn || r.ChargeItemDescription || r.ChargeItem || 'Giá'
       const unit = r.UnitEn || r.Unit || 'lượt'
+      const rawPrice = Number(r.Price) || 0
+      const listPrice = Math.round(rawPrice * multiplier * 10000) / 10000
       return {
         item: itemDesc,
-        price: r.Price,
+        price: listPrice,
         currency: r.Currency || 'CNY',
         unit: unit,
       }
@@ -175,13 +178,13 @@ function parsePricing(rawPricing: any[]): { conditions: ModelPricingCondition[];
   return { conditions, highlight }
 }
 
-export function parseRawModels(rawList: any[]): ApiModel[] {
+export function parseRawModels(rawList: any[], multiplier: number = 1): ApiModel[] {
   return rawList.map((item) => {
     const id = item.id
     const category = getCategory(id)
     const { provider, accent, initials } = getProvider(id)
     const badge = getBadge(id)
-    const { conditions, highlight } = parsePricing(item.pricing)
+    const { conditions, highlight } = parsePricing(item.pricing, multiplier)
 
     let description = `Mô hình AI ${provider} được tối ưu hóa cho tác vụ ${category}. Sẵn sàng kết nối qua OpenAI-compatible API.`
     if (category === 'video') {

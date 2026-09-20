@@ -7,7 +7,9 @@ export interface AuthUser {
   email: string
   name?: string
   avatar?: string
-  authProvider: 'local' | 'google'
+  authProvider: 'local' | 'google' | 'tadu'
+  googleId?: string | null
+  taduUserId?: string | null
   balance: number
   customerCode?: string
   apiKey?: string

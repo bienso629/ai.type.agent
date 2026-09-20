@@ -441,6 +441,7 @@ export const payload_migrations = sqliteTable(
 export const system_settings = sqliteTable('system_settings', {
   id: integer('id').primaryKey(),
   usdRate: numeric('usd_rate', { mode: 'number' }).notNull().default(26000),
+  listPriceMultiplier: numeric('list_price_multiplier', { mode: 'number' }).default(1),
   siteName: text('site_name').default('Mì Tôm AI'),
   supportZalo: text('support_zalo').default('0908.888.888'),
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),

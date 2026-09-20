@@ -349,6 +349,18 @@ export interface ApiKey {
     | number
     | boolean
     | null;
+  /**
+   * Bản ghi tiêu thụ List Price từng ngày: { "YYYY-MM-DD": usedAmountUsd }
+   */
+  usageHistory?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -636,6 +648,7 @@ export interface ApiKeysSelect<T extends boolean = true> {
   monthlySpend?: T;
   expiryTime?: T;
   rawResponse?: T;
+  usageHistory?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -713,6 +726,10 @@ export interface SystemSetting {
    * Tỷ giá áp dụng khi quy đổi tiền nạp VNĐ sang hạn mức USD gọi các model API
    */
   usdRate: number;
+  /**
+   * Hệ số nhân từ giá vốn đại lý sang giá niêm yết (List Price) hiển thị cho khách hàng. Mặc định 1 (hoặc ví dụ 1.25, 1.5, 2 tùy chính sách đại lý).
+   */
+  listPriceMultiplier?: number | null;
   siteName?: string | null;
   supportZalo?: string | null;
   updatedAt?: string | null;
@@ -724,6 +741,7 @@ export interface SystemSetting {
  */
 export interface SystemSettingsSelect<T extends boolean = true> {
   usdRate?: T;
+  listPriceMultiplier?: T;
   siteName?: T;
   supportZalo?: T;
   updatedAt?: T;

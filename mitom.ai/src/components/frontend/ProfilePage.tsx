@@ -17,6 +17,7 @@ import {
   KeyRound,
   LayoutDashboard,
   SlidersHorizontal,
+  Calendar,
 } from 'lucide-react'
 
 interface UsageAstraflow {
@@ -29,6 +30,9 @@ interface UsageAstraflow {
   dailyLimitVnd: number
   monthlyLimitVnd: number
   updateTime: string
+  dailyHistory?: { date: string; usedVnd: number }[]
+  selectedDate?: string | null
+  selectedDateUsedVnd?: number | null
 }
 
 interface UsageHistoryItem {
@@ -106,10 +110,18 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
     }
   }
 
-  const loadUsage = async () => {
-    setUsageLoading(true)
+  const [selectedCustomDate, setSelectedCustomDate] = useState<string>('')
+  const [customDateLoading, setCustomDateLoading] = useState(false)
+
+  const loadUsage = async (targetDate?: string) => {
+    if (targetDate) {
+      setCustomDateLoading(true)
+    } else {
+      setUsageLoading(true)
+    }
     try {
-      const res = await fetch('/api/user/usage', { cache: 'no-store' })
+      const url = targetDate ? `/api/user/usage?date=${encodeURIComponent(targetDate)}` : '/api/user/usage'
+      const res = await fetch(url, { cache: 'no-store' })
       const data = await res.json()
       if (res.ok && data.success) {
         setUsage({ astraflow: data.astraflow, history: data.history || [], stats: data.stats })
@@ -118,11 +130,19 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
       // bo qua loi mang tam thoi
     } finally {
       setUsageLoading(false)
+      setCustomDateLoading(false)
+    }
+  }
+
+  const handleCustomDateChange = (newDate: string) => {
+    setSelectedCustomDate(newDate)
+    if (newDate) {
+      loadUsage(newDate)
     }
   }
 
   const reloadAll = async () => {
-    await Promise.all([loadLimits(), loadUsage()])
+    await Promise.all([loadLimits(), loadUsage(selectedCustomDate || undefined)])
   }
 
   useEffect(() => {
@@ -287,9 +307,9 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
         </div>
       </div>
 
-      {/* Tabs dieu huong hien dai - khong border, khong padding */}
-      <div className="mb-6">
-        <div className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar">
+      {/* Tabs dieu huong 3D skeuomorphic */}
+      <div className="mb-8 overflow-x-auto no-scrollbar py-1">
+        <div className="skeuo-tabs-bar">
           {PROFILE_TABS.map((t) => {
             const Icon = t.icon
             const active = activeTab === t.id
@@ -298,13 +318,9 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id)}
-                className={`flex cursor-pointer items-center gap-2 text-xs md:text-sm font-semibold tracking-wide transition-all whitespace-nowrap ${
-                  active
-                    ? 'text-primary font-bold'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                className={`skeuo-tab-item ${active ? 'active' : ''}`}
               >
-                <Icon size={16} className={active ? 'text-primary' : 'text-muted-foreground'} />
+                <Icon size={14} className={active ? 'text-white' : 'text-neutral-400'} />
                 <span>{t.label}</span>
               </button>
             )
@@ -317,38 +333,47 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
         <div className="space-y-6">
           {/* Muc tieu thu API AstraFlow - khong border, khong padding card */}
           <section>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 font-display text-base font-bold text-foreground">
                 <Gauge size={17} className="text-primary" />
-                Mức tiêu thụ API (AstraFlow)
+                Mức tiêu thụ API
               </h2>
-              <button
-                type="button"
-                onClick={() => loadUsage()}
-                disabled={usageLoading}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-primary cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw size={11} className={usageLoading ? 'animate-spin' : ''} />
-                Làm mới
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 rounded border border-border bg-secondary/80 px-2.5 py-1">
+                  <input
+                    type="date"
+                    title="Chọn ngày để xem tiêu thụ"
+                    value={selectedCustomDate}
+                    onChange={(e) => handleCustomDateChange(e.target.value)}
+                    className="bg-transparent text-xs font-mono text-foreground focus:outline-none cursor-pointer"
+                  />
+                  {selectedCustomDate && (
+                    <button
+                      type="button"
+                      onClick={() => handleCustomDateChange('')}
+                      className="text-muted-foreground hover:text-foreground text-xs ml-1"
+                      title="Xóa chọn ngày"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {usage?.astraflow?.connected ? (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground select-all">
-                    <KeyRound size={13} className="text-primary" />
-                    {usage.astraflow.maskedKey}
-                  </span>
-                  <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
-                    {usage.astraflow.status}
-                  </span>
-                </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="mb-1 text-xs text-muted-foreground">Tiêu thụ hôm nay</div>
+                    <div className="mb-1 text-xs text-muted-foreground">
+                      {selectedCustomDate ? `Tiêu thụ ngày ${selectedCustomDate}` : 'Tiêu thụ hôm nay'}
+                    </div>
                     <div className="font-display text-lg font-bold text-foreground">
-                      {formatVnd(usage.astraflow.dailyUsedVnd || 0)}
+                      {customDateLoading ? (
+                        <RefreshCw size={14} className="animate-spin inline" />
+                      ) : (
+                        formatVnd(selectedCustomDate ? (usage.astraflow.selectedDateUsedVnd || 0) : (usage.astraflow.dailyUsedVnd || 0))
+                      )}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">
                       Hạn mức: {formatVnd(usage.astraflow.dailyLimitVnd || 0)}
@@ -364,14 +389,9 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
                     </div>
                   </div>
                 </div>
-                {usage.astraflow.updateTime && (
-                  <div className="text-[11px] text-muted-foreground">
-                    Cập nhật lúc: {usage.astraflow.updateTime}
-                  </div>
-                )}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Chưa phát hiện API Key hoạt động trên AstraFlow.</p>
+              <p className="text-xs text-muted-foreground">Chưa phát hiện API Key hoạt động.</p>
             )}
           </section>
 
@@ -442,11 +462,11 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
               type="button"
               onClick={handleSaveLimits}
               disabled={limitsSaving || limitsLoading}
-              className="glow-button mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-primary py-3 text-sm font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+              className="glow-button mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-primary py-2.5 text-sm font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
             >
               {limitsSaving ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
                   Đang lưu...
                 </span>
               ) : (
@@ -609,7 +629,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
           <section>
             <h2 className="mb-4 flex items-center gap-2 font-display text-base font-bold text-foreground">
               <Lock size={17} className="text-primary" />
-              Thay đổi mật khẩu
+              {user.authProvider === 'google' || user.googleId ? 'Hướng dẫn đăng nhập' : 'Thay đổi mật khẩu'}
             </h2>
 
             {passwordMsg && (
@@ -625,7 +645,11 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
             )}
 
             <form onSubmit={handleChangePassword} className="max-w-sm space-y-4">
-              {user.authProvider === 'local' && (
+              {user.authProvider === 'google' || user.googleId ? (
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
+                  Tài khoản được liên kết với Google. Bạn có thể thiết lập mật khẩu tại đây để đăng nhập trực tiếp bằng email và mật khẩu khi cần.
+                </div>
+              ) : (
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                     Mật khẩu hiện tại
@@ -688,6 +712,8 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
                     Đang cập nhật...
                   </span>
+                ) : user.authProvider === 'google' || user.googleId ? (
+                  'Thiết lập mật khẩu'
                 ) : (
                   'Lưu mật khẩu mới'
                 )}
@@ -703,9 +729,9 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
         <button
           type="button"
           onClick={handleLogout}
-          className="glow-button-danger flex items-center gap-2 rounded-md px-6 py-3 text-sm font-bold transition-all hover:scale-[1.02] cursor-pointer"
+          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-rose-400 hover:underline transition-colors cursor-pointer"
         >
-          <LogOut size={15} />
+          <LogOut size={14} />
           Đăng xuất
         </button>
         <p className="text-[11px] text-muted-foreground">Mì Tôm AI — Số dư và dữ liệu của bạn được bảo toàn sau khi đăng xuất.</p>

@@ -38,7 +38,35 @@ export function formatUsdLimitForVnd(vndAmount: number, rate?: number): string {
   if (!vndAmount || vndAmount <= 0) return '0.00'
   const appliedRate = rate || getSystemUsdRate()
   const rawUsd = vndAmount / appliedRate
-  // Cắt (floor) tại 2 chữ số thập phân
   const floored = Math.floor(rawUsd * 100) / 100
   return floored.toFixed(2)
+}
+
+/**
+ * Lấy hệ số List Price (giá niêm yết bán lẻ cho khách) từ biến môi trường (fallback 1)
+ * Khi là đại lý, giá bán cho khách là List Price = Chi phí gốc / (1 - Chiết khấu đại lý) hoặc Chi phí gốc * Multiplier
+ */
+export function getListPriceMultiplier(): number {
+  const envMultiplier = process.env.LIST_PRICE_MULTIPLIER || process.env.NEXT_PUBLIC_LIST_PRICE_MULTIPLIER
+  if (envMultiplier) {
+    const parsed = Number(envMultiplier)
+    if (!isNaN(parsed) && parsed >= 1) {
+      return parsed
+    }
+  }
+  // Hoặc tính theo % chiết khấu đại lý nếu có cài đặt AGENT_DISCOUNT_PERCENT (ví dụ 20% chiết khấu => chia 0.8)
+  const agentDiscountPct = Number(process.env.AGENT_DISCOUNT_PERCENT || process.env.NEXT_PUBLIC_AGENT_DISCOUNT_PERCENT)
+  if (!isNaN(agentDiscountPct) && agentDiscountPct > 0 && agentDiscountPct < 100) {
+    return 1 / (1 - agentDiscountPct / 100)
+  }
+  return 1
+}
+
+/**
+ * Quy đổi từ chi phí gốc của nhà cung cấp sang số tiền List Price mà khách hàng nhìn thấy
+ */
+export function convertCostToCustomerListPrice(costAmount: number, multiplier?: number): number {
+  if (!costAmount || costAmount <= 0) return 0
+  const m = multiplier !== undefined && multiplier >= 1 ? multiplier : getListPriceMultiplier()
+  return costAmount * m
 }

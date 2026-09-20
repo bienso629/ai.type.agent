@@ -234,34 +234,22 @@ main()`
         <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg">
           {/* Tabs Header */}
           <div className="flex flex-wrap items-center justify-between border-b border-border bg-secondary/40 px-4 py-2 gap-2">
-            <div className="flex items-center gap-1.5">
+            <div className="skeuo-tabs-bar">
               <button
                 onClick={() => setActiveTab('python')}
-                className={`rounded-md px-3.5 py-1.5 font-mono text-xs font-bold transition-colors ${
-                  activeTab === 'python'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                }`}
+                className={`skeuo-tab-item font-mono text-xs ${activeTab === 'python' ? 'active' : ''}`}
               >
                 Python
               </button>
               <button
                 onClick={() => setActiveTab('nodejs')}
-                className={`rounded-md px-3.5 py-1.5 font-mono text-xs font-bold transition-colors ${
-                  activeTab === 'nodejs'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                }`}
+                className={`skeuo-tab-item font-mono text-xs ${activeTab === 'nodejs' ? 'active' : ''}`}
               >
                 Node.js / TS
               </button>
               <button
                 onClick={() => setActiveTab('curl')}
-                className={`rounded-md px-3.5 py-1.5 font-mono text-xs font-bold transition-colors ${
-                  activeTab === 'curl'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                }`}
+                className={`skeuo-tab-item font-mono text-xs ${activeTab === 'curl' ? 'active' : ''}`}
               >
                 cURL
               </button>

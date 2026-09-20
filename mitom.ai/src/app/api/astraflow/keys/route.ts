@@ -121,6 +121,25 @@ async function saveKeysToPayload(keysList: any[]): Promise<number> {
       where: { keyId: { equals: keyId } },
     })
 
+    const today = new Date().toISOString().split('T')[0]
+    let usageHistory: Record<string, number> = {}
+    if (existing.docs.length > 0) {
+      try {
+        const rawHistory = (existing.docs[0] as any).usageHistory
+        if (rawHistory && typeof rawHistory === 'object') {
+          usageHistory = { ...rawHistory }
+        } else if (typeof rawHistory === 'string') {
+          usageHistory = JSON.parse(rawHistory)
+        }
+      } catch {
+        usageHistory = {}
+      }
+    }
+    const currentDaily = Number(item.DailyUsedAmount) || 0
+    if (currentDaily > 0 || !usageHistory[today]) {
+      usageHistory[today] = currentDaily
+    }
+
     const docData = {
       name: item.KeyName || item.Name || 'AstraFlow API Key',
       keyId,
@@ -135,6 +154,7 @@ async function saveKeysToPayload(keysList: any[]): Promise<number> {
       modelAccessMode: item.ModelAccessMode || 'All Models',
       expiryTime: item.ExpireTime ? new Date(item.ExpireTime * 1000).toLocaleString('vi-VN') : 'Vĩnh viễn',
       rawResponse: item,
+      usageHistory,
     }
 
     if (existing.docs.length > 0) {
