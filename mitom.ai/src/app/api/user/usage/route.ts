@@ -18,7 +18,8 @@ function usdCostToListPriceVnd(usd: number | string | undefined | null, multipli
   const v = Number(usd)
   if (!Number.isFinite(v) || v <= 0) return 0
   const costVnd = v * getSystemUsdRate()
-  return Math.round(convertCostToCustomerListPrice(costVnd, multiplier))
+  const listPriceVnd = convertCostToCustomerListPrice(costVnd, multiplier)
+  return Math.round(listPriceVnd * 100) / 100
 }
 
 async function getCurrentUser() {
@@ -113,6 +114,7 @@ export async function GET(request: Request) {
             { keyId: { equals: keyData?.KeyId || 'not-matched' } },
           ],
         },
+        overrideAccess: true,
         limit: 1,
       })
       if (dbKeyRes.docs.length > 0) {
@@ -121,7 +123,11 @@ export async function GET(request: Request) {
         if (h && typeof h === 'object') {
           historyMap = { ...h }
         } else if (typeof h === 'string') {
-          historyMap = JSON.parse(h)
+          try {
+            historyMap = JSON.parse(h)
+          } catch {
+            historyMap = {}
+          }
         }
       }
     } catch {
@@ -134,8 +140,9 @@ export async function GET(request: Request) {
       const userDaily = Number((user as any).dailyLimit) || 0
       const userMonthly = Number((user as any).monthlyLimit) || 0
 
-      // Cập nhật ngày hôm nay vào historyMap
-      const todayStr = new Date().toISOString().split('T')[0]
+      // Cập nhật ngày hôm nay vào historyMap (theo giờ Việt Nam UTC+7)
+      const nowVn = new Date(Date.now() + 7 * 60 * 60 * 1000)
+      const todayStr = nowVn.toISOString().split('T')[0]
       const currentDailyUsd = Number(keyData.DailyUsedAmount) || 0
       historyMap[todayStr] = currentDailyUsd
 
@@ -145,6 +152,7 @@ export async function GET(request: Request) {
           await payload.update({
             collection: 'api-keys',
             id: dbKeyDoc.id,
+            overrideAccess: true,
             data: {
               secretKey: userKey,
               dailySpend: String(currentDailyUsd),
@@ -157,9 +165,46 @@ export async function GET(request: Request) {
         }
       }
 
+      // Tính tổng tiền đã tiêu thụ theo giá niêm yết bán lẻ (VNĐ)
+      const totalMonthlyUsedVnd = usdCostToListPriceVnd(keyData.MonthlyUsedAmount, listPriceMultiplier)
+
+      // Kiểm tra và tự động trừ số dư tài khoản người dùng theo chi tiêu API thực tế
+      let actualBalance = userBalance
+      try {
+        // Tổng tiền nạp hợp lệ của user từ các đơn hàng đã thanh toán
+        const userOrders = await payload.find({
+          collection: 'orders',
+          where: {
+            customerEmail: { equals: String(user.email || '').toLowerCase().trim() },
+            paymentStatus: { equals: 'paid' },
+          },
+          overrideAccess: true,
+          limit: 100,
+        })
+        const totalPaidDeposit = (userOrders.docs || []).reduce((sum: number, o: any) => sum + (Number(o.subtotal) || 0), 0)
+
+        // Số dư chuẩn xác = Tổng tiền nạp - Tổng tiền đã tiêu thụ (tối thiểu là 0)
+        if (totalPaidDeposit > 0) {
+          actualBalance = Math.round(Math.max(0, totalPaidDeposit - totalMonthlyUsedVnd) * 100) / 100
+          if (actualBalance !== userBalance) {
+            await payload.update({
+              collection: 'users',
+              id: user.id,
+              overrideAccess: true,
+              data: {
+                balance: actualBalance,
+              } as any,
+            })
+            ;(user as any).balance = actualBalance
+          }
+        }
+      } catch {
+        // Fallback dùng số dư hiện tại
+      }
+
       // Nếu user tự cài hạn mức VNĐ cụ thể (> 0) thì dùng số đó nhưng không vượt quá số dư hiện có, nếu là 0 thì mặc định bằng 100% số dư tài khoản
-      const displayDailyLimit = userDaily > 0 ? Math.min(userDaily, userBalance) : userBalance
-      const displayMonthlyLimit = userMonthly > 0 ? Math.min(userMonthly, userBalance) : userBalance
+      const displayDailyLimit = userDaily > 0 ? Math.min(userDaily, actualBalance) : actualBalance
+      const displayMonthlyLimit = userMonthly > 0 ? Math.min(userMonthly, actualBalance) : actualBalance
 
       // Danh sách tiêu thụ theo từng ngày quy đổi ra List Price (VNĐ)
       const dailyHistory = Object.entries(historyMap)

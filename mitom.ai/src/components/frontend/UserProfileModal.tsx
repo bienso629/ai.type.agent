@@ -174,6 +174,7 @@ export function UserProfileModal({
         setLimits({ balance: data.balance, dailyLimit: data.dailyLimit, monthlyLimit: data.monthlyLimit })
         setLimitsMsg({ type: 'success', text: data.message || 'Đã lưu hạn mức thành công.' })
         refreshUser()
+        handleReloadUsage()
       } else {
         setLimitsMsg({ type: 'error', text: data.error || 'Lưu hạn mức thất bại.' })
       }
@@ -251,7 +252,7 @@ export function UserProfileModal({
     setRefreshing(false)
   }
 
-  const formatVnd = (n: number) => n.toLocaleString('vi-VN') + 'đ'
+  const formatVnd = (n: number) => (Number(n) || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + 'đ'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
@@ -388,12 +389,17 @@ export function UserProfileModal({
               type="button"
               onClick={handleSaveLimits}
               disabled={limitsSaving || limitsLoading}
-              className="glow-button flex w-full items-center justify-center gap-2 rounded-md py-3 text-sm font-bold transition-all disabled:opacity-50 cursor-pointer mt-2"
+              className="glow-button w-full rounded-md py-3 text-sm font-bold bg-primary text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50 cursor-pointer mt-2"
             >
               {limitsSaving ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
-                  Đang lưu...
+                <span className="flex items-center justify-center gap-2">
+                  <span className="spinner-modern" />
+                  <span>Đang lưu hạn mức</span>
+                  <span className="loading-dots-wave">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
                 </span>
               ) : (
                 'Lưu hạn mức'
@@ -440,7 +446,10 @@ export function UserProfileModal({
                     </div>
                     <div className="text-sm font-bold text-foreground font-display">
                       {customDateLoading ? (
-                        <RefreshCw size={12} className="animate-spin inline" />
+                        <div className="flex items-center gap-1.5 py-0.5">
+                          <span className="spinner-modern-primary" style={{ width: '0.85rem', height: '0.85rem', borderWidth: '1.5px' }} />
+                          <span className="loading-shimmer-bar" style={{ width: '4.5rem', height: '1rem' }} />
+                        </div>
                       ) : (
                         formatVnd(selectedCustomDate ? (usage.astraflow.selectedDateUsedVnd || 0) : (usage.astraflow.dailyUsedVnd || 0))
                       )}
@@ -675,12 +684,17 @@ export function UserProfileModal({
                 <button
                   type="submit"
                   disabled={passwordLoading}
-                  className="glow-button flex w-full items-center justify-center gap-2 rounded-md py-3 text-sm font-bold transition-all disabled:opacity-50 cursor-pointer mt-2"
+                  className="glow-button w-full rounded-md py-3 text-sm font-bold bg-primary text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50 cursor-pointer mt-2"
                 >
                   {passwordLoading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
-                      Đang cập nhật...
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="spinner-modern" />
+                      <span>Đang cập nhật</span>
+                      <span className="loading-dots-wave">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
                     </span>
                   ) : user.authProvider === 'google' || user.googleId ? (
                     'Thiết lập mật khẩu'

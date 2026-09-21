@@ -479,34 +479,43 @@ async def call_tool(request: Request):
         
     return {"error": f"Unknown tool: {tool_name}"}
 
-# 5. Khoi dong Web Server
-def run_app():
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+# 5. Khoi dong Web Server tuong thich Jupyter Notebook kernel
+import asyncio
 
-threading.Thread(target=run_app, daemon=True).start()
-time.sleep(2)
-
-# 6. Tao Cloudflare Tunnel
-print("\n" + "="*65)
-print("DANG TAO DUONG HAM CHO ELECTRON APP...")
-print("="*65)
-
-subprocess.run("pkill -9 cloudflared", shell=True)
-if os.path.exists("/tmp/cf.log"):
-    os.remove("/tmp/cf.log")
-
-subprocess.Popen("cloudflared tunnel --url http://localhost:8000 > /tmp/cf.log 2>&1 &", shell=True)
-
-for i in range(25):
-    time.sleep(1)
+def start_tunnel():
+    time.sleep(2)
+    print("\n" + "="*65)
+    print("DANG TAO DUONG HAM CHO ELECTRON APP...")
+    print("="*65)
+    subprocess.run("pkill -9 cloudflared", shell=True)
     if os.path.exists("/tmp/cf.log"):
-        with open("/tmp/cf.log", "r") as f:
-            content = f.read()
-            match = re.search(r"https://[a-zA-Z0-9-]+.trycloudflare.com", content)
-            if match:
-                url = match.group(0)
-                print("\n" + "="*65)
-                print("COLAB GPU, FAISS & OMNIVOICE SERVER DA SAN SANG!")
-                print(f"AITYPE_COLAB_URL: {url}")
-                print("="*65 + "\n")
-                break
+        os.remove("/tmp/cf.log")
+    subprocess.Popen("cloudflared tunnel --url http://localhost:8000 > /tmp/cf.log 2>&1 &", shell=True)
+    for i in range(25):
+        time.sleep(1)
+        if os.path.exists("/tmp/cf.log"):
+            with open("/tmp/cf.log", "r") as f:
+                content = f.read()
+                match = re.search(r"https://[a-zA-Z0-9-]+.trycloudflare.com", content)
+                if match:
+                    url = match.group(0)
+                    print("\n" + "="*65)
+                    print("COLAB GPU, FAISS & OMNIVOICE SERVER DA SAN SANG!")
+                    print(f"AITYPE_COLAB_URL: {url}")
+                    print("="*65 + "\n")
+                    break
+
+threading.Thread(target=start_tunnel, daemon=True).start()
+
+# Khoi chay Uvicorn Server tương thích event loop đang chạy của Colab kernel
+config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="warning")
+server = uvicorn.Server(config)
+
+loop = asyncio.get_event_loop()
+if loop.is_running():
+    loop.create_task(server.serve())
+    print("[Colab Server] Da khoi tao server.serve() trong event loop cua kernel!")
+else:
+    loop.run_until_complete(server.serve())
+
+

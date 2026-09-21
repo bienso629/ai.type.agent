@@ -1,0 +1,4026 @@
+[
+  {
+    "Id": "umodel-1789639709",
+    "Name": "gemini-omni-1.1-flash-preview",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "gemini-omni-1.1-flash-preview 是 Google 推出的新一代视频生成与对话式编辑模型，可将文本、图片和视频输入转换为视频输出，并支持通过自然语言对话进行多轮迭代式视频编辑。\n",
+    "Language": null,
+    "ModelCategory": "Video",
+    "ModelSubCategories": [
+      "Video Generation"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1024,
+    "MaxInputTokens": 128,
+    "MaxOutputTokens": 32,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789719772,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "video",
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": false,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1789639709,
+    "UpdateAt": 1789958885,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Video Generation"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1789039387",
+    "Name": "deepseek-v4.1-flash",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "deepseek-v4.1-flash是该全新模型结构系列中的最小尺寸的模型，具备原生多模态视觉理解能力。新模型能力上限更高、推理速度更快、吞吐更大、可扩展到更大参数模型。\n",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 384,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789961263,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/c04f5db8b6af8431a2c566e9497df2ae_1779245685944.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1789039387,
+    "UpdateAt": 1789961263,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "DeepSeek",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1788501330",
+    "Name": "gpt-6-astra",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-6 Astra 是 OpenAI 迄今最智能、对齐程度最高的模型，面向复杂的端到端智能体工作，在计算机操作、网页浏览、软件工程、网络安全、科学研究与专业工作等领域均达到当前最先进水平。该模型支持高级推理、计算机使用与更强的判断力，可执行完整工作流、核验结果，并按照用户的模板与要求产出文档、电子表格或演示文稿。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1050,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789365194,
+    "Icon": "https://www-s.ucloud.cn/2025/08/9ce804e4e24413ee0431ec3989230ccc_1755228027975.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1788501330,
+    "UpdateAt": 1789365194,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1788401582",
+    "Name": "gemini-3.8-flash",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Google 迄今最智能的主力工作模型，专为大规模复杂智能体任务打造，在软件工程、长程编码和专业化多步推理任务上相比 3.7 Flash 有显著提升，同时保持 Flash 级速度和低成本的推理效率。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1024,
+    "MaxInputTokens": 1024,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1788424621,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "image",
+      "text",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1788401582,
+    "UpdateAt": 1788424621,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1788317617",
+    "Name": "claude-fable-5-1",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Claude Fable 5.1 是 Anthropic 面向复杂编码与知识工作的高性能模型，擅长处理长时间、多步骤任务，在智能体、软件开发、深度研究与复杂企业工作流等场景中具备出色的自主规划、工具使用与问题解决能力。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Vision Understanding",
+      "Text Generation"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1788343154,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/af6fae1d7c84689fd4725fabdea1dcf1_1779422496222.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1788317617,
+    "UpdateAt": 1788343154,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Anthropic",
+    "ModalTypes": [
+      "Vision Understanding",
+      "Text Generation"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1787798026",
+    "Name": "glm-5.3-flash",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GLM-5.3-Flash 是 GLM-5 系列首个原生多模态模型，以极致低成本架构实现超越 GLM-5.2 的更强智能。该模型总参数量 320B、激活参数量 18B，是首个采用稀疏注意力与线性注意力混合架构的开源前沿模型。视觉能力被原生融入 Coding 循环，使模型能够主动观察界面、渲染结果与交互反馈，并据此持续测试和改进。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787801871,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/acc3a4676ad771bd616079c832b3d7a5_1779342707107.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": null,
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1787798026,
+    "UpdateAt": 1787801871,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Zhipu AI",
+    "ModalTypes": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1783649298",
+    "Name": "gpt-5.6-luna",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-5.6 Luna 专为成本敏感型高容量工作负载而设计。该模型大致对应早期 GPT-5 系列中的 nano 模型层级。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1050,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789365159,
+    "Icon": "https://www-s.ucloud.cn/2025/08/9ce804e4e24413ee0431ec3989230ccc_1755228027975.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1783649298,
+    "UpdateAt": 1789365159,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1783649284",
+    "Name": "gpt-5.6-terra",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-5.6 Terra 旨在平衡智能与成本。该模型大致对应早期 GPT-5 系列中的 mini 模型层级。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1050,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789365170,
+    "Icon": "https://www-s.ucloud.cn/2025/08/9ce804e4e24413ee0431ec3989230ccc_1755228027975.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1783649284,
+    "UpdateAt": 1789365170,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1783649246",
+    "Name": "gpt-5.6-sol",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-5.6 Sol 是 GPT-5.6 系列中的旗舰模型，适合复杂专业工作。该模型大致对应早期 GPT-5 系列中不带后缀的模型层级。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Deep Thinking",
+      "Vision Understanding",
+      "Text Generation"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1050,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789365181,
+    "Icon": "https://www-s.ucloud.cn/2025/08/9ce804e4e24413ee0431ec3989230ccc_1755228027975.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1783649246,
+    "UpdateAt": 1789365181,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Deep Thinking",
+      "Vision Understanding",
+      "Text Generation"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1777169592",
+    "Name": "gpt-5.5",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-5.5 是 OpenAI 发布的最新一代旗舰模型，面向复杂现实世界工作与自主任务执行场景设计，标志着 AI 从对话式交互向端到端任务完成系统的全面演进。该模型在 GPT-5.4 的基础上实现了计算效率与智能水平的双重优化，能够以显著更少的 token 消耗完成更快、更精准的推理，在编程调试、在线研究、数据分析、文档与电子表格创建以及跨工具协作等任务中表现卓越。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789528850,
+    "Icon": "https://www-s.ucloud.cn/2025/08/9ce804e4e24413ee0431ec3989230ccc_1755228027975.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Hot",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1777169592,
+    "UpdateAt": 1789528850,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1773035403",
+    "Name": "gpt-5.4",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-5.4 是 OpenAI 推出的新一代旗舰级大语言模型，定位为面向专业工作与复杂任务的前沿模型。该模型在推理、编码和知识工作等方面实现显著提升，能够处理大型文档、代码库及长流程任务。GPT-5.4 还引入更高效的工具调用与原生计算机操作能力，可在多应用环境中执行复杂工作流，适用于智能代理、自动化办公和开发者工具等场景。同时，模型在准确率与事实可靠性方面进一步提升，错误率相较上一代显著降低。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789213081,
+    "Icon": "https://www-s.ucloud.cn/2025/08/9ce804e4e24413ee0431ec3989230ccc_1755228027975.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": true,
+      "StructuredOutput": true,
+      "FunctionCall": true,
+      "WebSearch": true,
+      "KnowledgeBase": false,
+      "Mcp": true,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1773035403,
+    "UpdateAt": 1789213081,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text",
+    "IsHasBatch": true,
+    "BatchName": "gpt-5.4-batch",
+    "BatchSquareModelId": "umodel-1785740776"
+  },
+  {
+    "Id": "umodel-1761558817",
+    "Name": "gpt-4.1-nano",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-4.1 nano，作为GPT-4.1系列中最小规模的模型，以极致的成本与延迟优化为核心目标，为轻量级AI应用提供了全新选择。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Vision Understanding",
+      "Text Generation"
+    ],
+    "MaxModelLen": 1048576,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789870229,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/83f2ba3c76849ab76832caa9b4eefe21_1779245685947.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text",
+      "image"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": true
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1761558817,
+    "UpdateAt": 1789870229,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Vision Understanding",
+      "Text Generation"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-fzvxjbf45c4b",
+    "Name": "openai/gpt-4.1",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-4.1 是 OpenAI 推出的统一多模态大模型，支持文本、图像与音频理解，并兼容函数调用与复杂工作流编排。",
+    "Language": [
+      "english",
+      "chinese"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "MaxModelLen": 128000,
+    "MaxModelLenNew": 1048,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789870094,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/83f2ba3c76849ab76832caa9b4eefe21_1779245685947.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": [
+      ""
+    ],
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": true
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1759053858,
+    "UpdateAt": 1789870094,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-qokqul4qmbmb",
+    "Name": "gpt-4.1-mini",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "OpenAI 发布的轻量化模型，性能媲美或超越 GPT-4o，响应速度快、成本低，拥有百万 token 上下文窗口，适合代理与长文本场景。",
+    "Language": [
+      "english",
+      "chinese"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "MaxModelLen": 1048576,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1789870196,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/83f2ba3c76849ab76832caa9b4eefe21_1779245685947.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": [
+      ""
+    ],
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": true
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1755241821,
+    "UpdateAt": 1789870196,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1787307155",
+    "Name": "deepseek-v4-flash-vision-exp",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "deepseek-v4-flash-vision-exp是 DeepSeek 团队推出的实验性多模态视觉理解模型，支持图片输入与文本推理结合，适用于代码生成、界面分析、图表识别等场景。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 384,
+    "MaxOutputTokens": 384,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787310023,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/c04f5db8b6af8431a2c566e9497df2ae_1779245685944.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": null,
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1787307155,
+    "UpdateAt": 1787310023,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "DeepSeek",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1786687718",
+    "Name": "glm-5.3",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "glm-5.3 是智谱最新旗舰模型，复杂软件工程与 Agent 任务能力全面进阶。它使用与glm-5.2 相同的基础模型——所有提升均来自后训练。与 glm-5.2 相比，它在复杂编程和长程任务方面表现更加出色：更强的编程能力，涌现的网络安全能力。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Deep Thinking",
+      "Text Generation"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787194390,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/acc3a4676ad771bd616079c832b3d7a5_1779342707107.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": null,
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1786687718,
+    "UpdateAt": 1787194390,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Zhipu AI",
+    "ModalTypes": [
+      "Deep Thinking",
+      "Text Generation"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1786679829",
+    "Name": "gemini-3.7-flash",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Gemini 3.7 Flash 是 Gemini 3 系列中高效、高性价比的主力模型。它具备 Pro 级别的智能体（agentic）能力，并在代码生成与终端执行方面取得重大进展。3.7 Flash 作为 Gemini 3 系列中主要的智能体工作负载模型，在深度推理的 Pro 模型与高吞吐量的 Flash-Lite 模型之间架起桥梁，同时提供高 token 效率与多步骤多模态处理能力。该模型当前以限时优惠价提供，有效期截至 2026‑12‑31，自 2027‑01‑01 起将恢复标准定价。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1786692319,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": null,
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1786679829,
+    "UpdateAt": 1786692319,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1786586741",
+    "Name": "deepseek-v4-pro-0813",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "deepseek-v4-pro-0813是 DeepSeek 于 2026 年 8 月 13 日发布的旗舰大模型，主打百万级上下文（1M）和超长输出（384K），同时内置思考模式，适合复杂 Agent 任务、长文档处理和多轮推理。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 384,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787128192,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/c04f5db8b6af8431a2c566e9497df2ae_1779245685944.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1786586741,
+    "UpdateAt": 1787128192,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "DeepSeek",
+    "ModalTypes": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": null,
+    "IsHasInferenceRegions": true,
+    "InferenceRegions": [
+      {
+        "RegionCode": "sg",
+        "RegionName": "新加坡",
+        "RegionNameEn": "Singapore",
+        "ModelId": "deepseek-v4-pro-0813-sg",
+        "SquareModelId": "umodel-1786934409",
+        "Status": "published"
+      }
+    ]
+  },
+  {
+    "Id": "umodel-1785809764",
+    "Name": "qwen3.8-max",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "2.4万亿参数MoE旗舰，编程与办公能力全面跃升，可自主编程十数天交付完整项目。胜任法律、金融、设计等数百种专业任务，一次对话端到端交付生产级成果。原生视觉理解贯穿规划、执行与验证全流程，支持超长文档与长视频的深度语义解析。长程任务中自主规划与闭环迭代，持续进化。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1024,
+    "MaxInputTokens": 991,
+    "MaxOutputTokens": 131,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1785903491,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/0801f94dc37e0692958f6650b02b4cfd_1779245685942.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Experience",
+      "Hot",
+      "SuperRecommended"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1785809764,
+    "UpdateAt": 1785903491,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Qwen",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1785484058",
+    "Name": "deepseek-v4-flash-0731",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "DeepSeek-V4-Flash 正式版，Agent 能力大幅增强，基准测试远超 V4-Pro-Preview；该模型是 V4 系列的高性价比版本，同样支持 1M tokens 超长上下文，在保持较强推理能力的同时，具备更低成本与更高响应速度。在简单到中等复杂度的 Agent 任务中表现接近 Pro 版本，适用于对实时性与成本敏感的应用场景，如对话生成、内容创作与轻量级 Agent 调用。支持思考模式与标准模式切换，实现性能与效率的灵活平衡。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 384,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1786593780,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/c04f5db8b6af8431a2c566e9497df2ae_1779245685944.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Hot",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1785484058,
+    "UpdateAt": 1786593780,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "DeepSeek",
+    "ModalTypes": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": null,
+    "IsHasInferenceRegions": true,
+    "InferenceRegions": [
+      {
+        "RegionCode": "sg",
+        "RegionName": "新加坡",
+        "RegionNameEn": "Singapore",
+        "ModelId": "deepseek-v4-flash-0731-sg",
+        "SquareModelId": "umodel-1785996939",
+        "Status": "published"
+      }
+    ]
+  },
+  {
+    "Id": "umodel-1784688557",
+    "Name": "gemini-3.5-flash-lite",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Google 最快速、最具成本效益的 3.5 系列模型，在低延迟和高吞吐量智能体任务中表现最佳，支持灵活的思考级别，每秒可输出 350 个 Token，最大输出64000 Tokens。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 1000,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1785211500,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": null,
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "image",
+      "text",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": true,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1784688557,
+    "UpdateAt": 1787579928,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Text Generation"
+    ],
+    "ModelType": null,
+    "IsHasBatch": true,
+    "BatchName": "gemini-3.5-flash-lite-batch",
+    "BatchSquareModelId": "umodel-1786437159"
+  },
+  {
+    "Id": "umodel-1784688530",
+    "Name": "gemini-3.6-flash",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "最佳用于编码、知识工作和多模态任务的 Token 效率模型。该模型作为主力模型，相比 3.5 Flash 将输出 Token 使用量减少 17%，最大输出64000 Tokens。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 1000,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1785211519,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": null,
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": true,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1784688530,
+    "UpdateAt": 1787579872,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "ModelType": null,
+    "IsHasBatch": true,
+    "BatchName": "gemini-3.6-flash-batch",
+    "BatchSquareModelId": "umodel-1786437753"
+  },
+  {
+    "Id": "umodel-1784267467",
+    "Name": "kimi-k3",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Kimi K3是 Kimi 的旗舰模型，面向长程编程与端到端知识工作，1M token 上下文，原生支持多模态，综合智能达到领先水平。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 1000,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1785324088,
+    "Icon": "https://www-s.ucloud.cn/2025/09/1570c89907f7b1d7adc67ec3170b115e_1758886637952.png",
+    "CoverUrl": "",
+    "UyunCoverUrl": "https://cdn.udelivrs.com/2026/02/e7c2efe6bcf9bba606d18bd2f9717c87_1772086849949.png",
+    "SupportedCapabilities": [
+      "Experience",
+      "SuperRecommended"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1784267467,
+    "UpdateAt": 1785324088,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Moonshot AI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1783583630",
+    "Name": "gemini-3.1-flash-lite",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Gemini 3.1 Flash-Lite 是 Google 最具成本效益的模型，专为大体量、成本敏感型 LLM 流量而设计，并针对低延迟应用场景进行了优化。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 1048,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046681,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": null,
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1783583630,
+    "UpdateAt": 1787046681,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1782873101",
+    "Name": "claude-sonnet-5",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Claude Sonnet 5 是 Anthropic 最新一代 Sonnet 系列模型，定位为“最具Agent能力的 Sonnet”，在工具使用、代码生成与多步任务执行方面较前代显著提升。模型支持浏览器与终端等工具调用，能够进行自主规划与复杂任务执行，在多项任务基准上性能接近 Opus 4.8，同时保持更低的使用成本，适用于高性价比的智能体与企业级应用场景。（自2026年9月1日起，恢复定价为当前价格的1.5倍，对齐Anthropic官方）",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046290,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/af6fae1d7c84689fd4725fabdea1dcf1_1779422496222.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1782873101,
+    "UpdateAt": 1787046290,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Anthropic",
+    "ModalTypes": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": null
+  },
+  {
+    "Id": "umodel-1781663242",
+    "Name": "glm-5.2",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GLM-5.2 是面向长任务时代的旗舰模型。支持真正可用的 1M 上下文，可承载项目级工程上下文，长程任务执行更稳定、工程规范遵循更可靠，一次任务即可完成从需求到多端部署的完整开发链路。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1786700343,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/acc3a4676ad771bd616079c832b3d7a5_1779342707107.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "https://cdn.udelivrs.com/2026/02/e7c2efe6bcf9bba606d18bd2f9717c87_1772086849949.png",
+    "SupportedCapabilities": [
+      "Doc",
+      "SuperRecommended",
+      "Hot"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1782378233,
+    "UpdateAt": 1786700343,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Zhipu AI",
+    "ModalTypes": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": null,
+    "IsHasInferenceRegions": true,
+    "InferenceRegions": [
+      {
+        "RegionCode": "sg",
+        "RegionName": "新加坡",
+        "RegionNameEn": "Singapore",
+        "ModelId": "glm-5.2-sg",
+        "SquareModelId": "umodel-1785996984",
+        "Status": "published"
+      }
+    ]
+  },
+  {
+    "Id": "umodel-1782193793",
+    "Name": "doubao-seed-evolving",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Doubao-Seed-Evolving 是面向 Agent 与 Coding 场景设计的 Seed 系列动态迭代模型，具备复杂任务编排、长程规划、代码生成与工具调用等核心能力。模型采用动态迭代机制，模型能力持续演进。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1024,
+    "MaxInputTokens": 1024,
+    "MaxOutputTokens": 256,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046590,
+    "Icon": "https://www-s.ucloud.cn/2025/09/445d859ee13b85ee8715e585991497ed_1758886668504.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1782193793,
+    "UpdateAt": 1787046590,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "ByteDance",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1781058081",
+    "Name": "claude-fable-5",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "claude-fable-5是Anthropic 向公众发布的首个 Mythos 级模型，支持文本和图像输入，1M token 上下文窗口，最高 128K token 输出，Adaptive Thinking 始终开启。Fable 5 在软件工程、知识工作、视觉理解、科学研究等领域达到 SOTA，任务越复杂、周期越长，优势越明显。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046020,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/af6fae1d7c84689fd4725fabdea1dcf1_1779422496222.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1781058081,
+    "UpdateAt": 1787046020,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Anthropic",
+    "ModalTypes": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1780984244",
+    "Name": "grok-4.3",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Grok 4.3 是 xAI 旗下的旗舰多模态推理大模型，该模型定位于复杂、对准确性要求极高的任务场景，包括高级逻辑推理、数学分析、科学研究和多步骤调查等。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1785211644,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/5b5af1d07caaee8d0f556d07c39c232a_1779245685947.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "image",
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": false,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1780984244,
+    "UpdateAt": 1785211644,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "X.AI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1780984234",
+    "Name": "grok-4.20-0309-non-reasoning",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Grok 4.20（非推理版）是 xAI 发布的高性能多模态推理大模型。模型继承了 Grok 4.20 系列在幻觉率控制和 prompt 遵循方面的优势，去除了推理（Reasoning）能力，以更低延迟和更高吞吐量满足对响应速度敏感的场景。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1785211617,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/5b5af1d07caaee8d0f556d07c39c232a_1779245685947.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1780984234,
+    "UpdateAt": 1785211617,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "X.AI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1780984215",
+    "Name": "grok-4.20-0309-reasoning",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Grok 4.20（推理版）是 xAI 发布的高性能多模态推理大模型。该模型以行业领先的推理速度和 Agentic 工具调用能力为核心卖点，在幻觉率控制方面处于市场领先水平，并具备严格的 prompt 遵循能力，可输出精确、真实的响应，适用于对准确性和推理深度有高要求的企业级应用场景和 Agent 工作流。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1785211630,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/5b5af1d07caaee8d0f556d07c39c232a_1779245685947.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1780984215,
+    "UpdateAt": 1785211630,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "X.AI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1780467193",
+    "Name": "qwen3.7-plus",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "qwen3.7-plus是阿里通义千问推出的新一代多模态智能体模型，支持图像、视频、屏幕、网页及文本等多模态输入，能够理解视觉内容、调用工具、生成代码并自主执行多步任务，构建从“感知、推理到行动”的完整 Agent 闭环。模型在 GUI 操作、视觉编程和工作流自动化等场景表现突出，适用于软件开发、智能办公及企业级智能体应用。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 991,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1782269231,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/fc16e3238da4ebb8417886b1827e666d_1779345207264.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": true,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1780467193,
+    "UpdateAt": 1787623625,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Qwen",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text",
+    "IsHasBatch": true,
+    "BatchName": "qwen3.7-plus-batch",
+    "BatchSquareModelId": "umodel-1785918799"
+  },
+  {
+    "Id": "umodel-1780286733",
+    "Name": "MiniMax-M3",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "MiniMax-M3 是 MiniMax 最新推出的旗舰级语言模型，采用全新注意力架构 MSA（MiniMax Sparse Attention），支持原生多模态能力与 1M超长上下文。作为 Frontier Coding 模型，MiniMax-M3 专为 Agent 推理、工具调用、代码生成和长上下文任务优化，具备优秀的交错思维链能力，可处理复杂的 Agentic 工作流。模型支持通过 Anthropic SDK、OpenAI SDK 等多种方式接入，并支持图片、视频等多模态输入。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787045843,
+    "Icon": "https://www.boltp.com/favicon/minimaxi.com.png",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1780286733,
+    "UpdateAt": 1787045843,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "MiniMax",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1780017879",
+    "Name": "claude-opus-4-8",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Anthropic 旗下最强大的模型，专为处理复杂推理和代理化编码（Agentic Coding）而生。\n适用场景： 如果您不确定该选择哪款模型，在面对最复杂的任务时，建议首先考虑 Claude Opus 4.8。它是 Anthropic 目前能力最强劲的模型，专注于深层复杂推理、长周期代理化编程以及高度自主化的工作流程。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046104,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/af6fae1d7c84689fd4725fabdea1dcf1_1779422496222.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Hot",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1780017879,
+    "UpdateAt": 1787046104,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Anthropic",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1779417304",
+    "Name": "qwen3.7-max",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "qwen3.7-max 是阿里巴巴 Qwen 团队发布的旗舰大模型，面向智能体时代打造，在 Arena 全球盲测总榜中位列国产模型第一。该模型在编程智能体、通用智能体、推理能力等维度达到国内 SOTA 或全球第一梯队水平，支持双模（思考/非思考模式）和 1M 超长上下文，具备 35 小时长程自主执行能力及跨框架泛化能力。",
+    "Language": null,
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 991,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1779431036,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/fc16e3238da4ebb8417886b1827e666d_1779345207264.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": true,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1779417304,
+    "UpdateAt": 1787623616,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Qwen",
+    "ModalTypes": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text",
+    "IsHasBatch": true,
+    "BatchName": "qwen3.7-max-batch",
+    "BatchSquareModelId": "umodel-1785831503"
+  },
+  {
+    "Id": "umodel-1779243408",
+    "Name": "gemini-3.5-flash",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "gemini-3.5-flash 是 Google DeepMind 推出的新一代轻量级多模态旗舰模型，面向 Agent 工作流与高效推理场景设计，在代码生成、工具调用、多步任务执行及长链路 Agent 能力上实现显著增强。模型在 Terminal-Bench、MCP Atlas、CharXiv Reasoning 等多项基准中超越前代 Gemini 3.1 Pro，同时保持 Flash 系列一贯的低延迟与高吞吐优势，可广泛应用于 AI 编程、自动化执行、多模态理解及企业级智能体系统。",
+    "Language": null,
+    "ModelCategory": "Multimodal",
+    "ModelSubCategories": [
+      "Multimodal Composite"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1786512194,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/eceb6ce7908ec90c919a0f5ef22c1438_1779345207265.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": false,
+      "BatchInference": true,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1779243408,
+    "UpdateAt": 1787579895,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Multimodal Composite"
+    ],
+    "ModelType": "Text",
+    "IsHasBatch": true,
+    "BatchName": "gemini-3.5-flash-batch",
+    "BatchSquareModelId": "umodel-1786437728"
+  },
+  {
+    "Id": "umodel-1778830022",
+    "Name": "mimo-v2.5",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "mimo-v2.5是小米推出的原生全模态大模型，在多模态感知、长上下文推理和智能体工作流方面表现优异，尤其在视频理解、图表理解等任务中成绩突出，可与顶级闭源模型媲美。其设计注重端到端的跨模态推理能力，适用于需要同时处理多种模态信息的复杂任务场景。",
+    "Language": null,
+    "ModelCategory": "Multimodal",
+    "ModelSubCategories": [
+      "Multimodal Composite"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 131,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787204208,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/80caddd717cfafd45b0671c5b8969296_1779343536965.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1778830022,
+    "UpdateAt": 1787204208,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "xiaomi",
+    "ModalTypes": [
+      "Multimodal Composite"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1778563402",
+    "Name": "mimo-v2.5-pro",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "mimo-v2.5-pro 是小米推出的万亿级（1.02T）开源 MoE 大模型，也是其当前的旗舰开源基座；该模型凭借1M超长上下文与卓越的Agent能力稳居开源第一梯队，在实现推理吞吐量提升3倍的同时降低40%的Token消耗，兼具顶尖性能与极致推理性价比。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1778838461,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/80caddd717cfafd45b0671c5b8969296_1779343536965.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1778563402,
+    "UpdateAt": 1780281337,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "xiaomi",
+    "ModalTypes": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1776393025",
+    "Name": "claude-opus-4-7",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Claude Opus4.7是Anthropic迄今为止最强大的通用模型。它高度自主，在长期目标导向的代理工作、知识性工作、视觉任务和记忆任务上表现尤为出色。Claude Opus 4.7支持1M token的上下文窗口、128k最大输出token、自适应思维，并提供与Claude Opus 4.6相同的一套工具和平台功能。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": false,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046087,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/af6fae1d7c84689fd4725fabdea1dcf1_1779422496222.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1776393025,
+    "UpdateAt": 1787046087,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Anthropic",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1775720799",
+    "Name": "qwen3.6-plus",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Qwen3.6原生视觉语言系列Plus模型，展现出与当前顶尖前沿模型相媲美的卓越性能，模型效果相较3.5系列显著提升。模型在Agentic coding、前端编程、Vibe coding等代码能力、多模态万物识别、OCR、物体定位等能力上显著增强。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 991,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1777541372,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/fc16e3238da4ebb8417886b1827e666d_1779345207264.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1775720799,
+    "UpdateAt": 1777541372,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Qwen",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1773035524",
+    "Name": "gpt-5.4-pro",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "GPT-5.4-Pro 是 OpenAI 在 GPT-5.4 系列中提供的高性能版本，面向复杂推理与高难度专业任务场景。该模型在标准版 GPT-5.4 的基础上使用更多计算资源进行推理，以获得更高的准确性和更稳定的输出质量，适用于复杂知识工作、软件开发、数据分析及多工具协作等场景。GPT-5.4-Pro 支持约 105 万 token 的超长上下文，并提供更高推理强度配置，可在复杂问题中进行更深入的思考和多轮交互。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787047078,
+    "Icon": "https://www-s.ucloud.cn/2025/08/9ce804e4e24413ee0431ec3989230ccc_1755228027975.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": false,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": false
+    },
+    "CreateAt": 1773035524,
+    "UpdateAt": 1787047078,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "OpenAI",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1771579316",
+    "Name": "qwen3.5-plus",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Qwen3.5原生视觉语言系列Plus模型，基于混合架构设计，融合了线性注意力机制与稀疏混合专家模型，实现了更高的推理效率。在多项任务评测中，3.5系列均展现出与当前顶尖前沿模型相媲美的卓越性能，模型效果在纯文本与多模态方面相较3系列均实现飞跃式进步。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 991,
+    "MaxOutputTokens": 64,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1777542658,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/fc16e3238da4ebb8417886b1827e666d_1779345207264.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1771579316,
+    "UpdateAt": 1777542658,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Qwen",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1771579236",
+    "Name": "claude-sonnet-4-6",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Claude 4.6代表了下一代Claude模型，带来了显著的新功能和APl改进。Claude Sonnet 4.6是Claude模型中速度与智能的最佳结合，支持200K上下文窗口，最大输出64K token，扩展思考以及自适应思考。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 204800,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046164,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/af6fae1d7c84689fd4725fabdea1dcf1_1779422496222.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1771579236,
+    "UpdateAt": 1787046164,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Anthropic",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1771579167",
+    "Name": "gemini-3.1-pro-preview",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Gemini 3.1 Pro 预览版旨在提升 Gemini 3 Pro 系列的性能和可靠性，可提供更出色的思维推理能力、更高的令牌效率，以及更贴近实际、事实一致性更强的体验。它针对软件工程行为和可用性进行了优化，还针对需要在真实世界领域中精确使用工具并可靠执行多步操作的智能体工作流进行了优化。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Multimodal",
+    "ModelSubCategories": [
+      "Multimodal Composite"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1786514391,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/eceb6ce7908ec90c919a0f5ef22c1438_1779345207265.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": true,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1771579167,
+    "UpdateAt": 1786514391,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Multimodal Composite"
+    ],
+    "ModelType": "Text",
+    "IsHasBatch": true,
+    "BatchName": "publishers/google/models/gemini-3.1-pro-preview",
+    "BatchSquareModelId": "umodel-1776076951"
+  },
+  {
+    "Id": "umodel-1770359427",
+    "Name": "claude-opus-4-6",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Anthropic 旗舰级通用大模型，具备 100 万 token 超长上下文窗口，显著缓解长任务中的上下文衰减问题。模型在智能体协作、复杂推理与知识型工作上表现突出，支持多智能体并行执行与长期自主工作流，适用于研究分析、金融与法律任务、复杂工程与大规模代码生成。",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 128,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787046071,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/af6fae1d7c84689fd4725fabdea1dcf1_1779422496222.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1770359427,
+    "UpdateAt": 1787046071,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Anthropic",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-1766031720",
+    "Name": "gemini-3-flash-preview",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Gemini 3 Flash 是Gemini最新的 3 系列模型，专为速度而打造，将前沿智能与卓越的搜索和接地能力相结合。 ",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1024000,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1786514375,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": true,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": false,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1766031720,
+    "UpdateAt": 1786514375,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text",
+    "IsHasBatch": true,
+    "BatchName": "publishers/google/models/gemini-3-flash-preview",
+    "BatchSquareModelId": "umodel-1776076529"
+  },
+  {
+    "Id": "umodel-1765531806",
+    "Name": "qwen3-coder-plus",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Qwen3-Coder-480B-A35B-Instruct是一个总参数量 480B，激活 35B 的 MoE 模型，原生支持 256K token 的上下文并可通过 YaRN 扩展到 1M token，拥有卓越的代码和 Agent 能力。Qwen3-Coder-480B-A35B-Instruct 在 Agentic Coding、Agentic Browser-Use 和 Agentic Tool-Use 上取得了开源模型的 SOTA 效果，可以与 Cluade Sonnet4 媲美。\n",
+    "Language": [
+      "chinese",
+      "english"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 131072,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 1000,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": false,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1787047649,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/0801f94dc37e0692958f6650b02b4cfd_1779245685942.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": null,
+    "InputModalities": [
+      "text"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": false,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": true
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": true,
+      "Gemini": false,
+      "Anthropic": true
+    },
+    "CreateAt": 1765531806,
+    "UpdateAt": 1787047649,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Qwen",
+    "ModalTypes": [
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-kldtjn697m6w",
+    "Name": "gemini-2.5-pro",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Google Gemini 系列中最强推理模型，支持复杂数学、代码、多模态理解、长上下文（百万 tokens），适合高复杂度推理与任务。",
+    "Language": [
+      "english",
+      "chinese"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1048576,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1778053144,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": [
+      ""
+    ],
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": false,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1755241315,
+    "UpdateAt": 1778053144,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0,
+      "Completion": 0,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Text Generation",
+      "Vision Understanding",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  },
+  {
+    "Id": "umodel-w7jgig2q5hwq",
+    "Name": "gemini-2.5-flash",
+    "ChineseName": "",
+    "SimpleDescribe": "",
+    "Describe": "Google Gemini 系列中的高性价比“思考”（thinking）模型，支持多模态输入、长上下文（百万 tokens）、推理过程可调，适合低延迟、大规模任务。",
+    "Language": [
+      "english",
+      "chinese"
+    ],
+    "ModelCategory": "Text",
+    "ModelSubCategories": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "MaxModelLen": 1048576,
+    "MaxModelLenNew": 1000,
+    "MaxInputTokens": 0,
+    "MaxOutputTokens": 0,
+    "ModelTypeMap": {
+      "ImageToImage": false,
+      "ImageToVideo": false,
+      "Inference": false,
+      "Sensitive": true,
+      "TextGeneration": true,
+      "TextToImage": false,
+      "TextToVideo": false
+    },
+    "HfUpdateTime": 1778052958,
+    "Icon": "https://cdnv2-cache.udelivrs.com/2026/05/119968b03e2c23ef7ced4f9795c1d642_1779245685941.svg",
+    "CoverUrl": "",
+    "UyunCoverUrl": "",
+    "SupportedCapabilities": [
+      "Doc",
+      "Experience"
+    ],
+    "ExtraModelTags": [
+      ""
+    ],
+    "InputModalities": [
+      "text",
+      "image",
+      "audio",
+      "video"
+    ],
+    "OutputModalities": [
+      "text"
+    ],
+    "Capabilities": {
+      "ContextCaching": true,
+      "BatchInference": false,
+      "StructuredOutput": false,
+      "FunctionCall": false,
+      "WebSearch": false,
+      "KnowledgeBase": false,
+      "Mcp": false,
+      "Experience": false
+    },
+    "ApiProtocols": {
+      "ChatCompletions": true,
+      "Responses": false,
+      "Gemini": true,
+      "Anthropic": false
+    },
+    "CreateAt": 1755240840,
+    "UpdateAt": 1778052958,
+    "PublishedAt": 0,
+    "Pricing": {
+      "Prompt": 0.3,
+      "Completion": 2.5,
+      "Image": 0,
+      "Video": 0,
+      "Currency": "USD",
+      "PayByResource": false,
+      "Unit": "",
+      "UnitEn": ""
+    },
+    "Prices": null,
+    "Tiers": null,
+    "Manufacturer": "Google",
+    "ModalTypes": [
+      "Vision Understanding",
+      "Text Generation",
+      "Deep Thinking"
+    ],
+    "ModelType": "Text"
+  }
+]

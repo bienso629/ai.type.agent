@@ -25,6 +25,8 @@ export interface ApiModel {
   accent: string
   initials: string
   context?: string
+  contextLength?: number
+  created?: number
   pricing: ModelPricingCondition[]
   highlightPrice?: string
 }
@@ -121,6 +123,18 @@ function getProvider(id: string): { provider: string; accent: string; initials: 
   if (lower.includes('indextts') || lower.includes('indexteam')) {
     return { provider: 'IndexTeam', accent: '#6366f1', initials: 'IX' }
   }
+  if (lower.includes('gpt') || lower.includes('openai')) {
+    return { provider: 'OpenAI', accent: '#10a37f', initials: 'OA' }
+  }
+  if (lower.includes('claude') || lower.includes('anthropic')) {
+    return { provider: 'Anthropic (Claude)', accent: '#d97706', initials: 'CL' }
+  }
+  if (lower.includes('gemini') || lower.includes('google')) {
+    return { provider: 'Google (Gemini)', accent: '#4285f4', initials: 'GM' }
+  }
+  if (lower.includes('grok') || lower.includes('x.ai')) {
+    return { provider: 'xAI (Grok)', accent: '#ffffff', initials: 'GK' }
+  }
   return { provider: 'UModelverse', accent: '#34d399', initials: 'AI' }
 }
 
@@ -178,6 +192,62 @@ function parsePricing(rawPricing: any[], multiplier: number = 1): { conditions: 
   return { conditions, highlight }
 }
 
+function extractContextLength(id: string, rawPricing: any[]): { lengthK: number; label: string } {
+  const lower = id.toLowerCase()
+
+  // 1. Quét chi tiết từ các mức giá pricing
+  if (Array.isArray(rawPricing)) {
+    for (const p of rawPricing) {
+      const desc = String(p.DescriptionEn || p.Description || p.Condition || '')
+      // Check 1M, 2M, 20M
+      const mMatches = desc.match(/(\d+(?:\.\d+)?)\s*([mM])/i)
+      if (mMatches) {
+        const val = parseFloat(mMatches[1])
+        if (val >= 1) {
+          return { lengthK: Math.round(val * 1000), label: `${val >= 1 && val % 1 === 0 ? val : val}M tokens` }
+        }
+      }
+      const kMatches = desc.match(/(\d+(?:\.\d+)?)\s*([kK])/i)
+      if (kMatches) {
+        const val = parseFloat(kMatches[1])
+        if (val >= 999) {
+          return { lengthK: Math.round(val), label: `${Math.round(val)}K tokens` }
+        }
+      }
+    }
+  }
+
+  // 2. Nhận diện các dòng mô hình AI có context window chuẩn từ 1M đến 2M tokens
+  if (lower.includes('kimi')) {
+    return { lengthK: 2000, label: '2M tokens' }
+  }
+  if (lower.includes('glm-5')) {
+    return { lengthK: 1000, label: '1M tokens' }
+  }
+  if (lower.includes('deepseek-v4')) {
+    return { lengthK: 1000, label: '1M tokens' }
+  }
+  if (lower.includes('minimax-h3') || lower.includes('minimax-m3')) {
+    return { lengthK: 1000, label: '1M tokens' }
+  }
+  if (
+    lower.includes('qwen3.8') ||
+    lower.includes('qwen3.7') ||
+    lower.includes('qwen3.6') ||
+    lower.includes('qwen3.5')
+  ) {
+    return { lengthK: 1000, label: '1M tokens' }
+  }
+  if (lower.includes('doubao-seed-evolving') || lower.includes('doubao-seed-2-1') || lower.includes('doubao-seed-1-6')) {
+    return { lengthK: 2000, label: '2M tokens' }
+  }
+  if (lower.includes('mimo-v2')) {
+    return { lengthK: 1000, label: '1M tokens' }
+  }
+
+  return { lengthK: 128, label: '128K tokens' }
+}
+
 export function parseRawModels(rawList: any[], multiplier: number = 1): ApiModel[] {
   return rawList.map((item) => {
     const id = item.id
@@ -185,6 +255,7 @@ export function parseRawModels(rawList: any[], multiplier: number = 1): ApiModel
     const { provider, accent, initials } = getProvider(id)
     const badge = getBadge(id)
     const { conditions, highlight } = parsePricing(item.pricing, multiplier)
+    const { lengthK, label: contextLabel } = extractContextLength(id, item.pricing)
 
     let description = `Mô hình AI ${provider} được tối ưu hóa cho tác vụ ${category}. Sẵn sàng kết nối qua OpenAI-compatible API.`
     if (category === 'video') {
@@ -210,10 +281,113 @@ export function parseRawModels(rawList: any[], multiplier: number = 1): ApiModel
       description,
       accent,
       initials,
+      context: contextLabel,
+      contextLength: lengthK,
+      created: Number(item.created) || 0,
       pricing: conditions,
       highlightPrice: highlight,
     }
   })
 }
 
+const MODEL_VI_DESCRIPTIONS: Record<string, string> = {
+  'deepseek-v4.1-flash':
+    'Mô hình DeepSeek V4.1 Flash với cấu trúc siêu nhẹ, tích hợp năng lực thị giác đa phương thức tự nhiên, tốc độ phản hồi cực nhanh cùng thông lượng lớn.',
+  'gemini-omni-1.1-flash-preview':
+    'Mô hình thế hệ mới của Google hỗ trợ tạo và chỉnh sửa video tương tác đa phương thức thông qua hội thoại ngôn ngữ tự nhiên nhiều vòng.',
+  'gpt-4.1-nano':
+    'Mô hình có kích thước gọn nhất trong dòng GPT-4.1 của OpenAI, tối ưu hóa độ trễ và chi phí cực thấp cho các ứng dụng AI nhẹ.',
+  'gpt-4.1-mini':
+    'Mô hình gọn nhẹ của OpenAI với hiệu năng vượt trội GPT-4o, tốc độ xử lý nhanh, cửa sổ ngữ cảnh 1M tokens phù hợp cho tác vụ agent và văn bản dài.',
+  'openai/gpt-4.1':
+    'Mô hình đa phương thức hợp nhất của OpenAI hỗ trợ hiểu văn bản, hình ảnh, âm thanh và thực thi luồng công việc phức tạp.',
+  'gpt-5.5':
+    'Mô hình flagship thế hệ mới từ OpenAI, tối ưu chuyên sâu cho công việc thực tế phức tạp và thực thi tác vụ tự chủ end-to-end với hiệu suất suy luận cao.',
+  'gpt-6-astra':
+    'Mô hình thông minh và căn chỉnh cao nhất của OpenAI, xuất sắc trong vận hành máy tính, duyệt web, lập trình kỹ thuật và nghiên cứu chuyên sâu.',
+  'gpt-5.6-sol':
+    'Mô hình hàng đầu trong dòng GPT-5.6, lý tưởng cho các luồng công việc chuyên môn phức tạp và suy luận logic đa bước.',
+  'gpt-5.6-terra':
+    'Mô hình cân bằng hoàn hảo giữa trí tuệ nhân tạo và chi phí vận hành, đáp ứng tối ưu cho các hệ thống ứng dụng quy mô lớn.',
+  'gpt-5.6-luna':
+    'Mô hình thiết kế tối ưu chi phí cho các tác vụ khối lượng lớn với tốc độ phản hồi thần tốc.',
+  'gpt-5.4':
+    'Mô hình ngôn ngữ lớn flagship từ OpenAI với năng lực vượt bậc về lập trình, suy luận logic và khả năng xử lý văn bản, tài liệu khổng lồ.',
+  'gemini-3.8-flash':
+    'Mô hình chủ lực thông minh nhất của Google dành cho tác vụ agent quy mô lớn, kỹ thuật phần mềm và lập trình dài hơi với tốc độ Flash.',
+  'claude-fable-5-1':
+    'Mô hình hiệu năng cao từ Anthropic dành cho lập trình phức tạp và công việc tri thức, vượt trội về lập kế hoạch tự chủ và sử dụng công cụ.',
+  'glm-5.3-flash':
+    'Mô hình đa phương thức tự nhiên đầu tiên của dòng GLM-5 từ Zhipu AI, tích hợp kiến trúc thưa và chú ý tuyến tính giúp code và phản hồi siêu nhanh.',
+  'qwen3.7-plus':
+    'Mô hình agent đa phương thức từ Alibaba Qwen, hỗ trợ đầu vào ảnh, video, màn hình, web và văn bản, khép kín quy trình cảm nhận, suy luận và hành động.',
+  'qwen3.7-max':
+    'Mô hình flagship hàng đầu của Alibaba Qwen tối ưu cho kỷ nguyên agent thông minh, hỗ trợ ngữ cảnh siêu dài 1M tokens và cơ chế suy nghĩ kép.',
+}
+
+function hasChinese(text: string): boolean {
+  return /[\u4e00-\u9fff]/.test(text || '')
+}
+
+export function parseSquareModels(squareList: any[], multiplier: number = 1): ApiModel[] {
+  return squareList.map((item) => {
+    const id = item.Name || item.Id
+    const category = getCategory(id)
+    const { provider, accent, initials } = getProvider(id)
+
+    // Đảm bảo tên hãng bằng tiếng Anh / tiếng Việt, không chứa tiếng Trung
+    const rawManufacturer = String(item.Manufacturer || '')
+    const manufacturer = hasChinese(rawManufacturer) || !rawManufacturer ? provider : rawManufacturer
+
+    const badge = item.MaxModelLenNew >= 999 ? 'Siêu ngữ cảnh' : getBadge(id)
+
+    // Context length từ MaxModelLenNew hoặc MaxModelLen
+    const maxLenNew = Number(item.MaxModelLenNew) || 0
+    let contextLabel = '128K tokens'
+    let lengthK = 128
+
+    if (maxLenNew >= 999) {
+      lengthK = maxLenNew >= 999 && maxLenNew <= 2000 ? maxLenNew : Math.round((item.MaxModelLen || 1048576) / 1000)
+      contextLabel = `${Math.round(lengthK / 1000) >= 1 ? Math.round(lengthK / 1000) + 'M' : lengthK + 'K'} tokens`
+    } else if (item.MaxModelLen >= 999000) {
+      lengthK = Math.round(item.MaxModelLen / 1000)
+      contextLabel = `${Math.round(lengthK / 1000)}M tokens`
+    }
+
+    // Mô tả 100% tiếng Việt, loại bỏ toàn bộ mô tả gốc tiếng Trung từ API
+    let description = MODEL_VI_DESCRIPTIONS[id]
+    if (!description) {
+      const rawDesc = item.SimpleDescribe || item.Describe || ''
+      if (rawDesc && !hasChinese(rawDesc)) {
+        description = rawDesc
+      } else {
+        description = `Mô hình ${id} phát triển bởi ${manufacturer}, trang bị cửa sổ ngữ cảnh cực lớn ${contextLabel}, tối ưu hóa cho xử lý văn bản dài và suy luận đa bước.`
+      }
+    }
+
+    const promptPrice = item.Pricing?.Prompt ? Number(item.Pricing.Prompt) * multiplier : 0
+    const highlightPrice = promptPrice > 0 ? `${promptPrice.toFixed(4)} CNY/1k` : 'Tính theo token'
+
+    const timestamp = Math.max(Number(item.UpdateAt) || 0, Number(item.CreateAt) || 0)
+
+    // Tên hiển thị luôn dùng Model ID (tiếng Anh chuẩn), loại bỏ ChineseName
+    return {
+      id,
+      name: id,
+      provider: manufacturer,
+      category,
+      badge,
+      description,
+      accent,
+      initials,
+      context: contextLabel,
+      contextLength: lengthK,
+      created: timestamp,
+      pricing: [],
+      highlightPrice,
+    }
+  })
+}
+
 export const ALL_MODELS: ApiModel[] = parseRawModels(rawModelsData)
+

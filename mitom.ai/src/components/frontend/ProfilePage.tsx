@@ -53,7 +53,7 @@ interface UsageData {
   stats: { totalDeposited: number; depositCount: number }
 }
 
-const formatVnd = (n: number) => (n || 0).toLocaleString('vi-VN') + 'đ'
+const formatVnd = (n: number) => (Number(n) || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + 'đ'
 
 type ProfileTab = 'overview' | 'config' | 'history' | 'security'
 
@@ -189,6 +189,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
         setLimits({ balance: data.balance, dailyLimit: data.dailyLimit, monthlyLimit: data.monthlyLimit })
         setLimitsMsg({ type: 'success', text: data.message || 'Đã lưu hạn mức thành công.' })
         refreshUser()
+        loadUsage()
       } else {
         setLimitsMsg({ type: 'error', text: data.error || 'Lưu hạn mức thất bại.' })
       }
@@ -274,10 +275,10 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
       <button
         type="button"
         onClick={() => onNavigate && onNavigate('home')}
-        className="mb-6 flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-primary cursor-pointer"
+        className="mb-6 inline-flex items-center gap-2 rounded-lg border border-border/80 bg-secondary/40 px-3.5 py-2 text-sm font-medium text-foreground transition-all hover:bg-secondary hover:text-primary hover:border-primary/40 cursor-pointer"
       >
-        <ArrowLeft size={14} />
-        Quay lại trang chủ
+        <ArrowLeft size={16} />
+        <span>Quay lại trang chủ</span>
       </button>
 
       {/* Header ho so - khong border, khong padding */}
@@ -313,17 +314,18 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
         <div className="flex flex-wrap items-center gap-3">
           <div>
             <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Wallet size={13} className="text-emerald" />
+              <span className="flex items-center gap-1.5 font-medium">
+                <Wallet size={14} className="text-emerald" />
                 Số dư API
               </span>
               <button
                 onClick={handleRefreshBalance}
                 disabled={refreshing}
-                className="hover:text-primary transition-colors cursor-pointer"
+                className="flex items-center gap-1 rounded border border-border/60 bg-secondary/40 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
                 title="Làm mới số dư"
               >
-                <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+                <RefreshCw size={13} className={refreshing ? 'animate-spin text-primary' : ''} />
+                <span>Làm mới</span>
               </button>
             </div>
             <div className="mt-0.5 font-display text-2xl font-extrabold text-emerald">{formatVnd(user.balance || 0)}</div>
@@ -363,40 +365,53 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
                 Mức tiêu thụ API
               </h2>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 rounded border border-border bg-secondary/80 px-2.5 py-1">
+                <label className="relative inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/80 px-3 py-1.5 hover:border-primary/60 transition-colors cursor-pointer">
+                  <Calendar size={15} className="text-primary shrink-0 pointer-events-none" />
+                  <span className="font-mono text-sm text-foreground select-none pointer-events-none">
+                    {selectedCustomDate || 'mm/dd/yyyy'}
+                  </span>
                   <input
                     type="date"
-                    title="Chọn ngày để xem tiêu thụ"
+                    title="Bấm để chọn ngày tháng năm"
                     value={selectedCustomDate}
+                    onClick={(e) => {
+                      try {
+                        ;(e.currentTarget as any).showPicker?.()
+                      } catch {}
+                    }}
                     onChange={(e) => handleCustomDateChange(e.target.value)}
-                    className="bg-transparent text-xs font-mono text-foreground focus:outline-none cursor-pointer"
+                    className="absolute inset-0 h-full w-full opacity-0 cursor-pointer z-10"
                   />
-                  {selectedCustomDate && (
-                    <button
-                      type="button"
-                      onClick={() => handleCustomDateChange('')}
-                      className="text-muted-foreground hover:text-foreground text-xs ml-1"
-                      title="Xóa chọn ngày"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
+                </label>
               </div>
             </div>
 
             {usage?.astraflow?.connected ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="mb-1 text-xs text-muted-foreground">
-                      {selectedCustomDate ? `Tiêu thụ ngày ${selectedCustomDate}` : 'Tiêu thụ hôm nay'}
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground">
+                        {selectedCustomDate ? `Tiêu thụ ngày ${selectedCustomDate}` : 'Tiêu thụ hôm nay'}
+                      </span>
+                      {selectedCustomDate && (
+                        <button
+                          type="button"
+                          onClick={() => handleCustomDateChange('')}
+                          className="rounded border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary hover:bg-primary hover:text-primary-foreground transition-all cursor-pointer"
+                        >
+                          Về hôm nay
+                        </button>
+                      )}
                     </div>
                     <div className="font-display text-lg font-bold text-foreground">
                       {customDateLoading ? (
-                        <RefreshCw size={14} className="animate-spin inline" />
+                        <div className="flex items-center gap-2 py-0.5">
+                          <span className="spinner-modern-primary" />
+                          <span className="loading-shimmer-bar" />
+                        </div>
                       ) : (
-                        formatVnd(selectedCustomDate ? (usage.astraflow.selectedDateUsedVnd || 0) : (usage.astraflow.dailyUsedVnd || 0))
+                        formatVnd(selectedCustomDate ? (usage.astraflow.selectedDateUsedVnd ?? 0) : (usage.astraflow.dailyUsedVnd || 0))
                       )}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">
@@ -425,8 +440,8 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
       {/* Tab: config */}
       {activeTab === 'config' && (
         <div className="space-y-8">
-          {/* Han muc chi tieu API - khong border, khong padding card, max-w-sm giong form doi mat khau */}
-          <section className="max-w-sm">
+          {/* Han muc chi tieu API - khong border, khong padding card, max-w-sm can giua giong form doi mat khau */}
+          <section className="max-w-sm mx-auto">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="flex items-center gap-2 font-display text-base font-bold text-foreground">
                 <Gauge size={17} className="text-primary" />
@@ -488,12 +503,17 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
               type="button"
               onClick={handleSaveLimits}
               disabled={limitsSaving || limitsLoading}
-              className="glow-button mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-primary py-2.5 text-sm font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+              className="glow-button mt-4 w-full rounded-md py-3 text-sm font-bold bg-primary text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
             >
               {limitsSaving ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
-                  Đang lưu...
+                <span className="flex items-center justify-center gap-2">
+                  <span className="spinner-modern" />
+                  <span>Đang lưu hạn mức</span>
+                  <span className="loading-dots-wave">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
                 </span>
               ) : (
                 'Lưu hạn mức'
@@ -652,7 +672,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
       {activeTab === 'security' && (
         <div className="space-y-6">
           {/* Doi mat khau */}
-          <section>
+          <section className="max-w-sm mx-auto">
             <h2 className="mb-4 flex items-center gap-2 font-display text-base font-bold text-foreground">
               <Lock size={17} className="text-primary" />
               {user.authProvider === 'google' || user.googleId ? 'Hướng dẫn đăng nhập' : 'Thay đổi mật khẩu'}
@@ -731,12 +751,17 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
               <button
                 type="submit"
                 disabled={passwordLoading}
-                className="glow-button flex w-full items-center justify-center gap-2 rounded-md bg-primary py-2.5 text-sm font-bold text-primary-foreground transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+                className="glow-button w-full rounded-md py-3 text-sm font-bold bg-primary text-primary-foreground transition-transform hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
               >
                 {passwordLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent" />
-                    Đang cập nhật...
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="spinner-modern" />
+                    <span>Đang cập nhật</span>
+                    <span className="loading-dots-wave">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
                   </span>
                 ) : user.authProvider === 'google' || user.googleId ? (
                   'Thiết lập mật khẩu'
@@ -755,12 +780,12 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
         <button
           type="button"
           onClick={handleLogout}
-          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-rose-400 hover:underline transition-colors cursor-pointer"
+          className="flex items-center gap-2 rounded-lg border border-border/80 bg-secondary/30 px-5 py-2.5 text-sm font-semibold text-muted-foreground hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400 transition-all cursor-pointer"
         >
-          <LogOut size={14} />
-          Đăng xuất
+          <LogOut size={16} />
+          <span>Đăng xuất tài khoản</span>
         </button>
-        <p className="text-[11px] text-muted-foreground">Mì Tôm AI — Số dư và dữ liệu của bạn được bảo toàn sau khi đăng xuất.</p>
+        <p className="text-xs text-muted-foreground">Mì Tôm AI — Số dư và dữ liệu của bạn được bảo toàn sau khi đăng xuất.</p>
       </div>
     </div>
   )

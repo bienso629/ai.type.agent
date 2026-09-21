@@ -99,12 +99,79 @@ export async function PATCH(request: Request) {
     const payload = await getPayload({ config: configPromise })
     const updated = await payload.update({ collection: 'users', id: user.id, data })
 
+    // Đồng bộ trực tiếp hạn mức mới sang AstraFlow (scloudsg.com) nếu người dùng đã có API Key
+    let astraflowSynced = false
+    const userApiKey = String((user as any).apiKey || '').trim()
+
+    if (userApiKey) {
+      try {
+        const { callUCloudApi } = await import('@/lib/ucloudClient')
+        const { formatUsdLimitForVnd } = await import('@/lib/currency')
+
+        // 1. Tìm keyId của user trong collection api-keys
+        const keyRes = await payload.find({
+          collection: 'api-keys',
+          where: {
+            or: [
+              { secretKey: { equals: userApiKey } },
+              { maskedKey: { equals: userApiKey } },
+            ],
+          },
+          overrideAccess: true,
+          limit: 1,
+        })
+
+        let targetKeyId = (keyRes?.docs?.[0] as any)?.keyId || ''
+
+        // 2. Nếu không thấy keyId trong database, truy vấn danh sách key trực tiếp từ AstraFlow
+        if (!targetKeyId) {
+          try {
+            const listRes: any = await callUCloudApi({ Action: 'ListUMInferAPIKey' })
+            const allKeys = Array.isArray(listRes?.Data) ? listRes.Data : []
+            const matchedKey = allKeys.find((k: any) => k.Key === userApiKey || k.SecretKey === userApiKey)
+            if (matchedKey?.KeyId) {
+              targetKeyId = matchedKey.KeyId
+            }
+          } catch {
+            // bỏ qua lỗi list nếu API không phản hồi
+          }
+        }
+
+        // 3. Gọi lệnh UpdateUMInferAPIKey để cập nhật lên AstraFlow
+        if (targetKeyId) {
+          const newDailyVnd = Number(updated.dailyLimit) || 0
+          const newMonthlyVnd = Number(updated.monthlyLimit) || 0
+          const curBalance = Number(updated.balance) || 0
+
+          // Quy đổi hạn mức VNĐ sang USD làm tròn xuống (0 nếu không giới hạn hoặc bằng 0)
+          const dailyUsd = newDailyVnd > 0 ? formatUsdLimitForVnd(newDailyVnd) : formatUsdLimitForVnd(curBalance)
+          const monthlyUsd = newMonthlyVnd > 0 ? formatUsdLimitForVnd(newMonthlyVnd) : formatUsdLimitForVnd(curBalance)
+
+          const updateRes: any = await callUCloudApi({
+            Action: 'UpdateUMInferAPIKey',
+            KeyId: targetKeyId,
+            DailyLimitAmount: dailyUsd,
+            MonthlyLimitAmount: monthlyUsd,
+          })
+
+          if (updateRes && updateRes.RetCode === 0) {
+            astraflowSynced = true
+          }
+        }
+      } catch (err: any) {
+        console.error('Lỗi khi đồng bộ hạn mức sang AstraFlow:', err.message)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       balance: Number(updated.balance) || 0,
       dailyLimit: updated.dailyLimit ?? 0,
       monthlyLimit: updated.monthlyLimit ?? 0,
-      message: 'Đã lưu hạn mức thành công.',
+      astraflowSynced,
+      message: astraflowSynced
+        ? 'Đã lưu hạn mức và đồng bộ sang AstraFlow thành công.'
+        : 'Đã lưu hạn mức thành công.',
     })
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })

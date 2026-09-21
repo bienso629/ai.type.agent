@@ -54,29 +54,35 @@ export const FAQS = [
 ]
 
 export const ZALO = 'https://zalo.me/4275289637074408185'
-export const formatVnd = (n: number) => n.toLocaleString('vi-VN') + 'đ'
+export const formatVnd = (n: number) => (Number(n) || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + 'đ'
 
 export function HeroModelSlider({
   models,
+  squareModels,
   goModels,
 }: {
   models: ApiModel[]
+  squareModels?: ApiModel[]
   goModels: () => void
 }) {
-  // Lấy các model mới nhất hoặc nổi bật nhất
+  // Ưu tiên danh sách 49 model từ API ListUFSquareModelGuest có Context Length 999k+
   const latestModels = React.useMemo(() => {
-    const featured = models.filter(
-      (m) =>
-        m.badge === 'Mới nhất' ||
-        m.id.toLowerCase().includes('deepseek-v4') ||
-        m.id.toLowerCase().includes('glm-5.3') ||
-        m.id.toLowerCase().includes('wan3.0') ||
-        m.id.toLowerCase().includes('qwen3.8') ||
-        m.id.toLowerCase().includes('kimi-k3') ||
-        m.id.toLowerCase().includes('minimax-hailuo')
-    )
-    return featured.length > 0 ? featured : models.slice(0, 10)
-  }, [models])
+    if (squareModels && squareModels.length > 0) {
+      const sorted = [...squareModels].sort((a, b) => (b.created || 0) - (a.created || 0))
+      return sorted.slice(0, 16)
+    }
+
+    const filtered = models
+      .filter((m) => {
+        const len = m.contextLength || 0
+        const isNotMedia = !['video', 'image', 'audio', 'embedding', 'doc'].includes(m.category)
+        return len >= 999 && isNotMedia
+      })
+      .sort((a, b) => (b.created || 0) - (a.created || 0))
+      .slice(0, 16)
+
+    return filtered.length > 0 ? filtered : models.slice(0, 16)
+  }, [models, squareModels])
 
   const [currentIndex, setCurrentIndex] = useState(0)
 
@@ -102,9 +108,14 @@ export function HeroModelSlider({
 
       {/* Header thanh điều hướng Slide */}
       <div className="flex items-center justify-between pb-4 border-b border-border/60">
-        <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
-          Mô hình mới nhất
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
+            Mô hình mới nhất
+          </span>
+          <span className="rounded bg-emerald/15 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald">
+            Context 999k+
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs text-muted-foreground mr-1">
             {currentIndex + 1} / {latestModels.length}
@@ -113,7 +124,7 @@ export function HeroModelSlider({
             type="button"
             onClick={handlePrev}
             title="Model trước"
-            className="flex h-8 w-8 items-center justify-center rounded border border-border/70 bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
+            className="flex h-8 w-8 items-center justify-center rounded border border-border/70 bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90 cursor-pointer"
           >
             <ChevronLeft size={18} />
           </button>
@@ -121,7 +132,7 @@ export function HeroModelSlider({
             type="button"
             onClick={handleNext}
             title="Model tiếp theo"
-            className="flex h-8 w-8 items-center justify-center rounded border border-border/70 bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90"
+            className="flex h-8 w-8 items-center justify-center rounded border border-border/70 bg-secondary/80 text-foreground transition-all hover:border-primary hover:text-primary active:scale-90 cursor-pointer"
           >
             <ChevronRight size={18} />
           </button>
@@ -135,7 +146,14 @@ export function HeroModelSlider({
             <h3 className="truncate font-mono text-lg md:text-xl font-bold text-foreground" title={currentModel.id}>
               {currentModel.id}
             </h3>
-            <span className="text-xs text-muted-foreground font-medium">{currentModel.provider}</span>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs text-muted-foreground font-medium">{currentModel.provider}</span>
+              {currentModel.context && (
+                <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-0.2 text-[10px] font-mono font-bold text-primary">
+                  {currentModel.context}
+                </span>
+              )}
+            </div>
           </div>
           {currentModel.badge && (
             <span className="inline-flex h-6 shrink-0 items-center rounded-sm bg-primary/15 px-2.5 font-mono text-[11px] font-bold text-primary">
@@ -149,6 +167,19 @@ export function HeroModelSlider({
           {currentModel.description}
         </p>
 
+        {/* Highlight giá và nút chi tiết */}
+        <div className="mt-5 flex items-center justify-between pt-4 border-t border-border/60">
+          <span className="font-mono text-xs text-muted-foreground">
+            Giá: <strong className="text-foreground">{currentModel.highlightPrice || 'Tính theo token'}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={goModels}
+            className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+          >
+            Xem tất cả {models.length} model →
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -913,9 +944,11 @@ function OrderLookupModal({
 
 export function FrontendApp({
   models = ALL_MODELS,
+  squareModels = [],
   adminRoute = '/101',
 }: {
   models?: ApiModel[]
+  squareModels?: ApiModel[]
   adminRoute?: string
 }) {
   const { user, openLoginModal } = useAuth()
@@ -1006,6 +1039,7 @@ export function FrontendApp({
     content = (
       <HomePage
         models={models}
+        squareModels={squareModels}
         openFaq={openFaq}
         setOpenFaq={setOpenFaq}
         onTopup={startTopup}
@@ -1104,7 +1138,7 @@ export function FrontendApp({
           <div>
             <h4 className="font-display text-sm font-bold uppercase tracking-wide">Model nổi bật</h4>
             <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
-              {['DeepSeek V3 / V4', 'GLM-5.3 Flash & Pro', 'Qwen 3.8 / Coder', 'Kling Video & Wan-AI'].map((l) => (
+              {['GPT-6 Astra & GPT-5.5', 'Claude Fable 5.1', 'Gemini Omni & 3.8 Flash', 'DeepSeek V4.1 & GLM-5.3'].map((l) => (
                 <li key={l}>
                   <button onClick={goModels} className="text-left transition-colors hover:text-primary">
                     {l}
@@ -1176,6 +1210,7 @@ export function FrontendApp({
 
 function HomePage({
   models,
+  squareModels,
   openFaq,
   setOpenFaq,
   onTopup,
@@ -1183,6 +1218,7 @@ function HomePage({
   goModels,
 }: {
   models: ApiModel[]
+  squareModels?: ApiModel[]
   openFaq: number | null
   setOpenFaq: (n: number | null) => void
   onTopup: (t: TopUp) => void
@@ -1204,7 +1240,7 @@ function HomePage({
         <div className="mx-auto grid max-w-7xl gap-12 px-5 py-20 md:px-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-28">
           <div className="flex flex-col justify-center">
             <span className="mb-5 inline-flex w-fit items-center gap-2 rounded-sm border border-border bg-card px-3 py-1.5 font-mono text-xs text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> Hơn 130 Model AI · Chuẩn OpenAI API · Sẵn sàng 24/7
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> Thế hệ Siêu ngữ cảnh 1M+ tokens · Chuẩn OpenAI API · Sẵn sàng 24/7
             </span>
             <h1 className="font-display text-4xl font-black leading-[1.05] tracking-tight md:text-6xl">
               Một số dư,
@@ -1212,7 +1248,7 @@ function HomePage({
               <span className="text-primary">mọi model</span> AI.
             </h1>
             <p className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground md:text-lg">
-              Tích hợp trực tiếp các mô hình AI mạnh mẽ nhất từ DeepSeek, Zhipu GLM, Alibaba Qwen, ByteDance Doubao, Kling và Wan-AI qua duy nhất một API Endpoint tốc độ cao.
+              Tích hợp trực tiếp các mô hình AI hàng đầu thế giới: GPT-6 Astra, GPT-5.5, Claude Fable 5.1, Gemini Omni & 3.8 Flash, DeepSeek V4.1 Flash, GLM-5.3 và Qwen 3.7 Max qua duy nhất một API Endpoint hiệu năng cao với cửa sổ ngữ cảnh siêu lớn 1M+ tokens.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <button
@@ -1244,7 +1280,7 @@ function HomePage({
 
           {/* Slide Model Mới Nhất */}
           <div className="flex items-center justify-center lg:justify-end">
-            <HeroModelSlider models={models} goModels={goModels} />
+            <HeroModelSlider models={models} squareModels={squareModels} goModels={goModels} />
           </div>
         </div>
       </section>
@@ -1252,7 +1288,7 @@ function HomePage({
       {/* Trust bar */}
       <div className="border-b border-border bg-secondary/40">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-5 py-4 font-mono text-xs text-muted-foreground md:px-8">
-          {['OpenAI Compatible', 'DeepSeek', 'Zhipu GLM', 'Alibaba Qwen', 'ByteDance Doubao', 'Kling Video', 'ShengShu Vidu', 'MiniMax'].map((b) => (
+          {['OpenAI (GPT-6 / 5.5)', 'Anthropic (Claude Fable)', 'Google (Gemini Omni / 3.8)', 'DeepSeek V4.1', 'Zhipu GLM-5.3', 'Alibaba Qwen 3.7', 'xAI Grok', 'MiniMax'].map((b) => (
             <span key={b} className="transition-colors hover:text-foreground">
               {b}
             </span>

@@ -1,7 +1,7 @@
 import React from 'react'
 import configPromise from '@payload-config'
 import { FrontendApp } from '@/components/frontend/FrontendApp'
-import { ALL_MODELS, parseRawModels, ApiModel, rawModelsData } from '@/data/models-parser'
+import { ALL_MODELS, parseRawModels, parseSquareModels, ApiModel, rawModelsData } from '@/data/models-parser'
 
 import { getPayload } from 'payload'
 import { getListPriceMultiplier } from '@/lib/currency'
@@ -35,7 +35,42 @@ export default async function HomePage() {
     models = parseRawModels(rawModelsData, multiplier)
   }
 
+  // Gọi API ListUFSquareModelGuest để lấy đúng 49 model mạnh nhất có context length 999k+ (MaxModelLenNew >= 999)
+  let squareModels: ApiModel[] = []
+  try {
+    const squareRes = await fetch('https://api.scloudsg.com/?Action=ListUFSquareModelGuest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        Action: 'ListUFSquareModelGuest',
+        Limit: 500,
+        Offset: 0,
+      }),
+      signal: AbortSignal.timeout(4000),
+      next: { revalidate: 300 },
+    })
+    if (squareRes.ok) {
+      const squareData = await squareRes.json()
+      const list = squareData.SquareModels || []
+      const filtered49 = list.filter((m: any) => (Number(m.MaxModelLenNew) || 0) >= 999)
+      if (filtered49.length > 0) {
+        squareModels = parseSquareModels(filtered49, multiplier)
+      }
+    }
+  } catch (e) {
+    // Fallback sang dữ liệu lưu sẵn từ squareModelsData
+  }
+
+  if (squareModels.length === 0) {
+    const fallbackData = require('@/data/square-models.json')
+    squareModels = parseSquareModels(fallbackData, multiplier)
+  }
+
   const adminRoute = (await configPromise).routes?.admin || '/admin'
 
-  return <FrontendApp models={models} adminRoute={adminRoute} />
+  return <FrontendApp models={models} squareModels={squareModels} adminRoute={adminRoute} />
 }
+
