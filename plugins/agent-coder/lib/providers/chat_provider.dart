@@ -467,6 +467,7 @@ class ChatProvider extends ChangeNotifier {
         .toList();
 
     _sessionStreams[sessionId]?.cancel();
+    Timer? tokenThrottleTimer;
     _sessionStreams[sessionId] = _api.streamChatMessage(
       sessionId: sessionId,
       message: query.isNotEmpty ? query : 'Vui lòng đọc và phân tích các tệp đính kèm.',
@@ -479,19 +480,26 @@ class ChatProvider extends ChangeNotifier {
       onToken: (token) {
         assistantMsg.content += token;
         assistantMsg.statusMessage = null;
-        notifyListeners();
+        if (tokenThrottleTimer == null || !tokenThrottleTimer!.isActive) {
+          tokenThrottleTimer = Timer(const Duration(milliseconds: 50), () {
+            notifyListeners();
+          });
+        }
       },
       onStatus: (status) {
+        tokenThrottleTimer?.cancel();
         _sessionStatuses[sessionId] = status;
         assistantMsg.statusMessage = status;
         notifyListeners();
       },
       onTool: (tool) {
+        tokenThrottleTimer?.cancel();
         assistantMsg.toolExecutions.add(tool);
         assistantMsg.statusMessage = 'Đã chạy lệnh: ${tool.command}';
         notifyListeners();
       },
       onDone: (fullReply) {
+        tokenThrottleTimer?.cancel();
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
         if (fullReply.isNotEmpty && assistantMsg.content.isEmpty) {
@@ -513,6 +521,7 @@ class ChatProvider extends ChangeNotifier {
         );
       },
       onError: (err) {
+        tokenThrottleTimer?.cancel();
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
         if (assistantMsg.content.isEmpty) {
