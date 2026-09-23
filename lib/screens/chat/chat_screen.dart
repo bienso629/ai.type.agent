@@ -1646,10 +1646,15 @@ class _ChatScreenState extends State<ChatScreen> {
     final keyStr = _getMessageKey(msg, index);
     final isTargetHighlighted = _highlightedMessageKey == keyStr;
 
+    if (isUser && !_messageKeys.containsKey(keyStr)) {
+      if (_messageKeys.length >= 25) {
+        _messageKeys.remove(_messageKeys.keys.first);
+      }
+      _messageKeys[keyStr] = GlobalKey();
+    }
+
     return Padding(
-      key: isUser
-          ? _messageKeys.putIfAbsent(keyStr, () => GlobalKey())
-          : ValueKey(keyStr),
+      key: isUser ? _messageKeys[keyStr] : ValueKey(keyStr),
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1762,7 +1767,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (msg.content.isNotEmpty)
                         MarkdownBody(
                           data: msg.content,
-                          selectable: true,
+                          selectable: !msg.isStreaming,
                           onTapLink: (text, href, title) async {
                             if (href != null && href.trim().isNotEmpty) {
                               var rawUrl = href.trim();
