@@ -14,10 +14,9 @@ DEB_BUILD_DIR="$SOURCE_DIR/build/deb_pkg"
 
 echo "=== BAT DAU TAO GOI CAI DAT .DEB CHO UBUNTU / LINUX ==="
 
-if [ ! -d "$BUNDLE_DIR" ]; then
-    echo "1. Dang bien dich ban release Flutter Linux..."
-    flutter build linux --release
-fi
+FLUTTER_BIN="$(which flutter 2>/dev/null || echo '/snap/bin/flutter')"
+echo "1. Dang bien dich ban release Flutter Linux bang $FLUTTER_BIN..."
+$FLUTTER_BIN build linux --release
 
 echo "2. Chuan bi cau truc thu muc goi .deb..."
 rm -rf "$DEB_BUILD_DIR"

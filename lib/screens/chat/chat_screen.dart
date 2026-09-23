@@ -865,6 +865,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildServerDropdown(ServerProvider serverProvider) {
+    final chat = context.read<ChatProvider>();
     final isLocal = serverProvider.selectedServer == null ||
         serverProvider.selectedServer!.serverIp == '127.0.0.1' ||
         serverProvider.selectedServer!.serverIp == 'localhost';
@@ -874,10 +875,10 @@ class _ChatScreenState extends State<ChatScreen> {
         : serverProvider.selectedServer!.serverIp;
 
     return PopupMenuButton<ServerModel>(
-      tooltip: 'Chuyển đổi Máy chủ / Local',
+      tooltip: 'Chuyển đổi Máy chủ SSH / Local Machine cho Agent',
       offset: const Offset(0, 44),
       color: AppColors.cardBg,
-      constraints: const BoxConstraints(minWidth: 240, maxWidth: 290),
+      constraints: const BoxConstraints(minWidth: 250, maxWidth: 300),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(4),
         side: const BorderSide(color: AppColors.borderDark),
@@ -891,13 +892,15 @@ class _ChatScreenState extends State<ChatScreen> {
             name: 'Local Machine',
             serverIp: '127.0.0.1',
           ));
+          await chat.setServerForCurrentSession('Local Machine');
           if (mounted) {
-            AppToast.success(context, 'Đã chuyển sang chế độ Local Machine');
+            AppToast.success(context, 'Agent chuyển sang thực thi trên Local Machine');
           }
         } else {
           await serverProvider.selectServer(srv);
+          await chat.setServerForCurrentSession(srv.name);
           if (mounted) {
-            AppToast.success(context, 'Đã chuyển sang máy chủ: ${srv.name}');
+            AppToast.success(context, 'Agent chuyển sang kết nối máy chủ SSH: ${srv.name}');
           }
         }
       },
@@ -918,7 +921,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('Local Machine', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
-                      Text('Thực thi trực tiếp trên máy', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                      Text('Thực thi trực tiếp trên máy cục bộ', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
                     ],
                   ),
                 ),
@@ -982,55 +985,192 @@ class _ChatScreenState extends State<ChatScreen> {
         return list;
       },
       child: Container(
-        height: 36,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: AppColors.borderDark),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(4),
+              height: 36,
+              constraints: const BoxConstraints(minWidth: 100, maxWidth: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: isLocal
-                    ? AppColors.accent.withValues(alpha: 0.15)
-                    : AppColors.primary.withValues(alpha: 0.2),
+                color: AppColors.cardBg,
                 borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.borderDark),
               ),
-              child: Icon(
-                isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
-                size: 14,
-                color: isLocal ? AppColors.accent : AppColors.primaryLight,
-              ),
-            ),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 160),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    currentServerName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.1),
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: isLocal
+                          ? AppColors.accent.withValues(alpha: 0.15)
+                          : AppColors.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        isLocal ? Icons.laptop_chromebook_rounded : Icons.dns_rounded,
+                        size: 14,
+                        color: isLocal ? AppColors.accent : AppColors.primaryLight,
+                      ),
+                    ),
                   ),
-                  Text(
-                    currentServerIp,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted, height: 1.1),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          currentServerName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.1),
+                        ),
+                        Text(
+                          currentServerIp,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted, height: 1.1),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.unfold_more_rounded, size: 14, color: AppColors.textDim),
                 ],
               ),
             ),
-            const SizedBox(width: 6),
-            const Icon(Icons.unfold_more_rounded, size: 14, color: AppColors.textDim),
-          ],
+    );
+  }
+
+  void _openEmbeddedChromeBrowser() async {
+    try {
+      final List<String> chromeCandidates = [
+        'google-chrome',
+        'google-chrome-stable',
+        'chromium',
+        'chromium-browser',
+      ];
+
+      String? chromeBin;
+      for (final bin in chromeCandidates) {
+        final res = await Process.run('which', [bin]);
+        if (res.exitCode == 0 && res.stdout.toString().trim().isNotEmpty) {
+          chromeBin = res.stdout.toString().trim();
+          break;
+        }
+      }
+
+      final userDataDir = p.join(
+        Platform.environment['HOME'] ?? '/tmp',
+        '.config',
+        'ai-type-embedded-chrome',
+      );
+
+      final List<String> chromeArgs = [
+        '--app=http://localhost:4200',
+        '--user-data-dir=$userDataDir',
+        '--window-size=1280,850',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--enable-features=OverlayScrollbar',
+      ];
+
+      if (chromeBin != null) {
+        await Process.start(chromeBin, chromeArgs, mode: ProcessStartMode.detached);
+        if (mounted) {
+          AppToast.success(context, 'Đã mở lõi Google Chrome trình duyệt');
+        }
+      } else {
+        final uri = Uri.parse('http://localhost:4200');
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          if (mounted) {
+            AppToast.info(context, 'Đã mở trình duyệt hệ thống');
+          }
+        } else {
+          if (mounted) {
+            AppToast.error(context, 'Không tìm thấy Google Chrome hoặc trình duyệt phù hợp');
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Không thể khởi chạy trình duyệt: $e');
+      }
+    }
+  }
+
+  Widget _buildBrowserButton() {
+    return Tooltip(
+      message: 'Mở trình duyệt lõi Chrome (Ứng dụng web cục bộ)',
+      child: InkWell(
+        onTap: _openEmbeddedChromeBrowser,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          height: 36,
+          constraints: const BoxConstraints(minWidth: 100, maxWidth: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.cardBg,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: AppColors.borderDark),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.public_rounded,
+                    size: 14,
+                    color: AppColors.primaryLight,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Trình duyệt',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textWhite,
+                        height: 1.1,
+                      ),
+                    ),
+                    Text(
+                      'Chrome Browser',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        color: AppColors.textMuted,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.open_in_new_rounded,
+                size: 14,
+                color: AppColors.textDim,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1189,7 +1329,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 const SizedBox(width: 12),
 
-                // Right: Server Selector Dropdown
+                // Browser Button & Server Selector Dropdown
+                _buildBrowserButton(),
+                const SizedBox(width: 8),
                 _buildServerDropdown(serverProvider),
               ],
             ),
@@ -2270,100 +2412,88 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Row(
-                    children: [
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.borderDark),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                        ),
-                        icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
-                        label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
-                        onPressed: _triggerScopePicker,
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 32),
+                            fixedSize: const Size.fromHeight(32),
+                            side: const BorderSide(color: AppColors.borderDark),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                           ),
-                          backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                          icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
+                          label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
+                          onPressed: _triggerScopePicker,
                         ),
-                        icon: Icon(
-                          Icons.attach_file_rounded,
-                          size: 14,
-                          color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.accentCyan,
-                        ),
-                        label: Text(
-                          _attachedFiles.isNotEmpty ? 'Attach (${_attachedFiles.length})' : 'Attach',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
-                            fontWeight: _attachedFiles.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 32),
+                            fixedSize: const Size.fromHeight(32),
+                            side: BorderSide(
+                              color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                            ),
+                            backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                           ),
+                          icon: Icon(
+                            Icons.attach_file_rounded,
+                            size: 14,
+                            color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.accentCyan,
+                          ),
+                          label: Text(
+                            _attachedFiles.isNotEmpty ? 'Attach (${_attachedFiles.length})' : 'Attach',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
+                              fontWeight: _attachedFiles.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          onPressed: _pickFiles,
                         ),
-                        onPressed: _pickFiles,
-                      ),
-                      const SizedBox(width: 8),
-                      // Model Selector Button
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.primaryLight, width: 0.8),
-                          backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                        ),
-                        icon: const Icon(Icons.smart_toy_rounded, size: 14, color: AppColors.primaryLight),
-                        label: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 140),
-                              child: Text(
-                                serverProvider.currentAiModel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.primaryLight,
+                        const SizedBox(width: 8),
+                        // Model Selector Button
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 32),
+                            fixedSize: const Size.fromHeight(32),
+                            side: const BorderSide(color: AppColors.primaryLight, width: 0.8),
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                          ),
+                          icon: const Icon(Icons.smart_toy_rounded, size: 14, color: AppColors.primaryLight),
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 140),
+                                child: Text(
+                                  serverProvider.currentAiModel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primaryLight,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down_rounded, size: 14, color: AppColors.primaryLight),
-                          ],
+                              const SizedBox(width: 4),
+                              const Icon(Icons.arrow_drop_down_rounded, size: 14, color: AppColors.primaryLight),
+                            ],
+                          ),
+                          onPressed: () => ModelPickerDialog.show(context, serverProvider),
                         ),
-                        onPressed: () => ModelPickerDialog.show(context, serverProvider),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Builder(
-                          builder: (context) {
-                            final server = serverProvider.selectedServer;
-                            final isLocal = server == null || server.serverIp == '127.0.0.1' || server.serverIp == 'localhost';
-                            final targetHintText = isLocal
-                                ? 'AI Type Agent đang tương tác với Local Machine ${Platform.operatingSystem.toUpperCase()}'
-                                : 'AI Type Agent đang tương tác với ${server.name} (${server.serverIp})';
-
-                            return Text(
-                              targetHintText,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textMuted,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
