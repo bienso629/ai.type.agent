@@ -42,17 +42,33 @@ DEFAULT_OPERA_PATHS = [
     "/Applications/Opera Beta.app/Contents/MacOS/Opera Beta",
     os.path.expanduser("~/Applications/Opera GX.app/Contents/MacOS/Opera GX"),
     os.path.expanduser("~/Applications/Opera.app/Contents/MacOS/Opera"),
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     # Linux
     "/usr/bin/opera-gx",
     "/usr/bin/opera",
     "/usr/bin/opera-developer",
     "/usr/bin/opera-beta",
     "/snap/bin/opera",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
     # Windows
     r"C:\Users\%USERNAME%\AppData\Local\Programs\Opera\opera.exe",
     r"C:\Users\%USERNAME%\AppData\Local\Programs\Opera GX\opera.exe",
     r"C:\Program Files\Opera\opera.exe",
     r"C:\Program Files\Opera GX\opera.exe",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    r"C:\Users\%USERNAME%\AppData\Local\Google\Chrome\Application\chrome.exe",
+]
+
+BROWSER_EXE_NAMES = [
+    "opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe",
+    "chrome.exe", "chromium.exe",
+    "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "opera", "opera-gx"
 ]
 
 # -------- Utils --------
@@ -66,7 +82,10 @@ def _expand_vars(p: str) -> str:
 def _find_opera_exe(custom: Optional[str] = None) -> str:
     if custom and os.path.exists(custom):
         return custom
-    for name in ["opera-gx", "opera", "opera-developer", "opera-beta"]:
+    for name in [
+        "opera-gx", "opera", "opera-developer", "opera-beta",
+        "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"
+    ]:
         w = shutil.which(name)
         if w and os.path.exists(w):
             return w
@@ -74,7 +93,9 @@ def _find_opera_exe(custom: Optional[str] = None) -> str:
         pp = _expand_vars(p)
         if os.path.exists(pp):
             return pp
-    return "opera.exe" if os.name == 'nt' else "opera"
+    if os.name == 'nt':
+        return "chrome.exe" if shutil.which("chrome") else "opera.exe"
+    return "google-chrome" if shutil.which("google-chrome") else "opera"
 
 
 def _canon_path(p: str) -> str:
@@ -420,7 +441,7 @@ def _taskkill_by_images(image_names: List[str]) -> Dict[str, Any]:
             except Exception as e:
                 stats["errors"].append({"image": img, "ex": f"{type(e).__name__}: {e}"})
     else:
-        for img in ["opera-gx", "opera", "opera-beta"]:
+        for img in ["opera-gx", "opera", "opera-beta", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"]:
             try:
                 r = subprocess.run(["pkill", "-f", img], capture_output=True, text=True, timeout=5)
                 stats["attempts"] += 1
@@ -817,7 +838,7 @@ class StartRangeReq(BaseModel):
 class KillAllReq(BaseModel):
     profiles_root: str = Field(DEFAULT_PROFILES_ROOT)
     image_names: List[str] = Field(default_factory=lambda: [
-        "opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe"
+        "opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe", "chrome.exe", "chromium.exe"
     ])
     mode: Literal["by-cmdline", "taskkill-image", "hybrid"] = "taskkill-image"
     force: bool = True
@@ -1151,7 +1172,7 @@ def list_profiles(
         if include_pids:
             pids = _collect_pids_by_cmdline(
                 str(pdir),
-                ["opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe"],
+                BROWSER_EXE_NAMES,
             )
             if pids:
                 info["pids"] = sorted(set(int(x) for x in pids))
@@ -1252,7 +1273,7 @@ def start_range(req: StartRangeReq) -> Dict[str, Any]:
         if req.mode == "skip" and is_running:
             use_port = int(existing_port)
         elif req.mode == "replace" and is_running:
-            pids = _collect_pids_by_cmdline(str(pdir), ["opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe"])
+            pids = _collect_pids_by_cmdline(str(pdir), BROWSER_EXE_NAMES)
             for pid in pids:
                 try:
                     psutil.Process(pid).terminate()
@@ -1404,7 +1425,7 @@ def start_profiles(req: StartProfilesReq) -> Dict[str, Any]:
         if req.mode == "skip" and is_running:
             use_port = int(existing_port)
         elif req.mode == "replace" and is_running:
-            pids = _collect_pids_by_cmdline(str(pdir), ["opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe"])
+            pids = _collect_pids_by_cmdline(str(pdir), BROWSER_EXE_NAMES)
             for pid in pids:
                 try:
                     psutil.Process(pid).terminate()
@@ -1571,7 +1592,7 @@ def kill_range(req: KillRangeReq) -> Dict[str, Any]:
     for i in range(int(req.start), int(req.end) + 1):
         prof = f"Profile{str(i).zfill(int(req.zero_pad))}"
         pdir = _profile_dir(req.profiles_root, prof)
-        pids = _collect_pids_by_cmdline(str(pdir), ["opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe"])
+        pids = _collect_pids_by_cmdline(str(pdir), BROWSER_EXE_NAMES)
         previews += pids
     if not previews:
         cache = _handle_cache_action(req.profiles_root, req.host, req.cache_action)
@@ -1661,7 +1682,7 @@ def kill_profiles(req: KillProfilesReq) -> Dict[str, Any]:
     killed: List[int] = []; failed: List[int] = []
     for name in ordered:
         pdir = _profile_dir(req.profiles_root, name)
-        pids = _collect_pids_by_cmdline(str(pdir), ["opera.exe", "opera_beta.exe", "opera_gx.exe", "opera_browser.exe"])
+        pids = _collect_pids_by_cmdline(str(pdir), BROWSER_EXE_NAMES)
         if not pids:
             results.append({"profile": name, "ok": False, "action": "force", "detail": "no_pids"})
             continue

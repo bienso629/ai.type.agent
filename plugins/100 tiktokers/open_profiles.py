@@ -78,42 +78,56 @@ OPERA_PATHS = [
     "/Applications/Opera Beta.app/Contents/MacOS/Opera Beta",
     os.path.expanduser("~/Applications/Opera GX.app/Contents/MacOS/Opera GX"),
     os.path.expanduser("~/Applications/Opera.app/Contents/MacOS/Opera"),
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     # Linux
     "/usr/bin/opera-gx",
     "/usr/bin/opera",
     "/usr/bin/opera-developer",
     "/usr/bin/opera-beta",
     "/snap/bin/opera",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
     # Windows
     r"C:\Program Files\Opera GX\opera.exe",
     r"C:\Program Files\Opera\opera.exe",
     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera GX\opera.exe"),
     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera\opera.exe"),
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
 ]
 
 
 def find_opera_bin(custom_path: Optional[str] = None) -> str:
     if custom_path and os.path.exists(custom_path):
         return custom_path
-    for name in ["opera-gx", "opera", "opera-developer", "opera-beta"]:
+    for name in [
+        "opera-gx", "opera", "opera-developer", "opera-beta",
+        "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"
+    ]:
         w = shutil.which(name)
         if w and os.path.exists(w):
             return w
     for p in OPERA_PATHS:
         if os.path.exists(p):
             return p
-    raise FileNotFoundError("Không tìm thấy Opera trên hệ thống!")
+    raise FileNotFoundError("Không tìm thấy Opera hoặc Chrome trên hệ thống!")
 
 
 def kill_all_opera():
-    """Kill running Opera processes."""
-    print("🛑 Đang tắt toàn bộ tiến trình Opera...")
+    """Kill running Opera or Chrome processes."""
+    print("🛑 Đang tắt toàn bộ tiến trình trình duyệt...")
     if IS_WIN:
-        subprocess.run(["taskkill", "/F", "/IM", "opera.exe"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        subprocess.run(["taskkill", "/F", "/IM", "opera_gx.exe"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        for img in ["opera.exe", "opera_gx.exe", "chrome.exe", "chromium.exe"]:
+            subprocess.run(["taskkill", "/F", "/IM", img], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
     else:
-        subprocess.run(["pkill", "-f", "opera"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    print("✅ Đã ngắt tất cả cửa sổ Opera.")
+        for pat in ["opera", "google-chrome", "chrome", "chromium"]:
+            subprocess.run(["pkill", "-f", pat], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    print("✅ Đã ngắt tất cả cửa sổ trình duyệt.")
 
 
 def open_profiles_range(

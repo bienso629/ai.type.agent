@@ -294,29 +294,116 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
     final serverProvider = context.watch<ServerProvider>();
 
     if (widget.isCollapsed) {
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.add_comment_rounded, size: 18, color: AppColors.primaryLight),
-              tooltip: 'Tạo hội thoại mới',
-              onPressed: () {
-                chat.createNewSession(
-                  targetServer: serverProvider.selectedServer?.name ?? 'Local Machine',
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.add_comment_rounded, size: 20, color: AppColors.primaryLight),
+                  tooltip: 'Tạo hội thoại mới',
+                  onPressed: () {
+                    widget.onSessionSelected?.call();
+                    chat.createNewSession(
+                      targetServer: serverProvider.selectedServer?.name ?? 'Local Machine',
+                    );
+                  },
+                ),
+                const SizedBox(height: 4),
+                IconButton(
+                  icon: const Icon(Icons.history_rounded, size: 20, color: AppColors.textDim),
+                  tooltip: 'Mở rộng danh sách hội thoại (${chat.sessions.length})',
+                  onPressed: widget.onExpandRequested,
+                ),
+                const SizedBox(height: 6),
+                const Divider(height: 1, color: AppColors.borderDark),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              itemCount: chat.sessions.length,
+              itemBuilder: (context, index) {
+                final sess = chat.sessions[index];
+                final isSelected = sess.id == chat.currentSession?.id;
+                final initialChar = sess.title.trim().isNotEmpty
+                    ? sess.title.trim().characters.first.toUpperCase()
+                    : '#';
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Tooltip(
+                    message: '${sess.title}\n(${sess.targetServer ?? 'Local Machine'})',
+                    preferBelow: false,
+                    waitDuration: const Duration(milliseconds: 250),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        widget.onSessionSelected?.call();
+                        if (chat.currentSession?.id == sess.id) return;
+                        chat.selectSession(sess);
+                        _loadRecentQuestionsForSession(sess.id);
+                        serverProvider.selectServerByTarget(sess.targetServer);
+                      },
+                      child: Container(
+                        height: 38,
+                        width: 38,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary.withValues(alpha: 0.25)
+                              : (sess.isPinned
+                                  ? AppColors.warning.withValues(alpha: 0.1)
+                                  : AppColors.cardBg),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.primary
+                                : (sess.isPinned
+                                    ? AppColors.warning.withValues(alpha: 0.4)
+                                    : AppColors.borderDark.withValues(alpha: 0.5)),
+                            width: isSelected ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Text(
+                              initialChar,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                color: isSelected
+                                    ? AppColors.primaryLight
+                                    : (sess.isPinned ? AppColors.warning : AppColors.textDim),
+                              ),
+                            ),
+                            if (sess.isPinned)
+                              Positioned(
+                                top: 2,
+                                right: 2,
+                                child: Container(
+                                  width: 5,
+                                  height: 5,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.warning,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 );
               },
             ),
-            const SizedBox(height: 6),
-            IconButton(
-              icon: const Icon(Icons.history_rounded, size: 18, color: AppColors.textDim),
-              tooltip: 'Mở rộng để xem danh sách hội thoại (${chat.sessions.length})',
-              onPressed: widget.onExpandRequested,
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 

@@ -36,7 +36,6 @@ export async function GET() {
               authProvider: userDoc.authProvider || 'local',
               balance: userDoc.balance ?? 0,
               customerCode: userDoc.customerCode || ``,
-              apiKey: userDoc.apiKey,
               role: userDoc.role || 'user',
             },
           })
@@ -92,7 +91,6 @@ export async function GET() {
             taduUserId: userDoc.taduUserId || (session as any).taduUserId || null,
             balance: userDoc.balance ?? session.balance ?? 0,
             customerCode: userDoc.customerCode || ``,
-            apiKey: userDoc.apiKey || session.apiKey,
             role: userDoc.role || session.role || 'user',
           },
         })
@@ -101,9 +99,11 @@ export async function GET() {
       // Fallback về session JWT nếu Payload DB bận
     }
 
+    const { apiKey: _omittedKey, ...safeSession } = session as any
+
     return NextResponse.json({
       authenticated: true,
-      user: session,
+      user: safeSession,
     })
   } catch (error) {
     return NextResponse.json({ authenticated: false, user: null })

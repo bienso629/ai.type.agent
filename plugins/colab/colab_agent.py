@@ -82,7 +82,7 @@ def load_config() -> Dict[str, Any]:
         "colab_url": "",
         "last_connected": "",
         "gpu_info": "",
-        "auto_connect": True
+        "auto_connect": False
     }
 
 def save_config(cfg: Dict[str, Any]):
@@ -710,8 +710,6 @@ def main():
     if args.url:
         state.colab_url = args.url
         state.test_connection(args.url)
-    elif state.colab_url:
-        state.test_connection()
 
     logger.info(f"Khởi động Colab Agent Plugin v{__version__} trên http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")

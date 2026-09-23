@@ -43,27 +43,40 @@ OPERA_PATHS = [
     "/Applications/Opera Beta.app/Contents/MacOS/Opera Beta",
     os.path.expanduser("~/Applications/Opera GX.app/Contents/MacOS/Opera GX"),
     os.path.expanduser("~/Applications/Opera.app/Contents/MacOS/Opera"),
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     # Linux
     "/usr/bin/opera-gx",
     "/usr/bin/opera",
     "/usr/bin/opera-developer",
     "/usr/bin/opera-beta",
     "/snap/bin/opera",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
     # Windows
     r"C:\Program Files\Opera GX\opera.exe",
     r"C:\Program Files\Opera\opera.exe",
     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera GX\opera.exe"),
     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Opera\opera.exe"),
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
 ]
 
 
 def find_opera_bin(custom_path: Optional[str] = None) -> str:
-    """Find installed Opera binary path."""
+    """Find installed Opera or Chrome binary path."""
     if custom_path and os.path.exists(custom_path):
         return custom_path
     
     # Try shutil.which
-    for name in ["opera-gx", "opera", "opera-developer", "opera-beta"]:
+    for name in [
+        "opera-gx", "opera", "opera-developer", "opera-beta",
+        "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"
+    ]:
         w = shutil.which(name)
         if w and os.path.exists(w):
             return w
@@ -73,7 +86,7 @@ def find_opera_bin(custom_path: Optional[str] = None) -> str:
         if os.path.exists(p):
             return p
 
-    raise FileNotFoundError("Không tìm thấy trình duyệt Opera trên hệ thống! Vui lòng cài đặt Opera hoặc chỉ định đường dẫn qua --opera-path")
+    raise FileNotFoundError("Không tìm thấy trình duyệt Opera hoặc Chrome trên hệ thống! Vui lòng cài đặt Opera/Chrome hoặc chỉ định đường dẫn qua --opera-path")
 
 
 import stat

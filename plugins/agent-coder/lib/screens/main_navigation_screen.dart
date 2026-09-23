@@ -126,7 +126,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // DESKTOP LAYOUT (ANIMATED COLLAPSIBLE SIDEBAR: 250px <-> 68px)
   // =========================================================================
   Widget _buildDesktopLayout() {
-    final serverProvider = context.watch<ServerProvider>();
     final isCollapsed = _isSidebarCollapsed;
     final sidebarWidth = isCollapsed ? 68.0 : 270.0;
 
@@ -230,72 +229,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
                 // 1.2 Navigation & Content Area
                 Expanded(
-                  child: Builder(
-                    builder: (context) {
-                      final isLocal = serverProvider.selectedServer == null ||
-                          serverProvider.selectedServer!.serverIp == '127.0.0.1' ||
-                          serverProvider.selectedServer!.serverIp == 'localhost';
-                      final visibleTabs = _getVisibleTabs(isLocal);
-
-                      // If collapsed: Show standard vertical icon bar
-                      if (isCollapsed) {
-                        return ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          itemCount: visibleTabs.length,
-                          itemBuilder: (context, idx) {
-                            final item = visibleTabs[idx];
-                            final isSelected = _activeTabKey == item['key'];
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Tooltip(
-                                message: '${item['title']}\n${item['subtitle']}',
-                                preferBelow: false,
-                                waitDuration: const Duration(milliseconds: 250),
-                                child: Material(
-                                  color: isSelected ? AppColors.primary : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(4),
-                                    onTap: () {
-                                      setState(() {
-                                        _activeTabKey = item['key'] as String;
-                                      });
-                                    },
-                                    hoverColor: isSelected ? AppColors.primaryHover : AppColors.cardBg,
-                                    child: Container(
-                                      height: 42,
-                                      alignment: Alignment.center,
-                                      child: Icon(
-                                        item['icon'] as IconData,
-                                        size: 18,
-                                        color: isSelected ? Colors.white : AppColors.textMuted,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        );
+                  child: SessionListSidebar(
+                    isCollapsed: isCollapsed,
+                    onExpandRequested: () {
+                      setState(() {
+                        _isSidebarCollapsed = false;
+                      });
+                    },
+                    onSessionSelected: () {
+                      if (_activeTabKey != 'chat') {
+                        setState(() {
+                          _activeTabKey = 'chat';
+                        });
                       }
-
-                      // Expanded Left Sidebar: Unified single column session list
-                      return SessionListSidebar(
-                        isCollapsed: false,
-                        onExpandRequested: () {
-                          setState(() {
-                            _isSidebarCollapsed = false;
-                          });
-                        },
-                        onSessionSelected: () {
-                          if (_activeTabKey != 'chat') {
-                            setState(() {
-                              _activeTabKey = 'chat';
-                            });
-                          }
-                        },
-                      );
                     },
                   ),
                 ),
@@ -311,7 +257,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.dns_outlined, size: 18, color: AppColors.textDim),
+                              icon: Icon(
+                                _activeTabKey == 'chat' ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
+                                size: 18,
+                                color: _activeTabKey == 'chat' ? AppColors.primaryLight : AppColors.textDim,
+                              ),
+                              tooltip: 'Hội thoại AI',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              onPressed: () => setState(() => _activeTabKey = 'chat'),
+                            ),
+                            const SizedBox(height: 4),
+                            IconButton(
+                              icon: Icon(
+                                _activeTabKey == 'servers' ? Icons.dns_rounded : Icons.dns_outlined,
+                                size: 18,
+                                color: _activeTabKey == 'servers' ? AppColors.primaryLight : AppColors.textDim,
+                              ),
                               tooltip: 'Máy chủ & SSH',
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -319,7 +281,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                             ),
                             const SizedBox(height: 4),
                             IconButton(
-                              icon: const Icon(Icons.settings_outlined, size: 18, color: AppColors.textDim),
+                              icon: Icon(
+                                _activeTabKey == 'settings' ? Icons.settings_rounded : Icons.settings_outlined,
+                                size: 18,
+                                color: _activeTabKey == 'settings' ? AppColors.primaryLight : AppColors.textDim,
+                              ),
                               tooltip: 'Cấu hình',
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
