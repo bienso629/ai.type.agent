@@ -38,6 +38,18 @@ class ChatMessageModel {
   bool isStreaming;
   String? statusMessage;
 
+  static final RegExp _systemMessageRegex = RegExp(
+    r'(?:The following is a <SYSTEM_MESSAGE>[^\n]*\n+)?<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
+  /// Trả về nội dung đã làm sạch toàn bộ thông báo hệ thống / SYSTEM_MESSAGE nội bộ
+  String get cleanContent {
+    if (!content.contains('<SYSTEM_MESSAGE>')) return content;
+    return content.replaceAll(_systemMessageRegex, '').trim();
+  }
+
   ChatMessageModel({
     this.id,
     required this.sessionId,

@@ -424,7 +424,7 @@ class PdfExportService {
           }
 
           // 2. Structured Markdown Parser
-          final rawContent = _cleanEmoji(msg.content);
+          final rawContent = _cleanEmoji(msg.cleanContent);
           final lines = rawContent.split('\n');
 
           bool inCodeBlock = false;
