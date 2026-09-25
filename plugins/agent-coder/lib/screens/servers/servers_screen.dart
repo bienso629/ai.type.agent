@@ -1108,11 +1108,6 @@ class _ServersScreenState extends State<ServersScreen> {
                 ),
                 Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      tooltip: 'Tải lại danh sách máy chủ',
-                      onPressed: () => serverProvider.loadServers(),
-                    ),
                     PopupMenuButton<String>(
                       tooltip: 'Sao lưu & Khôi phục dữ liệu',
                       color: AppColors.surfaceDark,

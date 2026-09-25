@@ -147,7 +147,7 @@ export function ModelsSection({
 
       {/* Quick notice bar for copied ID */}
       {copiedId && (
-        <div className="mt-4 rounded-md border border-emerald/40 bg-emerald/10 px-4 py-2 text-xs text-emerald font-mono flex items-center justify-between">
+        <div className="mt-4 rounded-xl border border-emerald/40 bg-emerald/10 px-4 py-2 text-xs text-emerald font-mono flex items-center justify-between">
           <span>Đã sao chép Model ID: <strong>{copiedId}</strong></span>
           <span>Dùng trực tiếp trong payload API hoặc cấu hình Cline / Cursor</span>
         </div>

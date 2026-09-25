@@ -39,6 +39,7 @@ export interface UCloudRequestOptions {
   publicKey?: string
   privateKey?: string
   baseUrl?: string
+  fetchOptions?: RequestInit & { next?: { revalidate?: number | false; tags?: string[] } }
 }
 
 /**
@@ -68,11 +69,14 @@ export async function callUCloudApi<T = any>(
     }
   })
 
+  const { fetchOptions } = options
   const res = await fetch(url.toString(), {
     method: 'GET',
     headers: {
       Accept: 'application/json',
+      ...(fetchOptions?.headers || {}),
     },
+    ...fetchOptions,
   })
 
   const json = await res.json()

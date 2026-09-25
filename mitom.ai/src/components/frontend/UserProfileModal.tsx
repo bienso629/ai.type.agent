@@ -257,7 +257,7 @@ export function UserProfileModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
+        className="relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -299,7 +299,7 @@ export function UserProfileModal({
           {/* Badge phương thức và số dư */}
           {/* Badge phương thức, mã khách hàng và số dư */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-border bg-secondary/30 p-3.5">
+            <div className="rounded-xl border border-border bg-secondary/30 p-3.5">
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                 <Shield size={14} className="text-primary" />
                 <span>Mã khách hàng</span>
@@ -309,7 +309,7 @@ export function UserProfileModal({
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-secondary/30 p-3.5">
+            <div className="rounded-xl border border-border bg-secondary/30 p-3.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span className="flex items-center gap-2">
                   <Wallet size={14} className="text-emerald" />
@@ -331,7 +331,7 @@ export function UserProfileModal({
           </div>
 
           {/* Hạn mức chi tiêu API (tự điều chỉnh) */}
-          <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-secondary/40 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <Gauge size={14} className="text-primary" />
@@ -376,7 +376,7 @@ export function UserProfileModal({
             </p>
             {limitsMsg && (
               <div
-                className={`rounded-lg p-3 text-xs font-medium ${
+                className={`rounded-xl p-3 text-xs font-medium ${
                   limitsMsg.type === 'success'
                     ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
                     : 'border border-rose-500/30 bg-rose-500/10 text-rose-400'
@@ -408,7 +408,7 @@ export function UserProfileModal({
           </div>
 
           {/* Muc tieu thu API AstraFlow */}
-          <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-secondary/40 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <Gauge size={14} className="text-primary" />
@@ -440,7 +440,7 @@ export function UserProfileModal({
             {usage?.astraflow?.connected ? (
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-md border border-border bg-background/60 p-2.5">
+                  <div className="rounded-xl border border-border bg-background/60 p-2.5">
                     <div className="text-[10px] text-muted-foreground mb-0.5">
                       {selectedCustomDate ? `Tiêu thụ ngày ${selectedCustomDate}` : 'Tiêu thụ hôm nay'}
                     </div>
@@ -458,7 +458,7 @@ export function UserProfileModal({
                       Hạn mức: {formatVnd(usage.astraflow.dailyLimitVnd || 0)}
                     </div>
                   </div>
-                  <div className="rounded-md border border-border bg-background/60 p-2.5">
+                  <div className="rounded-xl border border-border bg-background/60 p-2.5">
                     <div className="text-[10px] text-muted-foreground mb-0.5">Tiêu thụ tháng này</div>
                     <div className="text-sm font-bold text-foreground font-display">
                       {formatVnd(usage.astraflow.monthlyUsedVnd || 0)}
@@ -475,7 +475,7 @@ export function UserProfileModal({
           </div>
 
           {/* Lich su nap so du */}
-          <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-secondary/40 p-4 space-y-3">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Wallet size={14} className="text-primary" />
               Lịch sử nạp số dư
@@ -520,7 +520,7 @@ export function UserProfileModal({
 
           {/* Khu vực Đăng nhập & Đồng bộ Cookie AstraFlow (Chỉ dành cho Admin) */}
           {user.role === 'admin' && (
-            <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-secondary/40 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                 <Globe size={15} className="text-primary" />
@@ -534,7 +534,7 @@ export function UserProfileModal({
 
             {astraMsg && (
               <div
-                className={`rounded-lg p-3 text-xs ${
+                className={`rounded-xl p-3 text-xs ${
                   astraMsg.type === 'success'
                     ? 'border border-emerald/30 bg-emerald/10 text-emerald'
                     : 'border border-rose-500/30 bg-rose-500/10 text-rose-300'
@@ -594,7 +594,7 @@ export function UserProfileModal({
           )}
 
           {/* Khu vực Đổi mật khẩu */}
-          <div className="rounded-lg border border-border bg-secondary/30 overflow-hidden">
+          <div className="rounded-xl border border-border bg-secondary/30 overflow-hidden">
             <button
               type="button"
               onClick={() => {
@@ -614,7 +614,7 @@ export function UserProfileModal({
               <form onSubmit={handleChangePassword} className="p-4 pt-2 border-t border-border/50 space-y-4">
                 {passwordMsg && (
                   <div
-                    className={`rounded-lg p-3 text-xs font-medium ${
+                    className={`rounded-xl p-3 text-xs font-medium ${
                       passwordMsg.type === 'success'
                         ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
                         : 'border border-rose-500/30 bg-rose-500/10 text-rose-400'
@@ -625,7 +625,7 @@ export function UserProfileModal({
                 )}
 
                 {user.authProvider === 'google' || user.googleId ? (
-                  <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
                     Tài khoản được liên kết với Google. Bạn có thể thiết lập mật khẩu tại đây để đăng nhập trực tiếp bằng email và mật khẩu khi cần.
                   </div>
                 ) : (

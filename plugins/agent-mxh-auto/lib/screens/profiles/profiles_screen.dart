@@ -41,8 +41,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     _loadPersonas();
   }
 
-  Future<void> _loadPersonas() async {
-    final saved = await _personaService.loadSavedPersonas();
+  Future<void> _loadPersonas({bool forceReload = false}) async {
+    final saved = await _personaService.loadSavedPersonas(forceReload: forceReload);
     List<String> avdList = [];
     try {
       avdList = await _socks5Service.getAvailableAvds();
@@ -1953,6 +1953,33 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       }
     }
 
+    // Đảm bảo tất cả các IP đã tạo Persona đều xuất hiện trong danh sách card
+    final existingIps = allIpCards.map((e) => e.ip).toSet();
+    final defaultServer = selectedServer ?? (servers.isNotEmpty ? servers.first : ServerModel(
+      id: 'srv_default',
+      name: 'Máy chủ hồ sơ',
+      serverIp: '127.0.0.1',
+    ));
+
+    for (final personaIp in _personas.keys) {
+      if (!existingIps.contains(personaIp)) {
+        // Tìm xem IP này có khớp với server nào không
+        final matchedServer = servers.firstWhere(
+          (s) => s.serverIp == personaIp,
+          orElse: () => defaultServer,
+        );
+        allIpCards.add(
+          _ContactIpItem(
+            ip: personaIp,
+            isMain: personaIp == matchedServer.serverIp,
+            server: matchedServer,
+            isCurrentServer: true,
+          ),
+        );
+        existingIps.add(personaIp);
+      }
+    }
+
     final allTargetIps = allIpCards.map((e) => e.ip).toSet().toList();
 
     return Scaffold(
@@ -2048,6 +2075,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         ),
                       ),
                     ),
+
 
                     const SizedBox(width: 10),
 

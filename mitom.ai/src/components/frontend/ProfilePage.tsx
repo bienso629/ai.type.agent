@@ -13,6 +13,7 @@ import {
   Globe,
   Gauge,
   ArrowLeft,
+  ChevronLeft,
   Receipt,
   KeyRound,
   LayoutDashboard,
@@ -272,14 +273,15 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-8 md:px-8">
       {/* Nut quay lai */}
-      <button
-        type="button"
-        onClick={() => onNavigate && onNavigate('home')}
-        className="mb-6 inline-flex items-center gap-2 rounded-lg border border-border/80 bg-secondary/40 px-3.5 py-2 text-sm font-medium text-foreground transition-all hover:bg-secondary hover:text-primary hover:border-primary/40 cursor-pointer"
-      >
-        <ArrowLeft size={16} />
-        <span>Quay lại trang chủ</span>
-      </button>
+      <div className="mb-6 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => onNavigate && onNavigate('home')}
+          className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+        >
+          <ChevronLeft size={16} /> Quay lại trang chủ
+        </button>
+      </div>
 
       {/* Header ho so - khong border, khong padding */}
       <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
@@ -389,7 +391,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
             {usage?.astraflow?.connected ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-border bg-secondary/30 p-4">
+                  <div className="rounded-xl border border-border bg-secondary/30 p-4">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs text-muted-foreground">
                         {selectedCustomDate ? `Tiêu thụ ngày ${selectedCustomDate}` : 'Tiêu thụ hôm nay'}
@@ -418,7 +420,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
                       Hạn mức: {formatVnd(usage.astraflow.dailyLimitVnd || 0)}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-border bg-secondary/30 p-4">
+                  <div className="rounded-xl border border-border bg-secondary/30 p-4">
                     <div className="mb-1 text-xs text-muted-foreground">Tiêu thụ tháng này</div>
                     <div className="font-display text-lg font-bold text-foreground">
                       {formatVnd(usage.astraflow.monthlyUsedVnd || 0)}
@@ -616,7 +618,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
             </div>
 
             {usage && usage.history.length > 0 ? (
-              <div className="overflow-hidden rounded-md border border-border/70">
+              <div className="overflow-hidden rounded-xl border border-border/70">
                 {/* Header bang */}
                 <div className="hidden grid-cols-[1.6fr_1fr_1.1fr_0.9fr] gap-2 border-b border-border/70 bg-secondary/40 px-4 py-2.5 text-[11px] font-semibold text-muted-foreground md:grid">
                   <span>Gói nạp</span>
@@ -680,7 +682,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
 
             {passwordMsg && (
               <div
-                className={`mb-4 rounded-lg p-3 text-xs font-medium ${
+                className={`mb-4 rounded-xl p-3 text-xs font-medium ${
                   passwordMsg.type === 'success'
                     ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
                     : 'border border-rose-500/30 bg-rose-500/10 text-rose-400'
@@ -692,7 +694,7 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
 
             <form onSubmit={handleChangePassword} className="max-w-sm space-y-4">
               {user.authProvider === 'google' || user.googleId ? (
-                <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
                   Tài khoản được liên kết với Google. Bạn có thể thiết lập mật khẩu tại đây để đăng nhập trực tiếp bằng email và mật khẩu khi cần.
                 </div>
               ) : (

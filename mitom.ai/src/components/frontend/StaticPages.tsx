@@ -48,7 +48,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
 
       <div className="mt-8 grid gap-6 md:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold font-mono">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold font-mono">
             01
           </div>
           <h3 className="mt-4 font-display text-base font-bold">Đăng nhập tài khoản</h3>
@@ -58,7 +58,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
         </div>
 
         <div className="rounded-xl border border-border bg-card p-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold font-mono">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold font-mono">
             02
           </div>
           <h3 className="mt-4 font-display text-base font-bold">Quét mã VietQR</h3>
@@ -68,7 +68,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
         </div>
 
         <div className="rounded-xl border border-border bg-card p-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold font-mono">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold font-mono">
             03
           </div>
           <h3 className="mt-4 font-display text-base font-bold">Nhận số dư & Gọi API</h3>
@@ -83,19 +83,19 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
         <p className="mt-1 text-xs text-muted-foreground">Chỉ chuyển khoản vào tài khoản doanh nghiệp chính thức sau đây</p>
 
         <div className="mt-6 grid gap-5 sm:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card p-5">
+          <div className="rounded-xl border border-border bg-card p-5">
             <span className="text-xs text-muted-foreground">Ngân hàng thụ hưởng</span>
             <div className="mt-1 font-bold text-sm text-foreground">ACB - NH Thương mại cổ phần Á Châu</div>
             <span className="text-[11px] text-muted-foreground">Chi nhánh Phan Đăng Lưu, TP.HCM</span>
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-5">
+          <div className="rounded-xl border border-border bg-card p-5">
             <span className="text-xs text-muted-foreground">Tên đơn vị thụ hưởng</span>
             <div className="mt-1 font-mono font-bold text-sm text-primary">CTY CP CÔNG NGHỆ TADU</div>
             <span className="text-[11px] text-muted-foreground">Pháp nhân chủ quản hệ thống</span>
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-5 flex items-center justify-between">
+          <div className="rounded-xl border border-border bg-card p-5 flex items-center justify-between">
             <div>
               <span className="text-xs text-muted-foreground">Số tài khoản</span>
               <div className="mt-1 font-mono font-black text-xl text-foreground">199878939</div>
@@ -109,7 +109,7 @@ export function GuideTopupPage({ onNavigate }: StaticPageProps) {
             </button>
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-5 flex items-center justify-between">
+          <div className="rounded-xl border border-border bg-card p-5 flex items-center justify-between">
             <div>
               <span className="text-xs text-muted-foreground">Cú pháp chuyển khoản</span>
               <div className="mt-1 font-mono font-bold text-base text-emerald">MITO [Mã số của bạn]</div>

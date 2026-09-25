@@ -16,7 +16,7 @@
   --accent-foreground: #0b0c0f;
   --border: rgba(255, 255, 255, 0.07);
   --ring: #f5c451;
-  --radius: 0.25rem;
+  --radius: 0.75rem;
 
   --emerald: #34d399;
   --grid-line: rgba(255, 255, 255, 0.03);
@@ -43,11 +43,11 @@
   --font-sans: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  --radius-sm: 0.125rem;
-  --radius-md: 0.25rem;
-  --radius-lg: 0.375rem;
-  --radius-xl: 0.5rem;
-  --radius-2xl: 0.75rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
 }
 
 html {

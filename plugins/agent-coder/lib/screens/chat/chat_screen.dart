@@ -194,10 +194,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 img.rawBytes != null &&
                 listEquals(a.rawBytes, img.rawBytes)));
         if (!isDuplicate) {
+          final targetIdx = _attachedFiles.length;
           setState(() {
             _attachedFiles.add(img);
           });
           AppToast.success(context, 'Đã đính kèm ảnh chụp màn hình (${img.name})');
+          _uploadAttachment(targetIdx);
         }
       }
     } finally {
@@ -580,8 +582,21 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       if (!mounted) return;
-      final currentScope = context.read<ChatProvider>().currentSessionScope;
-      final currentServer = context.read<ServerProvider>().selectedServer;
+      final chatProv = context.read<ChatProvider>();
+      final serverProv = context.read<ServerProvider>();
+      final currentScope = chatProv.currentSessionScope;
+      final sessionTarget = chatProv.currentSession?.targetServer;
+      ServerModel? currentServer = serverProv.selectedServer;
+      if (sessionTarget != null && sessionTarget.isNotEmpty) {
+        if (sessionTarget == 'Local Machine' || sessionTarget == 'Local' || sessionTarget == '127.0.0.1') {
+          currentServer = null;
+        } else {
+          final matched = serverProv.servers.where((s) => s.name == sessionTarget || s.serverIp == sessionTarget || s.id == sessionTarget);
+          if (matched.isNotEmpty) {
+            currentServer = matched.first;
+          }
+        }
+      }
       final res = await _api.uploadFile(
         fileName: item.name,
         bytes: fileBytes,
@@ -832,7 +847,10 @@ class _ChatScreenState extends State<ChatScreen> {
       _attachedFiles.clear();
     });
 
-    final activeServerName = serverProvider.selectedServer?.name ?? 'Local Machine';
+    final sessionServer = chat.currentSession?.targetServer;
+    final activeServerName = (sessionServer != null && sessionServer.isNotEmpty)
+        ? sessionServer
+        : (serverProvider.selectedServer?.name ?? 'Local Machine');
     chat.sendMessage(
       text,
       model: serverProvider.currentAiModel,
@@ -1477,7 +1495,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  question.content.replaceAll('\n', ' ').trim(),
+                  question.cleanContent.replaceAll('\n', ' ').trim(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1596,21 +1614,25 @@ class _ChatScreenState extends State<ChatScreen> {
                 label: 'Kiểm tra RAM & Ổ đĩa',
                 prompt: 'Kiểm tra dung lượng ổ đĩa và RAM hiện tại',
                 chat: chat,
+                serverProvider: serverProvider,
               ),
               _buildPromptChip(
                 label: 'Top tiến trình CPU',
                 prompt: 'Xem danh sách tiến trình đang chạy và chiếm nhiều CPU nhất',
                 chat: chat,
+                serverProvider: serverProvider,
               ),
               _buildPromptChip(
                 label: 'Cổng đang mở',
                 prompt: 'Kiểm tra các cổng mạng đang mở (listening ports)',
                 chat: chat,
+                serverProvider: serverProvider,
               ),
               _buildPromptChip(
                 label: 'Trạng thái Services',
                 prompt: 'Kiểm tra trạng thái service nginx và uvicorn',
                 chat: chat,
+                serverProvider: serverProvider,
               ),
             ],
           ),
@@ -1623,6 +1645,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required String label,
     required String prompt,
     required ChatProvider chat,
+    required ServerProvider serverProvider,
   }) {
     return OutlinedButton(
       style: OutlinedButton.styleFrom(
@@ -1634,7 +1657,13 @@ class _ChatScreenState extends State<ChatScreen> {
       onPressed: chat.isGenerating
           ? null
           : () {
-              chat.sendMessage(prompt);
+              final activeServerName = serverProvider.selectedServer?.name ?? 'Local Machine';
+              chat.sendMessage(
+                prompt,
+                model: serverProvider.currentAiModel,
+                workingDir: chat.currentSessionScope,
+                targetServer: activeServerName,
+              );
               _safeScrollToBottom();
             },
       child: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textBody)),
@@ -1764,9 +1793,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
 
                       // 2. Reply Answer Content rendered below tool executions
-                      if (msg.content.isNotEmpty)
+                      if (msg.cleanContent.isNotEmpty)
                         MarkdownBody(
-                          data: msg.content,
+                          data: msg.cleanContent,
                           selectable: !msg.isStreaming,
                           onTapLink: (text, href, title) async {
                             if (href != null && href.trim().isNotEmpty) {
@@ -1848,7 +1877,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       InkWell(
                         borderRadius: BorderRadius.circular(4),
                         onTap: () {
-                          Clipboard.setData(ClipboardData(text: msg.content));
+                          Clipboard.setData(ClipboardData(text: msg.cleanContent));
                           AppToast.success(context, 'Đã sao chép nội dung vào bộ nhớ tạm!');
                         },
                         child: const Padding(
@@ -1893,7 +1922,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             final serverProvider = context.read<ServerProvider>();
                             final activeServerName = serverProvider.selectedServer?.name ?? 'Local Machine';
                             chat.sendMessage(
-                              msg.content,
+                              msg.cleanContent,
                               model: serverProvider.currentAiModel,
                               workingDir: chat.currentSessionScope,
                               targetServer: activeServerName,

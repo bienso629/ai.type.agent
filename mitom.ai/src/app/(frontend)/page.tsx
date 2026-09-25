@@ -1,8 +1,8 @@
 import React from 'react'
 import configPromise from '@payload-config'
 import { FrontendApp } from '@/components/frontend/FrontendApp'
-import { ALL_MODELS, parseRawModels, parseSquareModels, ApiModel, rawModelsData } from '@/data/models-parser'
-
+import { parseRawModels, parseSquareModels, ApiModel, rawModelsData, squareModelsData } from '@/data/models-parser'
+import { callUCloudApi } from '@/lib/ucloudClient'
 import { getPayload } from 'payload'
 import { getListPriceMultiplier } from '@/lib/currency'
 
@@ -18,56 +18,72 @@ export default async function HomePage() {
     // Fallback multiplier từ getListPriceMultiplier()
   }
 
-  let models: ApiModel[] = parseRawModels(rawModelsData, multiplier)
-
+  // 1. Lấy thông tin giá chi tiết từ /v1/models (nếu có)
+  let rawPricingList: any[] = rawModelsData
   try {
     const res = await fetch('https://api-vn-sg.mitom.ai/v1/models', {
+      signal: AbortSignal.timeout(4000),
       next: { revalidate: 300 },
     })
     if (res.ok) {
       const data = await res.json()
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        models = parseRawModels(data.data, multiplier)
+        rawPricingList = data.data
       }
     }
   } catch (e) {
-    console.error('Lỗi khi fetch models từ API:', e)
-    models = parseRawModels(rawModelsData, multiplier)
+    console.error('Lỗi khi fetch pricing từ API mitom:', e)
   }
 
-  // Gọi API ListUFSquareModelGuest để lấy đúng 49 model mạnh nhất có context length 999k+ (MaxModelLenNew >= 999)
-  let squareModels: ApiModel[] = []
+  // 2. Lấy danh sách model đầy đủ và chuẩn xác nhất từ API https://api.scloudsg.com/?Action=ListUFSquareModel
+  let allSquareList: any[] = []
   try {
-    const squareRes = await fetch('https://api.scloudsg.com/?Action=ListUFSquareModelGuest', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        Action: 'ListUFSquareModelGuest',
+    const squareRes = await callUCloudApi(
+      {
+        Action: 'ListUFSquareModel',
         Limit: 500,
         Offset: 0,
-      }),
-      signal: AbortSignal.timeout(4000),
-      next: { revalidate: 300 },
-    })
-    if (squareRes.ok) {
-      const squareData = await squareRes.json()
-      const list = squareData.SquareModels || []
-      const filtered49 = list.filter((m: any) => (Number(m.MaxModelLenNew) || 0) >= 999)
-      if (filtered49.length > 0) {
-        squareModels = parseSquareModels(filtered49, multiplier)
-      }
+      },
+      {
+        fetchOptions: {
+          signal: AbortSignal.timeout(6000),
+          next: { revalidate: 300 },
+        },
+      },
+    )
+
+    if (
+      squareRes &&
+      squareRes.RetCode === 0 &&
+      Array.isArray(squareRes.SquareModels) &&
+      squareRes.SquareModels.length > 0
+    ) {
+      allSquareList = squareRes.SquareModels
     }
   } catch (e) {
-    // Fallback sang dữ liệu lưu sẵn từ squareModelsData
+    console.error('Lỗi khi fetch ListUFSquareModel từ SCloudSG API:', e)
   }
 
-  if (squareModels.length === 0) {
-    const fallbackData = require('@/data/square-models.json')
-    squareModels = parseSquareModels(fallbackData, multiplier)
+  // Fallback sang dữ liệu lưu sẵn từ square-models.json nếu API không phản hồi
+  if (allSquareList.length === 0) {
+    allSquareList = squareModelsData && squareModelsData.length > 0 ? squareModelsData : []
   }
+
+  // Parse toàn bộ danh sách models đầy đủ từ API ListUFSquareModel
+  const models: ApiModel[] =
+    allSquareList.length > 0
+      ? parseSquareModels(allSquareList, multiplier, rawPricingList)
+      : parseRawModels(rawPricingList, multiplier)
+
+  // Danh sách model siêu ngữ cảnh (context length >= 999k) dành cho Hero Slider
+  const squareModels: ApiModel[] =
+    allSquareList.length > 0
+      ? parseSquareModels(
+          allSquareList.filter((m: any) => (Number(m.MaxModelLenNew) || 0) >= 999),
+          multiplier,
+          rawPricingList,
+        )
+      : models.filter((m) => (m.contextLength || 0) >= 999)
 
   const adminRoute = (await configPromise).routes?.admin || '/admin'
 

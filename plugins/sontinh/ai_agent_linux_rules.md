@@ -11,8 +11,8 @@
 - **Nền tảng công nghệ:** Python 3, FastAPI, Uvicorn, Asyncio, WebSockets Relay, Edge-TTS / gTTS, PyInstaller.
 - **Cổng dịch vụ cục bộ (Local Port):** `http://127.0.0.1:54321`
 - **🌐 Giao thức Cloudflare Tunnel & Endpoint Chính thức:**
-  - Toàn bộ chương trình `ai_agent_linux` chạy cục bộ tại cổng `54321` được **Tunnel công khai bảo mật thông qua Cloudflare Tunnel (`cloudflared`)** tới tên miền chính thức: **`https://sontinh.type.vn`**.
-  - **Tất cả kết nối từ Client App, Web Frontend, và Mobile App** BẮT BUỘC phải trỏ tới Endpoint HTTPS công khai **`https://sontinh.type.vn`** thay vì gọi trực tiếp Localhost, đảm bảo đường truyền được mã hóa SSL/TLS an toàn và đi qua hạ tầng Cloudflare.
+  - Toàn bộ chương trình `ai_agent_linux` chạy cục bộ tại cổng `54321` được **Tunnel công khai bảo mật thông qua Cloudflare Tunnel (`cloudflared`)** tới tên miền chính thức: **`https://agent.type.vn`**.
+  - **Tất cả kết nối từ Client App, Web Frontend, và Mobile App** BẮT BUỘC phải trỏ tới Endpoint HTTPS công khai **`https://agent.type.vn`** thay vì gọi trực tiếp Localhost, đảm bảo đường truyền được mã hóa SSL/TLS an toàn và đi qua hạ tầng Cloudflare.
 - **Chức năng cốt lõi:**
   1. **HTTP REST & SSE Streaming API:** Cung cấp giao diện tương tác AI chat đa phương tiện, phát âm thanh tổng hợp (TTS) theo thời gian thực.
   2. **Computer OS Automation:** Thực thi tác vụ điều khiển desktop và hệ điều hành Linux thông qua công cụ CLI (`agy` và `claude`).
@@ -28,7 +28,7 @@
 - **`--api-key`**: Khóa xác thực API.
   - Nếu truyền qua dòng lệnh: `--api-key <KEY>` (Lưu ý: Khuyên dùng biến môi trường để tránh lộ secret trong `ps` / `/proc/<pid>/cmdline`).
   - Mặc định đọc từ biến môi trường **`AI_AGENT_API_KEY`** (Nếu không truyền, mặc định là `"type-vn-local-agent-2026"`).
-  - **Cấu trúc Relay:** Nếu khóa chứa ký tự `|` và bắt đầu bằng `ws` (ví dụ: `wss://sontinh.type.vn/ws/relay|secret_123`), hệ thống sẽ tách thành 2 tham số: `RELAY_TO` (`wss://sontinh.type.vn/ws/relay`) và `SECRET_AGENT_KEY` (`secret_123`). Agent sẽ tự động kích hoạt chế độ **WebSocket Relay Client** kết nối ra máy chủ trung gian.
+  - **Cấu trúc Relay:** Nếu khóa chứa ký tự `|` và bắt đầu bằng `ws` (ví dụ: `wss://agent.type.vn/ws/relay|secret_123`), hệ thống sẽ tách thành 2 tham số: `RELAY_TO` (`wss://agent.type.vn/ws/relay`) và `SECRET_AGENT_KEY` (`secret_123`). Agent sẽ tự động kích hoạt chế độ **WebSocket Relay Client** kết nối ra máy chủ trung gian.
 
 ### 2.2. Cấu hình Xác thực cho Claude Code CLI
 Để gọi các model Anthropic Claude (`claude-3-5-sonnet`, `opus`, `haiku`,...), hệ thống ưu tiên kiểm tra xác thực theo 3 thứ tự:
@@ -86,15 +86,15 @@ Khi Agent thực hiện tác vụ mở ứng dụng GUI (như trình duyệt web
 
 ## 4. Định tuyến Endpoint API, Cloudflare Tunnel & Phân định Chức năng
 
-### 4.1. Quy tắc Định tuyến Cloudflare Tunnel (`https://sontinh.type.vn`)
+### 4.1. Quy tắc Định tuyến Cloudflare Tunnel (`https://agent.type.vn`)
 - **Tuyệt đối KHÔNG hardcode** hoặc gọi trực tiếp đến `http://127.0.0.1:54321` trên Frontend/Client.
-- Mọi yêu cầu kết nối API từ ứng dụng người dùng BẮT BUỘC phải trỏ qua tên miền chính thức tunneled qua Cloudflare: **`https://sontinh.type.vn`**.
+- Mọi yêu cầu kết nối API từ ứng dụng người dùng BẮT BUỘC phải trỏ qua tên miền chính thức tunneled qua Cloudflare: **`https://agent.type.vn`**.
 - Tất cả Yêu cầu HTTP (ngoại trừ Public Assets) **BẮT BUỘC** phải truyền Header:
   `x-api-key: <SECRET_AGENT_KEY>`
 
 ```mermaid
 graph TD
-    Client[Client App / Web / Mobile] -->|HTTPS via Cloudflare Tunnel| Domain[https://sontinh.type.vn]
+    Client[Client App / Web / Mobile] -->|HTTPS via Cloudflare Tunnel| Domain[https://agent.type.vn]
     Domain -->|Cloudflare Tunnel / cloudflared| LocalServer[Local Server 127.0.0.1:54321]
     LocalServer --> AuthCheck{Header x-api-key Valid?}
     
@@ -113,23 +113,23 @@ graph TD
 ### 4.2. Phân định Chức năng Chi tiết giữa các Endpoint
 
 #### 💬 Endpoint `/api/chat` (General Multimodal Chat)
-- **Endpoint URL:** `https://sontinh.type.vn/api/chat`
+- **Endpoint URL:** `https://agent.type.vn/api/chat`
 - **Mục đích:** Xử lý hội thoại thông thường, trả lời câu hỏi, giải toán, tóm tắt tệp, phát âm thanh đọc bài (TTS).
 - **Giao thức:** SSE (`text/event-stream`).
 - **Quy tắc Phân loại Prompt:** Nếu người dùng chỉ hỏi thông tin bình thường (thời tiết, kiến thức, lịch âm,...), Agent phải trả lời ngắn gọn bằng văn bản và **KHÔNG THỰC THI BẤT KỲ LỆNH HỆ THỐNG NÀO**.
 
 #### 🖥️ Endpoint `/api/automation` & `/api/automate` (Computer OS Automation)
-- **Endpoint URL:** `https://sontinh.type.vn/api/automation`
+- **Endpoint URL:** `https://agent.type.vn/api/automation`
 - **Mục đích:** Chuyên biệt cho tác vụ tự động hóa và điều khiển máy tính.
 - **Tự động nạp Prompt Hệ thống:** Thiết lập `is_automation=True`, bổ sung các chỉ thị bắt buộc về `systemd-run`, Opera GX, `yt-dlp`, và `ImageName` UUID.
 
 #### 🖼️ Endpoint `/api/image` & `/api/generate-image` (AI Image Generation)
-- **Endpoint URL:** `https://sontinh.type.vn/api/image`
+- **Endpoint URL:** `https://agent.type.vn/api/image`
 - **Mục đích:** Chuyên biệt cho việc tạo và sinh hình ảnh nghệ thuật AI chất lượng cao (HD, 2K, 4K).
 - **Hỗ trợ tùy chọn:** Tự động nhận diện các tham số `aspect_ratio`, `quality`, `style`, `prompt`/`description` và tự động upscale kích thước ảnh tối thiểu 2K HD.
 
 #### 🎨 Endpoint `/api/profile/scene/{username}` & Assets (3D Data Persistence)
-- **Endpoint URL:** `https://sontinh.type.vn/api/profile/scene/{username}`
+- **Endpoint URL:** `https://agent.type.vn/api/profile/scene/{username}`
 - **Vị trí lưu trữ dữ liệu:** `~/Documents/ai.type/data/profiles/{username}/`
 - **Các tệp quản lý:** `profile.json`, `character.json`, `room.json`, `animations.json`, `events.json`, `props.json`.
 - **Định tuyến Sub-endpoints:**
@@ -242,8 +242,8 @@ Hàm `update_playcanvas_3d_profile(username, patch)` xử lý cập nhật dữ 
 ## 10. WebSocket Relay Client / Server Protocol
 
 - **Relay Server Mode:** Lắng nghe tại endpoint `/ws/relay`. Quản lý mảng `connected_pcs` và bản đồ công việc `active_tasks`.
-- **Relay Client Mode:** Khởi chạy tự động trong hàm `startup_event()` nếu `RELAY_TO` được cấu hình (qua `wss://sontinh.type.vn/ws/relay`):
-  - Kết nối tới `wss://sontinh.type.vn/ws/relay?api_key=<SECRET_AGENT_KEY>`.
+- **Relay Client Mode:** Khởi chạy tự động trong hàm `startup_event()` nếu `RELAY_TO` được cấu hình (qua `wss://agent.type.vn/ws/relay`):
+  - Kết nối tới `wss://agent.type.vn/ws/relay?api_key=<SECRET_AGENT_KEY>`.
   - Nhận yêu cầu xử lý từ thiết bị di động (Mobile App).
   - Thực thi `run_agent_task_logic` cục bộ trên máy trạm Linux.
   - Stream từng chunk kết quả và trạng thái hoàn tất (`done: true`) ngược trở lại Relay Server.

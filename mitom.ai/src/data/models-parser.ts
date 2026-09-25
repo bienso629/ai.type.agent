@@ -1,5 +1,6 @@
 import rawModelsData from './models.json'
-export { rawModelsData }
+import squareModelsData from './square-models.json'
+export { rawModelsData, squareModelsData }
 
 export type ModelCategory = 'all' | 'chat' | 'code' | 'image' | 'video' | 'audio' | 'embedding' | 'doc'
 
@@ -40,7 +41,14 @@ export const MODEL_CATEGORIES: { id: ModelCategory; label: string; count?: numbe
   { id: 'doc', label: 'Tài liệu & OCR' },
 ]
 
-function getCategory(id: string): Exclude<ModelCategory, 'all'> {
+function getCategory(id: string, modelCategory?: string): Exclude<ModelCategory, 'all'> {
+  const cat = String(modelCategory || '').toLowerCase()
+  if (cat === 'video') return 'video'
+  if (cat === 'image') return 'image'
+  if (cat === 'audio') return 'audio'
+  if (cat === 'code') return 'code'
+  if (cat === 'doc') return 'doc'
+
   const lower = id.toLowerCase()
   if (
     lower.includes('video') ||
@@ -51,61 +59,79 @@ function getCategory(id: string): Exclude<ModelCategory, 'all'> {
     lower.includes('vidu') ||
     lower.includes('wan') ||
     lower.includes('hailuo') ||
+    lower.includes('pixverse') ||
+    lower.includes('seedance') ||
     lower.includes('lip-sync')
   ) {
     return 'video'
   }
-  if (lower.includes('code') || lower.includes('coder')) {
+  if (lower.includes('code') || lower.includes('coder') || lower.includes('codex')) {
     return 'code'
   }
-  if (lower.includes('image') || lower.includes('seedream')) {
+  if (
+    lower.includes('image') ||
+    lower.includes('seedream') ||
+    lower.includes('flux') ||
+    lower.includes('midjourney')
+  ) {
     return 'image'
   }
-  if (lower.includes('audio') || lower.includes('speech') || lower.includes('tts') || lower.includes('cicada')) {
+  if (
+    lower.includes('audio') ||
+    lower.includes('speech') ||
+    lower.includes('tts') ||
+    lower.includes('suno') ||
+    lower.includes('cicada') ||
+    lower.includes('elevenlabs') ||
+    lower.includes('transcribe') ||
+    lower.includes('whisper')
+  ) {
     return 'audio'
   }
   if (lower.includes('embed') || lower.includes('rerank') || lower.includes('bge')) {
     return 'embedding'
   }
-  if (lower.includes('doc') || lower.includes('extract') || lower.includes('parse') || lower.includes('mask')) {
+  if (lower.includes('doc') || lower.includes('extract') || lower.includes('parse') || lower.includes('mask') || lower.includes('easydoc')) {
     return 'doc'
   }
   return 'chat'
 }
 
-function getProvider(id: string): { provider: string; accent: string; initials: string } {
+function getProvider(id: string, manufacturer?: string): { provider: string; accent: string; initials: string } {
   const lower = id.toLowerCase()
-  if (lower.includes('deepseek')) {
+  const rawMfg = String(manufacturer || '').trim()
+
+  if (lower.includes('deepseek') || rawMfg.toLowerCase() === 'deepseek') {
     return { provider: 'DeepSeek', accent: '#0066ff', initials: 'DS' }
   }
-  if (lower.includes('glm') || lower.includes('zai-org')) {
+  if (lower.includes('glm') || lower.includes('zai-org') || rawMfg.toLowerCase().includes('zhipu')) {
     return { provider: 'Zhipu AI (GLM)', accent: '#3b82f6', initials: 'GL' }
   }
-  if (lower.includes('qwen')) {
+  if (lower.includes('qwen') || rawMfg.toLowerCase() === 'qwen' || rawMfg.toLowerCase().includes('alibaba')) {
     return { provider: 'Alibaba (Qwen)', accent: '#ff6a00', initials: 'QW' }
   }
-  if (lower.includes('doubao') || lower.includes('bytedance')) {
+  if (lower.includes('doubao') || lower.includes('bytedance') || rawMfg.toLowerCase().includes('bytedance')) {
     return { provider: 'ByteDance (Doubao)', accent: '#3b82f6', initials: 'DB' }
   }
-  if (lower.includes('kimi') || lower.includes('moonshot')) {
+  if (lower.includes('kimi') || lower.includes('moonshot') || rawMfg.toLowerCase().includes('moonshot')) {
     return { provider: 'Moonshot AI (Kimi)', accent: '#10b981', initials: 'KM' }
   }
-  if (lower.includes('minimax') || lower.includes('hailuo') || lower.includes('speech-')) {
+  if (lower.includes('minimax') || lower.includes('hailuo') || rawMfg.toLowerCase().includes('minimax')) {
     return { provider: 'MiniMax', accent: '#ef4444', initials: 'MM' }
   }
-  if (lower.includes('kling')) {
+  if (lower.includes('kling') || rawMfg.toLowerCase().includes('kuaishou')) {
     return { provider: 'Kuaishou (Kling)', accent: '#f59e0b', initials: 'KL' }
   }
-  if (lower.includes('vidu')) {
+  if (lower.includes('vidu') || rawMfg.toLowerCase().includes('shengshu') || rawMfg.toLowerCase() === 'vidu') {
     return { provider: 'ShengShu (Vidu)', accent: '#8b5cf6', initials: 'VD' }
   }
   if (lower.includes('wan')) {
     return { provider: 'Wan-AI (Alibaba)', accent: '#06b6d4', initials: 'WN' }
   }
-  if (lower.includes('ernie') || lower.includes('baidu')) {
+  if (lower.includes('ernie') || lower.includes('baidu') || rawMfg.toLowerCase().includes('baidu')) {
     return { provider: 'Baidu (ERNIE)', accent: '#2563eb', initials: 'EN' }
   }
-  if (lower.includes('bge') || lower.includes('baai')) {
+  if (lower.includes('bge') || lower.includes('baai') || rawMfg.toLowerCase().includes('baai')) {
     return { provider: 'BAAI', accent: '#64748b', initials: 'BG' }
   }
   if (lower.includes('cicada')) {
@@ -117,30 +143,36 @@ function getProvider(id: string): { provider: string; accent: string; initials: 
   if (lower.includes('happyhorse')) {
     return { provider: 'HappyHorse', accent: '#f97316', initials: 'HH' }
   }
-  if (lower.includes('mimo')) {
-    return { provider: 'Mimo AI', accent: '#a855f7', initials: 'MI' }
+  if (lower.includes('mimo') || rawMfg.toLowerCase().includes('xiaomi')) {
+    return { provider: 'Xiaomi (Mimo)', accent: '#ff6900', initials: 'XM' }
+  }
+  if (lower.includes('suno') || rawMfg.toLowerCase().includes('suno')) {
+    return { provider: 'Suno AI', accent: '#f43f5e', initials: 'SU' }
   }
   if (lower.includes('indextts') || lower.includes('indexteam')) {
     return { provider: 'IndexTeam', accent: '#6366f1', initials: 'IX' }
   }
-  if (lower.includes('gpt') || lower.includes('openai')) {
+  if (lower.includes('gpt') || lower.includes('openai') || rawMfg.toLowerCase() === 'openai') {
     return { provider: 'OpenAI', accent: '#10a37f', initials: 'OA' }
   }
-  if (lower.includes('claude') || lower.includes('anthropic')) {
+  if (lower.includes('claude') || lower.includes('anthropic') || rawMfg.toLowerCase().includes('anthropic')) {
     return { provider: 'Anthropic (Claude)', accent: '#d97706', initials: 'CL' }
   }
-  if (lower.includes('gemini') || lower.includes('google')) {
+  if (lower.includes('gemini') || lower.includes('google') || rawMfg.toLowerCase().includes('google')) {
     return { provider: 'Google (Gemini)', accent: '#4285f4', initials: 'GM' }
   }
-  if (lower.includes('grok') || lower.includes('x.ai')) {
+  if (lower.includes('grok') || lower.includes('x.ai') || rawMfg.toLowerCase().includes('x.ai')) {
     return { provider: 'xAI (Grok)', accent: '#ffffff', initials: 'GK' }
+  }
+  if (rawMfg && !hasChinese(rawMfg)) {
+    return { provider: rawMfg, accent: '#3b82f6', initials: rawMfg.slice(0, 2).toUpperCase() }
   }
   return { provider: 'UModelverse', accent: '#34d399', initials: 'AI' }
 }
 
 function getBadge(id: string): string | undefined {
   const lower = id.toLowerCase()
-  if (lower.includes('glm-5.3') || lower.includes('wan3.0') || lower.includes('deepseek-v4') || lower.includes('qwen3.8') || lower.includes('kimi-k3')) {
+  if (lower.includes('glm-5.3') || lower.includes('wan3.0') || lower.includes('deepseek-v4') || lower.includes('qwen3.8') || lower.includes('kimi-k3') || lower.includes('gpt-6') || lower.includes('opus-5-5')) {
     return 'Mới nhất'
   }
   if (lower.includes('flash') || lower.includes('turbo') || lower.includes('lightning') || lower.includes('fast')) {
@@ -329,11 +361,24 @@ function hasChinese(text: string): boolean {
   return /[\u4e00-\u9fff]/.test(text || '')
 }
 
-export function parseSquareModels(squareList: any[], multiplier: number = 1): ApiModel[] {
+export function parseSquareModels(
+  squareList: any[],
+  multiplier: number = 1,
+  rawPricingList?: any[],
+): ApiModel[] {
+  const pricingMap = new Map<string, any>()
+  if (rawPricingList && Array.isArray(rawPricingList)) {
+    for (const item of rawPricingList) {
+      if (item && item.id) {
+        pricingMap.set(String(item.id).toLowerCase(), item)
+      }
+    }
+  }
+
   return squareList.map((item) => {
     const id = item.Name || item.Id
-    const category = getCategory(id)
-    const { provider, accent, initials } = getProvider(id)
+    const category = getCategory(id, item.ModelCategory)
+    const { provider, accent, initials } = getProvider(id, item.Manufacturer)
 
     // Đảm bảo tên hãng bằng tiếng Anh / tiếng Việt, không chứa tiếng Trung
     const rawManufacturer = String(item.Manufacturer || '')
@@ -365,8 +410,21 @@ export function parseSquareModels(squareList: any[], multiplier: number = 1): Ap
       }
     }
 
-    const promptPrice = item.Pricing?.Prompt ? Number(item.Pricing.Prompt) * multiplier : 0
-    const highlightPrice = promptPrice > 0 ? `${promptPrice.toFixed(4)} CNY/1k` : 'Tính theo token'
+    // Tích hợp bảng giá chi tiết nếu khớp từ /v1/models hoặc rawModelsData
+    const matchedRaw = pricingMap.get(id.toLowerCase())
+    let conditions: ModelPricingCondition[] = []
+    let highlightPrice: string = 'Tính theo token'
+
+    if (matchedRaw?.pricing && Array.isArray(matchedRaw.pricing)) {
+      const parsedPricing = parsePricing(matchedRaw.pricing, multiplier)
+      conditions = parsedPricing.conditions
+      if (parsedPricing.highlight) {
+        highlightPrice = parsedPricing.highlight
+      }
+    } else if (item.Pricing?.Prompt) {
+      const promptPrice = Number(item.Pricing.Prompt) * multiplier
+      highlightPrice = promptPrice > 0 ? `${promptPrice.toFixed(4)} CNY/1k` : 'Tính theo token'
+    }
 
     const timestamp = Math.max(Number(item.UpdateAt) || 0, Number(item.CreateAt) || 0)
 
@@ -383,11 +441,14 @@ export function parseSquareModels(squareList: any[], multiplier: number = 1): Ap
       context: contextLabel,
       contextLength: lengthK,
       created: timestamp,
-      pricing: [],
+      pricing: conditions,
       highlightPrice,
     }
   })
 }
 
-export const ALL_MODELS: ApiModel[] = parseRawModels(rawModelsData)
+export const ALL_MODELS: ApiModel[] =
+  squareModelsData && Array.isArray(squareModelsData) && squareModelsData.length > 0
+    ? parseSquareModels(squareModelsData, 1, rawModelsData)
+    : parseRawModels(rawModelsData)
 

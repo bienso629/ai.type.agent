@@ -463,9 +463,17 @@ class DatabaseService {
         [sessionId, limit],
       );
       final questions = <String>[];
+      final systemMsgRegex = RegExp(
+        r'(?:The following is a <SYSTEM_MESSAGE>[^\n]*\n+)?<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>',
+        caseSensitive: false,
+        dotAll: true,
+      );
       for (final r in rows) {
         final raw = r['content']?.toString() ?? '';
-        final dec = _enc.decryptValue(raw).trim();
+        var dec = _enc.decryptValue(raw).trim();
+        if (dec.contains('<SYSTEM_MESSAGE>')) {
+          dec = dec.replaceAll(systemMsgRegex, '').trim();
+        }
         if (dec.isNotEmpty && !questions.contains(dec)) {
           questions.add(dec);
         }

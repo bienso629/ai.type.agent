@@ -41,7 +41,7 @@ export const FAQS = [
   },
   {
     q: 'Hệ thống hỗ trợ những dòng model AI nào?',
-    a: 'Hệ thống hỗ trợ hơn 130 model tiên tiến bao gồm DeepSeek V3/V4, GLM-5.3, Alibaba Qwen (3.5/3.7/3.8/Coder), ByteDance Doubao, Kimi K3, MiniMax Hailuo/Speech, Kling Video, ShengShu Vidu, Wan-AI và nhiều model chuyên dụng khác.',
+    a: 'Hệ thống hỗ trợ hơn 260 model tiên tiến bao gồm Claude Opus 5.5, GPT-6 (Luna, Sol, Astra), Gemini 3.8 Flash, DeepSeek V3/V4/V4.1, GLM-5.3, Alibaba Qwen (3.5/3.7/3.8/Coder), ByteDance Doubao, Kimi K3, MiniMax, Kling Video, ShengShu Vidu, Wan-AI, Suno v6 và nhiều model chuyên dụng khác.',
   },
   {
     q: 'Thanh toán và nạp tiền bằng cách nào?',
@@ -99,7 +99,7 @@ export function HeroModelSlider({
   if (!currentModel) return null
 
   return (
-    <div className="w-full max-w-md lg:max-w-lg rounded-md border border-border/80 bg-card p-6 md:p-7 shadow-2xl shadow-black/40 relative overflow-hidden transition-all duration-300">
+    <div className="w-full max-w-md lg:max-w-lg rounded-xl border border-border/80 bg-card p-6 md:p-7 shadow-2xl shadow-black/40 relative overflow-hidden transition-all duration-300">
       {/* Background glow theo màu accent của model */}
       <div
         className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full opacity-20 blur-3xl transition-all duration-500"
@@ -110,10 +110,7 @@ export function HeroModelSlider({
       <div className="flex items-center justify-between pb-4 border-b border-border/60">
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
-            Mô hình mới nhất
-          </span>
-          <span className="rounded bg-emerald/15 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald">
-            Context 999k+
+            Mới & Chất
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -335,23 +332,14 @@ function TopUpPage({
   if (!user) {
     return (
       <main className="mx-auto max-w-7xl px-5 py-16 md:px-8">
-        <button
-          onClick={() => onNavigate('home')}
-          className="group mb-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className="transition-transform group-hover:-translate-x-1"
+        <div className="mb-6 flex items-center justify-between">
+          <button
+            onClick={() => onNavigate('home')}
+            className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
           >
-            <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Quay lại trang chủ
-        </button>
+            <ChevronLeft size={16} /> Quay lại trang chủ
+          </button>
+        </div>
 
         <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-2xl">
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
@@ -382,23 +370,14 @@ function TopUpPage({
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-12 md:px-8">
-      <button
-        onClick={() => onNavigate('home')}
-        className="group mb-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="transition-transform group-hover:-translate-x-1"
+      <div className="mb-6 flex items-center justify-between">
+        <button
+          onClick={() => onNavigate('home')}
+          className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
         >
-          <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        Quay lại trang chủ
-      </button>
+          <ChevronLeft size={16} /> Quay lại trang chủ
+        </button>
+      </div>
 
       <div className="mb-8">
         <span className="font-mono text-xs uppercase tracking-widest text-primary">// Xác nhận nạp tiền</span>
@@ -441,7 +420,7 @@ function TopUpPage({
                   <span className="block text-xs font-semibold text-muted-foreground mb-2">
                     Đối tượng xuất hóa đơn VAT (10%)
                   </span>
-                  <div className="flex rounded-lg bg-black/80 p-1.5 gap-1.5 shadow-inner">
+                  <div className="flex rounded-xl bg-black/80 p-1.5 gap-1.5 shadow-inner">
                     <button
                       type="button"
                       onClick={() => setCustomerType('personal')}
@@ -912,7 +891,7 @@ function OrderLookupModal({
         </form>
 
         {error && (
-          <div className="mt-4 rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
+          <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
             {error}
           </div>
         )}
@@ -1132,7 +1111,7 @@ export function FrontendApp({
           <div className="md:col-span-1">
             <Logo onClick={() => navigate('home')} />
             <p className="mt-4 max-w-xs text-sm text-muted-foreground">
-              Cổng API AI hiệu năng cao, cung cấp hơn 130 model tiên tiến. Nạp số dư một lần, dùng mọi model qua OpenAI SDK.
+              Cổng API AI hiệu năng cao, cung cấp hơn 260 model tiên tiến. Nạp số dư một lần, dùng mọi model qua OpenAI SDK.
             </p>
           </div>
           <div>
@@ -1306,10 +1285,10 @@ function HomePage({
           {[
             ['01', 'Nạp số dư tài khoản', 'Chọn gói nạp và quét mã thanh toán qua VietQR, Momo hoặc ZaloPay.'],
             ['02', 'Lấy API Key & Endpoint', 'Nhận API Key kích hoạt và cấu hình Endpoint vào ứng dụng của bạn.'],
-            ['03', 'Chọn Model tương thích', 'Sao chép mã Model từ danh mục (hơn 130 models) và đưa vào cấu hình.'],
+            ['03', 'Chọn Model tương thích', 'Sao chép mã Model từ danh mục (hơn 260 models) và đưa vào cấu hình.'],
             ['04', 'Gọi API & Tối ưu', 'Trừ theo lượng token/lượt sinh thực tế, hỗ trợ kỹ thuật 24/7 khi cần.'],
           ].map(([n, t, d]) => (
-            <div key={n} className="relative rounded-md border border-border/80 bg-card/60 p-6">
+            <div key={n} className="relative rounded-xl border border-border/80 bg-card/60 p-6">
               <span className="font-mono text-3xl font-bold text-primary/30">{n}</span>
               <h3 className="mt-3 font-display text-lg font-bold">{t}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{d}</p>
@@ -1337,7 +1316,7 @@ function HomePage({
               return (
                 <div
                   key={t.amount}
-                  className={`relative flex flex-col rounded-md border p-6 transition-transform hover:-translate-y-1 ${
+                  className={`relative flex flex-col rounded-xl border p-6 transition-transform hover:-translate-y-1 ${
                     t.highlight ? 'border-primary/80 bg-card shadow-xl shadow-primary/5' : 'border-border/80 bg-card/70'
                   }`}
                 >
@@ -1380,7 +1359,7 @@ function HomePage({
               ['Tính theo lượt gọi thực tế', 'Mỗi lượt gọi API được trừ chính xác vào số dư theo bảng giá niêm yết.'],
               ['Nạp thêm tự động trong 30 giây', 'Nạp qua VietQR, Momo hay ZaloPay được kích hoạt tức thì 24/7.'],
             ].map(([t, d]) => (
-              <div key={t} className="flex gap-3 rounded-md border border-border/70 bg-card/60 p-5">
+              <div key={t} className="flex gap-3 rounded-xl border border-border/70 bg-card/60 p-5">
                 <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-xs bg-primary/15 text-primary">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
@@ -1406,7 +1385,7 @@ function HomePage({
               Chưa tìm thấy câu trả lời? <a href={ZALO} target="_blank" rel="noreferrer" className="font-semibold text-primary underline underline-offset-4 hover:opacity-80">Nhắn Zalo hỗ trợ ngay</a> để được đội ngũ kỹ thuật hỗ trợ.
             </p>
           </div>
-          <div className="divide-y divide-border/60 rounded-md border border-border/70 bg-card/70">
+          <div className="divide-y divide-border/60 rounded-xl border border-border/70 bg-card/70">
             {FAQS.map((item, i) => (
               <button
                 key={item.q}

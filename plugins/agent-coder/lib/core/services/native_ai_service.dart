@@ -21,6 +21,17 @@ class NativeAiService {
   final DatabaseService _dbService = DatabaseService();
   final NativeSshService _sshService = NativeSshService();
 
+  static final RegExp _systemMessageRegex = RegExp(
+    r'(?:The following is a <SYSTEM_MESSAGE>[^\n]*\n+)?<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
+  static String stripSystemMessages(String text) {
+    if (!text.contains('<SYSTEM_MESSAGE>')) return text;
+    return text.replaceAll(_systemMessageRegex, '').trim();
+  }
+
   static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
 Bạn có quyền thực thi lệnh bash/shell/terminal thực tế qua công cụ `execute_terminal_command`.
 
@@ -191,15 +202,16 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             onStatus: onStatus,
             onTool: onTool,
             onDone: (reply) async {
+              final cleanReply = stripSystemMessages(reply);
               final assistantMsg = ChatMessageModel(
                 sessionId: sessionId,
                 role: 'assistant',
-                content: reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.',
+                content: cleanReply.isNotEmpty ? cleanReply : 'Đã hoàn tất tác vụ với $targetModel.',
                 model: targetModel,
                 createdAt: DateTime.now(),
               );
               await _dbService.insertMessage(assistantMsg);
-              onDone(reply.isNotEmpty ? reply : 'Đã hoàn tất tác vụ với $targetModel.');
+              onDone(cleanReply.isNotEmpty ? cleanReply : 'Đã hoàn tất tác vụ với $targetModel.');
             },
             onError: onError,
             isCancelled: () => isCancelled,
@@ -652,8 +664,9 @@ fi
           await _dbService.setCliConversationId(sessionId, foundConv);
         }
       }
-      onToken(result);
-      onDone(result);
+      final cleanRes = stripSystemMessages(result);
+      onToken(cleanRes);
+      onDone(cleanRes);
       return;
     }
 
@@ -794,7 +807,8 @@ fi
       void finishSession([String? fallbackReply]) {
         if (hasFinished) return;
         hasFinished = true;
-        final result = fullOutput.toString().trim();
+        final rawResult = fullOutput.toString().trim();
+        final result = stripSystemMessages(rawResult);
         onDone(result.isNotEmpty ? result : (fallbackReply ?? 'Đã hoàn tất tác vụ với $cliName.'));
         try {
           process.kill();

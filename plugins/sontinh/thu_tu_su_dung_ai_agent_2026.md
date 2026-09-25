@@ -26,17 +26,17 @@ Hệ thống chia làm **4 nhóm API chuyên biệt**:
 
 ## 📌 THỨ TỰ ƯU TIÊN GỌI AI CHO `/api/chat`, `/api/automation` VÀ `/api/image` (PRIORITY ORDER)
 
-### 🥇 1. Ưu tiên số 1: Sơn Tinh Agent (`https://sontinh.type.vn`)
-- **Dịch vụ**: AI Agent Sơn Tinh (`https://sontinh.type.vn`).
+### 🥇 1. Ưu tiên số 1: Sơn Tinh Agent (`https://agent.type.vn`)
+- **Dịch vụ**: AI Agent Sơn Tinh (`https://agent.type.vn`).
 - **Nơi bật/tắt & Cấu hình**: **Cài đặt -> Plugins -> AI Agent**.
-- **Quy tắc**: Khi tính năng **AI Agent** được BẬT trong cài đặt (`isAiAgentActive = true`), **LUÔN LUÔN ƯU TIÊN SỬ DỤNG** `https://sontinh.type.vn` đầu tiên cho mọi thao tác sinh nội dung AI. Bắt buộc ép cứng model `gemini-3.6-flash`. Nếu Tầng 1 gặp lỗi, **KHÔNG FALLBACK** sang Tầng 2.
+- **Quy tắc**: Khi tính năng **AI Agent** được BẬT trong cài đặt (`isAiAgentActive = true`), **LUÔN LUÔN ƯU TIÊN SỬ DỤNG** `https://agent.type.vn` đầu tiên cho mọi thao tác sinh nội dung AI. Bắt buộc ép cứng model `gemini-3.6-flash`. Nếu Tầng 1 gặp lỗi, **KHÔNG FALLBACK** sang Tầng 2.
 
 ---
 
 ### 🥈 2. Ưu tiên số 2: Mì Tôm AI (Backend ChatGPT API)
 - **Dịch vụ**: Mì Tôm AI (Endpoint `/blog/chatgpt/2025/answear` - ChatGPT API).
 - **Nơi bật/tắt & Cấu hình**: **Cài đặt -> Tài khoản -> AI tab** (Khu vực Nâng cao của cấu hình Mì Tôm AI).
-- **Quy tắc**: Chỉ sử dụng Mì Tôm AI khi **Sơn Tinh Agent (`sontinh.type.vn`) đang bị TẮT**, và Mì Tôm AI đang ở trạng thái **BẬT**.
+- **Quy tắc**: Chỉ sử dụng Mì Tôm AI khi **Sơn Tinh Agent (`agent.type.vn`) đang bị TẮT**, và Mì Tôm AI đang ở trạng thái **BẬT**.
 
 ---
 
@@ -62,7 +62,7 @@ Hệ thống chia làm **4 nhóm API chuyên biệt**:
                   BẬT│                                 │TẮT
                      ▼                                 ▼
       ┌─────────────────────────────┐   ┌───────────────────────────────────────────┐
-      │ Dùng https://sontinh.type.vn│   │ Kiểm tra: Mì Tôm AI có được BẬT không?   │
+      │ Dùng https://agent.type.vn│   │ Kiểm tra: Mì Tôm AI có được BẬT không?   │
       │     (Sơn Tinh AI Agent)     │   │(Cài đặt -> Tài khoản -> AI -> Nâng cao)  │
       └─────────────────────────────┘   └─────────────────────┬─────────────────────┘
                                                               │

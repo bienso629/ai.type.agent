@@ -247,7 +247,7 @@ export function LoginModal({
                 <ArrowLeft size={18} />
               </button>
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
                 <Image src="/logo.png" alt="Logo" width={24} height={24} className="object-contain" />
               </div>
             )}
@@ -277,14 +277,14 @@ export function LoginModal({
         {/* Nội dung Modal Form */}
         <div className="p-6">
           {errorMessage && (
-            <div className="mb-4 flex items-start gap-2.5 rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
               <AlertCircle size={16} className="shrink-0 text-rose-400 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {successMessage && (
-            <div className="mb-4 flex items-start gap-2.5 rounded-md border border-emerald-500/40 bg-emerald-500/15 p-3 text-xs text-emerald-500 font-medium">
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 p-3 text-xs text-emerald-500 font-medium">
               <CheckCircle2 size={16} className="shrink-0 text-emerald-500 mt-0.5" />
               <span>{successMessage}</span>
             </div>

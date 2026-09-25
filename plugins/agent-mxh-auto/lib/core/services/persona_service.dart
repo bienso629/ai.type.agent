@@ -14,25 +14,53 @@ class PersonaService {
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
   final Map<String, PersonaProfile> _cachedPersonas = {};
+  String? _currentUserKey;
   bool _isLoaded = false;
 
-  String get _storageFilePath {
+  void switchUser(String? userKey) {
+    if (_currentUserKey != userKey) {
+      _currentUserKey = userKey;
+      _cachedPersonas.clear();
+      _isLoaded = false;
+    }
+  }
+
+  void clearCache() {
+    _cachedPersonas.clear();
+    _isLoaded = false;
+  }
+
+  List<String> get _candidateStoragePaths {
     final home = Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         Directory.systemTemp.path;
-    final dir = p.join(home, '.agent_mxh_auto');
-    if (!Directory(dir).existsSync()) {
+    final primaryDir = p.join(home, '.agent_mxh_auto');
+    if (!Directory(primaryDir).existsSync()) {
       try {
-        Directory(dir).createSync(recursive: true);
+        Directory(primaryDir).createSync(recursive: true);
       } catch (_) {}
     }
-    return p.join(dir, 'personas.json');
+    final key = _currentUserKey ?? '';
+    final list = <String>[];
+    if (key.isNotEmpty) {
+      list.add(p.join(primaryDir, 'personas_$key.json'));
+    }
+    list.add(p.join(primaryDir, 'personas.json'));
+    list.add(p.join(home, '.tadu_ai_agent', 'personas.json'));
+    list.add(p.join(Directory.current.path, 'personas.json'));
+    return list;
   }
 
+  String get _storageFilePath => _candidateStoragePaths.first;
+
   /// Nạp danh sách nhân vật từ database local của app (fallback json nếu chưa có trong DB)
-  Future<Map<String, PersonaProfile>> loadSavedPersonas() async {
-    if (_isLoaded && _cachedPersonas.isNotEmpty) {
+  Future<Map<String, PersonaProfile>> loadSavedPersonas({bool forceReload = false}) async {
+    if (!forceReload && _isLoaded && _cachedPersonas.isNotEmpty) {
       return Map.unmodifiable(_cachedPersonas);
+    }
+
+    if (forceReload) {
+      _cachedPersonas.clear();
     }
 
     try {
@@ -43,31 +71,47 @@ class PersonaService {
       }
     } catch (_) {}
 
-    // 2. Đồng bộ thêm từ file JSON nếu database còn thiếu profile nào
-    try {
-      final file = File(_storageFilePath);
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        if (content.trim().isNotEmpty) {
-          final decoded = jsonDecode(content);
-          if (decoded is Map<String, dynamic>) {
-            final toInsertToDb = <PersonaProfile>[];
-            decoded.forEach((ip, val) {
-              if (val is Map<String, dynamic>) {
-                final p = PersonaProfile.fromJson(val);
-                if (!_cachedPersonas.containsKey(ip)) {
-                  _cachedPersonas[ip] = p;
-                  toInsertToDb.add(p);
+    // 2. Đồng bộ thêm từ các file JSON dự phòng nếu database còn thiếu profile nào
+    for (final path in _candidateStoragePaths) {
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          final content = await file.readAsString();
+          if (content.trim().isNotEmpty) {
+            final decoded = jsonDecode(content);
+            if (decoded is Map<String, dynamic>) {
+              final toInsertToDb = <PersonaProfile>[];
+              decoded.forEach((ip, val) {
+                if (val is Map<String, dynamic>) {
+                  final p = PersonaProfile.fromJson(val);
+                  if (!_cachedPersonas.containsKey(ip)) {
+                    _cachedPersonas[ip] = p;
+                    toInsertToDb.add(p);
+                  }
                 }
+              });
+              if (toInsertToDb.isNotEmpty) {
+                await _dbService.batchUpsertPersonaProfiles(toInsertToDb);
               }
-            });
-            if (toInsertToDb.isNotEmpty) {
-              await _dbService.batchUpsertPersonaProfiles(toInsertToDb);
             }
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
+
+    // 3. Nếu DB có profiles mà file JSON chính chưa có thì đồng bộ ngược lại JSON
+    if (_cachedPersonas.isNotEmpty) {
+      try {
+        final mainFile = File(_storageFilePath);
+        if (!await mainFile.exists()) {
+          final mapToSave = <String, dynamic>{};
+          _cachedPersonas.forEach((ip, profile) {
+            mapToSave[ip] = profile.toJson();
+          });
+          await mainFile.writeAsString(const JsonEncoder.withIndent('  ').convert(mapToSave));
+        }
+      } catch (_) {}
+    }
 
     _isLoaded = true;
     return Map.unmodifiable(_cachedPersonas);
@@ -113,6 +157,8 @@ class PersonaService {
   PersonaProfile? getPersona(String ip) {
     return _cachedPersonas[ip];
   }
+
+  Map<String, PersonaProfile> get allPersonas => Map.unmodifiable(_cachedPersonas);
 
   Future<Map<String, PersonaProfile>> generatePersonas({
     required List<String> ips,

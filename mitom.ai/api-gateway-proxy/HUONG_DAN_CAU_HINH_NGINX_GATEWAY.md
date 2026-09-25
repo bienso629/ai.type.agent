@@ -42,7 +42,25 @@ Tại ô **Additional nginx directives**, xóa hết các nội dung cũ và dá
 resolver 8.8.8.8 1.1.1.1 valid=300s ipv6=off;
 resolver_timeout 5s;
 
-# 2. Bat toan bo cac duong dan bat dau tu /
+# 2. Tu dong dieu huong yeu cau Action=ListUFSquareModel sang /v1/models
+if ($arg_Action = "ListUFSquareModel") {
+    rewrite ^ /v1/models?Action=ListUFSquareModel last;
+}
+
+# 3. Bat rieng yeu cau /v1/models va /models de lay day du 260 model tu wrapper backend
+location ~* ^/(v1/)?models {
+    proxy_pass http://127.0.0.1:30000;
+    proxy_set_header Host mitom.ai;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_connect_timeout 10s;
+    proxy_read_timeout 30s;
+    proxy_send_timeout 30s;
+}
+
+# 4. Bat toan bo cac duong dan con lai (chat/completions, embeddings,...) chuyen tiep sang upstream
 location / {
     # Chuyen tiep sang upstream umodelverse
     proxy_pass https://api-us-ca.umodelverse.ai;

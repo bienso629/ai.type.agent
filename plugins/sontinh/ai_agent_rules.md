@@ -36,7 +36,7 @@ Các endpoint: `/api/profile/scene/{username}` và `/api/profile/scene/assets/{u
 
 ## 2. Định tuyến Máy chủ (Endpoint Routing)
 - **Tuyệt đối KHÔNG hardcode** hoặc gọi trực tiếp đến `apiv3.type.vn`. Mọi kết nối API (nếu có) phải được đọc động từ cấu hình: `config.settings.api[user.server]`.
-- Mọi lời gọi API đang trỏ tới Localhost (ví dụ: `http://127.0.0.1:54321`) phải được chuyển hướng toàn bộ sang endpoint chính thức của AI Agent plugin là: **`https://sontinh.type.vn`**.
+- Mọi lời gọi API đang trỏ tới Localhost (ví dụ: `http://127.0.0.1:54321`) phải được chuyển hướng toàn bộ sang endpoint chính thức của AI Agent plugin là: **`https://agent.type.vn`**.
 
 ---
 

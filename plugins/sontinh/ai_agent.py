@@ -44,13 +44,25 @@ SERVER_PORT = args.port or int(os.environ.get("PORT") or os.environ.get("AI_AGEN
 
 # --api-key được ưu tiên nếu truyền qua argv (tương thích ngược); mặc định đọc từ
 # biến môi trường AI_AGENT_API_KEY để tránh hiện secret trong `ps`/`/proc/<pid>/cmdline`.
-api_key_arg = args.api_key or os.environ.get("AI_AGENT_API_KEY") or "type-vn-local-agent-2026"
+api_key_arg = (args.api_key or os.environ.get("AI_AGENT_API_KEY") or "type-vn-local-agent-2026").strip()
 if "|" in api_key_arg and api_key_arg.startswith("ws"):
-    RELAY_TO = api_key_arg.split("|")[0]
-    SECRET_AGENT_KEY = api_key_arg.split("|")[1]
+    RELAY_TO = api_key_arg.split("|")[0].strip()
+    SECRET_AGENT_KEY = api_key_arg.split("|")[1].strip()
 else:
     RELAY_TO = None
     SECRET_AGENT_KEY = api_key_arg
+
+def is_authorized_key(key: Optional[str]) -> bool:
+    """Xác thực API key an toàn, hỗ trợ loại bỏ khoảng trắng và fallback."""
+    if not key:
+        return False
+    clean_key = key.strip()
+    if clean_key == SECRET_AGENT_KEY:
+        return True
+    # Hỗ trợ trường hợp client truyền kèm URL prefix (ví dụ: https://agent.type.vn|key)
+    if "|" in clean_key and clean_key.split("|")[-1].strip() == SECRET_AGENT_KEY:
+        return True
+    return False
 
 # Claude CLI cần một trong các cách xác thực sau (ưu tiên theo thứ tự):
 # 1. ANTHROPIC_AUTH_TOKEN + ANTHROPIC_BASE_URL (proxy/gateway, ví dụ Umodelverse).
@@ -1249,7 +1261,7 @@ async def chat_endpoint(request: Request):
     API Chuyên biệt cho Trò chuyện & Sinh nội dung AI tổng quát (General AI Chat).
     """
     x_api_key = request.headers.get("x-api-key")
-    if x_api_key != SECRET_AGENT_KEY:
+    if not is_authorized_key(x_api_key):
         raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
     try:
         req_data = await extract_request_data(request, default_sys_instruction="Bạn là trợ lý AI.", default_is_automation=False)
@@ -1265,7 +1277,7 @@ async def automation_endpoint(request: Request):
     Tách biệt hoàn toàn với /api/chat để thực thi các tác vụ điều khiển desktop và hệ thống.
     """
     x_api_key = request.headers.get("x-api-key")
-    if x_api_key != SECRET_AGENT_KEY:
+    if not is_authorized_key(x_api_key):
         raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
     try:
         req_data = await extract_request_data(request, default_sys_instruction="Bạn là AI Agent tự động hóa hệ thống máy tính.", default_is_automation=True)
@@ -1281,7 +1293,7 @@ async def image_endpoint(request: Request):
     Tách biệt hoàn toàn với /api/chat để thực thi việc tạo hình ảnh chất lượng cao 2K/4K.
     """
     x_api_key = request.headers.get("x-api-key")
-    if x_api_key != SECRET_AGENT_KEY:
+    if not is_authorized_key(x_api_key):
         raise HTTPException(status_code=401, detail="Unauthorized: Sai hoặc thiếu API Key (x-api-key)")
     try:
         req_data = await extract_request_data(
@@ -1343,7 +1355,7 @@ import datetime
 async def get_profile_scene(username: str, request: Request):
     """Lấy profile data của user (character, scene settings, customizations)."""
     x_api_key = request.headers.get("x-api-key")
-    if x_api_key != SECRET_AGENT_KEY:
+    if not is_authorized_key(x_api_key):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     profile_path = _profile_json_path(username)
@@ -1377,7 +1389,7 @@ async def get_profile_scene(username: str, request: Request):
 async def put_profile_scene(username: str, request: Request):
     """Lưu và đồng bộ profile data 3D của user vào profile.json và các tệp cấu hình 3D phụ."""
     x_api_key = request.headers.get("x-api-key")
-    if x_api_key != SECRET_AGENT_KEY:
+    if not is_authorized_key(x_api_key):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     body = await request.json()
@@ -1388,7 +1400,7 @@ async def put_profile_scene(username: str, request: Request):
 async def upload_profile_asset(username: str, filename: str, request: Request, file: UploadFile = File(...)):
     """Upload asset file (GLB character, texture...) vào thư mục profile của user."""
     x_api_key = request.headers.get("x-api-key")
-    if x_api_key != SECRET_AGENT_KEY:
+    if not is_authorized_key(x_api_key):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     # Chỉ cho phép một số extension an toàn
