@@ -81,19 +81,30 @@ class NativeSshService {
   }
 
   Future<String> executeCommand(String command, {String? workingDir, int timeoutSeconds = 60, ServerModel? server}) async {
+    SSHClient? client;
     try {
-      final client = await getClient(server: server);
+      client = await getClient(server: server);
       const envPrefix = 'export PATH="\$HOME/.local/bin:\$HOME/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"; ';
       String fullCmd = '$envPrefix$command';
       if (workingDir != null && workingDir.isNotEmpty) {
         fullCmd = 'cd "$workingDir" 2>/dev/null; $envPrefix$command';
       }
       final result = await client.run(fullCmd).timeout(Duration(seconds: timeoutSeconds));
-      client.close();
       final output = utf8.decode(result).trim();
       return output.isNotEmpty ? output : 'Lệnh chạy thành công, không có output.';
+    } on TimeoutException {
+      final sName = server?.name ?? 'Máy chủ';
+      final minutes = (timeoutSeconds / 60).toStringAsFixed(timeoutSeconds % 60 == 0 ? 0 : 1);
+      return 'LỖI THỜI GIAN CHỜ (TIMEOUT EXCEEDED):\n'
+          '- Thao tác thực thi trên máy chủ $sName đã vượt quá giới hạn thời gian chờ cho phép ($timeoutSeconds giây / $minutes phút).\n'
+          '- Nguyên nhân: Quá trình Agent xử lý/suy luận/chạy lệnh trên máy chủ mất nhiều thời gian hơn dự kiến, hoặc lệnh bị treo/đợi tương tác người dùng.\n'
+          '- Giải pháp: Vui lòng kiểm tra lại tiến trình trên máy chủ (qua SSH hoặc htop/ps) hoặc thử chia nhỏ yêu cầu lập trình.';
     } catch (e) {
       return 'Lỗi thực thi lệnh: $e';
+    } finally {
+      try {
+        client?.close();
+      } catch (_) {}
     }
   }
 

@@ -177,7 +177,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isPastingImage = false;
   DateTime _lastPasteTime = DateTime.fromMillisecondsSinceEpoch(0);
 
-  Future<void> _checkAndPasteClipboardImage() async {
+  Future<void> _checkAndPasteClipboardImage({bool manualTrigger = false}) async {
     final now = DateTime.now();
     if (_isPastingImage || now.difference(_lastPasteTime).inMilliseconds < 800) {
       return;
@@ -200,7 +200,11 @@ class _ChatScreenState extends State<ChatScreen> {
           });
           AppToast.success(context, 'Đã đính kèm ảnh chụp màn hình (${img.name})');
           _uploadAttachment(targetIdx);
+        } else {
+          AppToast.info(context, 'Ảnh chụp màn hình này đã có trong danh sách đính kèm');
         }
+      } else if (mounted && manualTrigger) {
+        AppToast.warning(context, 'Không tìm thấy ảnh chụp màn hình trong Clipboard (hãy chụp hoặc copy ảnh trước)');
       }
     } finally {
       _isPastingImage = false;

@@ -27,9 +27,25 @@ class NativeAiService {
     dotAll: true,
   );
 
+  static final RegExp _attachmentEchoRegex = RegExp(
+    r'=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===[\s\S]*?=== HẾT PHẦN ĐÍNH KÈM ===',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
   static String stripSystemMessages(String text) {
-    if (!text.contains('<SYSTEM_MESSAGE>')) return text;
-    return text.replaceAll(_systemMessageRegex, '').trim();
+    var cleaned = text;
+    if (cleaned.contains('<SYSTEM_MESSAGE>')) {
+      cleaned = cleaned.replaceAll(_systemMessageRegex, '');
+    }
+    // Nếu toàn bộ phản hồi chỉ là việc echo lại đoạn thông tin tệp đính kèm, xóa bỏ hoặc làm sạch
+    if (cleaned.contains('=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===')) {
+      final stripped = cleaned.replaceAll(_attachmentEchoRegex, '').trim();
+      if (stripped.isNotEmpty) {
+        cleaned = stripped;
+      }
+    }
+    return cleaned.trim();
   }
 
   static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
@@ -132,6 +148,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       } else {
         return 'Lệnh chạy thành công (Mã thoát: ${result.exitCode})';
       }
+    } on TimeoutException {
+      final minutes = (timeoutSeconds / 60).toStringAsFixed(timeoutSeconds % 60 == 0 ? 0 : 1);
+      return 'LỖI THỜI GIAN CHỜ CỤC BỘ (TIMEOUT EXCEEDED):\n'
+          '- Lệnh thực thi cục bộ đã vượt quá giới hạn thời gian chờ ($timeoutSeconds giây / $minutes phút).\n'
+          '- Quá trình xử lý bị hủy do quá thời gian cho phép.';
     } catch (e) {
       return 'Lỗi thực thi lệnh cục bộ: $e';
     }
@@ -194,6 +215,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             sessionId: sessionId,
             cliName: targetModel,
             prompt: message,
+            attachments: attachments,
             history: history,
             workingDir: workingDir,
             docFiles: docFiles,
@@ -274,19 +296,52 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
         // Format user message with attachments
         String fullUserPrompt = message;
+        dynamic userMessageContent;
         if (attachments != null && attachments.isNotEmpty) {
-          fullUserPrompt += '\n\n=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===';
+          final textBuffer = StringBuffer(message);
+          textBuffer.writeln('\n\n=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===');
+          final contentParts = <Map<String, dynamic>>[];
+
           for (final att in attachments) {
+            final locDesc = att.remotePath != null && att.remotePath!.isNotEmpty
+                ? 'Đường dẫn tệp trên VPS: `${att.remotePath}`'
+                : (att.path != null && att.path!.isNotEmpty ? 'Đường dẫn tệp cục bộ: `${att.path}`' : '');
             if (att.isImage) {
-              fullUserPrompt += '\n\n--- [Ảnh: ${att.name}] --- (Người dùng đính kèm ảnh)';
+              textBuffer.writeln('\n--- [Ảnh đính kèm: ${att.name}] ---');
+              if (locDesc.isNotEmpty) textBuffer.writeln(locDesc);
+              textBuffer.writeln('Người dùng đã đính kèm ảnh chụp màn hình/hình ảnh này. Hãy xem xét nội dung bức ảnh.');
+
+              // If content has base64 data URI (data:image/...;base64,...), include in vision payload
+              if (att.content.startsWith('data:image/')) {
+                contentParts.add({
+                  'type': 'image_url',
+                  'image_url': {
+                    'url': att.content,
+                  },
+                });
+              }
             } else {
-              fullUserPrompt += '\n\n--- [Tệp: ${att.name}] ---\n${att.content}';
+              textBuffer.writeln('\n--- [Tệp đính kèm: ${att.name}] ---');
+              if (locDesc.isNotEmpty) textBuffer.writeln(locDesc);
+              textBuffer.writeln(att.content);
             }
           }
+
+          if (contentParts.isNotEmpty) {
+            contentParts.insert(0, {
+              'type': 'text',
+              'text': textBuffer.toString(),
+            });
+            userMessageContent = contentParts;
+          } else {
+            userMessageContent = textBuffer.toString();
+          }
+        } else {
+          userMessageContent = fullUserPrompt;
         }
 
         // Add current user message
-        messages.add({'role': 'user', 'content': fullUserPrompt});
+        messages.add({'role': 'user', 'content': userMessageContent});
 
         final tools = [
           {
@@ -584,6 +639,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     required String sessionId,
     required String cliName,
     required String prompt,
+    List<AttachmentItem>? attachments,
     List<Map<String, dynamic>>? history,
     String? workingDir,
     List<String>? docFiles,
@@ -604,6 +660,32 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     // Check if we have an existing persistent CLI conversation ID for this session
     String? cliConvId = await _dbService.getCliConversationId(sessionId);
 
+    // Build attachments instruction text if attachments exist
+    String attachmentPromptBlock = '';
+    if (attachments != null && attachments.isNotEmpty) {
+      final attBuf = StringBuffer();
+      attBuf.writeln('\n=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===');
+      for (final att in attachments) {
+        final loc = att.remotePath != null && att.remotePath!.isNotEmpty
+            ? 'Đường dẫn tệp trên VPS: `${att.remotePath}`'
+            : (att.path != null && att.path!.isNotEmpty ? 'Đường dẫn tệp cục bộ: `${att.path}`' : '');
+        if (att.isImage) {
+          attBuf.writeln('\n- [Ảnh: ${att.name}]');
+          if (loc.isNotEmpty) attBuf.writeln('  $loc');
+          attBuf.writeln('  Người dùng đã đính kèm ảnh này. Agent hãy dùng công cụ/tool đọc tệp hoặc xem ảnh tại đường dẫn trên để nắm bắt thông tin giao diện hoặc lỗi và xử lý trực tiếp.');
+        } else {
+          attBuf.writeln('\n- [Tệp: ${att.name}]');
+          if (loc.isNotEmpty) attBuf.writeln('  $loc');
+          if (att.content.isNotEmpty && !att.content.startsWith('data:')) {
+            attBuf.writeln('  Nội dung tệp:\n${att.content}');
+          }
+        }
+      }
+      attBuf.writeln('\n[YÊU CẦU XỬ LÝ ĐÍNH KÈM]: Agent hãy chủ động đọc, phân tích tệp/ảnh tại đường dẫn trên để giải quyết yêu cầu của người dùng. TUYỆT ĐỐI KHÔNG lặp lại hoặc in lại đoạn văn bản "=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===" này trong câu trả lời.');
+      attBuf.writeln('=== HẾT PHẦN ĐÍNH KÈM ===\n');
+      attachmentPromptBlock = attBuf.toString();
+    }
+
     if (targetServerModel != null) {
       final configuredBinary = targetServerModel.cliBinary.isNotEmpty ? targetServerModel.cliBinary : 'agy';
       
@@ -621,7 +703,10 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
           ? customPromptTemplate.trim()
           : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn. Tuyệt đối không đọc, truy cập hoặc làm lộ các file cấu hình config*.json, .env hay credential của hệ thống và người dùng)';
-      final cleanPrompt = '$prompt\n\n$promptSuffix';
+      final effectivePrompt = attachmentPromptBlock.isNotEmpty
+          ? '$prompt\n\n$attachmentPromptBlock\n$promptSuffix'
+          : '$prompt\n\n$promptSuffix';
+      final cleanPrompt = effectivePrompt;
       final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
 
       String remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
@@ -656,7 +741,7 @@ else
   echo "- Hoặc nếu máy chủ chạy dịch vụ systemd (ai-agent.service), hãy chuyển cấu hình máy chủ sang 'Chế độ 1: Dịch vụ AI Agent (Systemd)'."
 fi
 ''';
-      final result = await _executeCommand(cmd, workingDir: workingDir, server: targetServerModel);
+      final result = await _executeCommand(cmd, workingDir: workingDir, timeoutSeconds: 600, server: targetServerModel);
       final convMatch = RegExp(r'"conversation_id":\s*"([^"]+)"').firstMatch(result);
       if (convMatch != null) {
         final foundConv = convMatch.group(1);
@@ -724,7 +809,10 @@ fi
         promptSuffix = '$promptSuffix\n\n${docsBuffer.toString()}';
       }
 
-      final cleanPrompt = '$prompt\n\n$promptSuffix';
+      final effectiveLocalPrompt = attachmentPromptBlock.isNotEmpty
+          ? '$prompt\n\n$attachmentPromptBlock\n$promptSuffix'
+          : '$prompt\n\n$promptSuffix';
+      final cleanPrompt = effectiveLocalPrompt;
 
       final m = cliName.toLowerCase();
 
