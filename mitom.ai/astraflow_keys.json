@@ -26,8 +26,8 @@
     "QuotaAlertPhone": "",
     "CreateTime": 1789822141,
     "UpdateTime": 1789990754,
-    "DailyUsedAmount": "0.00",
-    "MonthlyUsedAmount": "0.75"
+    "DailyUsedAmount": "0.13",
+    "MonthlyUsedAmount": "0.88"
   },
   {
     "KeyId": "uminferapikey-1qfrpb1gfu3y",
@@ -57,7 +57,7 @@
     "CreateTime": 1778832321,
     "UpdateTime": 1789806605,
     "DailyUsedAmount": "0.00",
-    "MonthlyUsedAmount": "0.45"
+    "MonthlyUsedAmount": "0.47"
   },
   {
     "KeyId": "uminferapikey-1qb7ob9d7cfs",
@@ -86,7 +86,7 @@
     "QuotaAlertPhone": "",
     "CreateTime": 1778556506,
     "UpdateTime": 1788875724,
-    "DailyUsedAmount": "0.09",
+    "DailyUsedAmount": "0.00",
     "MonthlyUsedAmount": "22.38"
   },
   {

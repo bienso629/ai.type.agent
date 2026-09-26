@@ -263,7 +263,7 @@ export function UserProfileModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-base overflow-hidden border border-primary/30">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-base overflow-hidden">
               {user.avatar ? (
                 <img src={user.avatar} alt={user.name || user.email} className="h-full w-full object-cover" />
               ) : (

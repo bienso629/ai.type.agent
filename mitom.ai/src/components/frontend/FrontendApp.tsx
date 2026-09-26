@@ -204,7 +204,7 @@ export function Logo({ onClick }: { onClick?: () => void }) {
           priority
         />
       </div>
-      <span className="font-display text-2xl font-bold tracking-tight">
+      <span className="hidden sm:inline font-display text-2xl font-bold tracking-tight">
         Mì Tôm <span className="text-primary">AI</span>
       </span>
     </a>
@@ -1073,7 +1073,7 @@ export function FrontendApp({
                 )}
                 <button
                   onClick={() => navigate('profile')}
-                  className="flex items-center gap-2 rounded-lg border border-border bg-secondary/60 px-3.5 py-2 text-xs font-bold text-foreground transition-all hover:border-primary/50"
+                  className="flex items-center gap-2 rounded-lg bg-secondary/60 px-3.5 py-2 text-xs font-bold text-foreground transition-all hover:bg-secondary cursor-pointer"
                 >
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[11px] text-primary overflow-hidden font-mono font-bold">
                   {user.avatar ? (
@@ -1082,7 +1082,7 @@ export function FrontendApp({
                     (user.name || user.email).charAt(0).toUpperCase()
                   )}
                 </div>
-                <span className="max-w-[120px] truncate">{user.name || user.email.split('@')[0]}</span>
+                <span className="hidden sm:inline max-w-[120px] truncate">{user.name || user.email.split('@')[0]}</span>
                 <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
                   {user.balance.toLocaleString('vi-VN')}đ
                 </span>

@@ -323,11 +323,10 @@ export function ProfilePage({ onNavigate }: { onNavigate?: (p: any) => void }) {
               <button
                 onClick={handleRefreshBalance}
                 disabled={refreshing}
-                className="flex items-center gap-1 rounded border border-border/60 bg-secondary/40 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                className="hover:text-primary transition-colors cursor-pointer text-muted-foreground"
                 title="Làm mới số dư"
               >
                 <RefreshCw size={13} className={refreshing ? 'animate-spin text-primary' : ''} />
-                <span>Làm mới</span>
               </button>
             </div>
             <div className="mt-0.5 font-display text-2xl font-extrabold text-emerald">{formatVnd(user.balance || 0)}</div>
