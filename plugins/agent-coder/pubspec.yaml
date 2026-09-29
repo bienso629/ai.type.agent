@@ -56,7 +56,10 @@ dependencies:
   file_picker: ^8.1.7
   flutter_svg: ^2.3.0
   pasteboard: ^0.5.0
-  flutter_pty: ^0.4.2
+  # flutter_pty goc bi loai kho iOS (App Store cam FFI dlopen; iOS khong cho pty).
+  # Ban desktop thuần (linux/windows/macos) giữ nguyên qua gói vendored.
+  flutter_pty_desktop:
+    path: third_party/flutter_pty
   url_launcher: ^6.3.2
   window_manager: ^0.5.2
 dev_dependencies:

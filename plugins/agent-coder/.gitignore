@@ -53,3 +53,8 @@ app.*.symbols
 
 # Obfuscation related
 app.*.map.json
+
+# Runtime & tep rac khong cong khai
+uploads/
+nguyen_hue_girl_4k.jpg
+screenshot.png
