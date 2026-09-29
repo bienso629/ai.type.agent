@@ -37,9 +37,19 @@ jobs:
 
       - name: Fetch signing profiles tu App Store Connect API
         run: |
+          set +e
           xcode-project use-profiles \
             --project=ios/Runner.xcworkspace \
-            --archive-method app-store
+            --archive-method app-store > /tmp/profiles.log 2>&1
+          CODE=$?
+          cat /tmp/profiles.log
+          if [ $CODE -ne 0 ]; then
+            echo "::error::use-profiles that bai (exit $CODE). 10 dong cuoi cua log:"
+            tail -10 /tmp/profiles.log | while IFS= read -r line; do
+              echo "::error::${line:0:400}"
+            done
+            exit $CODE
+          fi
 
       - name: Flutter pub get
         run: flutter pub get
