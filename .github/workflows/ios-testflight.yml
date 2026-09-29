@@ -38,7 +38,7 @@ jobs:
       - name: Kiem tra xac thuc App Store Connect API
         run: |
           set +e
-          app-store-connect apps list --limit 1 --verbose > /tmp/api-test.log 2>&1
+          app-store-connect apps list --verbose > /tmp/api-test.log 2>&1
           CODE=$?
           cat /tmp/api-test.log
           if [ $CODE -ne 0 ]; then
