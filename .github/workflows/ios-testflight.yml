@@ -104,11 +104,16 @@ jobs:
           fi
           tail -5 /tmp/kcadd.log
 
+      - name: Flutter pub get & pod install
+        run: |
+          flutter pub get
+          cd ios && pod install --repo-update && cd ..
+
       - name: Configure code signing settings
         run: |
           set +e
           xcode-project use-profiles \
-            --project=ios/Runner.xcworkspace \
+            --project=ios/Runner.xcodeproj \
             --archive-method app-store > /tmp/profiles.log 2>&1
           CODE=$?
           cat /tmp/profiles.log
@@ -119,9 +124,6 @@ jobs:
             done
             exit $CODE
           fi
-
-      - name: Flutter pub get
-        run: flutter pub get
 
       - name: Create ExportOptions.plist
         run: |
