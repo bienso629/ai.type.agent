@@ -35,25 +35,66 @@ jobs:
       - name: Install Codemagic CLI tools (ky so va publish)
         run: pip3 install --break-system-packages codemagic-cli-tools
 
+      - name: Kiem tra xac thuc App Store Connect API
+        run: |
+          set +e
+          app-store-connect apps list --limit 1 --verbose > /tmp/api-test.log 2>&1
+          CODE=$?
+          cat /tmp/api-test.log
+          if [ $CODE -ne 0 ]; then
+            echo "::error::Xac thuc App Store Connect API that bai (exit $CODE). Log day du:"
+            tail -40 /tmp/api-test.log | while IFS= read -r line; do
+              echo "::error::${line:0:400}"
+            done
+            exit $CODE
+          fi
+
       - name: Dam bao App ID va App record ton tai
         run: |
-          app-store-connect bundles create ai.type.agent.coder --name "AI Type Agent Coder" > /tmp/bundle.log 2>&1 || true
-          app-store-connect apps create ai.type.agent.coder --name "AI Type Agent" --primary-locale en-US --sku aitypeagent001 --platform IOS --company-name "bienso629" > /tmp/app.log 2>&1 || true
+          set +e
+          app-store-connect bundles create ai.type.agent.coder --name "AI Type Agent Coder" > /tmp/bundle.log 2>&1
           echo "--- bundle create (bo qua neu da ton tai) ---"
           tail -3 /tmp/bundle.log || true
+          app-store-connect apps create ai.type.agent.coder --name "AI Type Agent" --primary-locale en-US --sku aitypeagent001 --platform IOS --company-name "bienso629" > /tmp/app.log 2>&1
           echo "--- app record create (bo qua neu da ton tai) ---"
           tail -3 /tmp/app.log || true
+          exit 0
 
       - name: Initialize keychain va tai chung chi + provisioning profile
         run: |
-          set -e
-          keychain initialize
+          set +e
+          keychain initialize > /tmp/kc.log 2>&1
+          CODE=$?
+          if [ $CODE -ne 0 ]; then
+            echo "::error::keychain initialize that bai (exit $CODE). Log:"
+            tail -20 /tmp/kc.log | while IFS= read -r line; do echo "::error::${line:0:400}"; done
+            exit $CODE
+          fi
+          tail -5 /tmp/kc.log
+
           app-store-connect fetch-signing-files ai.type.agent.coder \
             --platform IOS \
             --type IOS_APP_STORE \
-            --create > /tmp/fetch.log 2>&1
-          tail -15 /tmp/fetch.log
-          keychain add-certificates
+            --create \
+            --verbose > /tmp/fetch.log 2>&1
+          CODE=$?
+          cat /tmp/fetch.log
+          if [ $CODE -ne 0 ]; then
+            echo "::error::fetch-signing-files that bai (exit $CODE). Log day du:"
+            tail -40 /tmp/fetch.log | while IFS= read -r line; do
+              echo "::error::${line:0:400}"
+            done
+            exit $CODE
+          fi
+
+          keychain add-certificates > /tmp/kcadd.log 2>&1
+          CODE=$?
+          if [ $CODE -ne 0 ]; then
+            echo "::error::keychain add-certificates that bai (exit $CODE). Log:"
+            tail -20 /tmp/kcadd.log | while IFS= read -r line; do echo "::error::${line:0:400}"; done
+            exit $CODE
+          fi
+          tail -5 /tmp/kcadd.log
 
       - name: Configure code signing settings
         run: |
