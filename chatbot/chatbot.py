@@ -254,7 +254,7 @@ def getenv_str(key: str, default: str = "") -> str:
     return v.strip().strip('"').strip("'")
 
 def get_user_pdf_dir(username: str, doc_type: Optional[str] = None) -> str:
-    if doc_type: return os.path.join(PDF_DIR, doc_type, username)
+    if doc_type and doc_type != "None": return os.path.join(PDF_DIR, doc_type, username)
     return os.path.join(PDF_DIR, username)
 
 def _strip_empty_phone(doc: dict) -> dict:
@@ -1009,7 +1009,7 @@ def _infer_mode_from_index_dir(index_dir: Optional[str]) -> str:
     return "default"
 
 def _map_doc_type_to_mode(doc_type: Optional[str], index_dir: Optional[str]) -> str:
-    if doc_type:
+    if doc_type and doc_type != "None":
         t = doc_type.strip().lower()
         if t in ["textbook", "sgk"]: return "textbook"
         if t in ["thesis", "luanvan"]: return "thesis"

@@ -92,7 +92,7 @@ def _ensure_dirs_for_type(username: str, doc_type: Optional[str] = None) -> Tupl
     """
     Ensure PDF & index folders exist for a given username and optional doc_type.
     """
-    if doc_type:
+    if doc_type and doc_type != "None":
         pdf_dir = os.path.abspath(os.path.join(PDF_BASE_DIR, doc_type, username))
         index_dir = os.path.abspath(os.path.join(INDEX_BASE_DIR, doc_type, username))
     else:
