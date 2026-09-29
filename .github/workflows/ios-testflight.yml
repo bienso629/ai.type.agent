@@ -1,0 +1,74 @@
+name: Build iOS and publish to TestFlight
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-testflight:
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_P8 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify App Store Connect secrets
+        run: |
+          if [ -z "$APP_STORE_CONNECT_ISSUER_ID" ] || [ -z "$APP_STORE_CONNECT_KEY_ID" ] || [ -z "$APP_STORE_CONNECT_PRIVATE_KEY" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::error::Thieu secrets. Vao Settings > Secrets and variables > Actions > New repository secret de tao: APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_P8 (toan bo noi dung file .p8), APPLE_TEAM_ID."
+            exit 1
+          fi
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Codemagic CLI tools (ky so va publish)
+        run: pip3 install codemagic-cli-tools
+
+      - name: Fetch signing profiles tu App Store Connect API
+        run: |
+          xcode-project use-profiles \
+            --xcode-project ios/Runner.xcworkspace \
+            --archive-method app-store
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Create ExportOptions.plist
+        run: |
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          echo "ExportOptions.plist da tao voi teamID ${APPLE_TEAM_ID}"
+
+      - name: Build .ipa
+        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+
+      - name: Publish to TestFlight
+        run: |
+          APP_FILE=$(ls build/ios/ipa/*.ipa | head -n 1)
+          echo "Dang upload $APP_FILE len TestFlight..."
+          app-store-connect publish "$APP_FILE" --enable-package-validation

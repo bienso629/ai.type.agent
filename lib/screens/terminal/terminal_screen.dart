@@ -5,7 +5,7 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_pty/flutter_pty.dart';
+import 'package:flutter_pty_desktop/flutter_pty.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 import '../../core/services/native_ssh_service.dart';
@@ -297,11 +297,24 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (pane.isRemoteSsh) {
       await _connectSshPane(pane);
     } else {
+      // iOS khong cho phep tao shell cuc bo (PTY). Chi ho tro SSH toi may chu tu xa.
+      if (Platform.isIOS) {
+        if (mounted) {
+          setState(() {
+            pane.isConnecting = false;
+            pane.isConnected = false;
+          });
+        }
+        pane.terminal.write('\x1b[33mMay iOS khong ho tro shell cuc bo. Hay mo ket noi SSH toi may chu tu xa de dung terminal.\x1b[0m\r\n');
+        return;
+      }
       await _connectLocalPane(pane);
     }
   }
 
   Future<void> _connectLocalPane(TerminalPaneItem pane) async {
+    // Chan ngay tu dau tren iOS: khong bao gio tao PTY cuc bo.
+    if (Platform.isIOS) return;
     try {
       final isWin = Platform.isWindows;
       final shell = Platform.environment['SHELL'] ??
