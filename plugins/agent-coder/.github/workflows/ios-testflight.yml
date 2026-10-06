@@ -1,3 +1,4 @@
+# CI Build Trigger: rebuild iOS TestFlight with available certificate slots
 name: Build iOS and publish to TestFlight
 
 on:
