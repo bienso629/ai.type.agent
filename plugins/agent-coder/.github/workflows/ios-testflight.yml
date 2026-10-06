@@ -1,4 +1,4 @@
-# CI Build Trigger: rebuild iOS TestFlight with available certificate slots
+# CI Build Trigger: rebuild iOS TestFlight at 2026-10-07T06:25:24
 name: Build iOS and publish to TestFlight
 
 on:
