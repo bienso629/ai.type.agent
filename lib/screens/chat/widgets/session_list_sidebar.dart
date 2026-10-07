@@ -237,6 +237,22 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
           ),
           actions: [
             TextButton(
+              style: TextButton.styleFrom(foregroundColor: AppColors.warning),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _showResetSessionDialog(chat, sess);
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.restart_alt_rounded, size: 14, color: AppColors.warning),
+                  SizedBox(width: 4),
+                  Text('Reset hội thoại'),
+                ],
+              ),
+            ),
+            const Spacer(),
+            TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
             ),
@@ -282,6 +298,47 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
               }
             },
             child: const Text('Xóa vĩnh viễn'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showResetSessionDialog(ChatProvider chat, dynamic sess) {
+    showDialog(
+      context: context,
+      builder: (ctx) => TaduDialog(
+        minWidth: 420,
+        maxWidth: 500,
+        title: const Row(
+          children: [
+            Icon(Icons.restart_alt_rounded, color: AppColors.warning, size: 20),
+            SizedBox(width: 8),
+            Text('Reset Hộp Hội Thoại'),
+          ],
+        ),
+        content: Text(
+          'Bạn có chắc chắn muốn làm mới toàn bộ cuộc hội thoại "${sess.title}" không?\n\nToàn bộ tin nhắn trao đổi sẽ được xóa để bắt đầu lại từ đầu, nhưng các cấu hình (Tên hội thoại, Máy chủ gắn kết, v.v.) vẫn được giữ nguyên vẹn.',
+          style: const TextStyle(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await chat.resetSessionHistory(sess.id);
+              if (mounted) {
+                setState(() {
+                  _sessionRecentQuestions.remove(sess.id);
+                });
+                AppToast.success(context, 'Đã reset cuộc hội thoại thành công!');
+              }
+            },
+            child: const Text('Reset ngay', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -630,6 +687,7 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                                   borderRadius: BorderRadius.circular(4),
                                   child: _SwipeableSessionItem(
                                     key: ValueKey('swipe_${sess.id}'),
+                                    onReset: () => _showResetSessionDialog(chat, sess),
                                     onEdit: () => _showEditSessionDialog(chat, sess),
                                     onDelete: () => _showDeleteDialog(chat, sess),
                                     backgroundColor: isSelected
@@ -1102,6 +1160,7 @@ class _SwipeableSessionItem extends StatefulWidget {
   final Widget child;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onReset;
   final Color? backgroundColor;
 
   const _SwipeableSessionItem({
@@ -1109,6 +1168,7 @@ class _SwipeableSessionItem extends StatefulWidget {
     required this.child,
     required this.onEdit,
     required this.onDelete,
+    required this.onReset,
     this.backgroundColor,
   });
 
@@ -1119,7 +1179,7 @@ class _SwipeableSessionItem extends StatefulWidget {
 class _SwipeableSessionItemState extends State<_SwipeableSessionItem> with SingleTickerProviderStateMixin {
   late final AnimationController _animCtrl;
   double _dragExtent = 0.0;
-  static const double _maxActionWidth = 68.0;
+  static const double _maxActionWidth = 100.0;
 
   @override
   void initState() {
@@ -1184,6 +1244,27 @@ class _SwipeableSessionItemState extends State<_SwipeableSessionItem> with Singl
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Reset Conversation Button
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.restart_alt_rounded, size: 14, color: AppColors.warning),
+                        tooltip: 'Reset hội thoại',
+                        onPressed: () {
+                          _close();
+                          widget.onReset();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 4),
                     // Edit Button
                     Container(
                       width: 28,
