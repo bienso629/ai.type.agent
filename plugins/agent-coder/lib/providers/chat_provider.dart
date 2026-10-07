@@ -375,11 +375,38 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> clearHistory() async {
     if (_currentSession == null) return;
-    final sId = _currentSession!.id;
-    await _api.clearChatHistory(sId);
-    _sessionMessages[sId]?.clear();
-    _sessionHasMore[sId] = false;
-    _sessionOldestId[sId] = 0;
+    await resetSessionHistory(_currentSession!.id);
+  }
+
+  Future<void> resetSessionHistory(String sessionId) async {
+    // 1. Cancel running stream if any
+    _sessionStreams[sessionId]?.cancel();
+    _sessionStreams.remove(sessionId);
+    _sessionGenerating[sessionId] = false;
+    _sessionStatuses.remove(sessionId);
+
+    // 2. Clear memory messages & paging
+    _sessionMessages[sessionId] = [];
+    _sessionHasMore[sessionId] = false;
+    _sessionOldestId[sessionId] = 0;
+
+    // 3. Clear database messages
+    await _api.clearChatHistory(sessionId);
+
+    // 4. Update session model counts (questionCount = 0, answerCount = 0)
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx != -1) {
+      final sess = _sessions[idx];
+      final updated = sess.copyWith(
+        questionCount: 0,
+        answerCount: 0,
+        updatedAt: DateTime.now(),
+      );
+      _sessions[idx] = updated;
+      if (_currentSession?.id == sessionId) {
+        _currentSession = updated;
+      }
+    }
     notifyListeners();
   }
 
