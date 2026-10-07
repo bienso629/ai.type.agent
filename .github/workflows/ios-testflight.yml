@@ -105,17 +105,26 @@ jobs:
           fi
           tail -5 /tmp/kcadd.log
 
-          # Chep provisioning profile sang CA HAI vi tri Xcode quet (UserData va MobileDevice)
-          UD_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          # Tim tat ca cac file .mobileprovision tai ve duoc
           MD_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          mkdir -p "$UD_DIR" "$MD_DIR"
-          cp -f "$UD_DIR"/*.mobileprovision "$MD_DIR/" 2>/dev/null || true
+          UD_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$MD_DIR" "$UD_DIR"
 
-          # Trich ten profile thuc te de dung cho ExportOptions
-          PROFILE_FILE=$(ls "$UD_DIR"/*.mobileprovision | head -n 1)
-          PROFILE_NAME=$(security cms -D -i "$PROFILE_FILE" 2>/dev/null | plutil -extract Name raw -o - - 2>/dev/null)
-          echo "Ten provisioning profile: $PROFILE_NAME"
-          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          # app-store-connect mac dinh luu vao $HOME/Library/MobileDevice/Provisioning Profiles/
+          for f in "$MD_DIR"/*.mobileprovision "$UD_DIR"/*.mobileprovision; do
+            if [ -f "$f" ]; then
+              UUID=$(security cms -D -i "$f" 2>/dev/null | plutil -extract UUID raw - 2>/dev/null || true)
+              NAME=$(security cms -D -i "$f" 2>/dev/null | plutil -extract Name raw - 2>/dev/null || true)
+              if [ -n "$UUID" ]; then
+                echo "Cai dat profile: $NAME (UUID: $UUID)"
+                cp -f "$f" "$MD_DIR/$UUID.mobileprovision"
+                cp -f "$f" "$UD_DIR/$UUID.mobileprovision"
+                echo "PROFILE_NAME=$NAME" >> "$GITHUB_ENV"
+                echo "PROFILE_UUID=$UUID" >> "$GITHUB_ENV"
+                echo "PROFILE_PATH=$MD_DIR/$UUID.mobileprovision" >> "$GITHUB_ENV"
+              fi
+            fi
+          done
 
       - name: Flutter pub get & pod install
         run: |
@@ -125,8 +134,10 @@ jobs:
       - name: Configure code signing settings
         run: |
           set +e
+          echo "Su dung profile: $PROFILE_PATH (Name: $PROFILE_NAME, UUID: $PROFILE_UUID)"
           xcode-project use-profiles \
             --project=ios/Runner.xcodeproj \
+            --profile="$PROFILE_PATH" \
             --archive-method app-store > /tmp/profiles.log 2>&1
           CODE=$?
           cat /tmp/profiles.log
