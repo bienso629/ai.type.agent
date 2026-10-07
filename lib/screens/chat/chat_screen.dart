@@ -51,6 +51,13 @@ class _ChatScreenState extends State<ChatScreen> {
   int _promptHistoryIndex = -1;
   String _draftPrompt = '';
 
+  // Terminal split side panel visibility
+  bool _showTerminalPanel = true;
+
+  // Doc viewer split side panel visibility
+  bool _showDocViewerPanel = false;
+  String? _selectedViewerDocPath;
+
   // Inline slash autocomplete state
   List<String> _inlineDirSuggestions = [];
   bool _isInlineDirLoading = false;
@@ -1220,6 +1227,122 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 // Server Selector Dropdown
                 _buildServerDropdown(serverProvider),
+
+                if (chat.currentSessionDocFiles.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        if (_showDocViewerPanel) {
+                          _showDocViewerPanel = false;
+                        } else {
+                          _showDocViewerPanel = true;
+                          _showTerminalPanel = false;
+                          if (_selectedViewerDocPath == null || !chat.currentSessionDocFiles.contains(_selectedViewerDocPath)) {
+                            _selectedViewerDocPath = chat.currentSessionDocFiles.first;
+                          }
+                        }
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _showDocViewerPanel
+                            ? AppColors.accentCyan.withValues(alpha: 0.18)
+                            : AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: _showDocViewerPanel ? AppColors.accentCyan : AppColors.borderDark,
+                          width: _showDocViewerPanel ? 1.2 : 0.8,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: AppColors.accentCyan.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.description_rounded,
+                                size: 14,
+                                color: AppColors.accentCyan,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Tài liệu (${chat.currentSessionDocFiles.length})',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                              color: _showDocViewerPanel ? AppColors.accentCyan : AppColors.textWhite,
+                              height: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
+                if (!_showTerminalPanel) ...[
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _showTerminalPanel = true;
+                        _showDocViewerPanel = false;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.borderDark),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: AppColors.accentCyan.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.terminal_rounded,
+                                size: 14,
+                                color: AppColors.accentCyan,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Terminal',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textWhite,
+                              height: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1286,17 +1409,45 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
 
-                // Vertical Divider between Chat and Terminal
-                const VerticalDivider(
-                  width: 1,
-                  thickness: 1,
-                  color: AppColors.borderDark,
-                ),
-
-                // Right Column (50%): Terminal Screen
-                const Expanded(
-                  child: TerminalScreen(),
-                ),
+                // Vertical Divider and Right Column (Terminal Screen or Doc Viewer Panel)
+                if (_showTerminalPanel) ...[
+                  const VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: AppColors.borderDark,
+                  ),
+                  Expanded(
+                    child: TerminalScreen(
+                      onHidePanel: () {
+                        setState(() {
+                          _showTerminalPanel = false;
+                        });
+                      },
+                    ),
+                  ),
+                ] else if (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty) ...[
+                  const VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: AppColors.borderDark,
+                  ),
+                  Expanded(
+                    child: _ScopeDocViewerPanel(
+                      chat: chat,
+                      selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
+                      onSelectDoc: (path) {
+                        setState(() {
+                          _selectedViewerDocPath = path;
+                        });
+                      },
+                      onClose: () {
+                        setState(() {
+                          _showDocViewerPanel = false;
+                        });
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -2437,6 +2588,1007 @@ class _ChatScreenState extends State<ChatScreen> {
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
   }
 
+
+
+}
+
+class _ScopeDocViewerPanel extends StatefulWidget {
+  final ChatProvider chat;
+  final String selectedDocPath;
+  final ValueChanged<String> onSelectDoc;
+  final VoidCallback onClose;
+
+  const _ScopeDocViewerPanel({
+    required this.chat,
+    required this.selectedDocPath,
+    required this.onSelectDoc,
+    required this.onClose,
+  });
+
+  @override
+  State<_ScopeDocViewerPanel> createState() => _ScopeDocViewerPanelState();
+}
+
+class _ScopeDocViewerPanelState extends State<_ScopeDocViewerPanel> {
+  final ApiService _api = ApiService();
+  final TextEditingController _contentController = TextEditingController();
+  final TextEditingController _aiPromptController = TextEditingController();
+
+  bool _isLoadingContent = false;
+  bool _isSaving = false;
+  bool _isAiModifying = false;
+  bool _isEditMode = false;
+  String? _loadedDocPath;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFileContent(widget.selectedDocPath);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ScopeDocViewerPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDocPath != widget.selectedDocPath) {
+      _loadFileContent(widget.selectedDocPath);
+    }
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    _aiPromptController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFileContent(String docPath) async {
+    setState(() {
+      _isLoadingContent = true;
+      _loadedDocPath = docPath;
+      _errorMessage = null;
+    });
+
+    final file = File(docPath);
+    if (!file.existsSync()) {
+      setState(() {
+        _isLoadingContent = false;
+        _errorMessage = 'Tệp không tồn tại trên đĩa: $docPath';
+      });
+      return;
+    }
+
+    final ext = p.extension(docPath).toLowerCase();
+    try {
+      if (ext == '.pdf') {
+        // Trích xuất văn bản từ PDF qua pdftotext có canh lề chuẩn (-layout)
+        final res = await Process.run('pdftotext', ['-layout', docPath, '-']);
+        if (res.exitCode == 0 && (res.stdout as String).trim().isNotEmpty) {
+          final rawPdf = (res.stdout as String).trim();
+          _contentController.text = '# ${p.basename(docPath)}\n\n$rawPdf';
+        } else {
+          _contentController.text = '# Tệp PDF: ${p.basename(docPath)}\n\n*Không thể trích xuất nội dung văn bản từ tệp PDF này hoặc PDF dạng hình ảnh quét.*';
+        }
+      } else if (ext == '.docx') {
+        // Trích xuất cấu trúc văn bản đầy đủ từ DOCX sang Markdown chuẩn (Tiêu đề, In đậm, In nghiêng, Bảng biểu)
+        final script = '''
+import zipfile, xml.etree.ElementTree as ET, sys
+
+namespaces = {
+    'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+}
+
+def parse_docx(path):
+    try:
+        with zipfile.ZipFile(path) as z:
+            tree = ET.fromstring(z.read('word/document.xml'))
+    except Exception as e:
+        return f"# Lỗi mở file: {e}"
+
+    body = tree.find('w:body', namespaces)
+    if body is None:
+        return ""
+
+    md_lines = []
+    for elem in body:
+        tag = elem.tag.split('}')[-1]
+        if tag == 'p':
+            pStyle = elem.find('.//w:pStyle', namespaces)
+            style_val = pStyle.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', '') if pStyle is not None else ''
+
+            para_runs = []
+            for r in elem.findall('.//w:r', namespaces):
+                rPr = r.find('w:rPr', namespaces)
+                is_bold = rPr is not None and rPr.find('w:b', namespaces) is not None
+                is_italic = rPr is not None and rPr.find('w:i', namespaces) is not None
+                t = ''.join([node.text for node in r.findall('w:t', namespaces) if node.text])
+                if not t:
+                    continue
+                if is_bold and is_italic:
+                    t = f"***{t}***"
+                elif is_bold:
+                    t = f"**{t}**"
+                elif is_italic:
+                    t = f"*{t}*"
+                para_runs.append(t)
+
+            text = ''.join(para_runs).strip()
+            if not text:
+                md_lines.append("")
+                continue
+
+            if 'Heading1' in style_val or style_val == '1':
+                md_lines.append(f"# {text}\\n")
+            elif 'Heading2' in style_val or style_val == '2':
+                md_lines.append(f"## {text}\\n")
+            elif 'Heading3' in style_val or style_val == '3':
+                md_lines.append(f"### {text}\\n")
+            elif 'Title' in style_val:
+                md_lines.append(f"# {text}\\n")
+            else:
+                md_lines.append(f"{text}\\n")
+
+        elif tag == 'tbl':
+            rows = elem.findall('.//w:tr', namespaces)
+            if not rows:
+                continue
+            table_data = []
+            for r in rows:
+                row_cells = []
+                for c in r.findall('.//w:tc', namespaces):
+                    cell_text = ' '.join([''.join([t.text for t in p.findall('.//w:t', namespaces) if t.text]).strip() for p in c.findall('.//w:p', namespaces)]).strip()
+                    row_cells.append(cell_text.replace('|', '\\\\|'))
+                table_data.append(row_cells)
+
+            if table_data:
+                col_count = max(len(r) for r in table_data)
+                header = table_data[0] + [''] * (col_count - len(table_data[0]))
+                md_lines.append("| " + " | ".join(header) + " |")
+                md_lines.append("| " + " | ".join(['---'] * col_count) + " |")
+                for r in table_data[1:]:
+                    r = r + [''] * (col_count - len(r))
+                    md_lines.append("| " + " | ".join(r) + " |")
+                md_lines.append("")
+
+    return '\\n'.join(md_lines)
+
+if __name__ == '__main__':
+    print(parse_docx(sys.argv[1]))
+''';
+        final res = await Process.run('python3', ['-c', script, docPath]);
+        if (res.exitCode == 0 && (res.stdout as String).isNotEmpty) {
+          _contentController.text = res.stdout as String;
+        } else {
+          _contentController.text = '# Tệp Word (.docx): ${p.basename(docPath)}\n\n*Không thể trích xuất nội dung DOCX.*';
+        }
+      } else {
+        // Text/Markdown/JSON/YAML/etc.
+        final text = await file.readAsString();
+        _contentController.text = text;
+      }
+    } catch (e) {
+      _errorMessage = 'Không thể đọc nội dung tệp: $e';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingContent = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveDirectContent() async {
+    if (_loadedDocPath == null) return;
+    final file = File(_loadedDocPath!);
+
+    setState(() => _isSaving = true);
+    try {
+      final ext = p.extension(_loadedDocPath!).toLowerCase();
+      if (ext == '.docx') {
+        // Lưu sang file .docx hoàn chỉnh thông qua python-docx hoặc text plain
+        final pyScript = '''
+import sys
+try:
+    from docx import Document
+    doc = Document()
+    text = sys.stdin.read()
+    for line in text.split('\\n'):
+        doc.add_paragraph(line)
+    doc.save(sys.argv[1])
+    print('OK')
+except Exception:
+    # Nếu python-docx chưa cài, lưu text sạch trực tiếp
+    with open(sys.argv[1], 'w', encoding='utf-8') as f:
+        f.write(sys.stdin.read())
+    print('FALLBACK_OK')
+''';
+        final proc = await Process.start('python3', ['-c', pyScript, _loadedDocPath!]);
+        proc.stdin.write(_contentController.text);
+        await proc.stdin.close();
+        await proc.exitCode;
+      } else if (ext == '.pdf') {
+        // Nếu là PDF, tạo PDF mới từ nội dung text bằng PdfExportService hoặc lưu text
+        final text = _contentController.text;
+        await file.writeAsString(text);
+      } else {
+        await file.writeAsString(_contentController.text);
+      }
+
+      await widget.chat.setScopeForCurrentSession(
+        widget.chat.currentSessionScope,
+        docFiles: widget.chat.currentSessionDocFiles,
+      );
+      if (mounted) {
+        AppToast.success(context, 'Đã lưu thành công nội dung tệp ${p.basename(_loadedDocPath!)}');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi khi lưu tệp: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  Future<void> _modifyContentWithAi() async {
+    final prompt = _aiPromptController.text.trim();
+    if (prompt.isEmpty) {
+      AppToast.info(context, 'Vui lòng nhập yêu cầu chỉnh sửa cho AI');
+      return;
+    }
+    if (_loadedDocPath == null) return;
+
+    setState(() => _isAiModifying = true);
+    final originalContent = _contentController.text;
+    try {
+      final fileName = p.basename(_loadedDocPath!);
+      final serverProvider = context.read<ServerProvider>();
+      final fullAiPrompt = '''
+Bạn là trợ lý AI chuyên chỉnh sửa và nâng cấp nội dung tài liệu kỹ thuật.
+YÊU CẦU CỦA NGƯỜI DÙNG: $prompt
+
+TÀI LIỆU CẦN SỬA: $fileName
+DƯỚI ĐÂY LÀ TOÀN BỘ NỘI DUNG HIỆN TẠI CỦA TÀI LIỆU:
+=== NỘI DUNG GỐC BẮT ĐẦU ===
+${_contentController.text}
+=== NỘI DUNG GỐC KẾT THÚC ===
+
+HÃY XUẤT RA TOÀN BỘ NỘI DUNG MỚI ĐÃ ĐƯỢC CHỈNH SỬA HOÀN CHỈNH THEO YÊU CẦU TRÊN.
+LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè vào tệp, không kèm lời chào hỏi hay giải thích rườm rà.
+''';
+
+      final completer = Completer<String>();
+      final replyBuf = StringBuffer();
+      bool hasStreamedFirstToken = false;
+
+      _api.streamChatMessage(
+        sessionId: widget.chat.currentSession?.id ?? 'doc_editor_${DateTime.now().millisecondsSinceEpoch}',
+        message: fullAiPrompt,
+        model: serverProvider.currentAiModel,
+        workingDir: widget.chat.currentSessionScope,
+        onToken: (tok) {
+          replyBuf.write(tok);
+          if (mounted) {
+            setState(() {
+              if (!hasStreamedFirstToken) {
+                hasStreamedFirstToken = true;
+                _isEditMode = true;
+              }
+              _contentController.text = replyBuf.toString();
+            });
+          }
+        },
+        onStatus: (_) {},
+        onTool: (_) {},
+        onDone: (full) {
+          if (!completer.isCompleted) {
+            completer.complete(full.isNotEmpty ? full : replyBuf.toString());
+          }
+        },
+        onError: (err) {
+          if (!completer.isCompleted) {
+            completer.completeError(err);
+          }
+        },
+      );
+
+      final newContent = (await completer.future).trim();
+      if (newContent.isNotEmpty) {
+        setState(() {
+          _contentController.text = newContent;
+          _aiPromptController.clear();
+        });
+        await _saveDirectContent();
+        if (mounted) {
+          AppToast.success(context, 'AI đã cập nhật và lưu tài liệu: $fileName');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _contentController.text = originalContent;
+        });
+        AppToast.error(context, 'Lỗi khi gọi AI chỉnh sửa: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isAiModifying = false);
+      }
+    }
+  }
+
+  Future<void> _replaceWithNewFile(String docPath) async {
+    final file = File(docPath);
+    final initialDir = file.existsSync() && file.parent.existsSync() ? file.parent.path : null;
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Chọn file mới ghi đè cho ${p.basename(docPath)}',
+      initialDirectory: initialDir,
+      type: FileType.custom,
+      allowedExtensions: ['docx', 'doc', 'pdf', 'txt', 'md', 'json', 'yaml', 'yml', 'sql', 'html', 'xml', 'csv'],
+    );
+
+    if (result != null && result.files.single.path != null) {
+      final newFilePath = result.files.single.path!;
+      final newFile = File(newFilePath);
+      if (newFile.existsSync()) {
+        final bytes = await newFile.readAsBytes();
+        await file.writeAsBytes(bytes, flush: true);
+        await widget.chat.setScopeForCurrentSession(
+          widget.chat.currentSessionScope,
+          docFiles: widget.chat.currentSessionDocFiles,
+        );
+        _loadFileContent(docPath);
+        if (mounted) {
+          AppToast.success(context, 'Đã thay thế nội dung từ file mới thành công');
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final docs = widget.chat.currentSessionDocFiles;
+    final currentDocName = _loadedDocPath != null ? p.basename(_loadedDocPath!) : 'Tài liệu';
+
+    return Container(
+      color: AppColors.bgDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 1. Top Panel Header (Tab bar tài liệu + Nút đóng)
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: const BoxDecoration(
+              color: AppColors.sidebarBg,
+              border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentCyan.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Icon(Icons.description_rounded, size: 16, color: AppColors.accentCyan),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'TÀI LIỆU SCOPE',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: AppColors.primaryLight),
+                ),
+                const SizedBox(width: 12),
+
+                // Danh sách tab tài liệu
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: docs.map((docPath) {
+                        final name = p.basename(docPath);
+                        final isSel = docPath == widget.selectedDocPath;
+                        final ext = p.extension(docPath).toLowerCase();
+                        Color docColor = AppColors.accentCyan;
+                        if (ext == '.pdf') docColor = Colors.redAccent;
+                        if (ext == '.docx' || ext == '.doc') docColor = Colors.blueAccent;
+
+                        return InkWell(
+                          onTap: () => widget.onSelectDoc(docPath),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: isSel ? AppColors.cardBg : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: isSel ? AppColors.accentCyan : AppColors.borderDark.withValues(alpha: 0.5),
+                                width: isSel ? 1.2 : 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.article_rounded, size: 13, color: isSel ? docColor : AppColors.textDim),
+                                const SizedBox(width: 6),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 160),
+                                  child: Text(
+                                    name,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                      color: isSel ? AppColors.textWhite : AppColors.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+                // Nút thay thế file
+                if (_loadedDocPath != null)
+                  Tooltip(
+                    message: 'Chọn file mới ghi đè',
+                    child: IconButton(
+                      icon: const Icon(Icons.file_upload_outlined, size: 16, color: AppColors.textMuted),
+                      hoverColor: AppColors.accentCyan.withValues(alpha: 0.15),
+                      onPressed: () => _replaceWithNewFile(_loadedDocPath!),
+                    ),
+                  ),
+
+                // Nút đóng sidebar tài liệu
+                Tooltip(
+                  message: 'Đóng cột Tài liệu',
+                  child: IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.textMuted),
+                    hoverColor: AppColors.danger.withValues(alpha: 0.2),
+                    onPressed: widget.onClose,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 2. Nội dung xem & sửa tài liệu
+          Expanded(
+            child: _isLoadingContent
+                ? const Center(child: CircularProgressIndicator())
+                : _errorMessage != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(_errorMessage!, style: const TextStyle(color: AppColors.danger)),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          // Thanh trạng thái file
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            color: AppColors.cardBg,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Đang xem: $currentDocName • ${_contentController.text.length} ký tự',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textDim, fontFamily: 'monospace'),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Nút Chuyển chế độ Xem định dạng / Soạn thảo
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 32),
+                                    fixedSize: const Size.fromHeight(32),
+                                    side: BorderSide(color: _isEditMode ? AppColors.accentCyan : AppColors.borderDark, width: 0.8),
+                                    backgroundColor: _isEditMode ? AppColors.accentCyan.withValues(alpha: 0.12) : null,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                  ),
+                                  icon: Icon(
+                                    _isEditMode ? Icons.visibility_rounded : Icons.edit_note_rounded,
+                                    size: 14,
+                                    color: _isEditMode ? AppColors.accentCyan : AppColors.textBody,
+                                  ),
+                                  label: Text(
+                                    _isEditMode ? 'Xem định dạng' : 'Chỉnh sửa thô',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: _isEditMode ? AppColors.accentCyan : AppColors.textBody,
+                                      fontWeight: _isEditMode ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _isEditMode = !_isEditMode;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Vùng hiển thị/soạn thảo văn bản
+                          Expanded(
+                            child: Container(
+                              color: const Color(0xFF131920),
+                              padding: const EdgeInsets.all(16),
+                              child: _isEditMode
+                                  ? TextField(
+                                      controller: _contentController,
+                                      maxLines: null,
+                                      expands: true,
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        color: AppColors.textWhite,
+                                        fontFamily: 'monospace',
+                                        height: 1.5,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        border: InputBorder.none,
+                                        hintText: 'Nội dung tài liệu trống...',
+                                        hintStyle: TextStyle(color: AppColors.textDim),
+                                      ),
+                                    )
+                                  : SelectionArea(
+                                      child: SingleChildScrollView(
+                                        child: MarkdownBody(
+                                          data: _contentController.text.isNotEmpty
+                                              ? _contentController.text
+                                              : '*Nội dung tài liệu trống*',
+                                          styleSheet: MarkdownStyleSheet(
+                                            h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.accentCyan, height: 1.4),
+                                            h2: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.4),
+                                            h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.3),
+                                            p: const TextStyle(fontSize: 13, color: AppColors.textWhite, height: 1.6),
+                                            strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                            em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.primaryLight),
+                                            code: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.accentCyan, backgroundColor: Color(0xFF1B222D)),
+                                            codeblockPadding: const EdgeInsets.all(10),
+                                            codeblockDecoration: BoxDecoration(
+                                              color: const Color(0xFF1E2633),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: AppColors.borderDark),
+                                            ),
+                                            tableBorder: TableBorder.all(color: AppColors.borderDark, width: 0.8),
+                                            tableHead: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryLight, fontSize: 12),
+                                            tableBody: const TextStyle(color: AppColors.textWhite, fontSize: 12),
+                                            tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            tableColumnWidth: const FlexColumnWidth(),
+                                            blockquote: const TextStyle(fontSize: 12.5, color: AppColors.textMuted, fontStyle: FontStyle.italic),
+                                            blockquoteDecoration: BoxDecoration(
+                                              color: AppColors.cardBg,
+                                              border: const Border(left: BorderSide(color: AppColors.accentCyan, width: 3)),
+                                              borderRadius: BorderRadius.circular(2),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+
+                          // 3. Khung thao tác tài liệu (Input prompt ở trên, 2 nút Lưu file & AI Sửa ở dưới)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: const BoxDecoration(
+                              color: AppColors.sidebarBg,
+                              border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.cardBg,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.borderDark, width: 1),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Hàng tiêu đề gợi ý
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.auto_fix_high_rounded, size: 14, color: AppColors.accentCyan),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Yêu cầu chỉnh sửa nội dung bằng AI',
+                                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Input prompt nằm ở trên (trong suốt, không background, không border)
+                                  TextField(
+                                    controller: _aiPromptController,
+                                    maxLines: 2,
+                                    minLines: 1,
+                                    style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                                    decoration: const InputDecoration(
+                                      hintText: 'VD: Bổ sung đặc tả API login, định dạng lại bảng biểu, dịch sang tiếng Anh...',
+                                      hintStyle: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                                      filled: false,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                    ),
+                                    onSubmitted: (_) => _modifyContentWithAi(),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // 2 nút nằm cạnh nhau ở dưới
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      // Nút Lưu file
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          minimumSize: const Size(0, 32),
+                                          fixedSize: const Size.fromHeight(32),
+                                          backgroundColor: AppColors.primary,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                        ),
+                                        icon: _isSaving
+                                            ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white))
+                                            : const Icon(Icons.save_rounded, size: 14),
+                                        label: Text(_isSaving ? 'Đang lưu...' : 'Lưu file', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                        onPressed: _isSaving ? null : _saveDirectContent,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      // Nút AI Sửa
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          minimumSize: const Size(0, 32),
+                                          fixedSize: const Size.fromHeight(32),
+                                          backgroundColor: AppColors.accentCyan.withValues(alpha: 0.2),
+                                          foregroundColor: AppColors.accentCyan,
+                                          side: const BorderSide(color: AppColors.accentCyan),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                        ),
+                                        icon: _isAiModifying
+                                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan))
+                                            : const Icon(Icons.bolt_rounded, size: 14),
+                                        label: Text(
+                                          _isAiModifying ? 'AI đang sửa...' : 'AI Sửa',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                        ),
+                                        onPressed: _isAiModifying ? null : _modifyContentWithAi,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScopeDocsListDialog extends StatefulWidget {
+  final ChatProvider chat;
+
+  const _ScopeDocsListDialog({required this.chat});
+
+  @override
+  State<_ScopeDocsListDialog> createState() => _ScopeDocsListDialogState();
+}
+
+class _ScopeDocsListDialogState extends State<_ScopeDocsListDialog> {
+  final Set<String> _updatingDocs = {};
+
+  Future<void> _updateDocContent(String docPath) async {
+    final file = File(docPath);
+    if (!file.existsSync()) {
+      AppToast.error(context, 'Tệp tin không tồn tại trên đĩa: ${p.basename(docPath)}');
+      return;
+    }
+
+    final targetExt = p.extension(docPath).toLowerCase().replaceAll('.', '');
+    final allowedExts = <String>{
+      if (targetExt.isNotEmpty) targetExt,
+      'docx', 'doc', 'pdf', 'txt', 'md', 'json', 'yaml', 'yml', 'sql', 'html', 'xml', 'csv'
+    }.toList();
+
+    try {
+      final initialDir = file.parent.existsSync() ? file.parent.path : null;
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Chọn file mới để cập nhật nội dung cho ${p.basename(docPath)}',
+        initialDirectory: initialDir,
+        type: FileType.custom,
+        allowedExtensions: allowedExts,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final newFilePath = result.files.single.path!;
+        final newFile = File(newFilePath);
+
+        if (!newFile.existsSync()) {
+          if (mounted) AppToast.error(context, 'Tệp nguồn không tồn tại');
+          return;
+        }
+
+        setState(() {
+          _updatingDocs.add(docPath);
+        });
+
+        // Đọc bytes từ file mới và ghi đè vào file tài liệu đích
+        final bytes = await newFile.readAsBytes();
+        await file.writeAsBytes(bytes, flush: true);
+
+        // Kích hoạt cập nhật scope để hệ thống nạp lại chỉ thị tài liệu mới
+        await widget.chat.setScopeForCurrentSession(
+          widget.chat.currentSessionScope,
+          docFiles: widget.chat.currentSessionDocFiles,
+        );
+
+        if (mounted) {
+          setState(() {
+            _updatingDocs.remove(docPath);
+          });
+          AppToast.success(context, 'Đã cập nhật nội dung thành công cho: ${p.basename(docPath)}');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _updatingDocs.remove(docPath);
+        });
+        AppToast.error(context, 'Lỗi cập nhật tệp tin: $e');
+      }
+    }
+  }
+
+  String _getFileSizeString(String path) {
+    try {
+      final f = File(path);
+      if (f.existsSync()) {
+        final bytes = f.lengthSync();
+        if (bytes < 1024) return '$bytes B';
+        if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+        return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+      }
+    } catch (_) {}
+    return 'Không rõ';
+  }
+
+  String _getFileModifiedString(String path) {
+    try {
+      final f = File(path);
+      if (f.existsSync()) {
+        final dt = f.lastModifiedSync();
+        return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} ${dt.day}/${dt.month}/${dt.year}';
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final docs = widget.chat.currentSessionDocFiles;
+
+    return TaduDialog(
+      minWidth: 580,
+      maxWidth: 680,
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppColors.accentCyan.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Icon(Icons.description_rounded, color: AppColors.accentCyan, size: 18),
+          ),
+          const SizedBox(width: 10),
+          const Text('Danh Sách Tài Liệu Thuộc Scope'),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+            decoration: BoxDecoration(
+              color: AppColors.accentCyan.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${docs.length}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 600,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.bgDark,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.borderDark),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.accentCyan),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Các file tài liệu (docx, pdf, txt, md...) này được cung cấp trực tiếp vào bối cảnh làm việc của Agent trong Scope: ${widget.chat.currentSessionScope ?? "Cục bộ"}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (docs.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text('Không có tài liệu nào trong Scope này', style: TextStyle(color: AppColors.textDim)),
+                ),
+              )
+            else
+              Container(
+                constraints: const BoxConstraints(maxHeight: 360),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.borderDark, width: 0.8),
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: docs.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.borderDark),
+                  itemBuilder: (context, idx) {
+                    final docPath = docs[idx];
+                    final fileName = p.basename(docPath);
+                    final ext = p.extension(docPath).toLowerCase();
+                    final exists = File(docPath).existsSync();
+                    final isUpdating = _updatingDocs.contains(docPath);
+                    final sizeStr = _getFileSizeString(docPath);
+                    final modStr = _getFileModifiedString(docPath);
+
+                    IconData docIcon = Icons.description_rounded;
+                    Color iconColor = AppColors.accentCyan;
+
+                    if (ext == '.pdf') {
+                      docIcon = Icons.picture_as_pdf_rounded;
+                      iconColor = Colors.redAccent;
+                    } else if (ext == '.docx' || ext == '.doc') {
+                      docIcon = Icons.article_rounded;
+                      iconColor = Colors.blueAccent;
+                    } else if (ext == '.md' || ext == '.txt') {
+                      docIcon = Icons.text_snippet_rounded;
+                      iconColor = Colors.tealAccent;
+                    }
+
+                    return Container(
+                      color: idx.isEven ? AppColors.cardBg : AppColors.sidebarBg,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: iconColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Center(
+                              child: Icon(docIcon, size: 18, color: iconColor),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        fileName,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textWhite,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (!exists)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.danger.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: const Text('Tệp bị mất', style: TextStyle(fontSize: 10, color: AppColors.danger)),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '$sizeStr ${modStr.isNotEmpty ? "• Cập nhật: $modStr" : ""} • $docPath',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textMuted,
+                                    fontFamily: 'monospace',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Nút Cập nhật nội dung file
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                              foregroundColor: AppColors.primaryLight,
+                              side: const BorderSide(color: AppColors.primary, width: 0.8),
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            ),
+                            icon: isUpdating
+                                ? const SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                                  )
+                                : const Icon(Icons.sync_rounded, size: 14),
+                            label: Text(
+                              isUpdating ? 'Đang ghi...' : 'Cập nhật nội dung',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500),
+                            ),
+                            onPressed: isUpdating ? null : () => _updateDocContent(docPath),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: AppColors.borderDark),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          ),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Đóng', style: TextStyle(color: AppColors.textBody)),
+        ),
+      ],
+    );
+  }
 }
 
 class _ScopePickerDialog extends StatefulWidget {

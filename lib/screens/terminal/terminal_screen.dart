@@ -135,7 +135,9 @@ class TerminalPaneItem {
 }
 
 class TerminalScreen extends StatefulWidget {
-  const TerminalScreen({super.key});
+  final VoidCallback? onHidePanel;
+
+  const TerminalScreen({super.key, this.onHidePanel});
 
   @override
   State<TerminalScreen> createState() => _TerminalScreenState();
@@ -1251,6 +1253,33 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       ),
                     ),
                   ),
+                if (widget.onHidePanel != null) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    margin: const EdgeInsets.only(top: 4, bottom: 0),
+                    height: 34,
+                    width: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(6),
+                        topRight: Radius.circular(6),
+                      ),
+                      border: const Border(
+                        top: BorderSide(color: Color(0x660D9488), width: 0.8),
+                        left: BorderSide(color: Color(0x660D9488), width: 0.8),
+                        right: BorderSide(color: Color(0x660D9488), width: 0.8),
+                      ),
+                    ),
+                    child: IconButton(
+                      tooltip: 'Ẩn Terminal',
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.keyboard_double_arrow_right_rounded, size: 16, color: AppColors.textDim),
+                      hoverColor: AppColors.primary.withValues(alpha: 0.15),
+                      onPressed: widget.onHidePanel,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
