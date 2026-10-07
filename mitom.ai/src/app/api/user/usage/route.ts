@@ -168,7 +168,14 @@ export async function GET(request: Request) {
       // Tính tổng tiền đã tiêu thụ theo giá niêm yết bán lẻ (VNĐ)
       const totalMonthlyUsedVnd = usdCostToListPriceVnd(keyData.MonthlyUsedAmount, listPriceMultiplier)
 
-      // Kiểm tra và tự động trừ số dư tài khoản người dùng theo chi tiêu API thực tế
+      // Tính tổng chi tiêu toàn thời gian (từ trước tới nay) tích lũy trong lịch sử
+      const totalAllTimeUsedUsd = Object.values(historyMap).reduce(
+        (sum, usd) => sum + (Number(usd) || 0),
+        0,
+      )
+      const totalAllTimeUsedVnd = usdCostToListPriceVnd(totalAllTimeUsedUsd, listPriceMultiplier)
+
+      // Kiểm tra và tự động trừ số dư tài khoản người dùng theo chi tiêu API thực tế từ lúc bắt đầu tới nay
       let actualBalance = userBalance
       try {
         // Tổng tiền nạp hợp lệ của user từ các đơn hàng đã thanh toán
@@ -183,9 +190,9 @@ export async function GET(request: Request) {
         })
         const totalPaidDeposit = (userOrders.docs || []).reduce((sum: number, o: any) => sum + (Number(o.subtotal) || 0), 0)
 
-        // Số dư chuẩn xác = Tổng tiền nạp - Tổng tiền đã tiêu thụ (tối thiểu là 0)
+        // Số dư chuẩn xác = Tổng số tiền nạp từ trước đến nay - Tổng số tiền đã dùng từ trước đến nay
         if (totalPaidDeposit > 0) {
-          actualBalance = Math.round(Math.max(0, totalPaidDeposit - totalMonthlyUsedVnd) * 100) / 100
+          actualBalance = Math.round(Math.max(0, totalPaidDeposit - totalAllTimeUsedVnd) * 100) / 100
           if (actualBalance !== userBalance) {
             await payload.update({
               collection: 'users',
@@ -228,6 +235,7 @@ export async function GET(request: Request) {
         status: Number(keyData.Status) === 1 ? 'Hoạt động' : 'Tạm khóa',
         dailyUsedVnd: usdCostToListPriceVnd(keyData.DailyUsedAmount, listPriceMultiplier),
         monthlyUsedVnd: usdCostToListPriceVnd(keyData.MonthlyUsedAmount, listPriceMultiplier),
+        allTimeUsedVnd: totalAllTimeUsedVnd,
         dailyLimitVnd: displayDailyLimit,
         monthlyLimitVnd: displayMonthlyLimit,
         updateTime: updateTimeRaw > 0 ? new Date(updateTimeRaw * 1000).toLocaleString('vi-VN') : '',

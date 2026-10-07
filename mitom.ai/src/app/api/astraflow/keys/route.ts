@@ -121,7 +121,8 @@ async function saveKeysToPayload(keysList: any[]): Promise<number> {
       where: { keyId: { equals: keyId } },
     })
 
-    const today = new Date().toISOString().split('T')[0]
+    const nowVn = new Date(Date.now() + 7 * 60 * 60 * 1000)
+    const today = nowVn.toISOString().split('T')[0]
     let usageHistory: Record<string, number> = {}
     if (existing.docs.length > 0) {
       try {

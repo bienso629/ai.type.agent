@@ -12,6 +12,7 @@ interface UsageAstraflow {
   status: string
   dailyUsedVnd: number
   monthlyUsedVnd: number
+  allTimeUsedVnd?: number
   dailyLimitVnd: number
   monthlyLimitVnd: number
   updateTime: string

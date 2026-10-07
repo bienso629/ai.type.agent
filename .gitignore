@@ -95,6 +95,9 @@ voiceclone-tts/OmniVoice/
 *.sqlite
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
+ziuoZt8N
 
 # ==========================================
 # OS & IDE Junk
