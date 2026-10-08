@@ -1291,163 +1291,194 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ],
-
-                if (!_showTerminalPanel) ...[
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _showTerminalPanel = true;
-                        _showDocViewerPanel = false;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      height: 36,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.borderDark),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: AppColors.accentCyan.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.terminal_rounded,
-                                size: 14,
-                                color: AppColors.accentCyan,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Terminal',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textWhite,
-                              height: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
 
           // 2. Main Content Split 50-50: Left is Chat Feed, Right is Terminal Screen
           Expanded(
-            child: Row(
+            child: Stack(
               children: [
-                // Left Column (50%): Chat Center Feed View & Input Bar
-                Expanded(
-                  child: Column(
+                Positioned.fill(
+                  child: Row(
                     children: [
-                      // Message Stream & Sticky Question Header
+                      // Left Column (50%): Chat Center Feed View & Input Bar
                       Expanded(
-                        child: Stack(
+                        child: Column(
                           children: [
-                            Positioned.fill(
-                              child: chat.isLoading
-                                  ? const Center(child: CircularProgressIndicator())
-                                  : ListView.builder(
-                                      controller: _scrollController,
-                                      reverse: true,
-                                      cacheExtent: 250.0,
-                                      addRepaintBoundaries: true,
-                                      addAutomaticKeepAlives: false,
-                                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                                      itemCount: chat.messages.isEmpty
-                                          ? 1
-                                          : chat.messages.length + (chat.hasMoreMessages ? 1 : 1),
-                                      itemBuilder: (context, idx) {
-                                        if (chat.messages.isEmpty) {
-                                          return _buildGreetingBubble(chat, serverProvider);
-                                        }
-                                        if (idx == chat.messages.length) {
-                                          if (chat.hasMoreMessages) {
-                                            return _buildLoadMoreBanner(chat);
-                                          }
-                                          return _buildGreetingBubble(chat, serverProvider);
-                                        }
-                                        final msgIndex = chat.messages.length - 1 - idx;
-                                        final msg = chat.messages[msgIndex];
-                                        return RepaintBoundary(
-                                          child: _buildMessageItem(msg, chat, msgIndex),
-                                        );
-                                      },
+                            // Message Stream & Sticky Question Header
+                            Expanded(
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: chat.isLoading
+                                        ? const Center(child: CircularProgressIndicator())
+                                        : ListView.builder(
+                                            controller: _scrollController,
+                                            reverse: true,
+                                            cacheExtent: 250.0,
+                                            addRepaintBoundaries: true,
+                                            addAutomaticKeepAlives: false,
+                                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                            itemCount: chat.messages.isEmpty
+                                                ? 1
+                                                : chat.messages.length + (chat.hasMoreMessages ? 1 : 1),
+                                            itemBuilder: (context, idx) {
+                                              if (chat.messages.isEmpty) {
+                                                return _buildGreetingBubble(chat, serverProvider);
+                                              }
+                                              if (idx == chat.messages.length) {
+                                                if (chat.hasMoreMessages) {
+                                                  return _buildLoadMoreBanner(chat);
+                                                }
+                                                return _buildGreetingBubble(chat, serverProvider);
+                                              }
+                                              final msgIndex = chat.messages.length - 1 - idx;
+                                              final msg = chat.messages[msgIndex];
+                                              return RepaintBoundary(
+                                                child: _buildMessageItem(msg, chat, msgIndex),
+                                              );
+                                            },
+                                          ),
+                                  ),
+
+                                  // Sticky Question Header
+                                  if (_stickyUserQuestion != null)
+                                    Positioned(
+                                      top: 8,
+                                      left: 20,
+                                      right: 20,
+                                      child: _buildStickyQuestionHeader(_stickyUserQuestion!, chat),
                                     ),
+                                ],
+                              ),
                             ),
 
-                            // Sticky Question Header
-                            if (_stickyUserQuestion != null)
-                              Positioned(
-                                top: 8,
-                                left: 20,
-                                right: 20,
-                                child: _buildStickyQuestionHeader(_stickyUserQuestion!, chat),
-                              ),
+                            // Input Bar
+                            _buildInputBar(chat, serverProvider),
                           ],
                         ),
                       ),
 
-                      // Input Bar
-                      _buildInputBar(chat, serverProvider),
+                      // Vertical Divider and Right Column (Terminal Screen or Doc Viewer Panel)
+                      if (_showTerminalPanel) ...[
+                        const VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: AppColors.borderDark,
+                        ),
+                        Expanded(
+                          child: TerminalScreen(
+                            onHidePanel: () {
+                              setState(() {
+                                _showTerminalPanel = false;
+                              });
+                            },
+                          ),
+                        ),
+                      ] else if (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty) ...[
+                        const VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: AppColors.borderDark,
+                        ),
+                        Expanded(
+                          child: _ScopeDocViewerPanel(
+                            chat: chat,
+                            selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
+                            onSelectDoc: (path) {
+                              setState(() {
+                                _selectedViewerDocPath = path;
+                              });
+                            },
+                            onClose: () {
+                              setState(() {
+                                _showDocViewerPanel = false;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
 
-                // Vertical Divider and Right Column (Terminal Screen or Doc Viewer Panel)
-                if (_showTerminalPanel) ...[
-                  const VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    color: AppColors.borderDark,
-                  ),
-                  Expanded(
-                    child: TerminalScreen(
-                      onHidePanel: () {
-                        setState(() {
-                          _showTerminalPanel = false;
-                        });
-                      },
+                // Nút icon Terminal nằm xoay ngang sát mép màn hình bên phải khi Terminal đang ẩn
+                if (!_showTerminalPanel)
+                  Positioned(
+                    right: 0,
+                    top: 140,
+                    child: Tooltip(
+                      message: 'Mở Terminal',
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _showTerminalPanel = true;
+                            _showDocViewerPanel = false;
+                          });
+                        },
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(8),
+                          bottomLeft: Radius.circular(8),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.cardBg,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(8),
+                              bottomLeft: Radius.circular(8),
+                            ),
+                            border: Border(
+                              left: BorderSide(color: AppColors.accentCyan.withValues(alpha: 0.6), width: 1),
+                              top: BorderSide(color: AppColors.accentCyan.withValues(alpha: 0.6), width: 1),
+                              bottom: BorderSide(color: AppColors.accentCyan.withValues(alpha: 0.6), width: 1),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.35),
+                                blurRadius: 8,
+                                offset: const Offset(-2, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentCyan.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.terminal_rounded,
+                                    size: 15,
+                                    color: AppColors.accentCyan,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              RotatedBox(
+                                quarterTurns: 1,
+                                child: const Text(
+                                  'TERMINAL',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    letterSpacing: 1.2,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primaryLight,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ] else if (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty) ...[
-                  const VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    color: AppColors.borderDark,
-                  ),
-                  Expanded(
-                    child: _ScopeDocViewerPanel(
-                      chat: chat,
-                      selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
-                      onSelectDoc: (path) {
-                        setState(() {
-                          _selectedViewerDocPath = path;
-                        });
-                      },
-                      onClose: () {
-                        setState(() {
-                          _showDocViewerPanel = false;
-                        });
-                      },
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -1750,73 +1781,74 @@ class _ChatScreenState extends State<ChatScreen> {
                           ]
                         : null,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (msg.attachments.isNotEmpty) ...[
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: msg.attachments.map((att) {
-                            return AttachmentHoverPreview(
-                              item: att,
-                              child: Material(
-                                color: AppColors.bgDark,
-                                borderRadius: BorderRadius.circular(4),
-                                child: InkWell(
+                  child: SelectionArea(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (msg.attachments.isNotEmpty) ...[
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: msg.attachments.map((att) {
+                              return AttachmentHoverPreview(
+                                item: att,
+                                child: Material(
+                                  color: AppColors.bgDark,
                                   borderRadius: BorderRadius.circular(4),
-                                  onTap: () => _downloadAttachment(att),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(maxWidth: 160),
-                                          child: Text(
-                                            att.name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(4),
+                                    onTap: () => _downloadAttachment(att),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: AppColors.borderLight.withValues(alpha: 0.3)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(maxWidth: 160),
+                                            child: Text(
+                                              att.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontWeight: FontWeight.w500),
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '(${att.formattedSize})',
-                                          style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        const Text(
-                                          'Tải xuống',
-                                          style: TextStyle(fontSize: 10, color: AppColors.accentCyan, fontWeight: FontWeight.w500),
-                                        ),
-                                      ],
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '(${att.formattedSize})',
+                                            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Text(
+                                            'Tải xuống',
+                                            style: TextStyle(fontSize: 10, color: AppColors.accentCyan, fontWeight: FontWeight.w500),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
 
-                      // 1. Tool Executions (Terminal actions & commands) rendered first
-                      if (msg.toolExecutions.isNotEmpty) ...[
-                        ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
-                        if (msg.content.isNotEmpty || (msg.content.isEmpty && msg.isStreaming))
-                          const SizedBox(height: 10),
-                      ],
+                        // 1. Tool Executions (Terminal actions & commands) rendered first
+                        if (msg.toolExecutions.isNotEmpty) ...[
+                          ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
+                          if (msg.content.isNotEmpty || (msg.content.isEmpty && msg.isStreaming))
+                            const SizedBox(height: 10),
+                        ],
 
-                      // 2. Reply Answer Content rendered below tool executions
-                      if (msg.cleanContent.isNotEmpty)
-                        MarkdownBody(
-                          data: msg.cleanContent,
-                          selectable: !msg.isStreaming,
+                        // 2. Reply Answer Content rendered below tool executions
+                        if (msg.cleanContent.isNotEmpty)
+                          MarkdownBody(
+                            data: msg.cleanContent,
+                            selectable: false,
                           onTapLink: (text, href, title) async {
                             if (href != null && href.trim().isNotEmpty) {
                               var rawUrl = href.trim();
@@ -1880,6 +1912,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ],
                   ),
                 ),
+              ),
 
                 // Message Action Bar (Timestamp, Copy, Retry, PDF)
                 Padding(
@@ -2620,6 +2653,7 @@ class _ScopeDocViewerPanelState extends State<_ScopeDocViewerPanel> {
   bool _isEditMode = false;
   String? _loadedDocPath;
   String? _errorMessage;
+  List<String> _renderedPageImages = [];
 
   @override
   void initState() {
@@ -2657,9 +2691,56 @@ class _ScopeDocViewerPanelState extends State<_ScopeDocViewerPanel> {
       });
       return;
     }
-
     final ext = p.extension(docPath).toLowerCase();
     try {
+      // Tạo thư mục cache ảnh trang cho tài liệu (PDF và DOCX) để hiển thị chuẩn xác tuyệt đối
+      _renderedPageImages = [];
+      if (ext == '.pdf' || ext == '.docx') {
+        try {
+          final pathHash = docPath.hashCode.abs().toString();
+          final outDir = '/tmp/doc_viewer_$pathHash';
+          final dir = Directory(outDir);
+          if (dir.existsSync()) {
+            try {
+              dir.deleteSync(recursive: true);
+            } catch (_) {}
+          }
+          dir.createSync(recursive: true);
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+          String pdfTarget = docPath;
+          if (ext == '.docx') {
+            // Chuyển docx sang PDF qua LibreOffice headless để có định dạng trang in chuẩn xác 100%
+            await Process.run('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', outDir, docPath]);
+            final baseName = p.basenameWithoutExtension(docPath);
+            final generatedPdf = p.join(outDir, '$baseName.pdf');
+            if (File(generatedPdf).existsSync()) {
+              pdfTarget = generatedPdf;
+            }
+          }
+          final pagePrefix = p.join(outDir, 'page');
+          final ppmRes = await Process.run('pdftoppm', ['-png', '-r', '150', pdfTarget, pagePrefix]);
+          if (ppmRes.exitCode == 0) {
+            final pageFiles = dir
+                .listSync()
+                .whereType<File>()
+                .where((f) => p.basename(f.path).startsWith('page-') && f.path.endsWith('.png'))
+                .map((f) => f.path)
+                .toList();
+            pageFiles.sort((a, b) {
+              final reg = RegExp(r'page-(\d+)');
+              final ma = int.tryParse(reg.firstMatch(p.basename(a))?.group(1) ?? '0') ?? 0;
+              final mb = int.tryParse(reg.firstMatch(p.basename(b))?.group(1) ?? '0') ?? 0;
+              return ma.compareTo(mb);
+            });
+            for (final pf in pageFiles) {
+              FileImage(File(pf)).evict();
+            }
+            _renderedPageImages = pageFiles;
+          }
+        } catch (_) {}
+      }
+
       if (ext == '.pdf') {
         // Trích xuất văn bản từ PDF qua pdftotext có canh lề chuẩn (-layout)
         final res = await Process.run('pdftotext', ['-layout', docPath, '-']);
@@ -2671,87 +2752,146 @@ class _ScopeDocViewerPanelState extends State<_ScopeDocViewerPanel> {
         }
       } else if (ext == '.docx') {
         // Trích xuất cấu trúc văn bản đầy đủ từ DOCX sang Markdown chuẩn (Tiêu đề, In đậm, In nghiêng, Bảng biểu)
-        final script = '''
-import zipfile, xml.etree.ElementTree as ET, sys
-
-namespaces = {
-    'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-}
+        final script = r'''
+import sys
 
 def parse_docx(path):
     try:
-        with zipfile.ZipFile(path) as z:
-            tree = ET.fromstring(z.read('word/document.xml'))
-    except Exception as e:
-        return f"# Lỗi mở file: {e}"
-
-    body = tree.find('w:body', namespaces)
-    if body is None:
-        return ""
-
-    md_lines = []
-    for elem in body:
-        tag = elem.tag.split('}')[-1]
-        if tag == 'p':
-            pStyle = elem.find('.//w:pStyle', namespaces)
-            style_val = pStyle.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', '') if pStyle is not None else ''
-
-            para_runs = []
-            for r in elem.findall('.//w:r', namespaces):
-                rPr = r.find('w:rPr', namespaces)
-                is_bold = rPr is not None and rPr.find('w:b', namespaces) is not None
-                is_italic = rPr is not None and rPr.find('w:i', namespaces) is not None
-                t = ''.join([node.text for node in r.findall('w:t', namespaces) if node.text])
-                if not t:
+        from docx import Document
+        from docx.text.paragraph import Paragraph
+        from docx.table import Table
+        doc = Document(path)
+        md_blocks = []
+        for elem in doc.element.body:
+            tag = elem.tag.split('}')[-1]
+            if tag == 'p':
+                p = Paragraph(elem, doc)
+                text = p.text.strip()
+                if not text:
                     continue
-                if is_bold and is_italic:
-                    t = f"***{t}***"
-                elif is_bold:
-                    t = f"**{t}**"
-                elif is_italic:
-                    t = f"*{t}*"
-                para_runs.append(t)
-
-            text = ''.join(para_runs).strip()
-            if not text:
-                md_lines.append("")
-                continue
-
-            if 'Heading1' in style_val or style_val == '1':
-                md_lines.append(f"# {text}\\n")
-            elif 'Heading2' in style_val or style_val == '2':
-                md_lines.append(f"## {text}\\n")
-            elif 'Heading3' in style_val or style_val == '3':
-                md_lines.append(f"### {text}\\n")
-            elif 'Title' in style_val:
-                md_lines.append(f"# {text}\\n")
-            else:
-                md_lines.append(f"{text}\\n")
-
-        elif tag == 'tbl':
-            rows = elem.findall('.//w:tr', namespaces)
-            if not rows:
-                continue
-            table_data = []
-            for r in rows:
-                row_cells = []
-                for c in r.findall('.//w:tc', namespaces):
-                    cell_text = ' '.join([''.join([t.text for t in p.findall('.//w:t', namespaces) if t.text]).strip() for p in c.findall('.//w:p', namespaces)]).strip()
-                    row_cells.append(cell_text.replace('|', '\\\\|'))
-                table_data.append(row_cells)
-
-            if table_data:
-                col_count = max(len(r) for r in table_data)
-                header = table_data[0] + [''] * (col_count - len(table_data[0]))
-                md_lines.append("| " + " | ".join(header) + " |")
-                md_lines.append("| " + " | ".join(['---'] * col_count) + " |")
-                for r in table_data[1:]:
-                    r = r + [''] * (col_count - len(r))
-                    md_lines.append("| " + " | ".join(r) + " |")
-                md_lines.append("")
-
-    return '\\n'.join(md_lines)
+                style_name = p.style.name.lower() if p.style else ''
+                para_runs = []
+                for r in p.runs:
+                    t = r.text
+                    if not t:
+                        continue
+                    if r.bold and r.italic:
+                        t = f"***{t}***"
+                    elif r.bold:
+                        t = f"**{t}**"
+                    elif r.italic:
+                        t = f"*{t}*"
+                    para_runs.append(t)
+                inline_text = "".join(para_runs).strip() if para_runs else text
+                if 'title' in style_name:
+                    md_blocks.append(f"# {inline_text}")
+                elif 'subtitle' in style_name:
+                    md_blocks.append(f"*{inline_text}*")
+                elif 'heading 1' in style_name:
+                    md_blocks.append(f"## {inline_text}")
+                elif 'heading 2' in style_name:
+                    md_blocks.append(f"### {inline_text}")
+                elif 'heading 3' in style_name:
+                    md_blocks.append(f"#### {inline_text}")
+                elif 'bullet' in style_name or p._p.find('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr') is not None:
+                    if inline_text.startswith('- ') or inline_text.startswith('* '):
+                        md_blocks.append(inline_text)
+                    else:
+                        md_blocks.append(f"- {inline_text}")
+                else:
+                    md_blocks.append(inline_text)
+            elif tag == 'tbl':
+                tbl = Table(elem, doc)
+                table_data = []
+                for row in tbl.rows:
+                    row_cells = []
+                    for cell in row.cells:
+                        cell_text = cell.text.strip().replace('\n', ' ').replace('|', r'\|')
+                        row_cells.append(cell_text)
+                    table_data.append(row_cells)
+                if table_data:
+                    col_count = max(len(r) for r in table_data)
+                    header = table_data[0] + [''] * (col_count - len(table_data[0]))
+                    tbl_lines = [
+                        "| " + " | ".join(header) + " |",
+                        "| " + " | ".join(['---'] * col_count) + " |"
+                    ]
+                    for r in table_data[1:]:
+                        r = r + [''] * (col_count - len(r))
+                        tbl_lines.append("| " + " | ".join(r) + " |")
+                    md_blocks.append("\n".join(tbl_lines))
+        return "\n\n".join(md_blocks)
+    except Exception as e:
+        import zipfile, xml.etree.ElementTree as ET
+        try:
+            with zipfile.ZipFile(path) as z:
+                tree = ET.fromstring(z.read('word/document.xml'))
+        except Exception as e2:
+            return f"# Lỗi mở file: {e2}"
+        namespaces = {
+            'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+            'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+        }
+        body = tree.find('w:body', namespaces)
+        if body is None:
+            return ""
+        md_lines = []
+        for elem in body:
+            tag = elem.tag.split('}')[-1]
+            if tag == 'p':
+                pStyle = elem.find('.//w:pStyle', namespaces)
+                style_val = pStyle.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', '') if pStyle is not None else ''
+                para_runs = []
+                for r in elem.findall('.//w:r', namespaces):
+                    rPr = r.find('w:rPr', namespaces)
+                    is_bold = rPr is not None and rPr.find('w:b', namespaces) is not None
+                    is_italic = rPr is not None and rPr.find('w:i', namespaces) is not None
+                    t = ''.join([node.text for node in r.findall('w:t', namespaces) if node.text])
+                    if not t:
+                        continue
+                    if is_bold and is_italic:
+                        t = f"***{t}***"
+                    elif is_bold:
+                        t = f"**{t}**"
+                    elif is_italic:
+                        t = f"*{t}*"
+                    para_runs.append(t)
+                text = ''.join(para_runs).strip()
+                if not text:
+                    continue
+                if 'Heading1' in style_val or style_val == '1':
+                    md_lines.append(f"# {text}")
+                elif 'Heading2' in style_val or style_val == '2':
+                    md_lines.append(f"## {text}")
+                elif 'Heading3' in style_val or style_val == '3':
+                    md_lines.append(f"### {text}")
+                elif 'Title' in style_val:
+                    md_lines.append(f"# {text}")
+                else:
+                    md_lines.append(text)
+            elif tag == 'tbl':
+                rows = elem.findall('.//w:tr', namespaces)
+                if not rows:
+                    continue
+                table_data = []
+                for r in rows:
+                    row_cells = []
+                    for c in r.findall('.//w:tc', namespaces):
+                        cell_text = ' '.join([''.join([t.text for t in p.findall('.//w:t', namespaces) if t.text]).strip() for p in c.findall('.//w:p', namespaces)]).strip()
+                        row_cells.append(cell_text.replace('|', r'\|'))
+                    table_data.append(row_cells)
+                if table_data:
+                    col_count = max(len(r) for r in table_data)
+                    header = table_data[0] + [''] * (col_count - len(table_data[0]))
+                    tbl_lines = [
+                        "| " + " | ".join(header) + " |",
+                        "| " + " | ".join(['---'] * col_count) + " |"
+                    ]
+                    for r in table_data[1:]:
+                        r = r + [''] * (col_count - len(r))
+                        tbl_lines.append("| " + " | ".join(r) + " |")
+                    md_lines.append("\n".join(tbl_lines))
+        return "\n\n".join(md_lines)
 
 if __name__ == '__main__':
     print(parse_docx(sys.argv[1]))
@@ -2778,7 +2918,7 @@ if __name__ == '__main__':
     }
   }
 
-  Future<void> _saveDirectContent() async {
+  Future<void> _saveDirectContent({bool reloadPreview = true, bool showToast = true}) async {
     if (_loadedDocPath == null) return;
     final file = File(_loadedDocPath!);
 
@@ -2786,31 +2926,430 @@ if __name__ == '__main__':
     try {
       final ext = p.extension(_loadedDocPath!).toLowerCase();
       if (ext == '.docx') {
-        // Lưu sang file .docx hoàn chỉnh thông qua python-docx hoặc text plain
-        final pyScript = '''
+        // Lưu sang file .docx kế thừa nguyên vẹn style gốc (Title, Heading 1/2/3, Normal Table)
+        final pyScript = r'''
 import sys
-try:
-    from docx import Document
-    doc = Document()
-    text = sys.stdin.read()
-    for line in text.split('\\n'):
-        doc.add_paragraph(line)
-    doc.save(sys.argv[1])
-    print('OK')
-except Exception:
-    # Nếu python-docx chưa cài, lưu text sạch trực tiếp
-    with open(sys.argv[1], 'w', encoding='utf-8') as f:
-        f.write(sys.stdin.read())
-    print('FALLBACK_OK')
+import os
+import re
+
+def add_inline_runs(paragraph, text, default_color=None, default_size=None, font_name='Arial'):
+    from docx.shared import Pt
+    pattern = re.compile(r'(\*\*\*.*?\*\*\*|\*\*.*?\*\*|\*.*?\*)')
+    parts = pattern.split(text)
+    for part in parts:
+        if not part:
+            continue
+        r = None
+        if part.startswith('***') and part.endswith('***') and len(part) >= 6:
+            r = paragraph.add_run(part[3:-3])
+            r.bold = True
+            r.italic = True
+        elif part.startswith('**') and part.endswith('**') and len(part) >= 4:
+            r = paragraph.add_run(part[2:-2])
+            r.bold = True
+        elif part.startswith('*') and part.endswith('*') and len(part) >= 2:
+            r = paragraph.add_run(part[1:-1])
+            r.italic = True
+        else:
+            r = paragraph.add_run(part)
+        if r:
+            r.font.name = font_name
+            if default_size is not None:
+                r.font.size = default_size
+            if default_color is not None:
+                r.font.color.rgb = default_color
+
+def save_docx(target_path):
+    md_text = sys.stdin.read()
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+
+        if os.path.exists(target_path):
+            try:
+                doc = Document(target_path)
+                body = doc._element.body
+                for child in list(body):
+                    tag = child.tag.split('}')[-1]
+                    if tag in ('p', 'tbl'):
+                        body.remove(child)
+            except Exception:
+                doc = Document()
+        else:
+            doc = Document()
+
+        for s in doc.sections:
+            s.top_margin = Inches(0.8)
+            s.bottom_margin = Inches(0.8)
+            s.left_margin = Inches(0.8)
+            s.right_margin = Inches(0.8)
+
+        COLOR_PRIMARY = RGBColor(0x1B, 0x58, 0x8C)
+        COLOR_TEXT = RGBColor(0x1F, 0x23, 0x28)
+
+        try:
+            sec = doc.sections[0]
+            content_w = sec.page_width - sec.left_margin - sec.right_margin
+        except Exception:
+            content_w = 5486400
+
+        lines = md_text.split('\n')
+        i = 0
+        is_first_header = True
+
+        while i < len(lines):
+            line = lines[i]
+            trimmed = line.strip()
+            if not trimmed:
+                i += 1
+                continue
+
+            # Xử lý Markdown table
+            if trimmed.startswith('|') and '|' in trimmed[1:]:
+                table_lines = []
+                while i < len(lines) and lines[i].strip().startswith('|') and '|' in lines[i].strip()[1:]:
+                    table_lines.append(lines[i].strip())
+                    i += 1
+
+                raw_rows = []
+                for tl in table_lines:
+                    parts = tl.split('|')[1:-1]
+                    raw_rows.append([p.strip().replace(r'\|', '|') for p in parts])
+
+                content_rows = [r for r in raw_rows if not all(c.replace('-', '').strip() == '' for c in r if c)]
+                if content_rows:
+                    col_count = max(len(r) for r in content_rows)
+                    # Chuẩn hóa số cột cho mọi hàng để tuyệt đối không bị tràn chỉ mục cell
+                    normalized_rows = [r + [''] * (col_count - len(r)) for r in content_rows]
+                    tbl = doc.add_table(rows=len(normalized_rows), cols=col_count)
+                    tbl.autofit = False
+
+                    # Thêm viền bảng thanh mảnh màu xám tao nhã
+                    ns = nsdecls('w')
+                    borders_xml = f'<w:tblBorders {ns}><w:top w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:left w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:right w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/></w:tblBorders>'
+                    tbl._tbl.tblPr.append(parse_xml(borders_xml))
+
+                    col_widths = []
+                    if col_count == 2:
+                        col_widths = [int(content_w * 0.22), content_w - int(content_w * 0.22)]
+                    else:
+                        col_widths = [content_w // col_count] * col_count
+
+                    for r_idx, row in enumerate(normalized_rows):
+                        for c_idx, cell_str in enumerate(row):
+                            cell = tbl.cell(r_idx, c_idx)
+                            cell.width = col_widths[c_idx] if c_idx < len(col_widths) else (content_w // col_count)
+                            if r_idx == 0:
+                                cell._tc.get_or_add_tcPr().append(parse_xml(f'<w:shd {ns} w:fill="E2E8F0"/>'))
+                            cell_text = cell_str.replace('<br/>', '\n')
+                            p = cell.paragraphs[0]
+                            p.paragraph_format.space_before = Pt(3.5)
+                            p.paragraph_format.space_after = Pt(3.5)
+                            p.paragraph_format.line_spacing = 1.15
+                            if r_idx == 0:
+                                add_inline_runs(p, cell_text, default_size=Pt(9.5))
+                                for run in p.runs:
+                                    run.bold = True
+                            else:
+                                add_inline_runs(p, cell_text, default_size=Pt(9.5))
+                continue
+
+            # Tiêu đề chính Title & Phụ đề Subtitle
+            if trimmed.startswith('# ') and is_first_header:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.paragraph_format.space_before = Pt(0)
+                p.paragraph_format.space_after = Pt(4)
+                add_inline_runs(p, trimmed[2:].strip(), default_color=COLOR_PRIMARY, default_size=Pt(16))
+                for run in p.runs:
+                    run.bold = True
+                is_first_header = False
+            elif is_first_header == False and trimmed.startswith('*') and trimmed.endswith('*') and i <= 3:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.paragraph_format.space_before = Pt(0)
+                p.paragraph_format.space_after = Pt(14)
+                add_inline_runs(p, trimmed, default_size=Pt(10))
+            elif trimmed.startswith('# ') or trimmed.startswith('## ') or trimmed.startswith('### '):
+                level_prefix = trimmed.split(' ')[0]
+                h_text = trimmed[len(level_prefix):].strip()
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(12)
+                p.paragraph_format.space_after = Pt(4)
+                add_inline_runs(p, h_text, default_color=COLOR_PRIMARY, default_size=Pt(12.5))
+                for run in p.runs:
+                    run.bold = True
+            elif trimmed.startswith('- ') or trimmed.startswith('* '):
+                has_bullet_style = 'List Bullet' in [s.name for s in doc.styles]
+                if has_bullet_style:
+                    p = doc.add_paragraph(style='List Bullet')
+                    p.paragraph_format.space_before = Pt(1.5)
+                    p.paragraph_format.space_after = Pt(2.5)
+                    p.paragraph_format.line_spacing = 1.15
+                    add_inline_runs(p, trimmed[2:].strip(), default_size=Pt(10))
+                else:
+                    p = doc.add_paragraph()
+                    p.paragraph_format.left_indent = Inches(0.25)
+                    p.paragraph_format.first_line_indent = Inches(-0.15)
+                    p.paragraph_format.space_before = Pt(1.5)
+                    p.paragraph_format.space_after = Pt(2.5)
+                    p.paragraph_format.line_spacing = 1.15
+                    r_bullet = p.add_run('•  ')
+                    r_bullet.bold = True
+                    r_bullet.font.name = 'Arial'
+                    r_bullet.font.size = Pt(10)
+                    add_inline_runs(p, trimmed[2:].strip(), default_size=Pt(10))
+            elif re.match(r'^\d+\.\s+', trimmed):
+                match = re.match(r'^(\d+\.)\s+(.*)$', trimmed)
+                num_str = match.group(1)
+                rest_text = match.group(2)
+                p = doc.add_paragraph()
+                p.paragraph_format.left_indent = Inches(0.25)
+                p.paragraph_format.space_before = Pt(2.5)
+                p.paragraph_format.space_after = Pt(3.5)
+                p.paragraph_format.line_spacing = 1.15
+                r_num = p.add_run(num_str + '  ')
+                r_num.bold = True
+                r_num.font.name = 'Arial'
+                r_num.font.size = Pt(10)
+                add_inline_runs(p, rest_text, default_size=Pt(10))
+            else:
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(2)
+                p.paragraph_format.space_after = Pt(3)
+                p.paragraph_format.line_spacing = 1.15
+                add_inline_runs(p, trimmed, default_size=Pt(10))
+            i += 1
+
+        tmp_path = target_path + '.tmp.docx'
+        doc.save(tmp_path)
+        os.replace(tmp_path, target_path)
+        print('OK')
+    except Exception as e:
+        sys.stderr.write(f'DOCX_SAVE_ERROR: {e}\n')
+        sys.exit(1)
+
+if __name__ == '__main__':
+    save_docx(sys.argv[1])
 ''';
         final proc = await Process.start('python3', ['-c', pyScript, _loadedDocPath!]);
         proc.stdin.write(_contentController.text);
         await proc.stdin.close();
-        await proc.exitCode;
+        final exitCode = await proc.exitCode;
+        if (exitCode != 0) {
+          final errOutput = await utf8.decoder.bind(proc.stderr).join();
+          throw Exception('Không thể tạo file DOCX: $errOutput');
+        }
       } else if (ext == '.pdf') {
-        // Nếu là PDF, tạo PDF mới từ nội dung text bằng PdfExportService hoặc lưu text
-        final text = _contentController.text;
-        await file.writeAsString(text);
+        // Đối với file PDF: Dùng DOCX làm trung gian để biên dịch lại PDF qua LibreOffice headless
+        final tempDocx = '${_loadedDocPath!}.tmp.docx';
+        final pyScript = r'''
+import sys
+import os
+import re
+
+def add_inline_runs(paragraph, text, default_color=None, default_size=None, font_name='Arial'):
+    from docx.shared import Pt
+    pattern = re.compile(r'(\*\*\*.*?\*\*\*|\*\*.*?\*\*|\*.*?\*)')
+    parts = pattern.split(text)
+    for part in parts:
+        if not part:
+            continue
+        r = None
+        if part.startswith('***') and part.endswith('***') and len(part) >= 6:
+            r = paragraph.add_run(part[3:-3])
+            r.bold = True
+            r.italic = True
+        elif part.startswith('**') and part.endswith('**') and len(part) >= 4:
+            r = paragraph.add_run(part[2:-2])
+            r.bold = True
+        elif part.startswith('*') and part.endswith('*') and len(part) >= 2:
+            r = paragraph.add_run(part[1:-1])
+            r.italic = True
+        else:
+            r = paragraph.add_run(part)
+        if r:
+            r.font.name = font_name
+            if default_size is not None:
+                r.font.size = default_size
+            if default_color is not None:
+                r.font.color.rgb = default_color
+
+def save_pdf_docx(target_path):
+    md_text = sys.stdin.read()
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+
+        doc = Document()
+        for s in doc.sections:
+            s.top_margin = Inches(0.8)
+            s.bottom_margin = Inches(0.8)
+            s.left_margin = Inches(0.8)
+            s.right_margin = Inches(0.8)
+
+        COLOR_PRIMARY = RGBColor(0x1B, 0x58, 0x8C)
+        COLOR_TEXT = RGBColor(0x1F, 0x23, 0x28)
+
+        try:
+            sec = doc.sections[0]
+            content_w = sec.page_width - sec.left_margin - sec.right_margin
+        except Exception:
+            content_w = 5486400
+
+        lines = md_text.split('\n')
+        i = 0
+        is_first_header = True
+
+        while i < len(lines):
+            line = lines[i]
+            trimmed = line.strip()
+            if not trimmed:
+                i += 1
+                continue
+
+            # Xử lý Markdown table
+            if trimmed.startswith('|') and '|' in trimmed[1:]:
+                table_lines = []
+                while i < len(lines) and lines[i].strip().startswith('|') and '|' in lines[i].strip()[1:]:
+                    table_lines.append(lines[i].strip())
+                    i += 1
+
+                raw_rows = []
+                for tl in table_lines:
+                    parts = tl.split('|')[1:-1]
+                    raw_rows.append([p.strip().replace(r'\|', '|') for p in parts])
+
+                content_rows = [r for r in raw_rows if not all(c.replace('-', '').strip() == '' for c in r if c)]
+                if content_rows:
+                    col_count = max(len(r) for r in content_rows)
+                    normalized_rows = [r + [''] * (col_count - len(r)) for r in content_rows]
+                    tbl = doc.add_table(rows=len(normalized_rows), cols=col_count)
+                    tbl.autofit = False
+                    ns = nsdecls('w')
+                    borders_xml = f'<w:tblBorders {ns}><w:top w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:left w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:right w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="D0D7DE"/></w:tblBorders>'
+                    tbl._tbl.tblPr.append(parse_xml(borders_xml))
+
+                    col_widths = []
+                    if col_count == 2:
+                        col_widths = [int(content_w * 0.22), content_w - int(content_w * 0.22)]
+                    else:
+                        col_widths = [content_w // col_count] * col_count
+
+                    for r_idx, row in enumerate(normalized_rows):
+                        for c_idx, cell_str in enumerate(row):
+                            cell = tbl.cell(r_idx, c_idx)
+                            cell.width = col_widths[c_idx] if c_idx < len(col_widths) else (content_w // col_count)
+                            if r_idx == 0:
+                                cell._tc.get_or_add_tcPr().append(parse_xml(f'<w:shd {ns} w:fill="E2E8F0"/>'))
+                            cell_text = cell_str.replace('<br/>', '\n')
+                            p = cell.paragraphs[0]
+                            p.paragraph_format.space_before = Pt(3.5)
+                            p.paragraph_format.space_after = Pt(3.5)
+                            p.paragraph_format.line_spacing = 1.15
+                            if r_idx == 0:
+                                add_inline_runs(p, cell_text, default_size=Pt(9.5))
+                                for run in p.runs:
+                                    run.bold = True
+                            else:
+                                add_inline_runs(p, cell_text, default_size=Pt(9.5))
+                continue
+
+            if trimmed.startswith('# ') and is_first_header:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.paragraph_format.space_before = Pt(0)
+                p.paragraph_format.space_after = Pt(4)
+                add_inline_runs(p, trimmed[2:].strip(), default_color=COLOR_PRIMARY, default_size=Pt(16))
+                for run in p.runs:
+                    run.bold = True
+                is_first_header = False
+            elif is_first_header == False and trimmed.startswith('*') and trimmed.endswith('*') and i <= 3:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.paragraph_format.space_before = Pt(0)
+                p.paragraph_format.space_after = Pt(14)
+                add_inline_runs(p, trimmed, default_size=Pt(10))
+            elif trimmed.startswith('# ') or trimmed.startswith('## ') or trimmed.startswith('### '):
+                level_prefix = trimmed.split(' ')[0]
+                h_text = trimmed[len(level_prefix):].strip()
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(12)
+                p.paragraph_format.space_after = Pt(4)
+                add_inline_runs(p, h_text, default_color=COLOR_PRIMARY, default_size=Pt(12.5))
+                for run in p.runs:
+                    run.bold = True
+            elif trimmed.startswith('- ') or trimmed.startswith('* '):
+                has_bullet_style = 'List Bullet' in [s.name for s in doc.styles]
+                if has_bullet_style:
+                    p = doc.add_paragraph(style='List Bullet')
+                    p.paragraph_format.space_before = Pt(1.5)
+                    p.paragraph_format.space_after = Pt(2.5)
+                    p.paragraph_format.line_spacing = 1.15
+                    add_inline_runs(p, trimmed[2:].strip(), default_size=Pt(10))
+                else:
+                    p = doc.add_paragraph()
+                    p.paragraph_format.left_indent = Inches(0.25)
+                    p.paragraph_format.first_line_indent = Inches(-0.15)
+                    p.paragraph_format.space_before = Pt(1.5)
+                    p.paragraph_format.space_after = Pt(2.5)
+                    p.paragraph_format.line_spacing = 1.15
+                    r_bullet = p.add_run('•  ')
+                    r_bullet.bold = True
+                    r_bullet.font.name = 'Arial'
+                    r_bullet.font.size = Pt(10)
+                    add_inline_runs(p, trimmed[2:].strip(), default_size=Pt(10))
+            elif re.match(r'^\d+\.\s+', trimmed):
+                match = re.match(r'^(\d+\.)\s+(.*)$', trimmed)
+                num_str = match.group(1)
+                rest_text = match.group(2)
+                p = doc.add_paragraph()
+                p.paragraph_format.left_indent = Inches(0.25)
+                p.paragraph_format.space_before = Pt(2.5)
+                p.paragraph_format.space_after = Pt(3.5)
+                p.paragraph_format.line_spacing = 1.15
+                r_num = p.add_run(num_str + '  ')
+                r_num.bold = True
+                r_num.font.name = 'Arial'
+                r_num.font.size = Pt(10)
+                add_inline_runs(p, rest_text, default_size=Pt(10))
+            else:
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(2)
+                p.paragraph_format.space_after = Pt(3)
+                p.paragraph_format.line_spacing = 1.15
+                add_inline_runs(p, trimmed, default_size=Pt(10))
+            i += 1
+
+        doc.save(target_path)
+    except Exception as e:
+        sys.stderr.write(f'PDF_DOCX_ERROR: {e}\n')
+        sys.exit(1)
+
+if __name__ == '__main__':
+    save_pdf_docx(sys.argv[1])
+''';
+        final proc = await Process.start('python3', ['-c', pyScript, tempDocx]);
+        proc.stdin.write(_contentController.text);
+        await proc.stdin.close();
+        final exitCode = await proc.exitCode;
+        if (exitCode == 0 && File(tempDocx).existsSync()) {
+          final targetDir = p.dirname(_loadedDocPath!);
+          await Process.run('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', targetDir, tempDocx]);
+          try {
+            File(tempDocx).deleteSync();
+          } catch (_) {}
+          final convPdf = p.join(targetDir, '${p.basenameWithoutExtension(tempDocx)}.pdf');
+          if (File(convPdf).existsSync() && convPdf != _loadedDocPath!) {
+            File(convPdf).renameSync(_loadedDocPath!);
+          }
+        }
       } else {
         await file.writeAsString(_contentController.text);
       }
@@ -2819,13 +3358,21 @@ except Exception:
         widget.chat.currentSessionScope,
         docFiles: widget.chat.currentSessionDocFiles,
       );
-      if (mounted) {
+
+      if (reloadPreview) {
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+        await _loadFileContent(_loadedDocPath!);
+      }
+
+      if (mounted && showToast) {
         AppToast.success(context, 'Đã lưu thành công nội dung tệp ${p.basename(_loadedDocPath!)}');
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && showToast) {
         AppToast.error(context, 'Lỗi khi lưu tệp: $e');
       }
+      rethrow;
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -2900,10 +3447,11 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
         setState(() {
           _contentController.text = newContent;
           _aiPromptController.clear();
+          _isEditMode = false;
         });
-        await _saveDirectContent();
+        await _saveDirectContent(showToast: false);
         if (mounted) {
-          AppToast.success(context, 'AI đã cập nhật và lưu tài liệu: $fileName');
+          AppToast.success(context, 'AI đã cập nhật và đồng bộ realtime tài liệu: $fileName');
         }
       }
     } catch (e) {
@@ -3083,13 +3631,15 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
                               children: [
                                 Expanded(
                                   child: Text(
-                                    'Đang xem: $currentDocName • ${_contentController.text.length} ký tự',
+                                    _renderedPageImages.isNotEmpty && !_isEditMode
+                                        ? 'Đang xem: $currentDocName • ${_renderedPageImages.length} trang chuẩn gốc'
+                                        : 'Đang xem: $currentDocName • ${_contentController.text.length} ký tự',
                                     style: const TextStyle(fontSize: 11, color: AppColors.textDim, fontFamily: 'monospace'),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                // Nút Chuyển chế độ Xem định dạng / Soạn thảo
+                                // Nút Chuyển chế độ Xem trang in chuẩn xác / Soạn thảo thô
                                 OutlinedButton.icon(
                                   style: OutlinedButton.styleFrom(
                                     minimumSize: const Size(0, 32),
@@ -3100,12 +3650,12 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                                   ),
                                   icon: Icon(
-                                    _isEditMode ? Icons.visibility_rounded : Icons.edit_note_rounded,
+                                    _isEditMode ? Icons.auto_stories_rounded : Icons.edit_note_rounded,
                                     size: 14,
                                     color: _isEditMode ? AppColors.accentCyan : AppColors.textBody,
                                   ),
                                   label: Text(
-                                    _isEditMode ? 'Xem định dạng' : 'Chỉnh sửa thô',
+                                    _isEditMode ? 'Xem trang in gốc' : 'Chỉnh sửa thô',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: _isEditMode ? AppColors.accentCyan : AppColors.textBody,
@@ -3126,7 +3676,9 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
                           Expanded(
                             child: Container(
                               color: const Color(0xFF131920),
-                              padding: const EdgeInsets.all(16),
+                              padding: _renderedPageImages.isNotEmpty && !_isEditMode
+                                  ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+                                  : const EdgeInsets.all(16),
                               child: _isEditMode
                                   ? TextField(
                                       controller: _contentController,
@@ -3144,41 +3696,112 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
                                         hintStyle: TextStyle(color: AppColors.textDim),
                                       ),
                                     )
-                                  : SelectionArea(
-                                      child: SingleChildScrollView(
-                                        child: MarkdownBody(
-                                          data: _contentController.text.isNotEmpty
-                                              ? _contentController.text
-                                              : '*Nội dung tài liệu trống*',
-                                          styleSheet: MarkdownStyleSheet(
-                                            h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.accentCyan, height: 1.4),
-                                            h2: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.4),
-                                            h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.3),
-                                            p: const TextStyle(fontSize: 13, color: AppColors.textWhite, height: 1.6),
-                                            strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                            em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.primaryLight),
-                                            code: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.accentCyan, backgroundColor: Color(0xFF1B222D)),
-                                            codeblockPadding: const EdgeInsets.all(10),
-                                            codeblockDecoration: BoxDecoration(
-                                              color: const Color(0xFF1E2633),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: AppColors.borderDark),
-                                            ),
-                                            tableBorder: TableBorder.all(color: AppColors.borderDark, width: 0.8),
-                                            tableHead: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryLight, fontSize: 12),
-                                            tableBody: const TextStyle(color: AppColors.textWhite, fontSize: 12),
-                                            tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            tableColumnWidth: const FlexColumnWidth(),
-                                            blockquote: const TextStyle(fontSize: 12.5, color: AppColors.textMuted, fontStyle: FontStyle.italic),
-                                            blockquoteDecoration: BoxDecoration(
-                                              color: AppColors.cardBg,
-                                              border: const Border(left: BorderSide(color: AppColors.accentCyan, width: 3)),
-                                              borderRadius: BorderRadius.circular(2),
+                                  : _renderedPageImages.isNotEmpty
+                                      // Chế độ xem trang in gốc chuẩn xác tuyệt đối 100%
+                                      ? ListView.builder(
+                                          itemCount: _renderedPageImages.length,
+                                          padding: const EdgeInsets.only(bottom: 24),
+                                          itemBuilder: (context, idx) {
+                                            final pageImg = _renderedPageImages[idx];
+                                            return Container(
+                                              margin: const EdgeInsets.only(bottom: 20),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius: BorderRadius.circular(4),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withValues(alpha: 0.5),
+                                                    blurRadius: 10,
+                                                    offset: const Offset(0, 4),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                    color: const Color(0xFF202634),
+                                                    child: Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Text(
+                                                          'Trang ${idx + 1} / ${_renderedPageImages.length}',
+                                                          style: const TextStyle(
+                                                            fontSize: 10,
+                                                            color: AppColors.accentCyan,
+                                                            fontWeight: FontWeight.bold,
+                                                            fontFamily: 'monospace',
+                                                          ),
+                                                        ),
+                                                        const Text(
+                                                          'Định dạng gốc chuẩn xác',
+                                                          style: TextStyle(
+                                                            fontSize: 9.5,
+                                                            color: AppColors.textDim,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  ClipRRect(
+                                                    borderRadius: const BorderRadius.only(
+                                                      bottomLeft: Radius.circular(4),
+                                                      bottomRight: Radius.circular(4),
+                                                    ),
+                                                    child: Image.file(
+                                                      File(pageImg),
+                                                      key: ValueKey('$pageImg-${File(pageImg).existsSync() ? File(pageImg).lastModifiedSync().millisecondsSinceEpoch : 0}'),
+                                                      fit: BoxFit.fitWidth,
+                                                      errorBuilder: (context, error, stackTrace) => Container(
+                                                        height: 200,
+                                                        color: const Color(0xFF1E2633),
+                                                        alignment: Alignment.center,
+                                                        child: const Text('Không thể tải trang', style: TextStyle(color: AppColors.danger)),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        )
+                                      : SelectionArea(
+                                          child: SingleChildScrollView(
+                                            child: MarkdownBody(
+                                              data: _contentController.text.isNotEmpty
+                                                  ? _contentController.text
+                                                  : '*Nội dung tài liệu trống*',
+                                              extensionSet: md.ExtensionSet.gitHubWeb,
+                                              styleSheet: MarkdownStyleSheet(
+                                                h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.accentCyan, height: 1.4),
+                                                h2: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryLight, height: 1.4),
+                                                h3: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.textWhite, height: 1.3),
+                                                p: const TextStyle(fontSize: 13, color: AppColors.textWhite, height: 1.6),
+                                                strong: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                                em: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.primaryLight),
+                                                code: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: AppColors.accentCyan, backgroundColor: Color(0xFF1B222D)),
+                                                codeblockPadding: const EdgeInsets.all(10),
+                                                codeblockDecoration: BoxDecoration(
+                                                  color: const Color(0xFF1E2633),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: AppColors.borderDark),
+                                                ),
+                                                tableBorder: TableBorder.all(color: AppColors.borderDark, width: 0.8),
+                                                tableHead: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryLight, fontSize: 12),
+                                                tableBody: const TextStyle(color: AppColors.textWhite, fontSize: 12),
+                                                tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                tableColumnWidth: const FlexColumnWidth(),
+                                                blockquote: const TextStyle(fontSize: 12.5, color: AppColors.textMuted, fontStyle: FontStyle.italic),
+                                                blockquoteDecoration: BoxDecoration(
+                                                  color: AppColors.cardBg,
+                                                  border: const Border(left: BorderSide(color: AppColors.accentCyan, width: 3)),
+                                                  borderRadius: BorderRadius.circular(2),
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ),
                             ),
                           ),
 
