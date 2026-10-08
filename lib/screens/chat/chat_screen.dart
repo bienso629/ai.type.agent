@@ -1721,6 +1721,45 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  static Future<void> _openExternalUrl(BuildContext context, String url) async {
+    if (url.trim().isEmpty) return;
+    var rawUrl = url.trim();
+    if (!rawUrl.startsWith(RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'))) {
+      rawUrl = 'https://$rawUrl';
+    }
+    final uri = Uri.tryParse(rawUrl);
+    bool launched = false;
+    if (uri != null) {
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        } catch (_) {}
+      }
+    }
+    if (!launched) {
+      try {
+        if (Platform.isLinux) {
+          final res = await Process.run('xdg-open', [rawUrl]);
+          if (res.exitCode == 0) launched = true;
+        } else if (Platform.isMacOS) {
+          final res = await Process.run('open', [rawUrl]);
+          if (res.exitCode == 0) launched = true;
+        } else if (Platform.isWindows) {
+          final res = await Process.run('cmd', ['/c', 'start', '', rawUrl]);
+          if (res.exitCode == 0) launched = true;
+        }
+      } catch (_) {}
+    }
+    if (!launched) {
+      await Clipboard.setData(ClipboardData(text: rawUrl));
+      if (context.mounted) {
+        AppToast.info(context, 'Đã sao chép liên kết vào bộ nhớ tạm: $rawUrl');
+      }
+    }
+  }
+
   Widget _buildMessageItem(ChatMessageModel msg, ChatProvider chat, int index) {
     final isUser = msg.role == 'user';
     final keyStr = _getMessageKey(msg, index);
@@ -1849,45 +1888,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           MarkdownBody(
                             data: msg.cleanContent,
                             selectable: false,
-                          onTapLink: (text, href, title) async {
+                          onTapLink: (text, href, title) {
                             if (href != null && href.trim().isNotEmpty) {
-                              var rawUrl = href.trim();
-                              // Tự động bổ sung scheme https:// nếu người dùng/mô hình viết url dạng www. hoặc domain thông thường
-                              if (!rawUrl.startsWith(RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'))) {
-                                rawUrl = 'https://$rawUrl';
-                              }
-                              final uri = Uri.tryParse(rawUrl);
-                              bool launched = false;
-                              if (uri != null) {
-                                try {
-                                  launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                } catch (_) {
-                                  try {
-                                    launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
-                                  } catch (_) {}
-                                }
-                              }
-                              // Fallback hệ thống trên Linux/Desktop nếu url_launcher không kích hoạt được trình duyệt
-                              if (!launched) {
-                                try {
-                                  if (Platform.isLinux) {
-                                    final res = await Process.run('xdg-open', [rawUrl]);
-                                    if (res.exitCode == 0) launched = true;
-                                  } else if (Platform.isMacOS) {
-                                    final res = await Process.run('open', [rawUrl]);
-                                    if (res.exitCode == 0) launched = true;
-                                  } else if (Platform.isWindows) {
-                                    final res = await Process.run('cmd', ['/c', 'start', '', rawUrl]);
-                                    if (res.exitCode == 0) launched = true;
-                                  }
-                                } catch (_) {}
-                              }
-                              if (!launched) {
-                                await Clipboard.setData(ClipboardData(text: rawUrl));
-                                if (mounted) {
-                                  AppToast.info(context, 'Đã sao chép liên kết vào bộ nhớ tạm: $rawUrl');
-                                }
-                              }
+                              _openExternalUrl(context, href);
                             }
                           },
                           builders: {
@@ -4882,6 +4885,49 @@ class CodeElementBuilder extends MarkdownElementBuilder {
     final isMultiLine = code.contains('\n') || language.isNotEmpty;
 
     if (!isMultiLine) {
+      final trimmedCode = code.trim();
+      final isUrl = RegExp(r'^(https?://|www\.)[^\s]+$').hasMatch(trimmedCode);
+
+      final textWidget = Text(
+        code,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 12,
+          color: isUrl ? AppColors.accentCyan : AppColors.terminalGreen,
+          fontWeight: FontWeight.w600,
+          decoration: isUrl ? TextDecoration.underline : TextDecoration.none,
+          decorationColor: AppColors.accentCyan,
+        ),
+      );
+
+      if (isUrl) {
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => _ChatScreenState._openExternalUrl(context, trimmedCode),
+            child: Tooltip(
+              message: 'Nhấp để mở liên kết trong trình duyệt: $trimmedCode',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: AppColors.codeBg,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.open_in_new_rounded, size: 12, color: AppColors.accentCyan),
+                    const SizedBox(width: 4),
+                    textWidget,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
         decoration: BoxDecoration(
@@ -4889,15 +4935,7 @@ class CodeElementBuilder extends MarkdownElementBuilder {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: AppColors.borderDark),
         ),
-        child: Text(
-          code,
-          style: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 12,
-            color: AppColors.terminalGreen,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        child: textWidget,
       );
     }
 
@@ -5007,7 +5045,11 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
 
     final lineCount = '\n'.allMatches(widget.code).length + 1;
     final isVeryLong = lineCount > 40 || widget.code.length > 2500;
-    final langLabel = widget.language.isNotEmpty ? widget.language.toUpperCase() : (isRunnable ? 'BASH' : 'CODE');
+    final trimmedCode = widget.code.trim();
+    final isUrlBlock = RegExp(r'^(https?://|www\.)[^\s]+$').hasMatch(trimmedCode);
+    final langLabel = widget.language.isNotEmpty
+        ? widget.language.toUpperCase()
+        : (isUrlBlock ? 'LINK' : (isRunnable ? 'BASH' : 'CODE'));
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -5068,6 +5110,24 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                           Icons.play_arrow_rounded,
                           size: 16,
                           color: AppColors.accent,
+                        ),
+                      ),
+                    ),
+                  ),
+                    const SizedBox(width: 2),
+                  ],
+                if (isUrlBlock) ...[
+                  Tooltip(
+                    message: 'Mở liên kết trong trình duyệt',
+                    child: InkWell(
+                      onTap: () => _ChatScreenState._openExternalUrl(context, trimmedCode),
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.open_in_new_rounded,
+                          size: 15,
+                          color: AppColors.accentCyan,
                         ),
                       ),
                     ),
