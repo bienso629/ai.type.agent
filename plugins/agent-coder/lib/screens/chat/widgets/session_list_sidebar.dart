@@ -35,6 +35,8 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
 
   final Map<String, List<String>> _sessionRecentQuestions = {};
   final Set<String> _loadingSessionQuestions = {};
+  int _lastObservedMessageCount = -1;
+  String? _lastTrackedSessionId;
 
   @override
   void dispose() {
@@ -236,22 +238,6 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
             ],
           ),
           actions: [
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: AppColors.warning),
-              onPressed: () {
-                Navigator.pop(ctx);
-                _showResetSessionDialog(chat, sess);
-              },
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.restart_alt_rounded, size: 14, color: AppColors.warning),
-                  SizedBox(width: 4),
-                  Text('Reset hội thoại'),
-                ],
-              ),
-            ),
-            const Spacer(),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
@@ -664,6 +650,33 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
 
                         Widget buildSessionTile(ChatSessionModel sess) {
                           final isSelected = sess.id == chat.currentSession?.id;
+
+                          // Tự động tải danh sách câu hỏi gần đây cho session đang được chọn nếu chưa có trong cache
+                          // hoặc khi session hiện tại có tin nhắn mới gửi đến
+                          if (isSelected) {
+                            final currentMsgCount = chat.messages.length;
+                            final isNewSessionFocus = _lastTrackedSessionId != sess.id;
+                            final hasNewMessages = _lastObservedMessageCount != currentMsgCount;
+
+                            if (!_sessionRecentQuestions.containsKey(sess.id) && !_loadingSessionQuestions.contains(sess.id)) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) {
+                                  _lastTrackedSessionId = sess.id;
+                                  _lastObservedMessageCount = currentMsgCount;
+                                  _loadRecentQuestionsForSession(sess.id);
+                                }
+                              });
+                            } else if ((isNewSessionFocus || hasNewMessages) && !_loadingSessionQuestions.contains(sess.id)) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) {
+                                  _lastTrackedSessionId = sess.id;
+                                  _lastObservedMessageCount = currentMsgCount;
+                                  _loadRecentQuestionsForSession(sess.id, forceReload: true);
+                                }
+                              });
+                            }
+                          }
+
                           final recentQuestions = _sessionRecentQuestions[sess.id] ?? [];
                           final isLoadingQuestions = _loadingSessionQuestions.contains(sess.id);
 
