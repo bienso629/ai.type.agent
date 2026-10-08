@@ -126,6 +126,178 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     }
   }
 
+  void _showFullAvatarDialog(BuildContext context, {required String avatarUrl, required String name, required String ip}) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (ctx) {
+        final isNetwork = avatarUrl.startsWith('http');
+        final maxH = MediaQuery.of(ctx).size.height * 0.8;
+        final maxW = MediaQuery.of(ctx).size.width * 0.85;
+
+        final imageWidget = isNetwork
+            ? Image.network(
+                avatarUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (ctx, child, progress) {
+                  if (progress == null) return child;
+                  return const SizedBox(
+                    width: 320,
+                    height: 320,
+                    child: Center(
+                      child: CircularProgressIndicator(color: AppColors.primaryLight),
+                    ),
+                  );
+                },
+                errorBuilder: (ctx, err, stack) => const SizedBox(
+                  width: 300,
+                  height: 200,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.broken_image_rounded, size: 48, color: AppColors.textDim),
+                        SizedBox(height: 8),
+                        Text('Không thể tải ảnh avatar', style: TextStyle(color: AppColors.textDim)),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : Image.file(
+                File(avatarUrl),
+                fit: BoxFit.contain,
+                errorBuilder: (ctx, err, stack) => const SizedBox(
+                  width: 300,
+                  height: 200,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.broken_image_rounded, size: 48, color: AppColors.textDim),
+                        SizedBox(height: 8),
+                        Text('Không tìm thấy tệp ảnh avatar cục bộ', style: TextStyle(color: AppColors.textDim)),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+
+        return Dialog(
+          backgroundColor: AppColors.cardBg,
+          elevation: 24,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: AppColors.borderLight, width: 1.2),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: maxH,
+              maxWidth: maxW,
+            ),
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. MODAL HEADER (Chuẩn thiết kế Dialog của app: nền 0xFF090F1E, border-bottom 1.2px)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF090F1E),
+                      border: Border(
+                        bottom: BorderSide(color: AppColors.borderLight, width: 1.2),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(Icons.account_box_rounded, color: AppColors.primaryLight, size: 18),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                        color: AppColors.textWhite,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14.5,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      'IP: $ip',
+                                      style: const TextStyle(
+                                        color: AppColors.primaryLight,
+                                        fontSize: 11,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            hoverColor: AppColors.borderDark.withValues(alpha: 0.6),
+                            onTap: () => Navigator.pop(ctx),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.borderDark, width: 1),
+                              ),
+                              child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textDim),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // 2. MODAL BODY (Hiển thị ảnh chân dung vừa khít)
+                  Flexible(
+                    child: Container(
+                      color: Colors.black,
+                      child: InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 4.0,
+                        child: Center(
+                          child: imageWidget,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showPersonaDetails(PersonaProfile persona) {
     final nameCtrl = TextEditingController(text: persona.name);
     final ageCtrl = TextEditingController(text: persona.age.toString());
@@ -265,12 +437,23 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           final isGen = _generatingAvatarIps.contains(currentP.ip);
                           final hasImg = currentP.avatarUrl != null && currentP.avatarUrl!.isNotEmpty;
 
-                          return Tooltip(
-                            message: isGen ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar',
-                            child: InkWell(
-                              onTap: isGen
-                                  ? null
-                                  : () {
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Tooltip(
+                                message: hasImg
+                                    ? 'Bấm để xem ảnh avatar to kích thước gốc của ${currentP.name}'
+                                    : (isGen ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar'),
+                                child: InkWell(
+                                  onTap: () {
+                                    if (hasImg) {
+                                      _showFullAvatarDialog(
+                                        context,
+                                        avatarUrl: currentP.avatarUrl!,
+                                        name: currentP.name,
+                                        ip: currentP.ip,
+                                      );
+                                    } else if (!isGen) {
                                       final currentPWithForm = currentP.copyWith(
                                         name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
                                         age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
@@ -280,12 +463,10 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         agentInfo: agentInfoCtrl.text.trim(),
                                       );
                                       _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
-                                    },
-                              borderRadius: BorderRadius.circular(8),
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Container(
+                                    }
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
                                     width: 44,
                                     height: 44,
                                     decoration: BoxDecoration(
@@ -315,26 +496,42 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                           : const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
                                     ),
                                   ),
-                                  if (isGen)
-                                    Positioned.fill(
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: 0.55),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: const Center(
-                                          child: SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                                          ),
-                                        ),
+                                ),
+                              ),
+                              if (isGen)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.55),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Center(
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
                                       ),
-                                    )
-                                  else
-                                    Positioned(
-                                      right: -3,
-                                      bottom: -3,
+                                    ),
+                                  ),
+                                )
+                              else
+                                Positioned(
+                                  right: -3,
+                                  bottom: -3,
+                                  child: Tooltip(
+                                    message: 'Bấm để AI tạo lại avatar',
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        final currentPWithForm = currentP.copyWith(
+                                          name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
+                                          age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
+                                          gender: selectedGender,
+                                          bio: bioCtrl.text.trim(),
+                                          avatarPrompt: promptCtrl.text.trim(),
+                                          agentInfo: agentInfoCtrl.text.trim(),
+                                        );
+                                        _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
+                                      },
                                       child: Container(
                                         padding: const EdgeInsets.all(2),
                                         decoration: const BoxDecoration(
@@ -351,9 +548,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         ),
                                       ),
                                     ),
-                                ],
-                              ),
-                            ),
+                                  ),
+                                ),
+                            ],
                           );
                         }(),
                         const SizedBox(width: 10),
@@ -2309,19 +2506,30 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         final isGeneratingAvatar = _generatingAvatarIps.contains(item.ip);
                         final hasCustomAvatar = persona?.avatarUrl != null && persona!.avatarUrl!.isNotEmpty;
 
-                        return Tooltip(
-                          message: persona != null
-                              ? (isGeneratingAvatar ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar cho ${persona.name}')
-                              : 'Tạo hồ sơ trước để sinh ảnh avatar',
-                          child: InkWell(
-                            onTap: (persona == null || isGeneratingAvatar)
-                                ? null
-                                : () => _handleGenerateAvatar(persona),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Container(
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Tooltip(
+                              message: hasCustomAvatar
+                                  ? 'Bấm để xem ảnh avatar to kích thước gốc của ${persona.name}'
+                                  : (persona != null
+                                      ? (isGeneratingAvatar ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar cho ${persona.name}')
+                                      : 'Tạo hồ sơ trước để sinh ảnh avatar'),
+                              child: InkWell(
+                                onTap: () {
+                                  if (hasCustomAvatar) {
+                                    _showFullAvatarDialog(
+                                      context,
+                                      avatarUrl: persona.avatarUrl!,
+                                      name: persona.name,
+                                      ip: persona.ip,
+                                    );
+                                  } else if (persona != null && !isGeneratingAvatar) {
+                                    _handleGenerateAvatar(persona);
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
                                   width: 42,
                                   height: 42,
                                   decoration: BoxDecoration(
@@ -2357,27 +2565,33 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         : _buildFallbackAvatarIcon(persona, isAnyRunning, isAlias, item.isMain),
                                   ),
                                 ),
+                              ),
+                            ),
 
-                                if (isGeneratingAvatar)
-                                  Positioned.fill(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.55),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Center(
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                                        ),
-                                      ),
+                            if (isGeneratingAvatar)
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.55),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
                                     ),
-                                  )
-                                else if (persona != null)
-                                  Positioned(
-                                    right: -3,
-                                    bottom: -3,
+                                  ),
+                                ),
+                              )
+                            else if (persona != null)
+                              Positioned(
+                                right: -3,
+                                bottom: -3,
+                                child: Tooltip(
+                                  message: 'Bấm để AI tạo lại avatar cho ${persona.name}',
+                                  child: GestureDetector(
+                                    onTap: isGeneratingAvatar ? null : () => _handleGenerateAvatar(persona),
                                     child: Container(
                                       padding: const EdgeInsets.all(2),
                                       decoration: const BoxDecoration(
@@ -2394,9 +2608,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                       ),
                                     ),
                                   ),
-                              ],
-                            ),
-                          ),
+                                ),
+                              ),
+                          ],
                         );
                       }(),
                       const SizedBox(width: 10),

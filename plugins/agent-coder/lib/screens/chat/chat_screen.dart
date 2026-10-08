@@ -1361,44 +1361,59 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
 
                       // Vertical Divider and Right Column (Terminal Screen or Doc Viewer Panel)
-                      if (_showTerminalPanel) ...[
+                      if (_showTerminalPanel || (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty))
                         const VerticalDivider(
                           width: 1,
                           thickness: 1,
                           color: AppColors.borderDark,
                         ),
+
+                      // Giữ TerminalScreen luôn sống (Offstage + TickerMode) để khi đóng/mở chỉ đơn giản là ẩn/hiện, không bị huỷ hay khởi động lại các tiến trình đang chạy
+                      if (_showTerminalPanel || (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty))
                         Expanded(
-                          child: TerminalScreen(
-                            onHidePanel: () {
-                              setState(() {
-                                _showTerminalPanel = false;
-                              });
-                            },
-                          ),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: Offstage(
+                                offstage: !_showTerminalPanel,
+                                child: TickerMode(
+                                  enabled: _showTerminalPanel,
+                                  child: TerminalScreen(
+                                    onHidePanel: () {
+                                      setState(() {
+                                        _showTerminalPanel = false;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (chat.currentSessionDocFiles.isNotEmpty)
+                              Positioned.fill(
+                                child: Offstage(
+                                  offstage: !_showDocViewerPanel || _showTerminalPanel,
+                                  child: TickerMode(
+                                    enabled: _showDocViewerPanel && !_showTerminalPanel,
+                                    child: _ScopeDocViewerPanel(
+                                      chat: chat,
+                                      selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
+                                      onSelectDoc: (path) {
+                                        setState(() {
+                                          _selectedViewerDocPath = path;
+                                        });
+                                      },
+                                      onClose: () {
+                                        setState(() {
+                                          _showDocViewerPanel = false;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                      ] else if (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty) ...[
-                        const VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: AppColors.borderDark,
-                        ),
-                        Expanded(
-                          child: _ScopeDocViewerPanel(
-                            chat: chat,
-                            selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
-                            onSelectDoc: (path) {
-                              setState(() {
-                                _selectedViewerDocPath = path;
-                              });
-                            },
-                            onClose: () {
-                              setState(() {
-                                _showDocViewerPanel = false;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
+                      ),
                     ],
                   ),
                 ),

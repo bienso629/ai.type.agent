@@ -2,7 +2,7 @@
   "targetUrl": "https://astraflow.scloudsg.com",
   "finalUrl": "https://astraflow.scloudsg.com/en-us/experience-modelverse/api-keys",
   "title": "AstraFlow",
-  "extractedAt": "2026-10-08T09:15:10.990Z",
+  "extractedAt": "2026-10-08T11:15:11.695Z",
   "cookieCount": 14,
   "cookieHeader": "das_session=5af2b0b5-f3ad-430c-9e4d-2f96b8424c72; _pk_id.21.ca32=90f8d0b71ddb20c5.1789198611.; _pk_id.21.a685=10aa4b3b2cef9d29.1789213748.; _lang=EN; CN_lang=en_US; U_LANG=en_US; is_dark_theme_on=0; channel_key=; IDE=AHWqTUm2xitKUl9eML4l3xWLjsK3MPRTqpSbnGdZFQGKD1DYyumvzDlPQm0KQ5br; captcha_v4_user=fd0ecb3d55c240e8ad0fcadc9fd68394; _pk_id.21.6016=082163968777ba9b.1789213831.; _gcl_au=1.1.1232889220.1789213748.1196765747.1789296376.1789296376.341545149.1789213799.1789296376; _pk_ref.21.6016=%5B%22%22%2C%22%22%2C1789296392%2C%22https%3A%2F%2Fpassport.scloudsg.com%2F%22%5D; _pk_ses.21.ca32=1",
   "cookies": [
@@ -141,7 +141,7 @@
       "value": "1",
       "domain": "astraflow.scloudsg.com",
       "path": "/",
-      "expires": 1791452705,
+      "expires": 1791459906,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
