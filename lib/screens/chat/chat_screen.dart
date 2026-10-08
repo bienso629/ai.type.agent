@@ -1071,47 +1071,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showResetCurrentSessionDialog(ChatProvider chat) {
-    final sess = chat.currentSession;
-    if (sess == null) return;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => TaduDialog(
-        minWidth: 420,
-        maxWidth: 500,
-        title: const Row(
-          children: [
-            Icon(Icons.restart_alt_rounded, color: AppColors.warning, size: 20),
-            SizedBox(width: 8),
-            Text('Reset Hộp Hội Thoại'),
-          ],
-        ),
-        content: Text(
-          'Bạn có chắc chắn muốn làm mới toàn bộ cuộc hội thoại "${sess.title}" không?\n\nToàn bộ tin nhắn trao đổi sẽ được xóa để bắt đầu lại từ đầu, nhưng các cấu hình (Tên hội thoại, Máy chủ gắn kết, v.v.) vẫn được giữ nguyên vẹn.',
-          style: const TextStyle(fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await chat.resetSessionHistory(sess.id);
-              if (mounted) {
-                AppToast.success(context, 'Đã reset cuộc hội thoại thành công!');
-              }
-            },
-            child: const Text('Reset ngay', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -1268,53 +1227,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 // Server Selector Dropdown
                 _buildServerDropdown(serverProvider),
-
-                if (chat.currentSession != null) ...[
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () => _showResetCurrentSessionDialog(chat),
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      height: 36,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.borderDark),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: AppColors.warning.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.restart_alt_rounded,
-                                size: 14,
-                                color: AppColors.warning,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Reset hội thoại',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textWhite,
-                              height: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
 
                 if (chat.currentSessionDocFiles.isNotEmpty) ...[
                   const SizedBox(width: 8),
