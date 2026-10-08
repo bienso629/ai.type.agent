@@ -1044,14 +1044,32 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                 style: const TextStyle(fontSize: 11, color: AppColors.textDim),
               ),
               if (chat.sessions.isNotEmpty)
-                TextButton(
-                  style: TextButton.styleFrom(
+                InkWell(
+                  onTap: () => _showClearAllSessionsDialog(chat),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppColors.danger.withValues(alpha: 0.3), width: 0.8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.delete_sweep_rounded, size: 13, color: AppColors.danger),
+                        SizedBox(width: 4),
+                        Text(
+                          'Xoá tất cả',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.danger,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  onPressed: () => _showClearAllSessionsDialog(chat),
-                  child: const Text('Xoá tất cả', style: TextStyle(fontSize: 11, color: AppColors.danger)),
                 ),
             ],
           ),
