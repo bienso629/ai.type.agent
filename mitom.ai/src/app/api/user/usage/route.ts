@@ -5,6 +5,7 @@ import configPromise from '@payload-config'
 import { verifySessionToken } from '@/lib/auth'
 import { callUCloudApi } from '@/lib/ucloudClient'
 import { getSystemUsdRate, getListPriceMultiplier, convertCostToCustomerListPrice } from '@/lib/currency'
+import { syncAndCalculateUserBalance } from '@/lib/userBalance'
 import fs from 'fs'
 import path from 'path'
 
@@ -67,151 +68,32 @@ export async function GET(request: Request) {
     const userKey = String((user as any).apiKey || '').trim()
     if (userKey) {
       astraflow.maskedKey = userKey.length > 14 ? userKey.slice(0, 8) + '...' + userKey.slice(-4) : userKey
-      let keyData: any = null
-
-      // 1a. Goi truc tiep API AstraFlow (chu ky UCloud chuan project)
-      try {
-        const res: any = await callUCloudApi({ Action: 'ListUMInferAPIKey' })
-        const list = Array.isArray(res?.Data) ? res.Data : []
-        keyData = list.find((k: any) => k.Key === userKey || k.SecretKey === userKey) || null
-      } catch {
-        // Neu API that bai se fallback xuong cache file ben duoi
-      }
-
-      // 1b. Fallback doc file cache dong bo boi cron / playwright sync
-      if (!keyData && fs.existsSync(KEYS_CACHE_FILE)) {
-        try {
-          const cached = JSON.parse(fs.readFileSync(KEYS_CACHE_FILE, 'utf-8'))
-          if (Array.isArray(cached)) {
-            keyData = cached.find((k: any) => k.Key === userKey) || null
-          }
-        } catch {
-          // Bo qua cache loi
-        }
-      }
-
-    // Lấy cài đặt hệ thống về hệ số List Price của đại lý
-    let listPriceMultiplier = getListPriceMultiplier()
-    try {
-      const settings = await payload.findGlobal({ slug: 'system-settings' })
-      if (settings && (settings as any).listPriceMultiplier && Number((settings as any).listPriceMultiplier) >= 1) {
-        listPriceMultiplier = Number((settings as any).listPriceMultiplier)
-      }
-    } catch {
-      // Fallback theo biến môi trường
-    }
-
-    // Đọc lịch sử tiêu thụ theo ngày từ database CMS bảng api-keys
-    let historyMap: Record<string, number> = {}
-    let dbKeyDoc: any = null
-    try {
-      const dbKeyRes = await payload.find({
-        collection: 'api-keys',
-        where: {
-          or: [
-            { secretKey: { equals: userKey } },
-            { maskedKey: { equals: userKey } },
-            { keyId: { equals: keyData?.KeyId || 'not-matched' } },
-          ],
-        },
-        overrideAccess: true,
-        limit: 1,
-      })
-      if (dbKeyRes.docs.length > 0) {
-        dbKeyDoc = dbKeyRes.docs[0]
-        const h = (dbKeyDoc as any).usageHistory
-        if (h && typeof h === 'object') {
-          historyMap = { ...h }
-        } else if (typeof h === 'string') {
-          try {
-            historyMap = JSON.parse(h)
-          } catch {
-            historyMap = {}
-          }
-        }
-      }
-    } catch {
-      historyMap = {}
-    }
+    const {
+      actualBalance,
+      allTimeUsedVnd,
+      dailyUsedVnd,
+      monthlyUsedVnd,
+      keyData,
+      historyMap,
+    } = await syncAndCalculateUserBalance(payload, user)
 
     if (keyData) {
       const updateTimeRaw = Number(keyData.UpdateTime) || 0
-      const userBalance = Number((user as any).balance) || 0
       const userDaily = Number((user as any).dailyLimit) || 0
       const userMonthly = Number((user as any).monthlyLimit) || 0
-
-      // Cập nhật ngày hôm nay vào historyMap (theo giờ Việt Nam UTC+7)
-      const nowVn = new Date(Date.now() + 7 * 60 * 60 * 1000)
-      const todayStr = nowVn.toISOString().split('T')[0]
-      const currentDailyUsd = Number(keyData.DailyUsedAmount) || 0
-      historyMap[todayStr] = currentDailyUsd
-
-      // Tự động lưu cập nhật historyMap vào database nếu có thay đổi
-      if (dbKeyDoc && dbKeyDoc.id) {
-        try {
-          await payload.update({
-            collection: 'api-keys',
-            id: dbKeyDoc.id,
-            overrideAccess: true,
-            data: {
-              secretKey: userKey,
-              dailySpend: String(currentDailyUsd),
-              monthlySpend: String(keyData.MonthlyUsedAmount || '0'),
-              usageHistory: historyMap,
-            } as any,
-          })
-        } catch {
-          // Bo qua loi update ngam
-        }
-      }
-
-      // Tính tổng tiền đã tiêu thụ theo giá niêm yết bán lẻ (VNĐ)
-      const totalMonthlyUsedVnd = usdCostToListPriceVnd(keyData.MonthlyUsedAmount, listPriceMultiplier)
-
-      // Tính tổng chi tiêu toàn thời gian (từ trước tới nay) tích lũy trong lịch sử
-      const totalAllTimeUsedUsd = Object.values(historyMap).reduce(
-        (sum, usd) => sum + (Number(usd) || 0),
-        0,
-      )
-      const totalAllTimeUsedVnd = usdCostToListPriceVnd(totalAllTimeUsedUsd, listPriceMultiplier)
-
-      // Kiểm tra và tự động trừ số dư tài khoản người dùng theo chi tiêu API thực tế từ lúc bắt đầu tới nay
-      let actualBalance = userBalance
-      try {
-        // Tổng tiền nạp hợp lệ của user từ các đơn hàng đã thanh toán
-        const userOrders = await payload.find({
-          collection: 'orders',
-          where: {
-            customerEmail: { equals: String(user.email || '').toLowerCase().trim() },
-            paymentStatus: { equals: 'paid' },
-          },
-          overrideAccess: true,
-          limit: 100,
-        })
-        const totalPaidDeposit = (userOrders.docs || []).reduce((sum: number, o: any) => sum + (Number(o.subtotal) || 0), 0)
-
-        // Số dư chuẩn xác = Tổng số tiền nạp từ trước đến nay - Tổng số tiền đã dùng từ trước đến nay
-        if (totalPaidDeposit > 0) {
-          actualBalance = Math.round(Math.max(0, totalPaidDeposit - totalAllTimeUsedVnd) * 100) / 100
-          if (actualBalance !== userBalance) {
-            await payload.update({
-              collection: 'users',
-              id: user.id,
-              overrideAccess: true,
-              data: {
-                balance: actualBalance,
-              } as any,
-            })
-            ;(user as any).balance = actualBalance
-          }
-        }
-      } catch {
-        // Fallback dùng số dư hiện tại
-      }
 
       // Nếu user tự cài hạn mức VNĐ cụ thể (> 0) thì dùng số đó nhưng không vượt quá số dư hiện có, nếu là 0 thì mặc định bằng 100% số dư tài khoản
       const displayDailyLimit = userDaily > 0 ? Math.min(userDaily, actualBalance) : actualBalance
       const displayMonthlyLimit = userMonthly > 0 ? Math.min(userMonthly, actualBalance) : actualBalance
+
+      // Lấy hệ số List Price để quy đổi lịch sử
+      let listPriceMultiplier = getListPriceMultiplier()
+      try {
+        const settings = await payload.findGlobal({ slug: 'system-settings' })
+        if (settings && (settings as any).listPriceMultiplier && Number((settings as any).listPriceMultiplier) >= 1) {
+          listPriceMultiplier = Number((settings as any).listPriceMultiplier)
+        }
+      } catch {}
 
       // Danh sách tiêu thụ theo từng ngày quy đổi ra List Price (VNĐ)
       const dailyHistory = Object.entries(historyMap)
@@ -233,9 +115,9 @@ export async function GET(request: Request) {
         keyName: String(keyData.Name || ''),
         maskedKey: astraflow.maskedKey,
         status: Number(keyData.Status) === 1 ? 'Hoạt động' : 'Tạm khóa',
-        dailyUsedVnd: usdCostToListPriceVnd(keyData.DailyUsedAmount, listPriceMultiplier),
-        monthlyUsedVnd: usdCostToListPriceVnd(keyData.MonthlyUsedAmount, listPriceMultiplier),
-        allTimeUsedVnd: totalAllTimeUsedVnd,
+        dailyUsedVnd,
+        monthlyUsedVnd,
+        allTimeUsedVnd,
         dailyLimitVnd: displayDailyLimit,
         monthlyLimitVnd: displayMonthlyLimit,
         updateTime: updateTimeRaw > 0 ? new Date(updateTimeRaw * 1000).toLocaleString('vi-VN') : '',

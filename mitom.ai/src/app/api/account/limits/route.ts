@@ -28,9 +28,17 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ success: false, error: 'Chưa xác thực.' }, { status: 401 })
     }
+    const payload = await getPayload({ config: configPromise })
+    let currentBalance = Number(user.balance) || 0
+    try {
+      const { syncAndCalculateUserBalance } = await import('@/lib/userBalance')
+      const balanceRes = await syncAndCalculateUserBalance(payload, user)
+      currentBalance = balanceRes.actualBalance
+    } catch {}
+
     return NextResponse.json({
       success: true,
-      balance: Number(user.balance) || 0,
+      balance: currentBalance,
       dailyLimit: user.dailyLimit ?? 0,
       monthlyLimit: user.monthlyLimit ?? 0,
     })

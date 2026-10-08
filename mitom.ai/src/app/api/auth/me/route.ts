@@ -26,6 +26,14 @@ export async function GET() {
 
         if (users.docs && users.docs.length > 0) {
           const userDoc = users.docs[0]
+          let currentBalance = userDoc.balance ?? 0
+
+          try {
+            const { syncAndCalculateUserBalance } = await import('@/lib/userBalance')
+            const balanceRes = await syncAndCalculateUserBalance(payload, userDoc)
+            currentBalance = balanceRes.actualBalance
+          } catch {}
+
           return NextResponse.json({
             authenticated: true,
             user: {
@@ -34,7 +42,7 @@ export async function GET() {
               name: userDoc.name || userDoc.email.split('@')[0],
               avatar: userDoc.avatar || '',
               authProvider: userDoc.authProvider || 'local',
-              balance: userDoc.balance ?? 0,
+              balance: currentBalance,
               customerCode: userDoc.customerCode || ``,
               role: userDoc.role || 'user',
             },
@@ -79,6 +87,15 @@ export async function GET() {
 
       if (users.docs && users.docs.length > 0) {
         const userDoc = users.docs[0]
+        let currentBalance = userDoc.balance ?? session.balance ?? 0
+
+        // Tự động đồng bộ số dư theo tổng nạp - chi tiêu toàn thời gian AstraFlow
+        try {
+          const { syncAndCalculateUserBalance } = await import('@/lib/userBalance')
+          const balanceRes = await syncAndCalculateUserBalance(payload, userDoc)
+          currentBalance = balanceRes.actualBalance
+        } catch {}
+
         return NextResponse.json({
           authenticated: true,
           user: {
@@ -89,7 +106,7 @@ export async function GET() {
             authProvider: userDoc.authProvider || session.authProvider,
             googleId: userDoc.googleId || (session as any).googleId || null,
             taduUserId: userDoc.taduUserId || (session as any).taduUserId || null,
-            balance: userDoc.balance ?? session.balance ?? 0,
+            balance: currentBalance,
             customerCode: userDoc.customerCode || ``,
             role: userDoc.role || session.role || 'user',
           },
