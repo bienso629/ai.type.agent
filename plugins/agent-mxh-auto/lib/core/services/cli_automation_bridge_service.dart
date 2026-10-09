@@ -54,29 +54,49 @@ PERSONAS_FILE = os.path.join(DATA_DIR, "personas.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 IPC_SOCKET_PORT = 19898  # Optional IPC port if agent daemon is listening
 
+def _load_profiles():
+    # Tìm kiếm các file personas.json và personas_<user>.json trong DATA_DIR
+    res = {}
+    if os.path.exists(PERSONAS_FILE):
+        try:
+            with open(PERSONAS_FILE, "r", encoding="utf-8") as f:
+                res.update(json.load(f))
+        except Exception:
+            pass
+    try:
+        if os.path.exists(DATA_DIR):
+            for fname in os.listdir(DATA_DIR):
+                if fname.startswith("personas_") and fname.endswith(".json"):
+                    fpath = os.path.join(DATA_DIR, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            d = json.load(f)
+                            if isinstance(d, dict):
+                                res.update(d)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return res
+
 def list_profiles():
-    if not os.path.exists(PERSONAS_FILE):
+    data = _load_profiles()
+    if not data:
         print(json.dumps([]))
         return
-    try:
-        with open(PERSONAS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            profiles = []
-            for ip, p in data.items():
-                profiles.append({
-                    "ip": ip,
-                    "name": p.get("name", "Unknown"),
-                    "gender": p.get("gender", ""),
-                    "age": p.get("age", 25),
-                    "bio": p.get("bio", ""),
-                    "device_type": p.get("device_type", "mobile"),
-                    "avd_name": p.get("avd_name"),
-                    "external_device_address": p.get("external_device_address")
-                })
-            print(json.dumps(profiles, ensure_ascii=False, indent=2))
-    except Exception as e:
-        print(f"Error reading personas: {e}", file=sys.stderr)
-        sys.exit(1)
+    profiles = []
+    for ip, p in data.items():
+        profiles.append({
+            "ip": ip,
+            "name": p.get("name", "Unknown"),
+            "gender": p.get("gender", ""),
+            "age": p.get("age", 25),
+            "bio": p.get("bio", ""),
+            "device_type": p.get("device_type", "mobile"),
+            "avd_name": p.get("avd_name"),
+            "external_device_address": p.get("external_device_address")
+        })
+    print(json.dumps(profiles, ensure_ascii=False, indent=2))
 
 def _decrypt_vault_value(val):
     if not val or not isinstance(val, str) or not val.startswith("enc:"):
@@ -476,9 +496,11 @@ def open_device(ip, device_type="mobile", avd_name=None):
     console_port = 5554
     for p in range(5554, 5586, 2):
         s1 = socket.socket()
+        s1.settimeout(0.2)
         r1 = s1.connect_ex(("127.0.0.1", p))
         s1.close()
         s2 = socket.socket()
+        s2.settimeout(0.2)
         r2 = s2.connect_ex(("127.0.0.1", p + 1))
         s2.close()
         if r1 != 0 and r2 != 0:
@@ -491,7 +513,7 @@ def open_device(ip, device_type="mobile", avd_name=None):
         "-port", str(console_port),
         "-netdelay", "none",
         "-netspeed", "full",
-        "-gpu", "host",
+        "-gpu", "auto",
         "-no-boot-anim"
     ]
     if http_proxy_port:
@@ -630,7 +652,10 @@ def get_device_serial_for_ip(ip):
             with open(dev_meta, "r", encoding="utf-8") as f:
                 cport = json.load(f).get("console_port")
                 if cport:
-                    return f"emulator-{cport}"
+                    test_serial = f"emulator-{cport}"
+                    chk = subprocess.run([sdk_adb, "-s", test_serial, "get-state"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+                    if "device" in chk.stdout:
+                        return test_serial
         except Exception:
             pass
             
@@ -654,26 +679,48 @@ def fast_action(ips, platform="facebook", action="like", url=None, comment=None)
     if not os.path.exists(sdk_adb): sdk_adb = "adb"
     
     profiles = _load_profiles()
+    target_serials = {}
+    
+    # Bước 1: Khởi chạy và thu thập serial của TOÀN BỘ các thiết bị trước
     for ip in ips:
         p_info = profiles.get(ip, {})
         p_name = p_info.get("name", ip)
-        print(f"--- Đang thực thi macro {action} ({platform}) cho {p_name} ({ip}) ---")
-        
         serial = get_device_serial_for_ip(ip)
         if not serial:
-            print(f"Thiết bị cho {p_name} ({ip}) chưa bật. Đang tự động khởi chạy...")
+            print(f"Thiết bị cho {p_name} ({ip}) chưa bật. Đang khởi chạy...")
             open_device(ip)
-            for _ in range(20):
-                time.sleep(2)
-                serial = get_device_serial_for_ip(ip)
-                if serial:
-                    b_res = subprocess.run([sdk_adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], stdout=subprocess.PIPE, text=True, check=False)
-                    if b_res.stdout.strip() == "1":
-                        break
-                        
-        if not serial:
-            print(f"Không thể kết nối hoặc khởi chạy thiết bị cho {p_name} ({ip})!", file=sys.stderr)
+        else:
+            target_serials[ip] = serial
+            
+    # Bước 2: Chờ tất cả thiết bị boot xong và online
+    for ip in ips:
+        if ip in target_serials:
             continue
+        p_info = profiles.get(ip, {})
+        p_name = p_info.get("name", ip)
+        serial = None
+        for _ in range(25):
+            time.sleep(2)
+            serial = get_device_serial_for_ip(ip)
+            if serial:
+                b_res = subprocess.run([sdk_adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], stdout=subprocess.PIPE, text=True, check=False)
+                if b_res.stdout.strip() == "1":
+                    break
+        if serial:
+            target_serials[ip] = serial
+        else:
+            print(f"Không thể kết nối hoặc khởi chạy thiết bị cho {p_name} ({ip})!", file=sys.stderr)
+            
+    # Bước 3: Thực thi thao tác macro cho từng thiết bị
+    for ip in ips:
+        serial = target_serials.get(ip)
+        p_info = profiles.get(ip, {})
+        p_name = p_info.get("name", ip)
+        if not serial:
+            print(f"Bỏ qua {p_name} ({ip}) do thiết bị không khả dụng.")
+            continue
+            
+        print(f"--- Đang thực thi macro {action} ({platform}) cho {p_name} ({ip}) trên {serial} ---")
             
         # Lấy kích thước màn hình
         width, height = 1080, 1920
@@ -882,6 +929,12 @@ if __name__ == "__main__":
         if (ipStr != null && !scopeIps.contains(ipStr)) {
           scopeIps.add(ipStr);
         }
+      }
+    }
+    // Fallback: Nếu workingDir không có hoặc không trích xuất đủ IP, lấy từ PersonaService activeScopeIps
+    for (final activeIp in _personaService.activeScopeIps) {
+      if (!scopeIps.contains(activeIp)) {
+        scopeIps.add(activeIp);
       }
     }
 

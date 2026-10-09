@@ -2264,8 +2264,23 @@ for root, _, files in os.walk(target_dir):
     int consolePort = 5554;
     for (int pPort = 5554; pPort <= 5584; pPort += 2) {
       if (!_isPortInUse(pPort) && !_isPortInUse(pPort + 1)) {
-        consolePort = pPort;
-        break;
+        bool portAvailable = true;
+        try {
+          final s1 = await Socket.connect('127.0.0.1', pPort, timeout: const Duration(milliseconds: 200));
+          s1.destroy();
+          portAvailable = false;
+        } catch (_) {}
+        if (portAvailable) {
+          try {
+            final s2 = await Socket.connect('127.0.0.1', pPort + 1, timeout: const Duration(milliseconds: 200));
+            s2.destroy();
+            portAvailable = false;
+          } catch (_) {}
+        }
+        if (portAvailable) {
+          consolePort = pPort;
+          break;
+        }
       }
     }
     session.emulatorPort = consolePort;
@@ -2298,9 +2313,14 @@ for root, _, files in os.walk(target_dir):
     ];
 
     try {
+      final env = Map<String, String>.from(Platform.environment);
+      if (!env.containsKey('DISPLAY') || env['DISPLAY']!.isEmpty) {
+        env['DISPLAY'] = ':0';
+      }
       final proc = await Process.start(
         emulatorBin,
         emulatorArgs,
+        environment: env,
         mode: ProcessStartMode.detached,
       );
       session.deviceProcess = proc;
