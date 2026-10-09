@@ -92,40 +92,92 @@ class Socks5ProxyService extends ChangeNotifier {
     });
   }
 
-  /// Kiểm tra các session đang ghi nhận, nếu cả trình duyệt lẫn mobile device của session không còn tiến trình nào chạy thì dọn dẹp
+  /// Kiểm tra các session đang ghi nhận, dọn dẹp khi tiến trình tắt và tự động phát hiện thiết bị đang chạy ngoài OS
   void _checkTerminatedBrowsers() {
-    if (_activeSessions.isEmpty) return;
-    final deadIps = <String>[];
     final now = DateTime.now();
+    bool stateChanged = false;
 
-    for (final entry in _activeSessions.entries) {
-      final ip = entry.key;
-      final session = entry.value;
+    // 1. Dọn dẹp session đã kết thúc
+    if (_activeSessions.isNotEmpty) {
+      final deadIps = <String>[];
+      for (final entry in _activeSessions.entries) {
+        final ip = entry.key;
+        final session = entry.value;
 
-      // Thời gian ân hạn 10 giây sau khi tạo session hoặc vừa mở trình duyệt
-      // Tránh trường hợp watchdog quét trúng lúc trình duyệt đang khởi động (chưa kịp ghi /proc/*/cmdline)
-      final timeSinceCreated = now.difference(session.createdAt);
-      if (timeSinceCreated < const Duration(seconds: 10)) {
-        continue;
-      }
-      if (session.browserLaunchedAt != null) {
-        final timeSinceLaunch = now.difference(session.browserLaunchedAt!);
-        if (timeSinceLaunch < const Duration(seconds: 10)) {
+        // Thời gian ân hạn 10 giây sau khi tạo session hoặc vừa mở trình duyệt
+        final timeSinceCreated = now.difference(session.createdAt);
+        if (timeSinceCreated < const Duration(seconds: 10)) {
           continue;
+        }
+        if (session.browserLaunchedAt != null) {
+          final timeSinceLaunch = now.difference(session.browserLaunchedAt!);
+          if (timeSinceLaunch < const Duration(seconds: 10)) {
+            continue;
+          }
+        }
+
+        // Kiểm tra thực tế trên hệ thống xem profile IP này còn tiến trình trình duyệt hoặc device nào không
+        if (!_isSystemProcessAliveForIp(ip) && !_isDeviceProcessAliveForIp(ip)) {
+          deadIps.add(ip);
         }
       }
 
-      // Kiểm tra thực tế trên hệ thống xem profile IP này còn tiến trình trình duyệt hoặc device nào không
-      if (!_isSystemProcessAliveForIp(ip) && !_isDeviceProcessAliveForIp(ip)) {
-        deadIps.add(ip);
+      if (deadIps.isNotEmpty) {
+        for (final ip in deadIps) {
+          final session = _activeSessions.remove(ip);
+          session?.stop();
+        }
+        stateChanged = true;
       }
     }
 
-    if (deadIps.isNotEmpty) {
-      for (final ip in deadIps) {
-        final session = _activeSessions.remove(ip);
-        session?.stop();
+    // 2. Tự động quét và phát hiện các mobile device / emulator đang chạy trên OS (kể cả do CLI mxh-tool mở hoặc app vừa khởi động lại)
+    try {
+      final homeDir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Directory.systemTemp.path;
+      final tmpDir = Directory(p.join(homeDir, '.agent_mxh_auto', 'tmp'));
+      if (tmpDir.existsSync()) {
+        for (final f in tmpDir.listSync(followLinks: false)) {
+          if (f is File && f.path.contains('device_') && f.path.endsWith('.json')) {
+            try {
+              final content = f.readAsStringSync();
+              final meta = json.decode(content);
+              final ip = meta['ip']?.toString();
+              final emuPid = meta['emulator_pid'];
+              final cport = meta['console_port'];
+              if (ip != null && ip.isNotEmpty && emuPid != null && emuPid is int) {
+                final isAlive = File('/proc/$emuPid/cmdline').existsSync() || Process.killPid(emuPid, ProcessSignal.sigcont);
+                if (isAlive) {
+                  if (!_activeSessions.containsKey(ip)) {
+                    final newSession = Socks5Session(
+                      localPort: 0,
+                      ip: ip,
+                    );
+                    if (cport != null) {
+                      newSession.emulatorPort = int.tryParse(cport.toString());
+                    }
+                    _activeSessions[ip] = newSession;
+                    stateChanged = true;
+                  } else {
+                    final exist = _activeSessions[ip]!;
+                    if (exist.emulatorPort == null && cport != null) {
+                      exist.emulatorPort = int.tryParse(cport.toString());
+                      stateChanged = true;
+                    }
+                  }
+                } else {
+                  // Tiến trình không còn tồn tại, xóa file metadata rác
+                  try {
+                    f.deleteSync();
+                  } catch (_) {}
+                }
+              }
+            } catch (_) {}
+          }
+        }
       }
+    } catch (_) {}
+
+    if (stateChanged) {
       notifyListeners();
     }
   }
@@ -196,8 +248,26 @@ class Socks5ProxyService extends ChangeNotifier {
           return true;
         }
       }
-      final port = session?.emulatorPort;
+
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+
+      // 1. Kiểm tra file metadata device_<ip>.json do CLI mxh-tool hoặc app tạo ra
+      try {
+        final homeDir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Directory.systemTemp.path;
+        final metaFile = File(p.join(homeDir, '.agent_mxh_auto', 'tmp', 'device_$sanitizedIp.json'));
+        if (metaFile.existsSync()) {
+          final content = metaFile.readAsStringSync();
+          final meta = json.decode(content);
+          final emuPid = meta['emulator_pid'];
+          if (emuPid != null && emuPid is int) {
+            if (File('/proc/$emuPid/cmdline').existsSync() || Process.killPid(emuPid, ProcessSignal.sigcont)) {
+              return true;
+            }
+          }
+        }
+      } catch (_) {}
+
+      final port = session?.emulatorPort;
       final needleProfile = 'device_profiles/ip_$sanitizedIp';
       final needlePersonaAvd = 'persona_$sanitizedIp';
       final needlePort = port != null ? '-port\x00$port' : null;
@@ -231,7 +301,32 @@ class Socks5ProxyService extends ChangeNotifier {
 
   /// Tìm console port (5554, 5556,...) của máy ảo AVD đang chạy trên hệ thống
   int? _findRunningConsolePortForAvd(String avdName) {
-    // 1. Quét tiến trình thực tế trong /proc khớp chính xác tên avdName và -port
+    // 1. Kiểm tra trong metadata json trước nếu có
+    try {
+      final homeDir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Directory.systemTemp.path;
+      final tmpDir = Directory(p.join(homeDir, '.agent_mxh_auto', 'tmp'));
+      if (tmpDir.existsSync()) {
+        for (final f in tmpDir.listSync(followLinks: false)) {
+          if (f is File && f.path.contains('device_') && f.path.endsWith('.json')) {
+            try {
+              final meta = json.decode(f.readAsStringSync());
+              if (meta['target_avd'] == avdName || (meta['ip'] != null && avdName.contains(meta['ip'].toString().replaceAll('.', '_')))) {
+                final emuPid = meta['emulator_pid'];
+                if (emuPid != null && emuPid is int && File('/proc/$emuPid/cmdline').existsSync()) {
+                  final cport = meta['console_port'];
+                  if (cport != null) {
+                    final parsed = int.tryParse(cport.toString());
+                    if (parsed != null) return parsed;
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Quét tiến trình thực tế trong /proc khớp tên avdName và -port
     try {
       final procDir = Directory('/proc');
       if (procDir.existsSync()) {
