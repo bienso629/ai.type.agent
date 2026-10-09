@@ -1791,7 +1791,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
               children: [
                 Expanded(
                   child: Container(
-                    height: 36,
+                    height: 38,
                     decoration: BoxDecoration(
                       color: AppColors.inputBg,
                       borderRadius: BorderRadius.circular(6),

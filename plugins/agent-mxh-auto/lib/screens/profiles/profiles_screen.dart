@@ -1510,10 +1510,10 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                icon: const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textDim),
                                                style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite),
                                                items: const [
-                                                 DropdownMenuItem(value: 924, child: Text(r'TikTok ($0.07)')),
-                                                 DropdownMenuItem(value: 395, child: Text(r'Google / Gmail ($0.30)')),
-                                                 DropdownMenuItem(value: 329, child: Text(r'Facebook ($0.08)')),
-                                                 DropdownMenuItem(value: 589, child: Text(r'Telegram ($0.15)')),
+                                                 DropdownMenuItem(value: 924, child: Text('TikTok')),
+                                                 DropdownMenuItem(value: 395, child: Text('Google / Gmail')),
+                                                 DropdownMenuItem(value: 329, child: Text('Facebook')),
+                                                 DropdownMenuItem(value: 589, child: Text('Telegram')),
                                                ],
                                                onChanged: (val) {
                                                  if (val != null) {

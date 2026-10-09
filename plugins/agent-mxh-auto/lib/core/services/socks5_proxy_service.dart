@@ -846,10 +846,11 @@ class Socks5ProxyService extends ChangeNotifier {
       }
     }
 
-    // Thử kết nối SOCKS5 nếu có server được chỉ định
+    // Thử kết nối SOCKS5 nếu có server được chỉ định (ngoại trừ 127.0.0.1 / localhost là mạng trực tiếp của máy tính)
     String? socks5Proxy;
     Socks5Session? session;
-    if (server != null) {
+    final isLocalDirect = ip == '127.0.0.1' || ip == 'localhost';
+    if (server != null && !isLocalDirect) {
       try {
         session = await startSocks5Server(server: server, ip: ip);
         socks5Proxy = 'socks5://127.0.0.1:${session.localPort}';
@@ -2039,7 +2040,8 @@ for root, _, files in os.walk(target_dir):
     Socks5Session? session;
     int? httpProxyPort;
 
-    if (server != null) {
+    final isLocalDirect = ip == '127.0.0.1' || ip == 'localhost';
+    if (server != null && !isLocalDirect) {
       try {
         session = await startSocks5Server(server: server, ip: ip);
       } catch (_) {
