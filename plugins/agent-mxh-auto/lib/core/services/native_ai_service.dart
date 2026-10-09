@@ -203,8 +203,25 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
           }
         }
 
+        // Dự phòng 1: Nếu workingDir không có Scope nhưng trong PersonaService đang có activeScopeIps
+        if (allowedScopeIps.isEmpty && _personaService.activeScopeIps.isNotEmpty) {
+          allowedScopeIps.addAll(_personaService.activeScopeIps);
+        }
+
+        // Dự phòng 2: Phân tích số lượng nhân vật từ câu prompt (ví dụ: "chọn 3 nhân vật", "3 personas", "mở 2 máy"...)
+        int? requestedCountFromPrompt;
+        final countMatch = RegExp(r'(\d+)\s*(?:nhân vật|persona|profile|máy|acc|tài khoản|con|người)', caseSensitive: false).firstMatch(message);
+        if (countMatch != null) {
+          final parsed = int.tryParse(countMatch.group(1) ?? '');
+          if (parsed != null && parsed > 0) {
+            requestedCountFromPrompt = parsed;
+          }
+        }
+
         if (allowedScopeIps.isNotEmpty) {
-          fullUserPrompt += '\n\n[LƯU Ý QUAN TRỌNG VỀ PHẠM VI NHÂN VẬT]: Hiện tại người dùng ĐANG CHỌN ${allowedScopeIps.length} nhân vật trong Scope (danh sách IP: ${allowedScopeIps.join(", ")}). Bạn BẮT BUỘC chỉ được mở trình duyệt/thiết bị cho đúng ${allowedScopeIps.length} nhân vật này. TUYỆT ĐỐI KHÔNG mở cho các nhân vật ngoài danh sách Scope này!';
+          fullUserPrompt += '\n\n[LƯU Ý QUAN TRỌNG VỀ PHẠM VI NHÂN VẬT]: Hiện tại người dùng ĐANG CHỌN ĐÚNG ${allowedScopeIps.length} nhân vật trong Scope (danh sách IP: ${allowedScopeIps.join(", ")}). Bạn BẮT BUỘC chỉ được mở trình duyệt/thiết bị cho đúng ${allowedScopeIps.length} nhân vật này. TUYỆT ĐỐI KHÔNG mở cho các nhân vật ngoài danh sách Scope này!';
+        } else if (requestedCountFromPrompt != null) {
+          fullUserPrompt += '\n\n[LƯU Ý QUAN TRỌNG VỀ SỐ LƯỢNG NHÂN VẬT]: Người dùng yêu cầu thực thi cho ĐÚNG $requestedCountFromPrompt nhân vật. BẮT BUỘC chỉ mở trình duyệt/thiết bị cho đúng $requestedCountFromPrompt nhân vật, TUYỆT ĐỐI KHÔNG mở toàn bộ hệ thống!';
         }
 
         // Add current user message
@@ -227,8 +244,10 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'function': {
               'name': 'open_profile_browser',
               'description': allowedScopeIps.isNotEmpty
-                  ? 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP. QUY TẮC BẮT BUỘC: Hiện tại người dùng đã chọn Phạm vi Scope gồm đúng ${allowedScopeIps.length} nhân vật (danh sách IP: ${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở trình duyệt cho ${allowedScopeIps.length} IP này bằng cách truyền mảng ["${allowedScopeIps.join('", "')}"] vào tham số "ips". CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
-                  : 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP để tự động hóa tương tác mạng xã hội trên web. QUY TẮC: Khi trong Scope có nhiều nhân vật và người dùng yêu cầu mở trang web/video chung, BẮT BUỘC truyền toàn bộ danh sách IP vào tham số "ips" để mở cho tất cả nhân vật. Chỉ truyền 1 IP vào "ip" khi người dùng chỉ định rõ tên một nhân vật cụ thể.',
+                  ? 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP. QUY TẮC BẮT BUỘC TỐI THƯỢNG: Hiện tại người dùng đã chọn Phạm vi Scope gồm đúng ${allowedScopeIps.length} nhân vật (danh sách IP: ${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở trình duyệt cho đúng ${allowedScopeIps.length} IP này bằng cách truyền mảng ["${allowedScopeIps.join('", "')}"] vào tham số "ips". CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
+                  : (requestedCountFromPrompt != null
+                      ? 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP. QUY TẮC BẮT BUỘC: Người dùng yêu cầu mở cho đúng $requestedCountFromPrompt nhân vật. CHỈ truyền mảng $requestedCountFromPrompt IP vào tham số "ips". TUYỆT ĐỐI KHÔNG mở cho toàn bộ các nhân vật!'
+                      : 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP để tự động hóa tương tác mạng xã hội trên web. QUY TẮC: Chỉ mở cho các nhân vật được người dùng chỉ định. Khi người dùng chỉ định rõ tên một nhân vật, chỉ truyền 1 IP vào "ip".'),
               'parameters': {
                 'type': 'object',
                 'properties': {
@@ -240,8 +259,8 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     'type': 'array',
                     'items': {'type': 'string'},
                     'description': allowedScopeIps.isNotEmpty
-                        ? 'Danh sách IP của ${allowedScopeIps.length} nhân vật trong Scope: [${allowedScopeIps.map((e) => '"$e"').join(', ')}]. BẮT BUỘC truyền chính xác mảng này!'
-                        : 'Danh sách các địa chỉ IP của toàn bộ nhân vật cần mở trình duyệt. Khi người dùng thao tác trên phạm vi nhiều nhân vật (Scope) thì BẮT BUỘC truyền toàn bộ IP của Scope vào đây.'
+                        ? 'Danh sách IP của ĐÚNG ${allowedScopeIps.length} nhân vật trong Scope: [${allowedScopeIps.map((e) => '"$e"').join(', ')}]. BẮT BUỘC truyền chính xác mảng này!'
+                        : 'Danh sách các địa chỉ IP của các nhân vật cần mở trình duyệt.'
                   },
                   'url': {
                     'type': 'string',
@@ -277,8 +296,10 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
             'function': {
               'name': 'open_profile_device',
               'description': allowedScopeIps.isNotEmpty
-                  ? 'Khởi chạy hoặc kết nối thiết bị Android cho nhân vật theo IP. QUY TẮC BẮT BUỘC: Hiện tại Scope đã chọn ${allowedScopeIps.length} nhân vật (${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở thiết bị cho các IP trong Scope này. CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
-                  : 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho nhân vật theo IP. QUY TẮC BẮT BUỘC: (1) Mặc định làm việc trên Trình duyệt, chỉ dùng thiết bị khi người dùng yêu cầu rõ ràng; (2) GIỚI HẠN TỐI ĐA 2 THIẾT BỊ MỞ CÙNG LÚC TRÊN TOÀN HỆ THỐNG ĐỂ TRÁNH TREO MÁY. Tuyệt đối không mở từ 3 thiết bị trở lên cùng lúc; (3) Với yêu cầu chạy nhiều thiết bị (kể cả 100 devices): Phải đảm bảo từng thiết bị chạy XONG XUÔI tác vụ auto rồi mới đóng bằng close_profile_device, sau đó mới mở thiết bị tiếp theo cho đến khi hoàn tất toàn bộ danh sách.',
+                  ? 'Khởi chạy hoặc kết nối thiết bị Android cho nhân vật theo IP. QUY TẮC BẮT BUỘC TỐI THƯỢNG: Hiện tại Scope đã chọn đúng ${allowedScopeIps.length} nhân vật (${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở thiết bị cho các IP trong Scope này. CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
+                  : (requestedCountFromPrompt != null
+                      ? 'Khởi chạy thiết bị Android cho nhân vật theo IP. QUY TẮC BẮT BUỘC: Người dùng yêu cầu chạy cho đúng $requestedCountFromPrompt nhân vật. CHỈ truyền $requestedCountFromPrompt IP vào ips. CẤM MỞ TOÀN BỘ HỆ THỐNG!'
+                      : 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho nhân vật theo IP. QUY TẮC BẮT BUỘC: (1) Mặc định làm việc trên Trình duyệt, chỉ dùng thiết bị khi người dùng yêu cầu rõ ràng; (2) GIỚI HẠN TỐI ĐA 2 THIẾT BỊ MỞ CÙNG LÚC TRÊN TOÀN HỆ THỐNG ĐỂ TRÁNH TREO MÁY. Tuyệt đối không mở từ 3 thiết bị trở lên cùng lúc; (3) Với yêu cầu chạy nhiều thiết bị (kể cả 100 devices): Phải đảm bảo từng thiết bị chạy XONG XUÔI tác vụ auto rồi mới đóng bằng close_profile_device, sau đó mới mở thiết bị tiếp theo cho đến khi hoàn tất toàn bộ danh sách.'),
               'parameters': {
                 'type': 'object',
                 'properties': {
@@ -290,8 +311,8 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                     'type': 'array',
                     'items': {'type': 'string'},
                     'description': allowedScopeIps.isNotEmpty
-                        ? 'Danh sách IP của các nhân vật trong Scope: [${allowedScopeIps.map((e) => '"$e"').join(', ')}]'
-                        : 'Danh sách IP của các nhân vật cần khởi chạy thiết bị Android đồng loạt (chỉ dùng khi người dùng yêu cầu chạy tất cả hoặc nhiều thiết bị)'
+                        ? 'Danh sách IP của đúng ${allowedScopeIps.length} nhân vật trong Scope: [${allowedScopeIps.map((e) => '"$e"').join(', ')}]'
+                        : 'Danh sách IP của các nhân vật cần khởi chạy thiết bị Android.'
                   },
                   'device_type': {
                     'type': 'string',
@@ -589,6 +610,11 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                           }
                         }
                       }
+                    } else if (requestedCountFromPrompt != null && targetIps.length > requestedCountFromPrompt) {
+                      // Nếu không có Scope cụ thể nhưng người dùng yêu cầu N nhân vật, chỉ lấy đúng N IP
+                      final capped = targetIps.take(requestedCountFromPrompt).toList();
+                      targetIps.clear();
+                      targetIps.addAll(capped);
                     }
 
                     final url = parsedArgs['url']?.toString().trim();
@@ -703,6 +729,10 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                           }
                         }
                       }
+                    } else if (requestedCountFromPrompt != null && targetDevIps.length > requestedCountFromPrompt) {
+                      final cappedDev = targetDevIps.take(requestedCountFromPrompt).toList();
+                      targetDevIps.clear();
+                      targetDevIps.addAll(cappedDev);
                     }
 
                     final devType = parsedArgs['device_type']?.toString().trim() ?? 'mobile';

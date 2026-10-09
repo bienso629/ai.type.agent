@@ -14,19 +14,33 @@ class PersonaService {
   final LocalConfigService _configService = LocalConfigService();
   final DatabaseService _dbService = DatabaseService();
   final Map<String, PersonaProfile> _cachedPersonas = {};
+  final Set<String> _activeScopeIps = {};
   String? _currentUserKey;
   bool _isLoaded = false;
+
+  Set<String> get activeScopeIps => Set.unmodifiable(_activeScopeIps);
+
+  void setActiveScopeIps(Iterable<String> ips) {
+    _activeScopeIps.clear();
+    _activeScopeIps.addAll(ips);
+  }
+
+  void clearActiveScope() {
+    _activeScopeIps.clear();
+  }
 
   void switchUser(String? userKey) {
     if (_currentUserKey != userKey) {
       _currentUserKey = userKey;
       _cachedPersonas.clear();
+      _activeScopeIps.clear();
       _isLoaded = false;
     }
   }
 
   void clearCache() {
     _cachedPersonas.clear();
+    _activeScopeIps.clear();
     _isLoaded = false;
   }
 

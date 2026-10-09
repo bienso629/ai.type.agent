@@ -34,6 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<PersonaProfile> _selectedPersonasScope = [];
   final List<AttachmentItem> _attachedFiles = [];
   bool _isDeviceExecutionMode = false; // false: Trình duyệt (Browser), true: Thiết bị (Device/AVD)
+  final PersonaService _personaService = PersonaService();
 
   int _inputCharCount = 0;
   static const int _maxInputChars = 100000;
@@ -52,6 +53,15 @@ class _ChatScreenState extends State<ChatScreen> {
       final chat = context.read<ChatProvider>();
       final server = context.read<ServerProvider>();
       server.loadServers();
+      _personaService.loadSavedPersonas().then((map) {
+        if (mounted && _personaService.activeScopeIps.isNotEmpty && _selectedPersonasScope.isEmpty) {
+          setState(() {
+            _selectedPersonasScope = map.values
+                .where((p) => _personaService.activeScopeIps.contains(p.ip))
+                .toList();
+          });
+        }
+      }).catchError((_) {});
       _api.getConfig().then((cfg) {
         if (cfg['default_execution_mode'] != null && mounted) {
           setState(() {
@@ -420,6 +430,7 @@ class _ChatScreenState extends State<ChatScreen> {
           setState(() {
             _selectedPersonasScope = selectedList;
           });
+          _personaService.setActiveScopeIps(selectedList.map((p) => p.ip));
           if (selectedList.isNotEmpty) {
             AppToast.success(context, 'Đã chọn ${selectedList.length} nhân vật cho hội thoại');
           } else {
@@ -1088,6 +1099,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             setState(() {
                               _selectedPersonasScope.clear();
                             });
+                            _personaService.clearActiveScope();
                           },
                           child: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
                         ),
@@ -1122,6 +1134,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   setState(() {
                                     _selectedPersonasScope.removeWhere((item) => item.ip == p.ip);
                                   });
+                                  _personaService.setActiveScopeIps(_selectedPersonasScope.map((e) => e.ip));
                                 },
                                 child: const Icon(Icons.close_rounded, size: 14, color: AppColors.textMuted),
                               ),
