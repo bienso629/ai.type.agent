@@ -2636,11 +2636,6 @@ for root, _, files in os.walk(target_dir):
       return personaProfile.externalDeviceAddress;
     }
 
-    // Fallback: nếu chỉ có 1 thiết bị đang kết nối ADB thì lấy luôn
-    final connected = await getConnectedAdbDevices();
-    if (connected.length == 1) {
-      return connected.first['serial'];
-    }
     return null;
   }
 

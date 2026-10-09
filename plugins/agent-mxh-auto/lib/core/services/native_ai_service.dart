@@ -1003,9 +1003,34 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                       final pName = persona?.name ?? targetIp;
                       onStatus('Đang thực thi nhanh macro $actType ($actionPlatform) cho nhân vật $pName ($targetIp)...');
 
-                      final serial = await _socks5Service.getRunningDeviceSerialForIp(targetIp);
+                      var serial = await _socks5Service.getRunningDeviceSerialForIp(targetIp);
                       if (serial == null || serial.isEmpty) {
-                        results.add('$pName ($targetIp): Thiết bị chưa kết nối hoặc chưa bật');
+                        onStatus('Đang khởi động thiết bị Android cho $pName ($targetIp)...');
+                        final serversDev = await _configService.getServers();
+                        final activeServerDev = serversDev.firstWhere(
+                          (s) => s.isSelected,
+                          orElse: () => serversDev.isNotEmpty
+                              ? serversDev.first
+                              : ServerModel.fromJson(cfg),
+                        );
+                        await _socks5Service.ensureDeviceCapacity(exemptIps: [targetIp]);
+                        await _socks5Service.launchDeviceWithSocks5(
+                          server: activeServerDev,
+                          ip: targetIp,
+                        );
+                        // Chờ thiết bị sẵn sàng tối đa 30s
+                        for (int w = 0; w < 15; w++) {
+                          await Future.delayed(const Duration(seconds: 2));
+                          serial = await _socks5Service.getRunningDeviceSerialForIp(targetIp);
+                          if (serial != null && serial.isNotEmpty) {
+                            final bootRes = await Process.run(adbExe, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']);
+                            if (bootRes.stdout.toString().trim() == '1') break;
+                          }
+                        }
+                      }
+
+                      if (serial == null || serial.isEmpty) {
+                        results.add('$pName ($targetIp): Thiết bị chưa kết nối hoặc không thể khởi chạy');
                         continue;
                       }
 
