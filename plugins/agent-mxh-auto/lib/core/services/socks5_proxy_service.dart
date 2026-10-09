@@ -775,6 +775,12 @@ class Socks5ProxyService extends ChangeNotifier {
     ServerModel? server,
     String? startUrl,
   }) async {
+    // Nếu trình duyệt của nhân vật này đang chạy sẵn rồi thì không mở thêm cửa sổ trùng lặp nữa
+    if (isBrowserRunningForIp(ip)) {
+      debugPrint('[Browser] Trình duyệt cho IP $ip đang hoạt động, bỏ qua không mở thêm phiên trùng lặp.');
+      return true;
+    }
+
     final executable = findBrowserExecutable();
     if (executable == null) {
       throw Exception('Không tìm thấy trình duyệt khả dụng (Chrome, Edge, Opera, Brave, Firefox) trên hệ thống local.');
@@ -903,6 +909,15 @@ class Socks5ProxyService extends ChangeNotifier {
       ];
     } else {
       final extDir = '${profileDir.path}/vietnamese_meta_ext';
+      final tiktokCaptchaExtDir = '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-mxh-auto/extensions/tiktok_captcha_solver';
+      final List<String> loadedExtensions = [];
+      if (Directory(extDir).existsSync()) {
+        loadedExtensions.add(extDir);
+      }
+      if (Directory(tiktokCaptchaExtDir).existsSync()) {
+        loadedExtensions.add(tiktokCaptchaExtDir);
+      }
+
       args = [
         '--lang=vi',
         '--accept-lang=vi-VN,vi,en-US,en',
@@ -913,7 +928,7 @@ class Socks5ProxyService extends ChangeNotifier {
         if (Platform.isLinux) '--ozone-platform=x11',
         if (socks5Proxy != null) '--proxy-server=$socks5Proxy',
         '--user-data-dir=${profileDir.path}',
-        if (Directory(extDir).existsSync()) '--load-extension=$extDir',
+        if (loadedExtensions.isNotEmpty) '--load-extension=${loadedExtensions.join(',')}',
         '--no-first-run',
         '--no-default-browser-check',
         '--ignore-certificate-errors',
@@ -2037,6 +2052,12 @@ for root, _, files in os.walk(target_dir):
     String? phoneNumber,
     bool autoSyncPhone = false,
   }) async {
+    // Nếu thiết bị của nhân vật này đang chạy sẵn rồi thì không khởi chạy trùng lặp
+    if (isDeviceRunningForIp(ip)) {
+      debugPrint('[Device] Thiết bị cho IP $ip đang hoạt động sẵn, bỏ qua không mở thêm phiên trùng lặp.');
+      return true;
+    }
+
     Socks5Session? session;
     int? httpProxyPort;
 
@@ -2588,6 +2609,39 @@ for root, _, files in os.walk(target_dir):
       _closingDeviceIps.remove(ip);
       notifyListeners();
     }
+  }
+
+  /// Tìm serial ADB (ví dụ emulator-5554 hoặc IP:port) đang chạy cho một IP nhân vật cụ thể
+  Future<String?> getRunningDeviceSerialForIp(String ip) async {
+    final session = _activeSessions[ip];
+    if (session?.remoteDeviceAddress != null && session!.remoteDeviceAddress!.isNotEmpty) {
+      return session.remoteDeviceAddress;
+    }
+    if (session?.emulatorPort != null) {
+      return 'emulator-${session!.emulatorPort}';
+    }
+
+    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final personaAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
+    final personaProfile = PersonaService().getPersona(ip);
+    final customAvdName = personaProfile?.avdName?.trim();
+    final targetAvd = (customAvdName != null && customAvdName.isNotEmpty) ? customAvdName : personaAvdName;
+
+    final port = _findRunningConsolePortForAvd(targetAvd) ?? _findRunningConsolePortForAvd(personaAvdName);
+    if (port != null) {
+      return 'emulator-$port';
+    }
+
+    if (personaProfile != null && personaProfile.useExternalDevice && personaProfile.externalDeviceAddress != null) {
+      return personaProfile.externalDeviceAddress;
+    }
+
+    // Fallback: nếu chỉ có 1 thiết bị đang kết nối ADB thì lấy luôn
+    final connected = await getConnectedAdbDevices();
+    if (connected.length == 1) {
+      return connected.first['serial'];
+    }
+    return null;
   }
 
   /// Tìm và cung cấp đường dẫn binary adb (tự động tải và nhúng nếu hệ thống chưa có)

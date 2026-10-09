@@ -126,178 +126,6 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     }
   }
 
-  void _showFullAvatarDialog(BuildContext context, {required String avatarUrl, required String name, required String ip}) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.85),
-      builder: (ctx) {
-        final isNetwork = avatarUrl.startsWith('http');
-        final maxH = MediaQuery.of(ctx).size.height * 0.8;
-        final maxW = MediaQuery.of(ctx).size.width * 0.85;
-
-        final imageWidget = isNetwork
-            ? Image.network(
-                avatarUrl,
-                fit: BoxFit.contain,
-                loadingBuilder: (ctx, child, progress) {
-                  if (progress == null) return child;
-                  return const SizedBox(
-                    width: 320,
-                    height: 320,
-                    child: Center(
-                      child: CircularProgressIndicator(color: AppColors.primaryLight),
-                    ),
-                  );
-                },
-                errorBuilder: (ctx, err, stack) => const SizedBox(
-                  width: 300,
-                  height: 200,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.broken_image_rounded, size: 48, color: AppColors.textDim),
-                        SizedBox(height: 8),
-                        Text('Không thể tải ảnh avatar', style: TextStyle(color: AppColors.textDim)),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            : Image.file(
-                File(avatarUrl),
-                fit: BoxFit.contain,
-                errorBuilder: (ctx, err, stack) => const SizedBox(
-                  width: 300,
-                  height: 200,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.broken_image_rounded, size: 48, color: AppColors.textDim),
-                        SizedBox(height: 8),
-                        Text('Không tìm thấy tệp ảnh avatar cục bộ', style: TextStyle(color: AppColors.textDim)),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-
-        return Dialog(
-          backgroundColor: AppColors.cardBg,
-          elevation: 24,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: AppColors.borderLight, width: 1.2),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: maxH,
-              maxWidth: maxW,
-            ),
-            child: IntrinsicWidth(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. MODAL HEADER (Chuẩn thiết kế Dialog của app: nền 0xFF090F1E, border-bottom 1.2px)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF090F1E),
-                      border: Border(
-                        bottom: BorderSide(color: AppColors.borderLight, width: 1.2),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Icon(Icons.account_box_rounded, color: AppColors.primaryLight, size: 18),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style: const TextStyle(
-                                        color: AppColors.textWhite,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14.5,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 1),
-                                    Text(
-                                      'IP: $ip',
-                                      style: const TextStyle(
-                                        color: AppColors.primaryLight,
-                                        fontSize: 11,
-                                        fontFamily: 'monospace',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(6),
-                            hoverColor: AppColors.borderDark.withValues(alpha: 0.6),
-                            onTap: () => Navigator.pop(ctx),
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: AppColors.borderDark, width: 1),
-                              ),
-                              child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textDim),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // 2. MODAL BODY (Hiển thị ảnh chân dung vừa khít)
-                  Flexible(
-                    child: Container(
-                      color: Colors.black,
-                      child: InteractiveViewer(
-                        minScale: 0.5,
-                        maxScale: 4.0,
-                        child: Center(
-                          child: imageWidget,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   void _showPersonaDetails(PersonaProfile persona) {
     final nameCtrl = TextEditingController(text: persona.name);
     final ageCtrl = TextEditingController(text: persona.age.toString());
@@ -437,23 +265,12 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           final isGen = _generatingAvatarIps.contains(currentP.ip);
                           final hasImg = currentP.avatarUrl != null && currentP.avatarUrl!.isNotEmpty;
 
-                          return Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Tooltip(
-                                message: hasImg
-                                    ? 'Bấm để xem ảnh avatar to kích thước gốc của ${currentP.name}'
-                                    : (isGen ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar'),
-                                child: InkWell(
-                                  onTap: () {
-                                    if (hasImg) {
-                                      _showFullAvatarDialog(
-                                        context,
-                                        avatarUrl: currentP.avatarUrl!,
-                                        name: currentP.name,
-                                        ip: currentP.ip,
-                                      );
-                                    } else if (!isGen) {
+                          return Tooltip(
+                            message: isGen ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar',
+                            child: InkWell(
+                              onTap: isGen
+                                  ? null
+                                  : () {
                                       final currentPWithForm = currentP.copyWith(
                                         name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
                                         age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
@@ -463,10 +280,12 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         agentInfo: agentInfoCtrl.text.trim(),
                                       );
                                       _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
-                                    }
-                                  },
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Container(
+                                    },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
                                     width: 44,
                                     height: 44,
                                     decoration: BoxDecoration(
@@ -496,42 +315,26 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                           : const Icon(Icons.person_rounded, color: AppColors.primaryLight, size: 22),
                                     ),
                                   ),
-                                ),
-                              ),
-                              if (isGen)
-                                Positioned.fill(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.55),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Center(
-                                      child: SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                  if (isGen)
+                                    Positioned.fill(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.55),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Center(
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                )
-                              else
-                                Positioned(
-                                  right: -3,
-                                  bottom: -3,
-                                  child: Tooltip(
-                                    message: 'Bấm để AI tạo lại avatar',
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        final currentPWithForm = currentP.copyWith(
-                                          name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
-                                          age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
-                                          gender: selectedGender,
-                                          bio: bioCtrl.text.trim(),
-                                          avatarPrompt: promptCtrl.text.trim(),
-                                          agentInfo: agentInfoCtrl.text.trim(),
-                                        );
-                                        _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
-                                      },
+                                    )
+                                  else
+                                    Positioned(
+                                      right: -3,
+                                      bottom: -3,
                                       child: Container(
                                         padding: const EdgeInsets.all(2),
                                         decoration: const BoxDecoration(
@@ -548,9 +351,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                            ],
+                                ],
+                              ),
+                            ),
                           );
                         }(),
                         const SizedBox(width: 10),
@@ -746,31 +549,49 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         );
                                         _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
                                       },
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.auto_awesome_rounded, size: 12, color: AppColors.accentCyan),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            'Vẽ lại ảnh theo prompt này',
-                                            style: TextStyle(fontSize: 11, color: AppColors.accentCyan, fontWeight: FontWeight.bold),
-                                          ),
-                                        ],
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accentCyan.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.35), width: 0.8),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.auto_awesome_rounded, size: 12, color: AppColors.accentCyan),
+                                            SizedBox(width: 5),
+                                            Text(
+                                              'Vẽ lại ảnh theo prompt này',
+                                              style: TextStyle(fontSize: 11, color: AppColors.accentCyan, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    const SizedBox(width: 8),
                                     InkWell(
                                       onTap: () => _copyToClipboard(promptCtrl.text, 'Avatar Prompt'),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.copy_rounded, size: 12, color: AppColors.primaryLight),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            'Sao chép prompt',
-                                            style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
-                                          ),
-                                        ],
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.35), width: 0.8),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.copy_rounded, size: 12, color: AppColors.primaryLight),
+                                            SizedBox(width: 5),
+                                            Text(
+                                              'Sao chép prompt',
+                                              style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -2344,7 +2165,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           crossAxisCount: crossAxisCount,
                           crossAxisSpacing: 14,
                           mainAxisSpacing: 14,
-                          mainAxisExtent: 240,
+                          mainAxisExtent: 250,
                         ),
                         itemCount: allIpCards.length,
                         itemBuilder: (context, idx) {
@@ -2506,30 +2327,19 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                         final isGeneratingAvatar = _generatingAvatarIps.contains(item.ip);
                         final hasCustomAvatar = persona?.avatarUrl != null && persona!.avatarUrl!.isNotEmpty;
 
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Tooltip(
-                              message: hasCustomAvatar
-                                  ? 'Bấm để xem ảnh avatar to kích thước gốc của ${persona.name}'
-                                  : (persona != null
-                                      ? (isGeneratingAvatar ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar cho ${persona.name}')
-                                      : 'Tạo hồ sơ trước để sinh ảnh avatar'),
-                              child: InkWell(
-                                onTap: () {
-                                  if (hasCustomAvatar) {
-                                    _showFullAvatarDialog(
-                                      context,
-                                      avatarUrl: persona.avatarUrl!,
-                                      name: persona.name,
-                                      ip: persona.ip,
-                                    );
-                                  } else if (persona != null && !isGeneratingAvatar) {
-                                    _handleGenerateAvatar(persona);
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
+                        return Tooltip(
+                          message: persona != null
+                              ? (isGeneratingAvatar ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar cho ${persona.name}')
+                              : 'Tạo hồ sơ trước để sinh ảnh avatar',
+                          child: InkWell(
+                            onTap: (persona == null || isGeneratingAvatar)
+                                ? null
+                                : () => _handleGenerateAvatar(persona),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
                                   width: 42,
                                   height: 42,
                                   decoration: BoxDecoration(
@@ -2565,33 +2375,27 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         : _buildFallbackAvatarIcon(persona, isAnyRunning, isAlias, item.isMain),
                                   ),
                                 ),
-                              ),
-                            ),
 
-                            if (isGeneratingAvatar)
-                              Positioned.fill(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.55),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Center(
-                                    child: SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                if (isGeneratingAvatar)
+                                  Positioned.fill(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.55),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Center(
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              )
-                            else if (persona != null)
-                              Positioned(
-                                right: -3,
-                                bottom: -3,
-                                child: Tooltip(
-                                  message: 'Bấm để AI tạo lại avatar cho ${persona.name}',
-                                  child: GestureDetector(
-                                    onTap: isGeneratingAvatar ? null : () => _handleGenerateAvatar(persona),
+                                  )
+                                else if (persona != null)
+                                  Positioned(
+                                    right: -3,
+                                    bottom: -3,
                                     child: Container(
                                       padding: const EdgeInsets.all(2),
                                       decoration: const BoxDecoration(
@@ -2608,9 +2412,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                          ],
+                              ],
+                            ),
+                          ),
                         );
                       }(),
                       const SizedBox(width: 10),
@@ -2689,40 +2493,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                         ),
                                       ),
                                     ],
-                                    if (persona.phoneNumber != null && persona.phoneNumber!.isNotEmpty) ...[
-                                      const SizedBox(width: 4),
-                                      Tooltip(
-                                        message: 'Số điện thoại: ${persona.phoneNumber}${persona.autoSyncPhoneToDevice ? ' (Đã bật tự động gắn vào máy)' : ''}',
-                                        child: Container(
-                                          height: 18,
-                                          width: 18,
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5), width: 0.6),
-                                          ),
-                                          child: const Icon(Icons.phone_rounded, size: 10.5, color: Color(0xFF34D399)),
-                                        ),
-                                      ),
-                                    ],
-                                    if (persona.email != null && persona.email!.isNotEmpty) ...[
-                                      const SizedBox(width: 4),
-                                      Tooltip(
-                                        message: 'Email: ${persona.email}',
-                                        child: Container(
-                                          height: 18,
-                                          width: 18,
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5), width: 0.6),
-                                          ),
-                                          child: const Icon(Icons.email_rounded, size: 10.5, color: Color(0xFFA78BFA)),
-                                        ),
-                                      ),
-                                    ],
+
                                   ],
                                 ],
                               ),
@@ -2785,49 +2556,105 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
                   const SizedBox(height: 8),
 
-                  // Row 2: Bio hoặc Nút xem Prompt avatar
+                  // Row 2: Bio kèm Nút Số điện thoại và Email ngay bên dưới
                   if (persona != null) ...[
                     Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.inputBg.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.5)),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: InkWell(
-                                onTap: () => _showPersonaDetails(persona),
-                                child: Text(
-                                  persona.bio,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.3),
-                                ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBg.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.5)),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => _showPersonaDetails(persona),
+                                      child: Text(
+                                        persona.bio,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.3),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Tooltip(
+                                    message: 'Xem chi tiết & Chỉnh sửa nhân vật',
+                                    child: InkWell(
+                                      onTap: () => _showPersonaDetails(persona),
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(5),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                        ),
+                                        child: const Icon(Icons.edit_note_rounded, size: 16, color: AppColors.primaryLight),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Tooltip(
-                              message: 'Xem chi tiết & Chỉnh sửa nhân vật',
-                              child: InkWell(
-                                onTap: () => _showPersonaDetails(persona),
-                                borderRadius: BorderRadius.circular(4),
-                                child: Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.12),
+                          ),
+                          if ((persona.phoneNumber != null && persona.phoneNumber!.isNotEmpty) ||
+                              (persona.email != null && persona.email!.isNotEmpty)) ...[
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                if (persona.phoneNumber != null && persona.phoneNumber!.isNotEmpty) ...[
+                                  InkWell(
+                                    onTap: () => _copyToClipboard(persona.phoneNumber!, 'Số điện thoại'),
                                     borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                    child: Tooltip(
+                                      message: 'Số điện thoại: ${persona.phoneNumber}${persona.autoSyncPhoneToDevice ? ' (Đã bật tự động gắn vào máy)' : ''} (Bấm để chép)',
+                                      child: Container(
+                                        height: 20,
+                                        width: 20,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5), width: 0.6),
+                                        ),
+                                        child: const Icon(Icons.phone_rounded, size: 11, color: Color(0xFF34D399)),
+                                      ),
+                                    ),
                                   ),
-                                  child: const Icon(Icons.edit_note_rounded, size: 16, color: AppColors.primaryLight),
-                                ),
-                              ),
+                                  const SizedBox(width: 6),
+                                ],
+                                if (persona.email != null && persona.email!.isNotEmpty) ...[
+                                  InkWell(
+                                    onTap: () => _copyToClipboard(persona.email!, 'Email'),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Tooltip(
+                                      message: 'Email: ${persona.email} (Bấm để chép)',
+                                      child: Container(
+                                        height: 20,
+                                        width: 20,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5), width: 0.6),
+                                        ),
+                                        child: const Icon(Icons.email_rounded, size: 11, color: Color(0xFFA78BFA)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
-                        ),
+                        ],
                       ),
                     ),
                   ] else ...[

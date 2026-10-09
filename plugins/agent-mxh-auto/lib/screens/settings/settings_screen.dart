@@ -1349,10 +1349,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             const Text('Môi Trường Thực Thi Mặc Định Cho Tác Vụ', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
                             const SizedBox(height: 8),
                             InkWell(
-                              onTap: () {
+                              onTap: () async {
+                                final newVal = !_isDeviceExecutionMode;
                                 setState(() {
-                                  _isDeviceExecutionMode = !_isDeviceExecutionMode;
+                                  _isDeviceExecutionMode = newVal;
                                 });
+                                try {
+                                  final cfg = await _api.getConfig();
+                                  cfg['default_execution_mode'] = newVal ? 'device' : 'browser';
+                                  await _api.saveConfig(cfg);
+                                  if (!context.mounted) return;
+                                  AppToast.info(context, newVal ? 'Đã đổi chế độ: Thiết bị (Device / AVD)' : 'Đã đổi chế độ: Trình duyệt (Browser)');
+                                } catch (_) {}
                               },
                               borderRadius: BorderRadius.circular(6),
                               child: Container(
@@ -1409,10 +1417,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         activeTrackColor: Colors.purpleAccent.withValues(alpha: 0.3),
                                         inactiveThumbColor: AppColors.primaryLight,
                                         inactiveTrackColor: AppColors.primary.withValues(alpha: 0.3),
-                                        onChanged: (val) {
+                                        onChanged: (val) async {
                                           setState(() {
                                             _isDeviceExecutionMode = val;
                                           });
+                                          try {
+                                            final cfg = await _api.getConfig();
+                                            cfg['default_execution_mode'] = val ? 'device' : 'browser';
+                                            await _api.saveConfig(cfg);
+                                            if (!context.mounted) return;
+                                            AppToast.info(context, val ? 'Đã đổi chế độ: Thiết bị (Device / AVD)' : 'Đã đổi chế độ: Trình duyệt (Browser)');
+                                          } catch (_) {}
                                         },
                                       ),
                                     ),

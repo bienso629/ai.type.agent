@@ -744,20 +744,33 @@ if __name__ == "__main__":
     buffer.writeln('  Khi chạy lệnh `open-device --ip <IP>`, hệ thống tự động khởi tạo hầm SOCKS5 SSH, kích hoạt HTTP bridge và cấu hình proxy toàn phần (Android Emulator flag `-http-proxy` và ADB global proxy `10.0.2.2:<port>`). Tất cả lưu lượng mạng của máy ảo đều đi qua IP sạch của nhân vật đó.');
     buffer.writeln('  Khi chạy `close-device --ip <IP>`, hệ thống tự động tắt máy ảo, gỡ proxy và dọn dẹp hầm SSH tương ứng.');
     buffer.writeln('');
-    if (scopeIps.length > 1) {
-      buffer.writeln('- QUAN TRỌNG: Người dùng đang chọn ${scopeIps.length} nhân vật trong Scope (${scopeIps.join(', ')}).');
-      buffer.writeln('- Khi người dùng bảo mở link, xem link, hoặc làm việc chung mà KHÔNG chỉ định đích danh 1 ai: BẮT BUỘC phải mở trình duyệt cho TOÀN BỘ ${scopeIps.length} nhân vật bằng cách truyền toàn bộ danh sách IP vào tham số `--ips`:');
-      buffer.writeln('  Lệnh mẫu: $helperPath open-browser --ips ${scopeIps.join(' ')} --url <URL>');
-      buffer.writeln('- TUYỆT ĐỐI KHÔNG được chỉ chọn 1 người đầu tiên mà bỏ quên các nhân vật còn lại trong Scope.');
-    } else if (scopeIps.length == 1) {
-      buffer.writeln('- Scope hiện tại chỉ chọn đúng 1 nhân vật: IP ${scopeIps.first}. BẮT BUỘC chỉ mở 1 trình duyệt cho IP này:');
-      buffer.writeln('  Lệnh mẫu: $helperPath open-browser --ip ${scopeIps.first} --url <URL>');
+    final isDeviceTarget = workingDir != null && (workingDir.contains('THIẾT BỊ / DEVICE') || workingDir.contains('open_profile_device'));
+    if (isDeviceTarget) {
+      buffer.writeln('- CHẾ ĐỘ THỰC THI HIỆN TẠI ĐƯỢC CHỈ ĐỊNH: THIẾT BỊ / MÁY ẢO ANDROID (AVD).');
+      buffer.writeln('  BẮT BUỘC SỬ DỤNG LỆNH `$helperPath open-device --ip <IP>` cho từng IP trong Scope.');
+      buffer.writeln('  TUYỆT ĐỐI KHÔNG SỬ DỤNG `open-browser` vì người dùng đang yêu cầu chạy trên Thiết bị / Android Emulator.');
+      if (scopeIps.isNotEmpty) {
+        buffer.writeln('  Lệnh thực thi ngay cho các nhân vật:');
+        for (final ip in scopeIps) {
+          buffer.writeln('  $helperPath open-device --ip $ip');
+        }
+      }
     } else {
-      buffer.writeln('- Khi người dùng yêu cầu mở trình duyệt, xem link hoặc auto tương tác, BẮT BUỘC phải chạy lệnh `$helperPath open-browser` bằng terminal.');
+      if (scopeIps.length > 1) {
+        buffer.writeln('- QUAN TRỌNG: Người dùng đang chọn ${scopeIps.length} nhân vật trong Scope (${scopeIps.join(', ')}).');
+        buffer.writeln('- Khi người dùng bảo mở link, xem link, hoặc làm việc chung mà KHÔNG chỉ định đích danh 1 ai: BẮT BUỘC phải mở trình duyệt cho TOÀN BỘ ${scopeIps.length} nhân vật bằng cách truyền toàn bộ danh sách IP vào tham số `--ips`:');
+        buffer.writeln('  Lệnh mẫu: $helperPath open-browser --ips ${scopeIps.join(' ')} --url <URL>');
+        buffer.writeln('- TUYỆT ĐỐI KHÔNG được chỉ chọn 1 người đầu tiên mà bỏ quên các nhân vật còn lại trong Scope.');
+      } else if (scopeIps.length == 1) {
+        buffer.writeln('- Scope hiện tại chỉ chọn đúng 1 nhân vật: IP ${scopeIps.first}. BẮT BUỘC chỉ mở 1 trình duyệt cho IP này:');
+        buffer.writeln('  Lệnh mẫu: $helperPath open-browser --ip ${scopeIps.first} --url <URL>');
+      } else {
+        buffer.writeln('- Khi người dùng yêu cầu mở trình duyệt, xem link hoặc auto tương tác, BẮT BUỘC phải chạy lệnh `$helperPath open-browser` bằng terminal.');
+      }
     }
-    buffer.writeln('- BẮT BUỘC phải thực thi lệnh terminal thực tế để mở cửa sổ trình duyệt trên màn hình người dùng.');
+    buffer.writeln('- BẮT BUỘC phải thực thi lệnh terminal thực tế để mở cửa sổ trên màn hình người dùng.');
     buffer.writeln('- TUYỆT ĐỐI KHÔNG giải thích vòng vo về headless mode hay khuyên người dùng tự mở lệnh.');
-    buffer.writeln('- Sau khi thực thi lệnh, hãy báo cáo chi tiết danh sách tất cả các nhân vật/IP đã được mở trình duyệt thành công.');
+    buffer.writeln('- Sau khi thực thi lệnh, hãy báo cáo chi tiết danh sách tất cả các nhân vật/IP đã được mở thành công.');
     buffer.writeln('');
     buffer.writeln('QUY TẮC ĐỌC BÀI BÁO & XEM VIDEO TRÊN WEBSITE (AGENT RULES):');
     buffer.writeln('1. Khi đọc bài báo: Mở bằng profile của nhân vật, đóng quảng cáo pop-up, cuộn đọc từng đoạn với độ trễ tự nhiên (3-8 giây mỗi đoạn), cuộn tối thiểu 70% trang, trích xuất luận điểm chính.');

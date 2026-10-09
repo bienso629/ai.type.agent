@@ -174,6 +174,40 @@ class PersonaService {
 
   Map<String, PersonaProfile> get allPersonas => Map.unmodifiable(_cachedPersonas);
 
+  /// Lấy macro tự động hóa của nhân vật theo IP và actionKey (ví dụ: 'facebook_like', 'tiktok_like')
+  Map<String, dynamic>? getMacroForPersona(String ip, String actionKey) {
+    final persona = _cachedPersonas[ip];
+    if (persona?.automationMacros != null && persona!.automationMacros!.containsKey(actionKey)) {
+      final val = persona.automationMacros![actionKey];
+      if (val is Map) return Map<String, dynamic>.from(val);
+    }
+    return null;
+  }
+
+  /// Cập nhật macro tự động hóa và độ phân giải màn hình cho riêng nhân vật theo IP
+  Future<bool> saveMacroForPersona({
+    required String ip,
+    required String actionKey,
+    required Map<String, dynamic> macroData,
+    String? resolution,
+  }) async {
+    final persona = _cachedPersonas[ip];
+    if (persona == null) return false;
+
+    final updatedMacros = Map<String, dynamic>.from(persona.automationMacros ?? {});
+    updatedMacros[actionKey] = {
+      ...macroData,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    final updatedProfile = persona.copyWith(
+      automationMacros: updatedMacros,
+      deviceResolution: (resolution != null && resolution.isNotEmpty) ? resolution : persona.deviceResolution,
+    );
+
+    return await updatePersona(updatedProfile);
+  }
+
   Future<Map<String, PersonaProfile>> generatePersonas({
     required List<String> ips,
     String? model,

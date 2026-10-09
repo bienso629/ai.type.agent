@@ -51,7 +51,14 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
      + Luôn khởi chạy trình duyệt bằng profile độc lập theo IP của nhân vật (`open_profile_browser`).
      + Quy trình đọc bài báo: Đợi trang tải xong, đóng pop-up quảng cáo nếu có, cuộn trang từng đoạn từ tốn mô phỏng tốc độ đọc thật của con người (dwell time 3-8 giây mỗi đoạn), cuộn tối thiểu 70% chiều dài trang; trích xuất tiêu đề chính và các luận điểm cốt lõi.
      + Quy trình xem video: Tìm phần tử video hoặc iframe nhúng, cuộn trình phát vào giữa màn hình, bấm Play, xem tối thiểu 45 giây đến 2 phút (hoặc 80% thời lượng với video ngắn), không tắt trình duyệt ngay sau khi vừa mở; đọc hiểu tiêu đề, mô tả và nội dung video.
-     + Luôn giữ tính nhất quán theo đúng giọng văn, độ tuổi và tiểu sử của nhân vật khi tóm tắt hoặc viết bình luận tương tác.''';
+     + Luôn giữ tính nhất quán theo đúng giọng văn, độ tuổi và tiểu sử của nhân vật khi tóm tắt hoặc viết bình luận tương tác.
+
+6. HỆ THỐNG MACRO TỰ ĐỘNG HÓA SIÊU TỐC CHO THIẾT BỊ (FAST ACTION & MACROS):
+   - MỖI NHÂN VẬT ĐƯỢC GẮN VỚI MỘT BỘ MACRO TỌA ĐỘ VÀ HÀNH VI TỰ ĐỘNG HÓA RIÊNG BIỆT (theo IP, thiết bị và độ phân giải màn hình).
+   - Khi người dùng yêu cầu thực hiện tương tác trên Thiết bị Android (Like, Thả tim, Viết bình luận, Mở video) cho Facebook hoặc TikTok:
+     + BẮT BUỘC ƯU TIÊN SỬ DỤNG TOOL `fast_social_action` thay vì tự chạy hàng chục lệnh `execute_adb_command` (như dump xml, grep, sleep...) gây chậm chạp và tốn thời gian.
+     + Tool `fast_social_action` sẽ tự động tra cứu bộ nhớ macro riêng của nhân vật theo IP để bấm Like hoặc bình luận ngay lập tức.
+     + Nếu bạn phát hiện tọa độ mới chính xác cho một thao tác đặc thù hoặc độ phân giải mới, hãy gọi `save_automation_macro` để nhân vật đó học và ghi nhớ cho các lần chạy tiếp theo.''';
 
   StreamSubscription<String> streamChatMessage({
     required String sessionId,
@@ -130,8 +137,26 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
           baseUrl = baseUrl.substring(0, baseUrl.length - 1);
         }
 
+        // Detect execution mode preference from workingDir or default_execution_mode
+        final defaultExecutionMode = cfg['default_execution_mode']?.toString().trim().toLowerCase();
+        final isForcedDeviceMode = (workingDir != null && (workingDir.contains('THIẾT BỊ / DEVICE') || workingDir.contains('open_profile_device'))) ||
+            (workingDir == null && defaultExecutionMode == 'device');
+        final isForcedBrowserMode = (workingDir != null && (workingDir.contains('TRÌNH DUYỆT / BROWSER') || workingDir.contains('open_profile_browser'))) ||
+            (workingDir == null && defaultExecutionMode == 'browser');
+
         // Build System Prompt
         String sysPrompt = systemPromptBase;
+        if (isForcedDeviceMode) {
+          sysPrompt += '\n\n⚡ CHẾ ĐỘ MÔI TRƯỜNG THỰC THI BẮT BUỘC: THIẾT BỊ / DEVICE / ANDROID AVD.\n'
+              '- Người dùng ĐÃ KÍCH HOẠT CHẾ ĐỘ THIẾT BỊ (DEVICE FIRST).\n'
+              '- MỌI TÁC VỤ (mở video, like, bình luận, xem livestream, đăng bài, lướt feed) BẮT BUỘC SỬ DỤNG `open_profile_device`.\n'
+              '- TUYỆT ĐỐI CẤM GỌI `open_profile_browser`! Bất kỳ hành động mở trình duyệt nào trong chế độ này đều bị coi là vi phạm nghiêm trọng.';
+        } else if (isForcedBrowserMode) {
+          sysPrompt += '\n\n⚡ CHẾ ĐỘ MÔI TRƯỜNG THỰC THI BẮT BUỘC: TRÌNH DUYỆT / BROWSER.\n'
+              '- MỌI TÁC VỤ BẮT BUỘC SỬ DỤNG `open_profile_browser`.\n'
+              '- TUYỆT ĐỐI CẤM GỌI `open_profile_device`.';
+        }
+
         if (workingDir != null && workingDir.isNotEmpty) {
           if (workingDir.startsWith('=== DANH SÁCH NHÂN VẬT ĐƯỢC CHỈ ĐỊNH') || workingDir.contains('👤 Nhân vật:')) {
             sysPrompt += '\n\n$workingDir\n\n🎯 QUY TẮC BẮT BUỘC TỐI THƯỢNG VỀ ĐA NHÂN VẬT (MULTI-PERSONAS SCOPE):\n'
@@ -141,7 +166,7 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                 '  + Khi gọi tool `open_profile_browser` hoặc `open_profile_device`: CHỈ truyền IP của nhân vật đó vào tham số `ip`, KHÔNG ĐƯỢC truyền mảng `ips` chứa nhiều IP.\n'
                 '  + TUYỆT ĐỐI KHÔNG được tự ý lấy các IP ngoài danh sách Scope trên (dù có gọi `list_profiles` hay thấy lịch sử trước đó).\n'
                 '- KHI SCOPE CÓ NHIỀU NHÂN VẬT (ví dụ người dùng chọn 2, 3 nhân vật trong Scope):\n'
-                '  + MẶC ĐỊNH: Bất kỳ yêu cầu chung nào (mở video, xem link, lướt web, tương tác, seeding...) mà KHÔNG nêu đích danh một nhân vật cụ thể thì BẮT BUỘC PHẢI THỰC THI CHO TẤT CẢ các nhân vật trong Scope này. Truyền toàn bộ danh sách IP trong Scope vào tham số `ips` của tool `open_profile_browser` hoặc gọi lệnh mở cho từng IP.\n'
+                '  + MẶC ĐỊNH: Bất kỳ yêu cầu chung nào (mở video, xem link, lướt web, tương tác, seeding...) mà KHÔNG nêu đích danh một nhân vật cụ thể thì BẮT BUỘC PHẢI THỰC THI CHO TẤT CẢ các nhân vật trong Scope này. Truyền toàn bộ danh sách IP trong Scope vào tham số `ips` của tool `open_profile_browser` hoặc `open_profile_device`.\n'
                 '  + TUYỆT ĐỐI KHÔNG ĐƯỢC chỉ chọn 1 nhân vật duy nhất rồi bỏ quên các nhân vật còn lại trong Scope khi người dùng không chỉ định riêng ai.\n'
                 '  + CHỈ KHI người dùng gọi đích danh tên 1 nhân vật (hoặc yêu cầu rõ "chỉ mở cho X"): Mới truyền đúng 1 IP của nhân vật đó vào tham số `ip`.\n'
                 '- MỖI LẦN NHẬN YÊU CẦU MỚI: Phải tuân thủ đúng phạm vi Scope đã được cung cấp phía trên.';
@@ -224,10 +249,16 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
           fullUserPrompt += '\n\n[LƯU Ý QUAN TRỌNG VỀ SỐ LƯỢNG NHÂN VẬT]: Người dùng yêu cầu thực thi cho ĐÚNG $requestedCountFromPrompt nhân vật. BẮT BUỘC chỉ mở trình duyệt/thiết bị cho đúng $requestedCountFromPrompt nhân vật, TUYỆT ĐỐI KHÔNG mở toàn bộ hệ thống!';
         }
 
+        if (isForcedDeviceMode) {
+          fullUserPrompt += '\n\n[CHỈ THỊ MÔI TRƯỜNG THỰC THI BẮT BUỘC]: Người dùng YÊU CẦU CHẠY TRÊN THIẾT BỊ / MÁY ẢO ANDROID. BẮT BUỘC sử dụng tool `open_profile_device`. TUYỆT ĐỐI KHÔNG ĐƯỢC GỌI TOOL `open_profile_browser`!';
+        } else if (isForcedBrowserMode) {
+          fullUserPrompt += '\n\n[CHỈ THỊ MÔI TRƯỜNG THỰC THI BẮT BUỘC]: Người dùng YÊU CẦU CHẠY TRÊN TRÌNH DUYỆT. BẮT BUỘC sử dụng tool `open_profile_browser`. TUYỆT ĐỐI KHÔNG ĐƯỢC GỌI TOOL `open_profile_device`!';
+        }
+
         // Add current user message
         messages.add({'role': 'user', 'content': fullUserPrompt});
 
-        final tools = [
+        final tools = <Map<String, dynamic>>[
           {
             'type': 'function',
             'function': {
@@ -239,67 +270,72 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
               }
             }
           },
-          {
-            'type': 'function',
-            'function': {
-              'name': 'open_profile_browser',
-              'description': allowedScopeIps.isNotEmpty
-                  ? 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP. QUY TẮC BẮT BUỘC TỐI THƯỢNG: Hiện tại người dùng đã chọn Phạm vi Scope gồm đúng ${allowedScopeIps.length} nhân vật (danh sách IP: ${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở trình duyệt cho đúng ${allowedScopeIps.length} IP này bằng cách truyền mảng ["${allowedScopeIps.join('", "')}"] vào tham số "ips". CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
-                  : (requestedCountFromPrompt != null
-                      ? 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP. QUY TẮC BẮT BUỘC: Người dùng yêu cầu mở cho đúng $requestedCountFromPrompt nhân vật. CHỈ truyền mảng $requestedCountFromPrompt IP vào tham số "ips". TUYỆT ĐỐI KHÔNG mở cho toàn bộ các nhân vật!'
-                      : 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP để tự động hóa tương tác mạng xã hội trên web. QUY TẮC: Chỉ mở cho các nhân vật được người dùng chỉ định. Khi người dùng chỉ định rõ tên một nhân vật, chỉ truyền 1 IP vào "ip".'),
-              'parameters': {
-                'type': 'object',
-                'properties': {
-                  'ip': {
-                    'type': 'string',
-                    'description': 'Địa chỉ IP của một nhân vật duy nhất khi người dùng chỉ định rõ đích danh 1 nhân vật.'
-                  },
-                  'ips': {
-                    'type': 'array',
-                    'items': {'type': 'string'},
-                    'description': allowedScopeIps.isNotEmpty
-                        ? 'Danh sách IP của ĐÚNG ${allowedScopeIps.length} nhân vật trong Scope: [${allowedScopeIps.map((e) => '"$e"').join(', ')}]. BẮT BUỘC truyền chính xác mảng này!'
-                        : 'Danh sách các địa chỉ IP của các nhân vật cần mở trình duyệt.'
-                  },
-                  'url': {
-                    'type': 'string',
-                    'description': 'Đường dẫn trang web mạng xã hội muốn mở (ví dụ: https://facebook.com, https://tiktok.com, https://youtube.com)'
+          if (!isForcedDeviceMode)
+            {
+              'type': 'function',
+              'function': {
+                'name': 'open_profile_browser',
+                'description': allowedScopeIps.isNotEmpty
+                    ? 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP. QUY TẮC BẮT BUỘC TỐI THƯỢNG: Hiện tại người dùng đã chọn Phạm vi Scope gồm đúng ${allowedScopeIps.length} nhân vật (danh sách IP: ${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở trình duyệt cho đúng ${allowedScopeIps.length} IP này bằng cách truyền mảng ["${allowedScopeIps.join('", "')}"] vào tham số "ips". CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
+                    : (requestedCountFromPrompt != null
+                        ? 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP. QUY TẮC BẮT BUỘC: Người dùng yêu cầu mở cho đúng $requestedCountFromPrompt nhân vật. CHỈ truyền mảng $requestedCountFromPrompt IP vào tham số "ips". TUYỆT ĐỐI KHÔNG mở cho toàn bộ các nhân vật!'
+                        : 'Mở trình duyệt riêng biệt cho hồ sơ/nhân vật theo IP để tự động hóa tương tác mạng xã hội trên web. QUY TẮC: Chỉ mở cho các nhân vật được người dùng chỉ định. Khi người dùng chỉ định rõ tên một nhân vật, chỉ truyền 1 IP vào "ip".'),
+                'parameters': {
+                  'type': 'object',
+                  'properties': {
+                    'ip': {
+                      'type': 'string',
+                      'description': 'Địa chỉ IP của một nhân vật duy nhất khi người dùng chỉ định rõ đích danh 1 nhân vật.'
+                    },
+                    'ips': {
+                      'type': 'array',
+                      'items': {'type': 'string'},
+                      'description': allowedScopeIps.isNotEmpty
+                          ? 'Danh sách IP của ĐÚNG ${allowedScopeIps.length} nhân vật trong Scope: [${allowedScopeIps.map((e) => '"$e"').join(', ')}]. BẮT BUỘC truyền chính xác mảng này!'
+                          : 'Danh sách các địa chỉ IP của các nhân vật cần mở trình duyệt.'
+                    },
+                    'url': {
+                      'type': 'string',
+                      'description': 'Đường dẫn trang web mạng xã hội muốn mở (ví dụ: https://facebook.com, https://tiktok.com, https://youtube.com)'
+                    }
                   }
                 }
               }
-            }
-          },
-          {
-            'type': 'function',
-            'function': {
-              'name': 'close_profile_browser',
-              'description': 'Đóng cửa sổ trình duyệt của một hoặc nhiều nhân vật theo IP.',
-              'parameters': {
-                'type': 'object',
-                'properties': {
-                  'ip': {
-                    'type': 'string',
-                    'description': 'Địa chỉ IP của nhân vật cần đóng trình duyệt'
-                  },
-                  'ips': {
-                    'type': 'array',
-                    'items': {'type': 'string'},
-                    'description': 'Danh sách IP của các nhân vật cần đóng trình duyệt đồng loạt'
+            },
+          if (!isForcedDeviceMode)
+            {
+              'type': 'function',
+              'function': {
+                'name': 'close_profile_browser',
+                'description': 'Đóng cửa sổ trình duyệt của một hoặc nhiều nhân vật theo IP.',
+                'parameters': {
+                  'type': 'object',
+                  'properties': {
+                    'ip': {
+                      'type': 'string',
+                      'description': 'Địa chỉ IP của nhân vật cần đóng trình duyệt'
+                    },
+                    'ips': {
+                      'type': 'array',
+                      'items': {'type': 'string'},
+                      'description': 'Danh sách IP của các nhân vật cần đóng trình duyệt đồng loạt'
+                    }
                   }
                 }
               }
-            }
-          },
+            },
+
           {
             'type': 'function',
             'function': {
               'name': 'open_profile_device',
-              'description': allowedScopeIps.isNotEmpty
-                  ? 'Khởi chạy hoặc kết nối thiết bị Android cho nhân vật theo IP. QUY TẮC BẮT BUỘC TỐI THƯỢNG: Hiện tại Scope đã chọn đúng ${allowedScopeIps.length} nhân vật (${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở thiết bị cho các IP trong Scope này. CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
-                  : (requestedCountFromPrompt != null
-                      ? 'Khởi chạy thiết bị Android cho nhân vật theo IP. QUY TẮC BẮT BUỘC: Người dùng yêu cầu chạy cho đúng $requestedCountFromPrompt nhân vật. CHỈ truyền $requestedCountFromPrompt IP vào ips. CẤM MỞ TOÀN BỘ HỆ THỐNG!'
-                      : 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho nhân vật theo IP. QUY TẮC BẮT BUỘC: (1) Mặc định làm việc trên Trình duyệt, chỉ dùng thiết bị khi người dùng yêu cầu rõ ràng; (2) GIỚI HẠN TỐI ĐA 2 THIẾT BỊ MỞ CÙNG LÚC TRÊN TOÀN HỆ THỐNG ĐỂ TRÁNH TREO MÁY. Tuyệt đối không mở từ 3 thiết bị trở lên cùng lúc; (3) Với yêu cầu chạy nhiều thiết bị (kể cả 100 devices): Phải đảm bảo từng thiết bị chạy XONG XUÔI tác vụ auto rồi mới đóng bằng close_profile_device, sau đó mới mở thiết bị tiếp theo cho đến khi hoàn tất toàn bộ danh sách.'),
+              'description': isForcedBrowserMode
+                  ? '[VÔ HIỆU HÓA TẠM THỜI]: Chế độ hiện tại là TRÌNH DUYỆT / BROWSER. CẤM GỌI CÔNG CỤ NÀY, hãy gọi open_profile_browser thay thế!'
+                  : (allowedScopeIps.isNotEmpty
+                      ? 'Khởi chạy hoặc kết nối thiết bị Android cho nhân vật theo IP. QUY TẮC BẮT BUỘC TỐI THƯỢNG: Hiện tại Scope đã chọn đúng ${allowedScopeIps.length} nhân vật (${allowedScopeIps.join(", ")}). TUYỆT ĐỐI CHỈ ĐƯỢC mở thiết bị cho các IP trong Scope này. CẤM MỞ BẤT KỲ IP NÀO NGOÀI SCOPE!'
+                      : (requestedCountFromPrompt != null
+                          ? 'Khởi chạy thiết bị Android cho nhân vật theo IP. QUY TẮC BẮT BUỘC: Người dùng yêu cầu chạy cho đúng $requestedCountFromPrompt nhân vật. CHỈ truyền $requestedCountFromPrompt IP vào ips. CẤM MỞ TOÀN BỘ HỆ THỐNG!'
+                          : 'Khởi chạy hoặc kết nối thiết bị Android (máy ảo AVD local hoặc thiết bị ngoại vi qua WiFi/USB) cho nhân vật theo IP. QUY TẮC BẮT BUỘC: (1) Mặc định làm việc trên Trình duyệt, chỉ dùng thiết bị khi người dùng yêu cầu rõ ràng; (2) GIỚI HẠN TỐI ĐA 2 THIẾT BỊ MỞ CÙNG LÚC TRÊN TOÀN HỆ THỐNG ĐỂ TRÁNH TREO MÁY. Tuyệt đối không mở từ 3 thiết bị trở lên cùng lúc; (3) Với yêu cầu chạy nhiều thiết bị (kể cả 100 devices): Phải đảm bảo từng thiết bị chạy XONG XUÔI tác vụ auto rồi mới đóng bằng close_profile_device, sau đó mới mở thiết bị tiếp theo cho đến khi hoàn tất toàn bộ danh sách.')),
               'parameters': {
                 'type': 'object',
                 'properties': {
@@ -356,6 +392,75 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
               'parameters': {
                 'type': 'object',
                 'properties': {},
+              }
+            }
+          },
+          {
+            'type': 'function',
+            'function': {
+              'name': 'fast_social_action',
+              'description': 'Thực thi nhanh thao tác mạng xã hội (Like, Thả tim, Viết bình luận, Mở video) trên thiết bị Android theo Macro tự động hóa riêng biệt của từng nhân vật. Tự động dùng macro tọa độ đã học của nhân vật để bấm Like/Comment trong tích tắc mà không cần gọi nhiều vòng ADB chậm chạp.',
+              'parameters': {
+                'type': 'object',
+                'properties': {
+                  'ip': {
+                    'type': 'string',
+                    'description': 'Địa chỉ IP của nhân vật thực hiện thao tác (bắt buộc để nạp macro riêng của nhân vật đó)'
+                  },
+                  'ips': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                    'description': 'Danh sách IP của các nhân vật nếu muốn chạy đồng loạt'
+                  },
+                  'platform': {
+                    'type': 'string',
+                    'enum': ['facebook', 'tiktok', 'youtube'],
+                    'description': 'Nền tảng mạng xã hội: facebook, tiktok hoặc youtube'
+                  },
+                  'action': {
+                    'type': 'string',
+                    'enum': ['like', 'comment', 'like_and_comment', 'open_video'],
+                    'description': 'Loại hành vi tương tác cần thực thi: like (thả tim/like), comment (bình luận), like_and_comment (vừa like vừa bình luận), open_video (chỉ mở video)'
+                  },
+                  'video_url': {
+                    'type': 'string',
+                    'description': 'Đường dẫn link video/reel/post mạng xã hội (tùy chọn)'
+                  },
+                  'comment_text': {
+                    'type': 'string',
+                    'description': 'Nội dung bình luận nếu action là comment hoặc like_and_comment'
+                  }
+                },
+                'required': ['platform', 'action']
+              }
+            }
+          },
+          {
+            'type': 'function',
+            'function': {
+              'name': 'save_automation_macro',
+              'description': 'Học và lưu trữ tọa độ/selector hoặc tham số hành vi tự động hóa vào bộ nhớ macro riêng biệt của nhân vật theo IP.',
+              'parameters': {
+                'type': 'object',
+                'properties': {
+                  'ip': {
+                    'type': 'string',
+                    'description': 'Địa chỉ IP của nhân vật'
+                  },
+                  'action_key': {
+                    'type': 'string',
+                    'description': 'Khóa định danh macro (ví dụ: facebook_reel_like, tiktok_heart, facebook_comment_box)'
+                  },
+                  'macro_data': {
+                    'type': 'object',
+                    'description': 'Dữ liệu macro (ví dụ: {"x": 1017, "y": 1145, "x_percent": 0.941, "y_percent": 0.596, "delay_ms": 3000})'
+                  },
+                  'resolution': {
+                    'type': 'string',
+                    'description': 'Độ phân giải màn hình tương ứng (ví dụ: "1080x1920")'
+                  }
+                },
+                'required': ['ip', 'action_key', 'macro_data']
               }
             }
           },
@@ -622,6 +727,44 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                       toolOutput = 'Lỗi: Thiếu tham số IP nhân vật hợp lệ trong phạm vi (Scope).';
                       break;
                     }
+
+                    // ĐÁNH CHẶN CỨNG: Nếu đang ở chế độ Thiết bị (Device / AVD), tự động chuyển hướng sang mở thiết bị
+                    if (isForcedDeviceMode) {
+                      onStatus('Đang tự động chuyển hướng sang khởi chạy Thiết bị / AVD Android cho ${targetIps.length} nhân vật (${targetIps.join(', ')})...');
+                      final serversDevRedirect = await _configService.getServers();
+                      final activeServerDevRedirect = serversDevRedirect.firstWhere(
+                        (s) => s.isSelected,
+                        orElse: () => serversDevRedirect.isNotEmpty
+                            ? serversDevRedirect.first
+                            : ServerModel.fromJson(cfg),
+                      );
+
+                      final List<String> devSuccessList = [];
+                      final List<String> devFailList = [];
+                      for (final tip in targetIps) {
+                        await _socks5Service.ensureDeviceCapacity(exemptIps: [tip]);
+                        onStatus('Đang khởi chạy thiết bị cho IP: $tip...');
+                        final success = await _socks5Service.launchDeviceWithSocks5(
+                          server: activeServerDevRedirect,
+                          ip: tip,
+                          deviceType: 'mobile',
+                        );
+                        if (success) {
+                          devSuccessList.add(tip);
+                        } else {
+                          devFailList.add(tip);
+                        }
+                      }
+                      if (devFailList.isEmpty) {
+                        toolOutput = 'Đã khởi chạy thiết bị Android thành công cho ${devSuccessList.length} nhân vật (${devSuccessList.join(', ')}).';
+                      } else if (devSuccessList.isEmpty) {
+                        toolOutput = 'Không thể khởi chạy thiết bị Android cho các IP: ${devFailList.join(', ')}.';
+                      } else {
+                        toolOutput = 'Đã mở thiết bị cho: ${devSuccessList.join(', ')}. Thất bại tại: ${devFailList.join(', ')}.';
+                      }
+                      break;
+                    }
+
                     final servers = await _configService.getServers();
                     final activeServer = servers.firstWhere(
                       (s) => s.isSelected,
@@ -799,6 +942,206 @@ CÁC NGUYÊN TẮC HOẠT ĐỘNG:
                       await _socks5Service.closeDeviceForIp(tip);
                     }
                     toolOutput = 'Đã đóng thiết bị Android cho các profile IP: ${closeDevIps.join(', ')}.';
+                    break;
+
+                  case 'save_automation_macro':
+                    final mIp = parsedArgs['ip']?.toString().trim() ?? '';
+                    final mKey = parsedArgs['action_key']?.toString().trim() ?? '';
+                    final mData = parsedArgs['macro_data'] is Map ? Map<String, dynamic>.from(parsedArgs['macro_data'] as Map) : null;
+                    final mRes = parsedArgs['resolution']?.toString().trim();
+
+                    if (mIp.isEmpty || mKey.isEmpty || mData == null) {
+                      toolOutput = 'Lỗi: Thiếu tham số ip, action_key hoặc macro_data.';
+                      break;
+                    }
+
+                    final savedOk = await _personaService.saveMacroForPersona(
+                      ip: mIp,
+                      actionKey: mKey,
+                      macroData: mData,
+                      resolution: mRes,
+                    );
+                    if (savedOk) {
+                      toolOutput = 'Đã lưu thành công bộ nhớ macro "$mKey" cho nhân vật có IP $mIp: ${jsonEncode(mData)} (Độ phân giải: ${mRes ?? "Mặc định"}). Lần sau nhân vật này sẽ thực thi ngay lập tức mà không cần dò lại giao diện!';
+                    } else {
+                      toolOutput = 'Không tìm thấy hồ sơ nhân vật với IP $mIp để lưu macro.';
+                    }
+                    break;
+
+                  case 'fast_social_action':
+                    final actionPlatform = parsedArgs['platform']?.toString().trim().toLowerCase() ?? 'facebook';
+                    final actType = parsedArgs['action']?.toString().trim().toLowerCase() ?? 'like';
+                    final vUrl = parsedArgs['video_url']?.toString().trim();
+                    final cText = parsedArgs['comment_text']?.toString().trim();
+
+                    final List<String> actionTargetIps = [];
+                    if (parsedArgs['ips'] is List) {
+                      for (final item in parsedArgs['ips']) {
+                        final s = item?.toString().trim() ?? '';
+                        if (s.isNotEmpty && !actionTargetIps.contains(s)) actionTargetIps.add(s);
+                      }
+                    }
+                    final sActIp = parsedArgs['ip']?.toString().trim() ?? '';
+                    if (sActIp.isNotEmpty && !actionTargetIps.contains(sActIp)) {
+                      actionTargetIps.add(sActIp);
+                    }
+
+                    if (actionTargetIps.isEmpty && allowedScopeIps.isNotEmpty) {
+                      actionTargetIps.addAll(allowedScopeIps);
+                    }
+
+                    if (actionTargetIps.isEmpty) {
+                      toolOutput = 'Lỗi: Không tìm thấy IP nhân vật hợp lệ để thực thi macro.';
+                      break;
+                    }
+
+                    final adbExe = await _adbManagerService.resolveAdbPath();
+                    final List<String> results = [];
+
+                    for (final targetIp in actionTargetIps) {
+                      final persona = _personaService.getPersona(targetIp);
+                      final pName = persona?.name ?? targetIp;
+                      onStatus('Đang thực thi nhanh macro $actType ($actionPlatform) cho nhân vật $pName ($targetIp)...');
+
+                      final serial = await _socks5Service.getRunningDeviceSerialForIp(targetIp);
+                      if (serial == null || serial.isEmpty) {
+                        results.add('$pName ($targetIp): Thiết bị chưa kết nối hoặc chưa bật');
+                        continue;
+                      }
+
+                      // 1. Lấy kích thước màn hình thiết bị thực tế
+                      int screenWidth = 1080;
+                      int screenHeight = 1920;
+                      try {
+                        final sizeRes = await Process.run(adbExe, ['-s', serial, 'shell', 'wm', 'size']);
+                        final sizeMatch = RegExp(r'(\d+)x(\d+)').firstMatch(sizeRes.stdout.toString());
+                        if (sizeMatch != null) {
+                          screenWidth = int.parse(sizeMatch.group(1)!);
+                          screenHeight = int.parse(sizeMatch.group(2)!);
+                        }
+                      } catch (_) {}
+
+                      // 2. Mở URL hoặc App nếu có video_url
+                      if (vUrl != null && vUrl.isNotEmpty) {
+                        if (actionPlatform == 'facebook') {
+                          // Thử mở deep link Facebook Reel
+                          await Process.run(adbExe, ['-s', serial, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', vUrl, 'com.facebook.katana']);
+                        } else if (actionPlatform == 'tiktok') {
+                          await Process.run(adbExe, ['-s', serial, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', vUrl, 'com.zhiliaoapp.musically']);
+                        } else {
+                          await Process.run(adbExe, ['-s', serial, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', vUrl]);
+                        }
+                        // Chờ mở app và tự xử lý pop-up "Always / Open with" nếu có
+                        await Future.delayed(const Duration(milliseconds: 1500));
+                        try {
+                          // Nếu có hộp thoại chọn app (ResolverActivity), bấm Always hoặc chọn app
+                          final topWin = await Process.run(adbExe, ['-s', serial, 'shell', 'dumpsys', 'window']);
+                          if (topWin.stdout.toString().contains('ResolverActivity')) {
+                            // Chạm vào nút Always (khoảng 70% X, 65% Y)
+                            final alwaysX = (screenWidth * 0.75).toInt();
+                            final alwaysY = (screenHeight * 0.65).toInt();
+                            await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'tap', '$alwaysX', '$alwaysY']);
+                            await Future.delayed(const Duration(milliseconds: 500));
+                          }
+                        } catch (_) {}
+                      }
+
+                      // 3. Tra cứu macro đã lưu của riêng nhân vật này
+                      final macroKey = '${actionPlatform}_$actType';
+                      final existingMacro = _personaService.getMacroForPersona(targetIp, macroKey) ??
+                          _personaService.getMacroForPersona(targetIp, '${actionPlatform}_like');
+
+                      int tapX;
+                      int tapY;
+
+                      if (existingMacro != null && existingMacro['x_percent'] != null && existingMacro['y_percent'] != null) {
+                        // Tính toán tọa độ theo tỉ lệ màn hình của nhân vật
+                        final xp = (existingMacro['x_percent'] as num).toDouble();
+                        final yp = (existingMacro['y_percent'] as num).toDouble();
+                        tapX = (screenWidth * xp).toInt();
+                        tapY = (screenHeight * yp).toInt();
+                      } else {
+                        // Tọa độ chuẩn hóa mặc định cho Facebook / TikTok Reel
+                        if (actionPlatform == 'facebook') {
+                          // Nút Like của Facebook Reel thường ở cạnh phải, khoảng 94% X và 59% Y
+                          tapX = (screenWidth * 0.941).toInt();
+                          tapY = (screenHeight * 0.596).toInt();
+                        } else if (actionPlatform == 'tiktok') {
+                          // Nút Thả tim TikTok ở cạnh phải khoảng 93% X và 54% Y (hoặc double tap ở giữa màn hình)
+                          tapX = (screenWidth * 0.930).toInt();
+                          tapY = (screenHeight * 0.540).toInt();
+                        } else {
+                          tapX = (screenWidth * 0.5).toInt();
+                          tapY = (screenHeight * 0.5).toInt();
+                        }
+
+                        // Tự động lưu luôn macro mặc định này cho nhân vật để lần sau có sẵn
+                        await _personaService.saveMacroForPersona(
+                          ip: targetIp,
+                          actionKey: macroKey,
+                          macroData: {
+                            'x_percent': double.parse((tapX / screenWidth).toStringAsFixed(3)),
+                            'y_percent': double.parse((tapY / screenHeight).toStringAsFixed(3)),
+                            'base_x': tapX,
+                            'base_y': tapY,
+                            'dwell_delay_ms': 2500,
+                          },
+                          resolution: '${screenWidth}x$screenHeight',
+                        );
+                      }
+
+                      // Thêm chút jitter ngẫu nhiên (+/- 4px) để tránh bot detection
+                      final jitter = (DateTime.now().millisecond % 9) - 4;
+                      final finalX = tapX + jitter;
+                      final finalY = tapY + jitter;
+
+                      if (actType == 'like' || actType == 'like_and_comment') {
+                        // Nếu là TikTok có thể double tap giữa màn hình hoặc tap nút tim
+                        if (actionPlatform == 'tiktok') {
+                          final centerX = (screenWidth * 0.5).toInt();
+                          final centerY = (screenHeight * 0.5).toInt();
+                          await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'tap', '$centerX', '$centerY']);
+                          await Future.delayed(const Duration(milliseconds: 100));
+                          await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'tap', '$centerX', '$centerY']);
+                        } else {
+                          await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'tap', '$finalX', '$finalY']);
+                        }
+                        await Future.delayed(const Duration(milliseconds: 800));
+                      }
+
+                      if (actType == 'comment' || actType == 'like_and_comment') {
+                        // Tọa độ nút mở bình luận (thường ngay dưới nút Like khoảng 68% Y)
+                        final commentBtnX = (screenWidth * 0.941).toInt();
+                        final commentBtnY = (screenHeight * 0.685).toInt();
+                        await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'tap', '$commentBtnX', '$commentBtnY']);
+                        await Future.delayed(const Duration(milliseconds: 1200));
+
+                        // Chạm vào ô nhập bình luận
+                        final inputX = (screenWidth * 0.4).toInt();
+                        final inputY = (screenHeight * 0.95).toInt();
+                        await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'tap', '$inputX', '$inputY']);
+                        await Future.delayed(const Duration(milliseconds: 600));
+
+                        final textToInput = (cText != null && cText.isNotEmpty) ? cText : 'Video hay quá bạn ơi!';
+                        // Dùng am broadcast hoặc input text an toàn
+                        final encodedBase64 = base64Encode(utf8.encode(textToInput));
+                        await Process.run(adbExe, [
+                          '-s', serial, 'shell',
+                          'am', 'broadcast', '-a', 'ADB_INPUT_B64', '--es', 'msg', encodedBase64
+                        ]);
+                        // Fallback gõ trực tiếp qua ADB nếu thiết bị chưa cài ADB Keyboard
+                        final escaped = textToInput.replaceAll(' ', '%s').replaceAll("'", "\\'");
+                        await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'text', escaped]);
+
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        // Bấm phím Enter hoặc nút Send
+                        await Process.run(adbExe, ['-s', serial, 'shell', 'input', 'keyevent', '66']);
+                      }
+
+                      results.add('$pName ($targetIp): Đã bấm $actType siêu tốc (Tọa độ: $finalX, $finalY - Màn hình ${screenWidth}x$screenHeight)');
+                    }
+
+                    toolOutput = results.join('\n');
                     break;
 
                   case 'get_connected_devices':
