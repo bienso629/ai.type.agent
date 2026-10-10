@@ -126,6 +126,249 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     }
   }
 
+  void _showAvatarPreviewDialog(PersonaProfile persona, {void Function(void Function())? setModalState}) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setPreviewState) {
+            final currentP = _personas[persona.ip] ?? persona;
+            final hasAvatar = currentP.avatarUrl != null && currentP.avatarUrl!.isNotEmpty;
+            final isGenerating = _generatingAvatarIps.contains(currentP.ip);
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(24),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 580),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.borderDark, width: 1.2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header dialog
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      decoration: const BoxDecoration(
+                        color: AppColors.sidebarBg,
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
+                        border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 0.8)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.account_box_rounded, size: 18, color: AppColors.primaryLight),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  currentP.name,
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${currentP.gender} • ${currentP.age} tuổi • IP: ${currentP.ip}',
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.textDim),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            tooltip: 'Đóng',
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Body: Avatar Preview phóng to rõ nét
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 500,
+                              height: 500,
+                              color: AppColors.inputBg,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  if (hasAvatar)
+                                    InteractiveViewer(
+                                      maxScale: 4.0,
+                                      minScale: 1.0,
+                                      child: currentP.avatarUrl!.startsWith('http')
+                                          ? Image.network(
+                                              currentP.avatarUrl!,
+                                              key: ValueKey(currentP.avatarUrl),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (c, e, s) => Center(
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.broken_image_rounded, size: 48, color: AppColors.textDim),
+                                                    const SizedBox(height: 8),
+                                                    Text('Không thể tải ảnh: $e', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                                  ],
+                                                ),
+                                              ),
+                                            )
+                                          : Image.file(
+                                              File(currentP.avatarUrl!),
+                                              key: ValueKey(currentP.avatarUrl),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (c, e, s) => Center(
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.broken_image_rounded, size: 48, color: AppColors.textDim),
+                                                    const SizedBox(height: 8),
+                                                    Text('Không tìm thấy tệp ảnh', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                    )
+                                  else
+                                    Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            currentP.gender.toLowerCase() == 'nữ' ? Icons.face_3_rounded : Icons.face_rounded,
+                                            size: 72,
+                                            color: AppColors.primaryLight.withValues(alpha: 0.6),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const Text(
+                                            'Chưa có ảnh chân dung avatar',
+                                            style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                  if (isGenerating)
+                                    Container(
+                                      color: Colors.black.withValues(alpha: 0.65),
+                                      child: const Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              width: 32,
+                                              height: 32,
+                                              child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.primaryLight),
+                                            ),
+                                            SizedBox(height: 12),
+                                            Text(
+                                              'AI đang tạo ảnh avatar mới...',
+                                              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Footer actions
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      decoration: const BoxDecoration(
+                        color: AppColors.sidebarBg,
+                        borderRadius: BorderRadius.vertical(bottom: Radius.circular(15)),
+                        border: Border(top: BorderSide(color: AppColors.borderDark, width: 0.8)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: isGenerating
+                                ? null
+                                : () async {
+                                    await _handleGenerateAvatar(
+                                      currentP,
+                                      setModalState: (fn) {
+                                        setPreviewState(fn);
+                                        setModalState?.call(fn);
+                                      },
+                                    );
+                                  },
+                            icon: isGenerating
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF070B14)),
+                                  )
+                                : const Icon(Icons.auto_awesome_rounded, size: 15),
+                            label: Text(
+                              isGenerating ? 'Đang vẽ ảnh...' : 'AI vẽ lại avatar',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: const Color(0xFF070B14),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textWhite,
+                              side: const BorderSide(color: AppColors.borderDark),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            child: const Text('Đóng', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showPersonaDetails(PersonaProfile persona) {
     final nameCtrl = TextEditingController(text: persona.name);
     final ageCtrl = TextEditingController(text: persona.age.toString());
@@ -167,6 +410,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     bool hasPersonaAvd = false;
     bool isCreatingPersonaAvd = false;
     bool isImportingPersonaAvd = false;
+    bool isBackingUpPersonaAvd = false;
+    bool isRestoringPersonaAvd = false;
     bool isDeletingPersonaAvd = false;
     bool isSaving = false;
 
@@ -210,19 +455,22 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             }
             Future.wait([
               _socks5Service.getAvailableAvds(),
-              _socks5Service.hasDeviceForPersona(ip: persona.ip, avdName: persona.avdName),
+              _socks5Service.hasDeviceForPersona(ip: persona.ip, personaName: persona.name, avdName: persona.avdName),
             ]).then((results) {
               if (dialogCtx.mounted) {
                 final avds = results[0] as List<String>;
                 final hasDev = results[1] as bool;
-                final personaClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
+                final expectedPersonaAvd = generatePersonaAvdName(ip: persona.ip, personaName: persona.name);
+                final legacyPersonaClone = 'Pixel_10_Pro_persona_${persona.ip.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), "_")}';
                 setDialogState(() {
                   availableAvds = avds;
-                  hasPersonaAvd = hasDev || avds.contains(personaClone);
+                  hasPersonaAvd = hasDev || avds.contains(expectedPersonaAvd) || avds.contains(legacyPersonaClone);
                   isLoadingAvds = false;
                   if (selectedAvd == null && avds.isNotEmpty) {
-                    if (avds.contains(personaClone)) {
-                      selectedAvd = personaClone;
+                    if (avds.contains(expectedPersonaAvd)) {
+                      selectedAvd = expectedPersonaAvd;
+                    } else if (avds.contains(legacyPersonaClone)) {
+                      selectedAvd = legacyPersonaClone;
                     }
                   }
                 });
@@ -266,21 +514,19 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                           final hasImg = currentP.avatarUrl != null && currentP.avatarUrl!.isNotEmpty;
 
                           return Tooltip(
-                            message: isGen ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar',
+                            message: 'Bấm để phóng to xem rõ nét ảnh avatar',
                             child: InkWell(
-                              onTap: isGen
-                                  ? null
-                                  : () {
-                                      final currentPWithForm = currentP.copyWith(
-                                        name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
-                                        age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
-                                        gender: selectedGender,
-                                        bio: bioCtrl.text.trim(),
-                                        avatarPrompt: promptCtrl.text.trim(),
-                                        agentInfo: agentInfoCtrl.text.trim(),
-                                      );
-                                      _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
-                                    },
+                              onTap: () {
+                                final currentPWithForm = currentP.copyWith(
+                                  name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
+                                  age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
+                                  gender: selectedGender,
+                                  bio: bioCtrl.text.trim(),
+                                  avatarPrompt: promptCtrl.text.trim(),
+                                  agentInfo: agentInfoCtrl.text.trim(),
+                                );
+                                _showAvatarPreviewDialog(currentPWithForm, setModalState: setDialogState);
+                              },
                               borderRadius: BorderRadius.circular(8),
                               child: Stack(
                                 clipBehavior: Clip.none,
@@ -335,19 +581,36 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     Positioned(
                                       right: -3,
                                       bottom: -3,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.cardBg,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(2),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.primary.withValues(alpha: 0.9),
-                                            shape: BoxShape.circle,
+                                      child: Tooltip(
+                                        message: 'Bấm để AI tạo lại avatar',
+                                        child: InkWell(
+                                          onTap: () {
+                                            final currentPWithForm = currentP.copyWith(
+                                              name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : currentP.name,
+                                              age: int.tryParse(ageCtrl.text.trim()) ?? currentP.age,
+                                              gender: selectedGender,
+                                              bio: bioCtrl.text.trim(),
+                                              avatarPrompt: promptCtrl.text.trim(),
+                                              agentInfo: agentInfoCtrl.text.trim(),
+                                            );
+                                            _handleGenerateAvatar(currentPWithForm, setModalState: setDialogState);
+                                          },
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: const BoxDecoration(
+                                              color: AppColors.cardBg,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2.5),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primary.withValues(alpha: 0.95),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(Icons.auto_awesome_rounded, size: 9, color: Color(0xFF070B14)),
+                                            ),
                                           ),
-                                          child: const Icon(Icons.auto_awesome_rounded, size: 8, color: Color(0xFF070B14)),
                                         ),
                                       ),
                                     ),
@@ -916,6 +1179,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                               AppToast.info(dialogCtx, 'Đang tạo máy ảo AVD độc lập cho IP ${persona.ip}...');
                                                               final createdAvd = await _socks5Service.createPersonaDeviceAvd(
                                                                 ip: persona.ip,
+                                                                personaName: persona.name,
                                                                 baseAvd: selectedAvd ?? persona.avdName,
                                                               );
                                                               final currentP = _personas[persona.ip] ?? persona;
@@ -1014,6 +1278,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                               }
                                                               final importedAvd = await _socks5Service.importPersonaDeviceBackup(
                                                                 ip: persona.ip,
+                                                                personaName: persona.name,
                                                                 archivePath: chosenPath,
                                                               );
                                                               final currentP = _personas[persona.ip] ?? persona;
@@ -1070,6 +1335,184 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                     ),
                                                   ),
                                                 ] else ...[
+                                                // NÚT BACKUP (Sao lưu máy ảo)
+                                                InkWell(
+                                                  onTap: (selectedAvd == null || isBackingUpPersonaAvd || isRestoringPersonaAvd || isDeletingPersonaAvd)
+                                                      ? null
+                                                      : () async {
+                                                          setDialogState(() {
+                                                            isBackingUpPersonaAvd = true;
+                                                          });
+                                                          try {
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.info(dialogCtx, 'Đang tiến hành sao lưu máy ảo $selectedAvd...');
+                                                            }
+                                                            final backupPath = await _socks5Service.backupPersonaDeviceAvd(
+                                                              avdName: selectedAvd!,
+                                                              onProgress: (msg) {
+                                                                if (dialogCtx.mounted) {
+                                                                  AppToast.info(dialogCtx, msg);
+                                                                }
+                                                              },
+                                                            );
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.success(dialogCtx, 'Sao lưu thành công! File lưu tại: $backupPath');
+                                                            }
+                                                          } catch (e) {
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.error(dialogCtx, 'Lỗi sao lưu máy ảo: $e');
+                                                            }
+                                                          } finally {
+                                                            if (dialogCtx.mounted) {
+                                                              setDialogState(() {
+                                                                isBackingUpPersonaAvd = false;
+                                                              });
+                                                            }
+                                                          }
+                                                        },
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        if (isBackingUpPersonaAvd)
+                                                          const SizedBox(
+                                                            width: 10,
+                                                            height: 10,
+                                                            child: CircularProgressIndicator(strokeWidth: 1.2, color: AppColors.accent),
+                                                          )
+                                                        else
+                                                          const Icon(Icons.backup_rounded, size: 12, color: AppColors.accent),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          isBackingUpPersonaAvd ? 'Đang lưu...' : 'Backup',
+                                                          style: const TextStyle(fontSize: 11, color: AppColors.accent, fontWeight: FontWeight.bold),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+
+                                                // NÚT RESTORE (Khôi phục / Nạp đè máy ảo từ backup)
+                                                InkWell(
+                                                  onTap: (isBackingUpPersonaAvd || isRestoringPersonaAvd || isDeletingPersonaAvd)
+                                                      ? null
+                                                      : () async {
+                                                          String? chosenPath;
+                                                          try {
+                                                            const defaultBackupDir = '/home/yenai/Documents/Devices bk';
+                                                            final initialDir = Directory(defaultBackupDir).existsSync() ? defaultBackupDir : null;
+                                                            final res = await FilePicker.platform.pickFiles(
+                                                              dialogTitle: 'Chọn file backup để khôi phục máy ảo (.tar.gz, .zip)',
+                                                              initialDirectory: initialDir,
+                                                              type: FileType.custom,
+                                                              allowedExtensions: ['tar.gz', 'gz', 'tgz', 'zip', 'tar'],
+                                                            );
+                                                            if (res != null && res.files.single.path != null) {
+                                                              chosenPath = res.files.single.path;
+                                                            }
+                                                          } catch (e) {
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.error(dialogCtx, 'Không thể mở trình chọn file: $e');
+                                                            }
+                                                            return;
+                                                          }
+
+                                                          if (chosenPath == null) {
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.warning(dialogCtx, 'Chưa chọn file backup để khôi phục');
+                                                            }
+                                                            return;
+                                                          }
+
+                                                          if (!dialogCtx.mounted) return;
+                                                          final confirm = await showDialog<bool>(
+                                                            context: dialogCtx,
+                                                            builder: (c) => AlertDialog(
+                                                              backgroundColor: const Color(0xFF0C1322),
+                                                              title: const Text('Xác nhận khôi phục máy ảo', style: TextStyle(color: AppColors.warning, fontSize: 14)),
+                                                              content: Text('Khôi phục sẽ ghi đè toàn bộ dữ liệu hiện tại của máy ảo "$selectedAvd". Bạn có chắc chắn muốn tiếp tục không?', style: const TextStyle(color: AppColors.textWhite, fontSize: 12)),
+                                                              actions: [
+                                                                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Hủy', style: TextStyle(color: AppColors.textDim))),
+                                                                ElevatedButton(
+                                                                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning),
+                                                                  onPressed: () => Navigator.pop(c, true),
+                                                                  child: const Text('Đồng ý khôi phục', style: TextStyle(color: Colors.black)),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
+
+                                                          if (confirm != true) return;
+
+                                                          setDialogState(() {
+                                                            isRestoringPersonaAvd = true;
+                                                          });
+                                                          try {
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.info(dialogCtx, 'Đang khôi phục dữ liệu máy ảo từ backup...');
+                                                            }
+                                                            final importedAvd = await _socks5Service.importPersonaDeviceBackup(
+                                                              ip: persona.ip,
+                                                              personaName: persona.name,
+                                                              archivePath: chosenPath,
+                                                            );
+                                                            final currentP = _personas[persona.ip] ?? persona;
+                                                            final updated = currentP.copyWith(avdName: importedAvd);
+                                                            await _personaService.updatePersona(updated);
+                                                            final freshAvds = await _socks5Service.getAvailableAvds();
+                                                            if (mounted) {
+                                                              setState(() {
+                                                                _personas[persona.ip] = updated;
+                                                                _availableAvds = freshAvds.toSet();
+                                                              });
+                                                            }
+                                                            if (dialogCtx.mounted) {
+                                                              setDialogState(() {
+                                                                availableAvds = freshAvds;
+                                                                selectedAvd = importedAvd;
+                                                                hasPersonaAvd = true;
+                                                              });
+                                                              AppToast.success(dialogCtx, 'Khôi phục máy ảo thành công: $importedAvd');
+                                                            }
+                                                          } catch (e) {
+                                                            if (dialogCtx.mounted) {
+                                                              AppToast.error(dialogCtx, 'Lỗi khôi phục máy ảo: $e');
+                                                            }
+                                                          } finally {
+                                                            if (dialogCtx.mounted) {
+                                                              setDialogState(() {
+                                                                isRestoringPersonaAvd = false;
+                                                              });
+                                                            }
+                                                          }
+                                                        },
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        if (isRestoringPersonaAvd)
+                                                          const SizedBox(
+                                                            width: 10,
+                                                            height: 10,
+                                                            child: CircularProgressIndicator(strokeWidth: 1.2, color: AppColors.primaryLight),
+                                                          )
+                                                        else
+                                                          const Icon(Icons.settings_backup_restore_rounded, size: 12, color: AppColors.primaryLight),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          isRestoringPersonaAvd ? 'Đang khôi phục...' : 'Restore',
+                                                          style: const TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
                                                 // NÚT XÓA
                                                 InkWell(
                                                   onTap: (selectedAvd == null || isDeletingPersonaAvd)
@@ -1222,7 +1665,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                             const SizedBox(height: 12),
                             // Cấu hình Số điện thoại & Thuê số OTP
                             Container(
-                              padding: const EdgeInsets.all(10),
+                              padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: AppColors.inputBg,
                                 borderRadius: BorderRadius.circular(6),
@@ -1369,17 +1812,44 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                                  return '+${countryObj.cc}xxxxxxxxx';
                                                }(),
                                                suffixIcon: phoneCtrl.text.isNotEmpty
-                                                   ? IconButton(
-                                                       icon: const Icon(Icons.clear_rounded, size: 14, color: AppColors.textDim),
-                                                       tooltip: 'Xóa số điện thoại',
-                                                       onPressed: () {
-                                                         setDialogState(() {
-                                                           phoneCtrl.clear();
-                                                           autoSyncPhoneToDevice = false;
-                                                         });
-                                                       },
+                                                   ? Padding(
+                                                       padding: const EdgeInsets.only(right: 6),
+                                                       child: Tooltip(
+                                                         message: 'Xóa số điện thoại',
+                                                         child: InkWell(
+                                                           onTap: () {
+                                                             setDialogState(() {
+                                                               phoneCtrl.clear();
+                                                               autoSyncPhoneToDevice = false;
+                                                             });
+                                                           },
+                                                           borderRadius: BorderRadius.circular(4),
+                                                           child: Container(
+                                                             width: 22,
+                                                             height: 22,
+                                                             alignment: Alignment.center,
+                                                             decoration: BoxDecoration(
+                                                               color: AppColors.danger.withValues(alpha: 0.15),
+                                                               borderRadius: BorderRadius.circular(4),
+                                                               border: Border.all(
+                                                                 color: AppColors.danger.withValues(alpha: 0.4),
+                                                                 width: 0.6,
+                                                               ),
+                                                             ),
+                                                             child: const Icon(
+                                                               Icons.close_rounded,
+                                                               size: 13,
+                                                               color: AppColors.danger,
+                                                             ),
+                                                           ),
+                                                         ),
+                                                       ),
                                                      )
                                                    : null,
+                                               suffixIconConstraints: const BoxConstraints(
+                                                 minWidth: 28,
+                                                 minHeight: 28,
+                                               ),
                                              ),
                                              onChanged: (_) {
                                                setDialogState(() {});
@@ -2322,19 +2792,19 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Avatar badge có tương tác: Bấm vào để AI sinh ảnh chân dung avatar
+                      // Avatar badge có tương tác: Bấm vào mở dialog phóng to avatar rõ nét
                       () {
                         final isGeneratingAvatar = _generatingAvatarIps.contains(item.ip);
                         final hasCustomAvatar = persona?.avatarUrl != null && persona!.avatarUrl!.isNotEmpty;
 
                         return Tooltip(
                           message: persona != null
-                              ? (isGeneratingAvatar ? 'Đang tạo avatar...' : 'Bấm để AI tạo ảnh avatar cho ${persona.name}')
-                              : 'Tạo hồ sơ trước để sinh ảnh avatar',
+                              ? 'Bấm để phóng to xem rõ nét ảnh avatar của ${persona.name}'
+                              : 'Chưa tạo nhân vật',
                           child: InkWell(
-                            onTap: (persona == null || isGeneratingAvatar)
+                            onTap: (persona == null)
                                 ? null
-                                : () => _handleGenerateAvatar(persona),
+                                : () => _showAvatarPreviewDialog(persona),
                             borderRadius: BorderRadius.circular(8),
                             child: Stack(
                               clipBehavior: Clip.none,
@@ -2396,19 +2866,26 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                   Positioned(
                                     right: -3,
                                     bottom: -3,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: const BoxDecoration(
-                                        color: AppColors.cardBg,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary.withValues(alpha: 0.9),
-                                          shape: BoxShape.circle,
+                                    child: Tooltip(
+                                      message: 'Bấm để AI tạo lại avatar',
+                                      child: InkWell(
+                                        onTap: () => _handleGenerateAvatar(persona),
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(2),
+                                          decoration: const BoxDecoration(
+                                            color: AppColors.cardBg,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2.5),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary.withValues(alpha: 0.95),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(Icons.auto_awesome_rounded, size: 9, color: Color(0xFF070B14)),
+                                          ),
                                         ),
-                                        child: const Icon(Icons.auto_awesome_rounded, size: 8, color: Color(0xFF070B14)),
                                       ),
                                     ),
                                   ),
@@ -2576,11 +3053,11 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                   Expanded(
                                     child: InkWell(
                                       onTap: () => _showPersonaDetails(persona),
-                                      child: Text(
-                                        persona.bio,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.3),
+                                      child: SingleChildScrollView(
+                                        child: Text(
+                                          persona.bio,
+                                          style: const TextStyle(fontSize: 11, color: AppColors.textDim, height: 1.3),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -2591,7 +3068,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                       onTap: () => _showPersonaDetails(persona),
                                       borderRadius: BorderRadius.circular(4),
                                       child: Container(
-                                        padding: const EdgeInsets.all(5),
+                                        width: 26,
+                                        height: 26,
+                                        alignment: Alignment.center,
                                         decoration: BoxDecoration(
                                           color: AppColors.primary.withValues(alpha: 0.12),
                                           borderRadius: BorderRadius.circular(4),
@@ -2898,11 +3377,13 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     final bool isExt = targetRemoteDevice != null;
                     final currentP = _personas[item.ip] ?? persona;
                     final sanitizedIp = item.ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-                    final expectedPersonaAvd = 'Pixel_10_Pro_persona_$sanitizedIp';
+                    final expectedNameAvd = generatePersonaAvdName(ip: item.ip, personaName: currentP?.name);
+                    final legacyPersonaAvd = 'Pixel_10_Pro_persona_$sanitizedIp';
                     final bool hasLocalAvd = (currentP?.avdName != null &&
                             currentP!.avdName!.isNotEmpty &&
                             (_availableAvds.contains(currentP.avdName) || currentP.avdName!.contains('persona_') || _availableAvds.isEmpty)) ||
-                        _availableAvds.contains(expectedPersonaAvd);
+                        _availableAvds.contains(expectedNameAvd) ||
+                        _availableAvds.contains(legacyPersonaAvd);
                     final bool hasDeviceSetup = isExt || hasLocalAvd;
 
                     // Nếu chưa có thiết bị máy ảo, hiện nút "Cài đặt máy ảo" bấm vào mở modal hồ sơ

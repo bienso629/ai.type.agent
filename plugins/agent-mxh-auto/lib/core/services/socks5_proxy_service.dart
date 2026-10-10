@@ -10,6 +10,51 @@ import 'adb_manager_service.dart';
 import 'local_config_service.dart';
 import 'persona_service.dart';
 
+/// Hàm chuẩn hóa chuỗi tiếng Việt có dấu thành không dấu an toàn cho tên hệ thống / tên tệp / tên AVD
+String removeVietnameseDiacritics(String str) {
+  var result = str;
+  const vietnameseMap = {
+    'a': 'áàảãạăắằẳẵặâấầẩẫậ',
+    'A': 'ÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬ',
+    'd': 'đ',
+    'D': 'Đ',
+    'e': 'éèẻẽẹêếềểễệ',
+    'E': 'ÉÈẺẼẸÊẾỀỂỄỆ',
+    'i': 'íìỉĩị',
+    'I': 'ÍÌỈĨỊ',
+    'o': 'óòỏõọôốồổỗộơớờởỡợ',
+    'O': 'ÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢ',
+    'u': 'úùủũụưứừửữự',
+    'U': 'ÚÙỦŨỤƯỨỪỬỮỰ',
+    'y': 'ýỳỷỹỵ',
+    'Y': 'ÝỲỶỸỴ',
+  };
+
+  vietnameseMap.forEach((nonAccent, accents) {
+    for (int i = 0; i < accents.length; i++) {
+      result = result.replaceAll(accents[i], nonAccent);
+    }
+  });
+
+  return result;
+}
+
+/// Sinh tên AVD máy ảo đồng nhất theo tên nhân vật (Persona Name), fallback về địa chỉ IP nếu tên rỗng
+String generatePersonaAvdName({required String ip, String? personaName}) {
+  final cleanIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+  if (personaName != null && personaName.trim().isNotEmpty) {
+    final noDiacritics = removeVietnameseDiacritics(personaName.trim());
+    var slug = noDiacritics
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (slug.isNotEmpty) {
+      return 'Pixel_10_Pro_persona_$slug';
+    }
+  }
+  return 'Pixel_10_Pro_persona_$cleanIp';
+}
+
 class Socks5Session {
   final int localPort;
   final ServerModel? server;
@@ -1319,6 +1364,7 @@ except Exception:
   /// Kiểm tra xem nhân vật theo IP đã có thiết bị (AVD clone hoặc địa chỉ ngoại vi) hay chưa
   Future<bool> hasDeviceForPersona({
     required String ip,
+    String? personaName,
     String? avdName,
     bool useExternalDevice = false,
     String? externalDeviceAddress,
@@ -1333,15 +1379,16 @@ except Exception:
     if (!avdsDir.existsSync()) return false;
 
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final expectedPersonaAvd = generatePersonaAvdName(ip: ip, personaName: personaName);
 
-    // Quét xem có file .ini của persona hoặc clone của IP này không
+    // Quét xem có file .ini của persona hoặc clone của IP này hoặc theo tên nhân vật không
     try {
       final entities = avdsDir.listSync();
       for (final e in entities) {
         final name = p.basename(e.path);
         if (name.endsWith('.ini')) {
           final iniName = name.substring(0, name.length - 4);
-          if (iniName.contains('persona_$sanitizedIp')) {
+          if (iniName == expectedPersonaAvd || iniName.contains('persona_$sanitizedIp')) {
             // Kiểm tra thư mục .avd tương ứng có tồn tại không
             final avdFolder = Directory(p.join(avdsDir.path, '$iniName.avd'));
             if (avdFolder.existsSync()) return true;
@@ -1362,9 +1409,10 @@ except Exception:
     return false;
   }
 
-  /// Import thiết bị từ file backup (.tar.gz hoặc .zip) cho nhân vật theo IP
+  /// Import thiết bị từ file backup (.tar.gz hoặc .zip) cho nhân vật theo IP và tên nhân vật
   Future<String> importPersonaDeviceBackup({
     required String ip,
+    String? personaName,
     required String archivePath,
   }) async {
     final file = File(archivePath);
@@ -1377,8 +1425,7 @@ except Exception:
       avdsDir.createSync(recursive: true);
     }
 
-    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final targetAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
+    final targetAvdName = generatePersonaAvdName(ip: ip, personaName: personaName);
     final targetAvdDir = Directory(p.join(avdsDir.path, '$targetAvdName.avd'));
     final targetIniFile = File(p.join(avdsDir.path, '$targetAvdName.ini'));
 
@@ -1767,9 +1814,10 @@ for root, _, files in os.walk(target_dir):
     return targetTarFile.path;
   }
 
-  /// Tạo thiết bị (AVD Clone) riêng biệt cho nhân vật theo IP
+  /// Tạo thiết bị (AVD Clone) riêng biệt cho nhân vật theo IP và tên nhân vật
   Future<String> createPersonaDeviceAvd({
     required String ip,
+    String? personaName,
     String? baseAvd,
     void Function(String message)? onProgress,
   }) async {
@@ -1806,7 +1854,7 @@ for root, _, files in os.walk(target_dir):
       targetBase = bestCandidate ?? avds.first;
     }
 
-    final createdName = await _ensurePersonaCloneAvd(targetBase, ip, onProgress: onProgress);
+    final createdName = await _ensurePersonaCloneAvd(targetBase, ip, personaName: personaName, onProgress: onProgress);
     notifyListeners();
     return createdName;
   }
@@ -1910,11 +1958,11 @@ for root, _, files in os.walk(target_dir):
   Future<String> _ensurePersonaCloneAvd(
     String baseAvd,
     String ip, {
+    String? personaName,
     void Function(String message)? onProgress,
   }) async {
     final avdsDir = getAndroidAvdDirectory();
-    final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final cloneAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
+    final cloneAvdName = generatePersonaAvdName(ip: ip, personaName: personaName);
 
     final baseAvdDir = Directory(p.join(avdsDir.path, '$baseAvd.avd'));
     final cloneAvdDir = Directory(p.join(avdsDir.path, '$cloneAvdName.avd'));
@@ -2247,6 +2295,15 @@ for root, _, files in os.walk(target_dir):
       final requestedDir = Directory(p.join(avdsDir.path, '$requestedAvd.avd'));
       if (requestedDir.existsSync()) {
         actualAvd = requestedAvd;
+      }
+    }
+
+    if (actualAvd.isEmpty) {
+      final personaProfile = PersonaService().getPersona(ip);
+      final expectedNameAvd = generatePersonaAvdName(ip: ip, personaName: personaProfile?.name);
+      final expectedDir = Directory(p.join(avdsDir.path, '$expectedNameAvd.avd'));
+      if (expectedDir.existsSync()) {
+        actualAvd = expectedNameAvd;
       }
     }
 
@@ -2657,9 +2714,15 @@ for root, _, files in os.walk(target_dir):
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final personaAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
       final personaProfile = PersonaService().getPersona(ip);
+      final expectedNameAvd = generatePersonaAvdName(ip: ip, personaName: personaProfile?.name);
       final customAvdName = personaProfile?.avdName?.trim();
-      final targetAvd = (customAvdName != null && customAvdName.isNotEmpty) ? customAvdName : personaAvdName;
-      final activePort = port ?? _findRunningConsolePortForAvd(targetAvd) ?? _findRunningConsolePortForAvd(personaAvdName);
+      final targetAvd = (customAvdName != null && customAvdName.isNotEmpty)
+          ? customAvdName
+          : (expectedNameAvd.isNotEmpty ? expectedNameAvd : personaAvdName);
+      final activePort = port ??
+          _findRunningConsolePortForAvd(targetAvd) ??
+          _findRunningConsolePortForAvd(expectedNameAvd) ??
+          _findRunningConsolePortForAvd(personaAvdName);
 
       // 1. Nếu emulator đang chạy, gửi lệnh sync đĩa và yêu cầu thoát an toàn để ghi dữ liệu ứng dụng
       if (activePort != null) {
@@ -2739,10 +2802,15 @@ for root, _, files in os.walk(target_dir):
     final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     final personaAvdName = 'Pixel_10_Pro_persona_$sanitizedIp';
     final personaProfile = PersonaService().getPersona(ip);
+    final expectedNameAvd = generatePersonaAvdName(ip: ip, personaName: personaProfile?.name);
     final customAvdName = personaProfile?.avdName?.trim();
-    final targetAvd = (customAvdName != null && customAvdName.isNotEmpty) ? customAvdName : personaAvdName;
+    final targetAvd = (customAvdName != null && customAvdName.isNotEmpty)
+        ? customAvdName
+        : (expectedNameAvd.isNotEmpty ? expectedNameAvd : personaAvdName);
 
-    final port = _findRunningConsolePortForAvd(targetAvd) ?? _findRunningConsolePortForAvd(personaAvdName);
+    final port = _findRunningConsolePortForAvd(targetAvd) ??
+        _findRunningConsolePortForAvd(expectedNameAvd) ??
+        _findRunningConsolePortForAvd(personaAvdName);
     if (port != null) {
       return 'emulator-$port';
     }

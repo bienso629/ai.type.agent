@@ -54,6 +54,40 @@ PERSONAS_FILE = os.path.join(DATA_DIR, "personas.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 IPC_SOCKET_PORT = 19898  # Optional IPC port if agent daemon is listening
 
+def _remove_vietnamese_diacritics(text):
+    if not text:
+        return ""
+    import unicodedata
+    # Bảng thay thế ký tự tiếng Việt có dấu
+    v_map = {
+        'a': 'áàảãạăắằẳẵặâấầẩẫậ',
+        'A': 'ÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬ',
+        'd': 'đ', 'D': 'Đ',
+        'e': 'éèẻẽẹêếềểễệ',
+        'E': 'ÉÈẺẼẸÊẾỀỂỄỆ',
+        'i': 'íìỉĩị', 'I': 'ÍÌỈĨỊ',
+        'o': 'óòỏõọôốồổỗộơớờởỡợ',
+        'O': 'ÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢ',
+        'u': 'úùủũụưứừửữự',
+        'U': 'ÚÙỦŨỤƯỨỪỬỮỰ',
+        'y': 'ýỳỷỹỵ', 'Y': 'ÝỲỶỸỴ'
+    }
+    res = text
+    for char, accents in v_map.items():
+        for acc in accents:
+            res = res.replace(acc, char)
+    return res
+
+def _generate_persona_avd_name(ip, persona_name=None):
+    clean_ip = re.sub(r'[^a-zA-Z0-9_-]', '_', ip)
+    if persona_name and persona_name.strip():
+        no_dia = _remove_vietnamese_diacritics(persona_name.strip())
+        slug = re.sub(r'[^a-zA-Z0-9_-]+', '_', no_dia)
+        slug = re.sub(r'_+', '_', slug).strip('_')
+        if slug:
+            return f"Pixel_10_Pro_persona_{slug}"
+    return f"Pixel_10_Pro_persona_{clean_ip}"
+
 def _load_profiles():
     # Tìm kiếm các file personas.json và personas_<user>.json trong DATA_DIR
     res = {}
@@ -435,12 +469,22 @@ def open_device(ip, device_type="mobile", avd_name=None):
     sanitized_ip = ip.replace(".", "_").replace(":", "_")
     target_avd = avd_name
     if not target_avd:
-        persona_avd_name = f"Pixel_10_Pro_persona_{sanitized_ip}"
+        profiles = _load_profiles()
+        p_profile = profiles.get(ip, {})
+        persona_name = p_profile.get("name")
+        custom_avd = p_profile.get("avd_name")
+        name_avd = _generate_persona_avd_name(ip, persona_name)
+        ip_avd = f"Pixel_10_Pro_persona_{sanitized_ip}"
+        
         try:
             res = subprocess.run([sdk_emulator, "-list-avds"], stdout=subprocess.PIPE, text=True, check=False)
             avds = [line.strip() for line in res.stdout.splitlines() if line.strip()]
-            if persona_avd_name in avds:
-                target_avd = persona_avd_name
+            if custom_avd and custom_avd in avds:
+                target_avd = custom_avd
+            elif name_avd in avds:
+                target_avd = name_avd
+            elif ip_avd in avds:
+                target_avd = ip_avd
             elif avds:
                 target_avd = avds[0]
         except Exception:
@@ -641,7 +685,14 @@ def close_device(ip=None):
 
 def get_device_serial_for_ip(ip):
     sanitized_ip = ip.replace(".", "_").replace(":", "_")
-    target_avd = f"Pixel_10_Pro_persona_{sanitized_ip}"
+    profiles = _load_profiles()
+    p_profile = profiles.get(ip, {})
+    persona_name = p_profile.get("name")
+    custom_avd = p_profile.get("avd_name")
+    name_avd = _generate_persona_avd_name(ip, persona_name)
+    ip_avd = f"Pixel_10_Pro_persona_{sanitized_ip}"
+    valid_avds = set(filter(None, [custom_avd, name_avd, ip_avd]))
+
     sdk_adb = os.path.expanduser("~/Android/Sdk/platform-tools/adb")
     if not os.path.exists(sdk_adb): sdk_adb = "adb"
     
@@ -668,7 +719,7 @@ def get_device_serial_for_ip(ip):
                 serial = parts[0]
                 name_res = subprocess.run([sdk_adb, "-s", serial, "emu", "avd", "name"], stdout=subprocess.PIPE, text=True, check=False)
                 emu_avd = name_res.stdout.splitlines()[0].strip() if name_res.stdout else ""
-                if emu_avd == target_avd:
+                if emu_avd in valid_avds:
                     return serial
     except Exception:
         pass

@@ -424,12 +424,14 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
     // Luôn định hướng trọng tâm vào khuôn mặt (headshot, facial features, eyes, expression)
     final effectivePrompt = '$promptCore, headshot portrait, looking directly at camera, detailed facial features, realistic human skin texture, natural expression, focused on face, soft natural cinematic lighting, 8k resolution, photorealistic, sharp focus, masterpiece, authentic photo, NO watermark, NO logo, NO text, NO signature, NO cartoon, NO anime, NO 3D render, NO illustration';
 
-    // 1. NHÁNH CLOUD PROXY AI VỚI MODEL gemini-nano-banana-2.1 (Chat Multimodal Output)
-    // Model Gemini Banana sinh ảnh chân dung 2K siêu nét, chuẩn gương mặt 1:1 trực tiếp từ prompt
+    String lastError = '';
+
+    // 1. ƯU TIÊN TUYỆT ĐỐI MODEL AI gemini-nano-banana-2.1 (Chat Multimodal Output 2K)
+    // Sinh ảnh chân dung 2K siêu nét, chuẩn tỷ lệ 1:1, không watermark, không logo
     if (apiKey.isNotEmpty) {
       try {
         final chatUri = Uri.parse('$baseUrl/chat/completions');
-        final promptForGemini = 'A 1:1 square headshot avatar portrait photo of a $genderEn named ${persona.name}, ${persona.age} years old$bioContext$roleContext. Showing full face from forehead to chin, looking directly into camera with natural facial expression, realistic detailed skin pores and eyes, studio lighting, ultra-sharp 2K resolution masterpiece, no watermark, no text, no logo.';
+        final promptForGemini = 'A 1:1 square headshot avatar portrait photo of a $genderEn named ${persona.name}, ${persona.age} years old$bioContext$roleContext. Showing full face from forehead to chin, looking directly into camera with natural facial expression, realistic detailed skin pores and eyes, studio lighting, ultra-sharp 2K 2048x2048 resolution masterpiece, clean background, no watermark, no text, no logo.';
         
         final res = await http.post(
           chatUri,
@@ -445,19 +447,35 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
             ],
             'modalities': ['text', 'image'],
           }),
-        ).timeout(const Duration(seconds: 50));
+        ).timeout(const Duration(seconds: 120));
 
         if (res.statusCode == 200) {
           final data = jsonDecode(utf8.decode(res.bodyBytes));
           final choices = data['choices'] as List<dynamic>?;
           if (choices != null && choices.isNotEmpty) {
             final content = choices[0]['message']?['content']?.toString() ?? '';
-            if (content.contains('data:image')) {
-              final regExp = RegExp(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)');
-              final match = regExp.firstMatch(content);
-              if (match != null) {
-                var rawB64 = match.group(1)!;
-                rawB64 += '=' * ((-rawB64.length) % 4);
+            
+            // Tìm chuỗi base64 qua data:image
+            const marker = 'data:image/';
+            final markerIdx = content.indexOf(marker);
+            if (markerIdx != -1) {
+              final base64Marker = ';base64,';
+              final b64Start = content.indexOf(base64Marker, markerIdx);
+              if (b64Start != -1) {
+                final contentStart = b64Start + base64Marker.length;
+                // Tìm ký tự kết thúc như ')', '"', '\n', hoặc hết chuỗi
+                var contentEnd = content.length;
+                for (var i = contentStart; i < content.length; i++) {
+                  final code = content.codeUnitAt(i);
+                  if (code == 41 || code == 34 || code == 39 || code == 10 || code == 13 || code == 32) { // ), ", ', \n, \r, space
+                    contentEnd = i;
+                    break;
+                  }
+                }
+                var rawB64 = content.substring(contentStart, contentEnd).replaceAll(RegExp(r'\s+'), '');
+                while (rawB64.length % 4 != 0) {
+                  rawB64 += '=';
+                }
                 final bytes = base64Decode(rawB64);
                 if (bytes.length > 5000) {
                   await File(localImagePath).writeAsBytes(bytes);
@@ -467,11 +485,17 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
                 }
               }
             }
+          } else {
+            lastError = 'Server trả về choices rỗng';
           }
+        } else {
+          lastError = 'HTTP ${res.statusCode}: ${res.body}';
         }
-      } catch (_) {}
+      } catch (e) {
+        lastError = e.toString();
+      }
 
-      // Thử tiếp các model Image qua images/generations nếu có
+      // Thử tiếp các model Image qua images/generations với chuẩn 2K/1024
       final imageModels = [
         'qwen-image-3.0',
         'wan2.7-image',
@@ -493,10 +517,10 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
               'model': modelName,
               'prompt': effectivePrompt,
               'n': 1,
-              'size': '1024x1024',
+              'size': '2048x2048',
               'response_format': 'b64_json',
             }),
-          ).timeout(const Duration(seconds: 40));
+          ).timeout(const Duration(seconds: 60));
 
           if (res.statusCode == 200) {
             final data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -513,7 +537,7 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
                 }
               } else if (first['url'] != null) {
                 final imgUrl = first['url'].toString();
-                final dlRes = await http.get(Uri.parse(imgUrl)).timeout(const Duration(seconds: 25));
+                final dlRes = await http.get(Uri.parse(imgUrl)).timeout(const Duration(seconds: 30));
                 if (dlRes.statusCode == 200 && dlRes.bodyBytes.length > 3000) {
                   await File(localImagePath).writeAsBytes(dlRes.bodyBytes);
                   final updated = persona.copyWith(avatarUrl: localImagePath);
@@ -527,46 +551,6 @@ BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON DUY NHẤT (không bọc trong markd
       }
     }
 
-    // 2. ENGINE AI TEXT-TO-IMAGE GENERATION (FLUX & TURBO PHOTOREALISTIC ENGINE)
-    // Sinh ảnh 100% bằng AI tạo sinh (Text-to-Image), tuyệt đối không dùng nguồn ảnh có sẵn
-    final aiPhotoModels = ['flux', 'turbo'];
-    final seed = '${persona.ip}_${persona.name}_${persona.gender}_$timestamp'.hashCode.abs();
-
-    for (final aiModelName in aiPhotoModels) {
-      try {
-        final promptForGen = Uri.encodeComponent(effectivePrompt);
-        final aiGenUrl = 'https://image.pollinations.ai/prompt/$promptForGen?width=512&height=512&nologo=true&seed=$seed&model=$aiModelName&enhance=true';
-        final genRes = await http.get(
-          Uri.parse(aiGenUrl),
-          headers: {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)'},
-        ).timeout(const Duration(seconds: 35));
-
-        if (genRes.statusCode == 200 && genRes.bodyBytes.length > 5000) {
-          await File(localImagePath).writeAsBytes(genRes.bodyBytes);
-          final updated = persona.copyWith(avatarUrl: localImagePath);
-          await updatePersona(updated);
-          return localImagePath;
-        }
-      } catch (_) {}
-    }
-
-    // Nếu các model trên chưa phản hồi kịp, thử lại với model mặc định của AI generator
-    try {
-      final promptForGen = Uri.encodeComponent(effectivePrompt);
-      final aiGenUrl = 'https://image.pollinations.ai/prompt/$promptForGen?width=512&height=512&nologo=true&seed=$seed';
-      final genRes = await http.get(
-        Uri.parse(aiGenUrl),
-        headers: {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)'},
-      ).timeout(const Duration(seconds: 35));
-
-      if (genRes.statusCode == 200 && genRes.bodyBytes.length > 3000) {
-        await File(localImagePath).writeAsBytes(genRes.bodyBytes);
-        final updated = persona.copyWith(avatarUrl: localImagePath);
-        await updatePersona(updated);
-        return localImagePath;
-      }
-    } catch (_) {}
-
-    throw Exception('Không thể tạo ảnh đại diện bằng AI vào lúc này. Vui lòng thử lại sau.');
+    throw Exception('Không thể tạo ảnh bằng model AI gemini-nano-banana-2.1. Chi tiết: ${lastError.isNotEmpty ? lastError : "Chưa cấu hình API Key hoặc Proxy không phản hồi."}');
   }
 }
