@@ -27,6 +27,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   final Set<String> _openingDeviceIps = {};
   final Set<String> _closingDeviceIps = {};
   final Set<String> _generatingAvatarIps = {};
+  final Set<String> _generatingSingleProfileIps = {};
   final Socks5ProxyService _socks5Service = Socks5ProxyService();
   final PersonaService _personaService = PersonaService();
 
@@ -87,6 +88,37 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       if (mounted) {
         setState(() {
           _isGeneratingPersonas = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleGenerateSinglePersona(String ip) async {
+    if (_generatingSingleProfileIps.contains(ip) || _isGeneratingPersonas) return;
+
+    setState(() {
+      _generatingSingleProfileIps.add(ip);
+    });
+    AppToast.info(context, 'AI đang tạo hồ sơ nhân vật cho IP $ip...');
+
+    try {
+      final newPersonas = await _personaService.generatePersonas(ips: [ip]);
+      if (mounted && newPersonas.isNotEmpty) {
+        setState(() {
+          _personas.addAll(newPersonas);
+        });
+        final created = newPersonas[ip];
+        final name = created?.name ?? ip;
+        AppToast.success(context, 'AI đã tạo thành công nhân vật "$name" cho IP $ip');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Lỗi tạo profile cho IP $ip: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _generatingSingleProfileIps.remove(ip);
         });
       }
     }
@@ -2759,6 +2791,66 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                     ),
                   ),
                 ),
+                // Nút nhỏ AI tạo riêng profile cho IP này
+                () {
+                  final isGeneratingThis = _generatingSingleProfileIps.contains(item.ip);
+                  return Tooltip(
+                    message: isGeneratingThis
+                        ? 'Đang tạo profile cho ${item.ip}...'
+                        : (persona == null ? 'AI tạo profile riêng cho IP này' : 'AI tạo lại profile mới cho IP này'),
+                    child: InkWell(
+                      onTap: (isGeneratingThis || _isGeneratingPersonas)
+                          ? null
+                          : () => _handleGenerateSinglePersona(item.ip),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        height: 20,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isGeneratingThis
+                              ? AppColors.primary.withValues(alpha: 0.25)
+                              : AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: isGeneratingThis ? 0.8 : 0.4),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isGeneratingThis)
+                              const SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: AppColors.primaryLight,
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 11,
+                                color: AppColors.primaryLight,
+                              ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isGeneratingThis ? 'Đang tạo...' : 'AI Profile',
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryLight,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }(),
+                const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
@@ -3062,6 +3154,36 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 4),
+                                  () {
+                                    final isGeneratingThis = _generatingSingleProfileIps.contains(item.ip);
+                                    return Tooltip(
+                                      message: 'AI tạo lại nhân vật cho IP này',
+                                      child: InkWell(
+                                        onTap: (isGeneratingThis || _isGeneratingPersonas)
+                                            ? null
+                                            : () => _handleGenerateSinglePersona(item.ip),
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: Container(
+                                          width: 26,
+                                          height: 26,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                          ),
+                                          child: isGeneratingThis
+                                              ? const SizedBox(
+                                                  width: 12,
+                                                  height: 12,
+                                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
+                                                )
+                                              : const Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.primaryLight),
+                                        ),
+                                      ),
+                                    );
+                                  }(),
+                                  const SizedBox(width: 4),
                                   Tooltip(
                                     message: 'Xem chi tiết & Chỉnh sửa nhân vật',
                                     child: InkWell(
@@ -3137,49 +3259,89 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                       ),
                     ),
                   ] else ...[
+                    // Trạng thái Card mới tinh "Chưa tạo nhân vật": Có nút nổi bật "AI tạo Profile" và nút nhập thủ công
                     Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          final p = PersonaProfile(
-                            ip: item.ip,
-                            name: 'Nhân vật ${item.ip}',
-                            age: 25,
-                            gender: 'Nam',
-                            bio: 'Nhân vật tự động cho địa chỉ IP ${item.ip}',
-                            avatarPrompt: '',
-                          );
-                          _showPersonaDetails(p);
-                        },
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppColors.inputBg.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.3)),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: statusDotColor,
-                                  shape: BoxShape.circle,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.inputBg.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.borderDark.withValues(alpha: 0.4)),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Nút to nổi bật: AI tạo tự động hồ sơ cho riêng Card này
+                            () {
+                              final isGeneratingThis = _generatingSingleProfileIps.contains(item.ip);
+                              return SizedBox(
+                                width: double.infinity,
+                                height: 28,
+                                child: ElevatedButton.icon(
+                                  onPressed: (isGeneratingThis || _isGeneratingPersonas)
+                                      ? null
+                                      : () => _handleGenerateSinglePersona(item.ip),
+                                  icon: isGeneratingThis
+                                      ? const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.5,
+                                            color: Color(0xFF070B14),
+                                          ),
+                                        )
+                                      : const Icon(Icons.auto_awesome_rounded, size: 13),
+                                  label: Text(
+                                    isGeneratingThis ? 'Đang tạo profile...' : 'AI tạo Profile cho IP này',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: const Color(0xFF070B14),
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }(),
+                            const SizedBox(height: 5),
+                            // Nút phụ hoặc bấm dòng chữ nhập thủ công
+                            InkWell(
+                              onTap: () {
+                                final p = PersonaProfile(
+                                  ip: item.ip,
+                                  name: 'Nhân vật ${item.ip}',
+                                  age: 25,
+                                  gender: 'Nam',
+                                  bio: 'Nhân vật tự động cho địa chỉ IP ${item.ip}',
+                                  avatarPrompt: '',
+                                );
+                                _showPersonaDetails(p);
+                              },
+                              borderRadius: BorderRadius.circular(4),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.edit_note_rounded, size: 12, color: AppColors.textDim),
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      'Hoặc tự điền thủ công',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.textDim,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              const Expanded(
-                                child: Text(
-                                  'Bấm vào đây để tạo và cấu hình nhân vật cho IP này',
-                                  maxLines: 2,
-                                  style: TextStyle(fontSize: 10.5, color: AppColors.primaryLight, decoration: TextDecoration.underline),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.add_circle_outline_rounded, size: 14, color: AppColors.primaryLight),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ),

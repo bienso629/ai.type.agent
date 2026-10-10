@@ -90,11 +90,25 @@ chmod 755 "$PKG_DIR/DEBIAN/prerm"
 cat << 'POSTINST_EOF' > "$PKG_DIR/DEBIAN/postinst"
 #!/bin/bash
 set -e
+
+# Don dep cac file desktop override bi an o thu muc user neu co
+for u_home in /home/*; do
+    if [ -d "$u_home/.local/share/applications" ]; then
+        rm -f "$u_home/.local/share/applications/mxh-tu-dong.desktop" 2>/dev/null || true
+        rm -f "$u_home/.local/share/applications/agent.mxh.auto.desktop" 2>/dev/null || true
+    fi
+done
+
 if which gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 fi
 if which update-desktop-database >/dev/null 2>&1; then
     update-desktop-database /usr/share/applications 2>/dev/null || true
+    for u_home in /home/*; do
+        if [ -d "$u_home/.local/share/applications" ]; then
+            update-desktop-database "$u_home/.local/share/applications" 2>/dev/null || true
+        fi
+    done
 fi
 exit 0
 POSTINST_EOF
