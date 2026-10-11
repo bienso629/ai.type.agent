@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
@@ -2664,6 +2665,7 @@ class _ScopeDocViewerPanelState extends State<_ScopeDocViewerPanel> {
   final ApiService _api = ApiService();
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _aiPromptController = TextEditingController();
+  final ScrollController _docTabsScrollController = ScrollController();
 
   bool _isLoadingContent = false;
   bool _isSaving = false;
@@ -2691,6 +2693,7 @@ class _ScopeDocViewerPanelState extends State<_ScopeDocViewerPanel> {
   void dispose() {
     _contentController.dispose();
     _aiPromptController.dispose();
+    _docTabsScrollController.dispose();
     super.dispose();
   }
 
@@ -3549,55 +3552,68 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
                 ),
                 const SizedBox(width: 12),
 
-                // Danh sách tab tài liệu
+                // Danh sách tab tài liệu (Hỗ trợ kéo thả chuột trái - phải, cuộn chuột, trackpad mượt mà)
                 Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: docs.map((docPath) {
-                        final name = p.basename(docPath);
-                        final isSel = docPath == widget.selectedDocPath;
-                        final ext = p.extension(docPath).toLowerCase();
-                        Color docColor = AppColors.accentCyan;
-                        if (ext == '.pdf') docColor = Colors.redAccent;
-                        if (ext == '.docx' || ext == '.doc') docColor = Colors.blueAccent;
+                  child: ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(context).copyWith(
+                      dragDevices: {
+                        PointerDeviceKind.touch,
+                        PointerDeviceKind.mouse,
+                        PointerDeviceKind.trackpad,
+                        PointerDeviceKind.stylus,
+                        PointerDeviceKind.unknown,
+                      },
+                    ),
+                    child: SingleChildScrollView(
+                      controller: _docTabsScrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                      child: Row(
+                        children: docs.map((docPath) {
+                          final name = p.basename(docPath);
+                          final isSel = docPath == widget.selectedDocPath;
+                          final ext = p.extension(docPath).toLowerCase();
+                          Color docColor = AppColors.accentCyan;
+                          if (ext == '.pdf') docColor = Colors.redAccent;
+                          if (ext == '.docx' || ext == '.doc') docColor = Colors.blueAccent;
 
-                        return InkWell(
-                          onTap: () => widget.onSelectDoc(docPath),
-                          borderRadius: BorderRadius.circular(4),
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: isSel ? AppColors.cardBg : Colors.transparent,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: isSel ? AppColors.accentCyan : AppColors.borderDark.withValues(alpha: 0.5),
-                                width: isSel ? 1.2 : 0.8,
+                          return InkWell(
+                            onTap: () => widget.onSelectDoc(docPath),
+                            borderRadius: BorderRadius.circular(4),
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: isSel ? AppColors.cardBg : Colors.transparent,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: isSel ? AppColors.accentCyan : AppColors.borderDark.withValues(alpha: 0.5),
+                                  width: isSel ? 1.2 : 0.8,
+                                ),
                               ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.article_rounded, size: 13, color: isSel ? docColor : AppColors.textDim),
-                                const SizedBox(width: 6),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 160),
-                                  child: Text(
-                                    name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                                      color: isSel ? AppColors.textWhite : AppColors.textMuted,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.article_rounded, size: 13, color: isSel ? docColor : AppColors.textDim),
+                                  const SizedBox(width: 6),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 160),
+                                    child: Text(
+                                      name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                        color: isSel ? AppColors.textWhite : AppColors.textMuted,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
