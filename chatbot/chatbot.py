@@ -136,6 +136,18 @@ class MinerUResultRequest(BaseModel):
     filename: str
     doc_type: Optional[str] = None
     content_json: str
+    faiss_base64: Optional[str] = None
+    pkl_base64: Optional[str] = None
+    markdown: Optional[str] = None
+
+class RecordSyncMessageRequest(BaseModel):
+    username: str
+    thread_id: int
+    user_message: str
+    bot_message: str
+    sources: Optional[List[str]] = None
+    ip_address: Optional[str] = "127.0.0.1"
+    sender_info: Optional[str] = "App Sync"
 
 class ThreadTitleUpdate(BaseModel):
     title: str
@@ -727,7 +739,8 @@ async def handle_analyze_pdf(req: AnalyzePdfRequest):
 @app.post("/upload-mineru-result")
 async def upload_mineru_result(req: MinerUResultRequest, background_tasks: BackgroundTasks):
     try:
-        # Lưu file json xuống ổ đĩa để indexing_utils tự động pick up
+        import base64
+        # 1. Lưu file json xuống ổ đĩa để indexing_utils tự động pick up
         save_dir = get_user_pdf_dir(req.username, req.doc_type)
         os.makedirs(save_dir, exist_ok=True)
         # Lưu file với đuôi .mineru.json thay vì .pdf
@@ -736,9 +749,44 @@ async def upload_mineru_result(req: MinerUResultRequest, background_tasks: Backg
         
         async with aiofiles.open(json_path, "w", encoding="utf-8") as out:
             await out.write(req.content_json)
+
+        # 2. Lưu file Markdown nếu có kèm theo
+        if req.markdown:
+            md_path = os.path.join(save_dir, f"{base_name}.md")
+            async with aiofiles.open(md_path, "w", encoding="utf-8") as out:
+                await out.write(req.markdown)
+
+        # 3. Đồng bộ trực tiếp bản vector FAISS & PKL lên server nếu có gửi lên
+        if HAS_INDEXING_UTILS and (req.faiss_base64 or req.pkl_base64):
+            try:
+                _, index_dir = indexing_utils._ensure_dirs_for_type(req.username, req.doc_type)
+                os.makedirs(index_dir, exist_ok=True)
+                
+                if req.faiss_base64:
+                    faiss_bytes = base64.b64decode(req.faiss_base64)
+                    faiss_file = os.path.join(index_dir, "index.faiss")
+                    async with aiofiles.open(faiss_file, "wb") as f_out:
+                        await f_out.write(faiss_bytes)
+
+                if req.pkl_base64:
+                    pkl_bytes = base64.b64decode(req.pkl_base64)
+                    pkl_file = os.path.join(index_dir, "index.pkl")
+                    async with aiofiles.open(pkl_file, "wb") as p_out:
+                        await p_out.write(pkl_bytes)
+
+                # Cập nhật metadata index_meta.json
+                meta = indexing_utils._load_meta(index_dir)
+                files_map = meta.setdefault("files", {})
+                files_map[os.path.abspath(json_path)] = str(int(time.time()))
+                pdf_counterpart = os.path.join(save_dir, f"{base_name}.pdf")
+                files_map[os.path.abspath(pdf_counterpart)] = str(int(time.time()))
+                indexing_utils._save_meta(index_dir, meta)
+                print(f"[UploadMinerU] Đã đồng bộ FAISS & metadata thành công cho: {req.filename}")
+            except Exception as fe:
+                print(f"[UploadMinerU] Cảnh báo lưu FAISS server: {fe}")
             
         _invalidate_file_in_meta(req.username, req.doc_type, os.path.abspath(json_path))
-        return {"success": True, "message": "Đã lưu kết quả MinerU và sẵn sàng cho FAISS"}
+        return {"success": True, "message": "Đã lưu kết quả MinerU, FAISS và metadata lên máy chủ"}
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 
@@ -1105,6 +1153,53 @@ def get_msg(username: str, thread_id: int, c_email: str = Depends(get_current_us
     cur.execute("SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC", (thread_id,))
     res = cur.fetchall(); conn.close()
     return res
+
+@app.post("/sync-messages")
+async def sync_messages(req: RecordSyncMessageRequest, c_email: Optional[str] = Depends(get_optional_user_email)):
+    db_path = os.path.join(USER_DBS_DIR, f"chatbot_user_{req.username}.db")
+    if not os.path.exists(db_path):
+        os.makedirs(USER_DBS_DIR, exist_ok=True)
+        sync_conn = sqlite3.connect(db_path)
+        init_user_tables(sync_conn)
+        sync_conn.close()
+
+    time_now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    async with aiosqlite.connect(db_path) as conn:
+        async with conn.cursor() as cur:
+            # Kiểm tra xem thread đã tồn tại chưa, nếu chưa có thì tự động tạo
+            await cur.execute("SELECT id FROM threads WHERE id = ?", (req.thread_id,))
+            thread_row = await cur.fetchone()
+            if not thread_row:
+                thread_title = (req.user_message or "Cuộc trò chuyện").strip()[:60]
+                em = c_email if (c_email and not is_api_bypass(c_email)) else f"{req.username}@type.vn"
+                await cur.execute(
+                    "INSERT INTO threads (id, title, name, email, phone) VALUES (?, ?, ?, ?, ?)",
+                    (req.thread_id, thread_title, req.username, em, None)
+                )
+
+            # Lưu câu hỏi của người dùng
+            if req.user_message:
+                await cur.execute("""
+                    INSERT INTO messages (thread_id, role, content, created, ip_address, sender_info) 
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (req.thread_id, "user", req.user_message, time_now, req.ip_address, req.sender_info))
+
+            # Lưu câu trả lời của trợ lý AI
+            if req.bot_message:
+                src_json = json.dumps(req.sources or [], ensure_ascii=False)
+                await cur.execute("""
+                    INSERT INTO messages (thread_id, role, content, sources, created) 
+                    VALUES (?, ?, ?, ?, ?)
+                """, (req.thread_id, "assistant", req.bot_message, src_json, time_now))
+
+            # Cập nhật tiêu đề thread theo câu hỏi gần nhất nếu tiêu đề đang là mặc định
+            if req.user_message:
+                thread_title = req.user_message.strip()[:60]
+                await cur.execute("UPDATE threads SET title = ? WHERE id = ? AND (title IS NULL OR title = '' OR title = 'Hội thoại mới' OR title = 'admin')", (thread_title, req.thread_id))
+
+            await conn.commit()
+
+    return {"success": True, "thread_id": req.thread_id, "message": "Đã đồng bộ tin nhắn lên server"}
 
 @app.post("/messages")
 async def post_msg(req: MessageFullRequest, c_email: str = Depends(get_current_user_email)):
