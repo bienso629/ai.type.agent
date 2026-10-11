@@ -149,6 +149,12 @@ class RecordSyncMessageRequest(BaseModel):
     ip_address: Optional[str] = "127.0.0.1"
     sender_info: Optional[str] = "App Sync"
 
+class ContextQueryRequest(BaseModel):
+    username: str
+    query: str
+    doc_types: Optional[List[str]] = None
+    max_chunks: Optional[int] = 4
+
 class ThreadTitleUpdate(BaseModel):
     title: str
 
@@ -1128,8 +1134,11 @@ def create_thread(req: ThreadRequest, c_email: Optional[str] = Depends(get_optio
 @app.get("/threads/{username}")
 def get_threads_list(username: str, c_email: str = Depends(get_current_user_email)):
     conn, cur = get_user_db(username)
-    if is_api_bypass(c_email): cur.execute("SELECT * FROM threads ORDER BY id DESC")
-    else: cur.execute("SELECT * FROM threads WHERE email = ? ORDER BY id DESC", (c_email,))
+    # Nếu truy cập qua API bypass hoặc ứng dụng type.vn, cho phép lấy tất cả thread của username
+    if is_api_bypass(c_email): 
+        cur.execute("SELECT * FROM threads ORDER BY id DESC")
+    else: 
+        cur.execute("SELECT * FROM threads WHERE email = ? OR email IS NULL OR email = '' OR email = ? ORDER BY id DESC", (c_email, f"{username}@type.vn"))
     res = cur.fetchall(); conn.close()
     return res
 
@@ -1200,6 +1209,49 @@ async def sync_messages(req: RecordSyncMessageRequest, c_email: Optional[str] = 
             await conn.commit()
 
     return {"success": True, "thread_id": req.thread_id, "message": "Đã đồng bộ tin nhắn lên server"}
+
+@app.post("/query-faiss-context")
+async def query_faiss_context(req: ContextQueryRequest):
+    """Trích xuất ngữ cảnh trực tiếp từ bản chỉ mục FAISS trên server bot.type.vn phục vụ iPad, Web, Mobile"""
+    if not HAS_INDEXING_UTILS:
+        return {"success": False, "context": "", "chunks_count": 0, "error": "Chưa có indexing_utils trên server"}
+
+    try:
+        candidate_doc_types = req.doc_types if req.doc_types else [None, "qa_detailed", "qa", "summary", "analysis"]
+        all_chunks = []
+        sources = []
+
+        for dt in candidate_doc_types:
+            try:
+                res = indexing_utils.query_index_smart(
+                    username=req.username,
+                    question=req.query,
+                    top_k=req.max_chunks or 4,
+                    probe_k=30,
+                    doc_type=dt
+                )
+                docs = res.get("docs", [])
+                for d in docs:
+                    txt = getattr(d, 'page_content', '')
+                    if txt and txt not in all_chunks:
+                        all_chunks.append(txt)
+                        src = d.metadata.get("source") or d.metadata.get("file_path") or d.metadata.get("file_name")
+                        if src and src not in sources:
+                            sources.append(str(src))
+                if len(all_chunks) >= (req.max_chunks or 4):
+                    break
+            except Exception as dt_err:
+                continue
+
+        joined_context = "\n\n---\n\n".join(all_chunks[:(req.max_chunks or 4)])
+        return {
+            "success": True,
+            "context": joined_context,
+            "chunks_count": len(all_chunks[:(req.max_chunks or 4)]),
+            "sources": sources
+        }
+    except Exception as e:
+        return {"success": False, "context": "", "chunks_count": 0, "error": str(e)}
 
 @app.post("/messages")
 async def post_msg(req: MessageFullRequest, c_email: str = Depends(get_current_user_email)):
