@@ -64,7 +64,7 @@ class ForumAuthService {
 
       // Nếu API gateway bị lỗi 500, 502 hoặc trả về fail, fallback xác thực trực tiếp qua type.vn
       final directResult = await loginDirectTypeVn(username: username, password: password);
-      if (directResult['statusCode'] == 200) {
+      if (directResult['statusCode'] == 200 || directResult['statusCode'] != 0) {
         return directResult;
       }
 
@@ -135,9 +135,24 @@ class ForumAuthService {
       ).timeout(const Duration(seconds: 12));
 
       if (loginRes.statusCode != 200) {
+        String msg = 'Email hoặc mật khẩu không chính xác.';
+        try {
+          final errBody = utf8.decode(loginRes.bodyBytes);
+          if (errBody.contains('account-locked')) {
+            msg = 'Tài khoản diễn đàn type.vn của bạn hiện đang bị tạm khóa (account-locked). Vui lòng liên hệ quản trị viên để mở khóa.';
+          } else if (errBody.contains('invalid-credentials') || errBody.contains('user-not-found')) {
+            msg = 'Email hoặc mật khẩu không chính xác.';
+          } else if (errBody.isNotEmpty && !errBody.startsWith('<')) {
+            final decoded = jsonDecode(errBody);
+            if (decoded is Map && decoded['message'] != null) {
+              msg = decoded['message'].toString();
+            }
+          }
+        } catch (_) {}
+
         return {
-          'statusCode': 401,
-          'body': {'message': 'Email hoặc mật khẩu không chính xác.'},
+          'statusCode': loginRes.statusCode,
+          'body': {'message': msg},
         };
       }
 
@@ -206,9 +221,24 @@ class ForumAuthService {
           final gData = jsonDecode(utf8.decode(groupsRes.bodyBytes));
           if (gData is Map && gData['groups'] is List) {
             for (final grp in gData['groups']) {
-              final slug = grp['slug']?.toString() ?? '';
-              if (slug.isNotEmpty && !userGroups.contains(slug)) {
-                userGroups.add(slug);
+              if (grp is Map) {
+                final slug = grp['slug']?.toString().trim() ?? '';
+                final name = grp['name']?.toString().trim() ?? '';
+                final displayName = grp['displayName']?.toString().trim() ?? '';
+                if (slug.isNotEmpty && !userGroups.contains(slug)) {
+                  userGroups.add(slug);
+                }
+                if (name.isNotEmpty && !userGroups.contains(name)) {
+                  userGroups.add(name);
+                }
+                if (displayName.isNotEmpty && !userGroups.contains(displayName)) {
+                  userGroups.add(displayName);
+                }
+              } else if (grp != null) {
+                final str = grp.toString().trim();
+                if (str.isNotEmpty && !userGroups.contains(str)) {
+                  userGroups.add(str);
+                }
               }
             }
           }
@@ -269,5 +299,41 @@ class ForumAuthService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Lấy danh sách nhóm của user trực tiếp từ https://type.vn/api/user/:slug/groups
+  Future<List<String>> fetchUserGroupsByUsername(String username) async {
+    final groups = <String>[];
+    if (username.isEmpty) return groups;
+    try {
+      final userSlug = username.trim().toLowerCase().replaceAll(' ', '-');
+      final res = await _client.get(
+        Uri.parse('https://type.vn/api/user/${Uri.encodeComponent(userSlug)}/groups'),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final gData = jsonDecode(utf8.decode(res.bodyBytes));
+        if (gData is Map && gData['groups'] is List) {
+          for (final grp in gData['groups']) {
+            if (grp is Map) {
+              final slug = grp['slug']?.toString().trim() ?? '';
+              final name = grp['name']?.toString().trim() ?? '';
+              final displayName = grp['displayName']?.toString().trim() ?? '';
+              if (slug.isNotEmpty && !groups.contains(slug)) groups.add(slug);
+              if (name.isNotEmpty && !groups.contains(name)) groups.add(name);
+              if (displayName.isNotEmpty && !groups.contains(displayName)) groups.add(displayName);
+            } else if (grp != null) {
+              final str = grp.toString().trim();
+              if (str.isNotEmpty && !groups.contains(str)) groups.add(str);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return groups;
   }
 }

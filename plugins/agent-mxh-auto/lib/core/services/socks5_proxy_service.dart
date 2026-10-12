@@ -7,6 +7,7 @@ import 'package:archive/archive.dart';
 import 'package:dartssh2/dartssh2.dart';
 import '../../models/server_model.dart';
 import 'adb_manager_service.dart';
+import 'emulator_manager_service.dart';
 import 'local_config_service.dart';
 import 'persona_service.dart';
 
@@ -243,10 +244,27 @@ class Socks5ProxyService extends ChangeNotifier {
         return true;
       }
 
-      // Trên Windows, tiến trình detached không lưu trong /proc, nếu browserLaunchedAt còn ghi nhận thì giữ session
+      // Trên Windows:
       if (Platform.isWindows) {
         if (session != null && session.browserLaunchedAt != null) {
-          return true;
+          // Trong 5 giây đầu sau khi mở, giữ trạng thái là true để trình duyệt kịp khởi động
+          final elapsed = DateTime.now().difference(session.browserLaunchedAt!);
+          if (elapsed.inSeconds < 5) {
+            return true;
+          }
+          // Sau 5 giây, kiểm tra thực tế xem profile lock có còn tồn tại không
+          final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final homeDir = Platform.environment['USERPROFILE'] ??
+              Platform.environment['HOME'] ??
+              Directory.systemTemp.path;
+          final lockFile = File(p.join(homeDir, '.agent_mxh_auto', 'browser_profiles', 'ip_$sanitizedIp', 'lockfile'));
+          final singletonLock = File(p.join(homeDir, '.agent_mxh_auto', 'browser_profiles', 'ip_$sanitizedIp', 'SingletonLock'));
+          if (lockFile.existsSync() || singletonLock.existsSync()) {
+            return true;
+          }
+          // Nếu cả lock file đều không còn, trình duyệt đã bị đóng
+          session.browserLaunchedAt = null;
+          return false;
         }
       }
 
@@ -839,9 +857,208 @@ class Socks5ProxyService extends ChangeNotifier {
     return session;
   }
 
-  /// Tìm binary trình duyệt khả dụng trên hệ thống Windows hoặc Linux
+  /// Lấy đường dẫn binary của trình duyệt mặc định trên Linux thông qua xdg
+  String? _getDefaultLinuxBrowser() {
+    try {
+      var desktopFile = '';
+      final res = Process.runSync('xdg-settings', ['get', 'default-web-browser']);
+      if (res.exitCode == 0 && res.stdout != null) {
+        desktopFile = res.stdout.toString().trim();
+      }
+      if (desktopFile.isEmpty) {
+        final resMime = Process.runSync('xdg-mime', ['query', 'default', 'x-scheme-handler/http']);
+        if (resMime.exitCode == 0 && resMime.stdout != null) {
+          desktopFile = resMime.stdout.toString().trim();
+        }
+      }
+
+      if (desktopFile.isNotEmpty) {
+        final home = Platform.environment['HOME'] ?? '';
+        final searchDirs = [
+          if (home.isNotEmpty) '$home/.local/share/applications',
+          '/usr/share/applications',
+          '/usr/local/share/applications',
+          '/var/lib/snapd/desktop/applications',
+        ];
+
+        for (final dir in searchDirs) {
+          final file = File('$dir/$desktopFile');
+          if (file.existsSync()) {
+            final lines = file.readAsLinesSync();
+            for (final line in lines) {
+              final trimmed = line.trim();
+              if (trimmed.startsWith('Exec=')) {
+                var execPart = trimmed.substring(5).trim();
+                // Bỏ qua các cờ thay thế định dạng %U, %u, %F, %f
+                execPart = execPart.replaceAll(RegExp(r'%[a-zA-Z]'), '').trim();
+                final parts = execPart.split(' ');
+                final bin = parts.isNotEmpty ? parts.first : '';
+                if (bin.isNotEmpty) {
+                  if (bin.startsWith('/')) {
+                    if (File(bin).existsSync()) return bin;
+                  } else {
+                    final whichRes = Process.runSync('which', [bin]);
+                    if (whichRes.exitCode == 0 && whichRes.stdout != null) {
+                      final path = whichRes.stdout.toString().trim();
+                      if (path.isNotEmpty && File(path).existsSync()) return path;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Lấy binary trình duyệt mặc định trên Windows thông qua Registry
+  String? _getDefaultWindowsBrowser() {
+    try {
+      final res = Process.runSync('reg', [
+        'query',
+        r'HKCU\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice',
+        '/v',
+        'ProgId',
+      ]);
+      if (res.exitCode == 0 && res.stdout != null) {
+        final out = res.stdout.toString();
+        final match = RegExp(r'ProgId\s+REG_SZ\s+(\S+)').firstMatch(out);
+        if (match != null) {
+          final progId = match.group(1)?.toLowerCase() ?? '';
+          final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+          final programFiles = Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
+          final programFilesX86 = Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
+
+          if (progId.contains('chrome')) {
+            final candidates = [
+              '$programFiles\\Google\\Chrome\\Application\\chrome.exe',
+              '$programFilesX86\\Google\\Chrome\\Application\\chrome.exe',
+              if (localAppData.isNotEmpty) '$localAppData\\Google\\Chrome\\Application\\chrome.exe',
+            ];
+            for (final c in candidates) {
+              if (File(c).existsSync()) return c;
+            }
+          } else if (progId.contains('edge') || progId.contains('msedge') || progId.contains('appx')) {
+            final candidates = [
+              '$programFiles (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+              '$programFiles\\Microsoft\\Edge\\Application\\msedge.exe',
+              '$programFilesX86\\Microsoft\\Edge\\Application\\msedge.exe',
+            ];
+            for (final c in candidates) {
+              if (File(c).existsSync()) return c;
+            }
+          } else if (progId.contains('brave')) {
+            final candidates = [
+              '$programFiles\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+              '$programFilesX86\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+              if (localAppData.isNotEmpty) '$localAppData\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+            ];
+            for (final c in candidates) {
+              if (File(c).existsSync()) return c;
+            }
+          } else if (progId.contains('firefox')) {
+            final candidates = [
+              '$programFiles\\Mozilla Firefox\\firefox.exe',
+              '$programFilesX86\\Mozilla Firefox\\firefox.exe',
+            ];
+            for (final c in candidates) {
+              if (File(c).existsSync()) return c;
+            }
+          } else if (progId.contains('opera')) {
+            final candidates = [
+              if (localAppData.isNotEmpty) '$localAppData\\Programs\\Opera GX\\opera.exe',
+              if (localAppData.isNotEmpty) '$localAppData\\Programs\\Opera\\opera.exe',
+              '$programFiles\\Opera\\launcher.exe',
+            ];
+            for (final c in candidates) {
+              if (File(c).existsSync()) return c;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Lấy binary trình duyệt khả dụng trên macOS
+  String? _findMacBrowserExecutable() {
+    // Ưu tiên đọc trình duyệt mặc định trên macOS nếu có cấu hình qua LaunchServices / defaults
+    try {
+      final res = Process.runSync('defaults', [
+        'read',
+        'com.apple.LaunchServices/com.apple.launchservices.secure',
+        'LSHandlers',
+      ]);
+      if (res.exitCode == 0 && res.stdout != null) {
+        final out = res.stdout.toString().toLowerCase();
+        if (out.contains('google.chrome')) {
+          const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+          if (File(chrome).existsSync()) return chrome;
+        } else if (out.contains('brave')) {
+          const brave = '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
+          if (File(brave).existsSync()) return brave;
+        } else if (out.contains('edge')) {
+          const edge = '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge';
+          if (File(edge).existsSync()) return edge;
+        } else if (out.contains('firefox')) {
+          const ff = '/Applications/Firefox.app/Contents/MacOS/firefox';
+          if (File(ff).existsSync()) return ff;
+        }
+      }
+    } catch (_) {}
+
+    final home = Platform.environment['HOME'] ?? '';
+    final macCandidates = [
+      // Google Chrome
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      if (home.isNotEmpty) '$home/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+
+      // Microsoft Edge
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      if (home.isNotEmpty) '$home/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+
+      // Brave Browser
+      '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+      if (home.isNotEmpty) '$home/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+
+      // Opera & Opera GX
+      '/Applications/Opera GX.app/Contents/MacOS/Opera GX',
+      '/Applications/Opera.app/Contents/MacOS/Opera',
+
+      // Cốc Cốc
+      '/Applications/CocCoc.app/Contents/MacOS/CocCoc',
+
+      // Chromium
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+
+      // Mozilla Firefox
+      '/Applications/Firefox.app/Contents/MacOS/firefox',
+      if (home.isNotEmpty) '$home/Applications/Firefox.app/Contents/MacOS/firefox',
+    ];
+
+    for (final b in macCandidates) {
+      if (File(b).existsSync()) {
+        return b;
+      }
+    }
+    return null;
+  }
+
+  /// Tìm binary trình duyệt khả dụng trên hệ thống Windows, macOS hoặc Linux.
+  /// Tự động ưu tiên trình duyệt mặc định được thiết lập của hệ điều hành.
   String? findBrowserExecutable() {
+    if (Platform.isMacOS) {
+      return _findMacBrowserExecutable();
+    }
+
     if (Platform.isWindows) {
+      final defaultWinBrowser = _getDefaultWindowsBrowser();
+      if (defaultWinBrowser != null && File(defaultWinBrowser).existsSync()) {
+        return defaultWinBrowser;
+      }
+
       final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
       final programFiles = Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
       final programFilesX86 = Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
@@ -867,6 +1084,11 @@ class Socks5ProxyService extends ChangeNotifier {
         if (localAppData.isNotEmpty) '$localAppData\\Programs\\Opera\\opera.exe',
         '$programFiles\\Opera\\launcher.exe',
 
+        // Cốc Cốc
+        if (localAppData.isNotEmpty) '$localAppData\\CocCoc\\Browser\\Application\\browser.exe',
+        '$programFiles\\CocCoc\\Browser\\Application\\browser.exe',
+        '$programFilesX86\\CocCoc\\Browser\\Application\\browser.exe',
+
         // Mozilla Firefox
         '$programFiles\\Mozilla Firefox\\firefox.exe',
         '$programFilesX86\\Mozilla Firefox\\firefox.exe',
@@ -878,6 +1100,12 @@ class Socks5ProxyService extends ChangeNotifier {
         }
       }
       return null;
+    }
+
+    // Trên Linux: Ưu tiên phát hiện trình duyệt mặc định qua xdg
+    final defaultLinuxBrowser = _getDefaultLinuxBrowser();
+    if (defaultLinuxBrowser != null && File(defaultLinuxBrowser).existsSync()) {
+      return defaultLinuxBrowser;
     }
 
     final browserCandidates = [
@@ -1049,13 +1277,22 @@ class Socks5ProxyService extends ChangeNotifier {
       ];
     } else {
       final extDir = '${profileDir.path}/vietnamese_meta_ext';
-      final tiktokCaptchaExtDir = '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-mxh-auto/extensions/tiktok_captcha_solver';
+      final currentExeDir = File(Platform.resolvedExecutable).parent.path;
+      final candidatesCaptcha = [
+        '${Directory.current.path}/extensions/tiktok_captcha_solver',
+        '$currentExeDir/extensions/tiktok_captcha_solver',
+        '$currentExeDir/data/flutter_assets/extensions/tiktok_captcha_solver',
+        '/home/yenai/Documents/Projects/Typing/apps/plugins/agent-mxh-auto/extensions/tiktok_captcha_solver',
+      ];
       final List<String> loadedExtensions = [];
       if (Directory(extDir).existsSync()) {
         loadedExtensions.add(extDir);
       }
-      if (Directory(tiktokCaptchaExtDir).existsSync()) {
-        loadedExtensions.add(tiktokCaptchaExtDir);
+      for (final capDir in candidatesCaptcha) {
+        if (Directory(capDir).existsSync()) {
+          loadedExtensions.add(capDir);
+          break;
+        }
       }
 
       args = [
@@ -1276,6 +1513,7 @@ except Exception:
       '/usr/bin/emulator',
       '/usr/local/bin/emulator',
       p.join(home, '.android-sdk', 'emulator', 'emulator$exeExt'),
+      p.join(home, '.agent_mxh_auto', 'android_sdk', 'emulator', 'emulator$exeExt'),
       p.join(home, '.agent_mxh_auto', 'emulator', 'emulator$exeExt'),
       p.join(home, '.tadu_ai_agent', 'emulator', 'emulator$exeExt'),
     ];
@@ -1285,6 +1523,15 @@ except Exception:
       }
     }
     return null;
+  }
+
+  /// Tìm hoặc tự động tải Android Emulator binary nếu máy chưa cài
+  Future<String?> resolveAndroidEmulatorExecutable({Function(double progress, String status)? onProgress}) async {
+    final existing = _findAndroidEmulatorExecutable();
+    if (existing != null) {
+      return existing;
+    }
+    return await EmulatorManagerService().ensureEmulatorInstalled(onProgress: onProgress);
   }
 
   /// Tìm danh sách AVD khả dụng trên máy tính
@@ -1827,7 +2074,11 @@ for root, _, files in os.walk(target_dir):
     if (targetBase.isEmpty || !Directory(p.join(avdsDir.path, '$targetBase.avd')).existsSync()) {
       final avds = await getAvailableAvds();
       if (avds.isEmpty) {
-        throw Exception('Hệ thống chưa có Android AVD nào để làm mẫu nhân bản. Vui lòng import hoặc tạo một máy ảo trên Android Studio trước.');
+        throw Exception(
+          'Máy tính chưa có máy ảo Android mẫu để nhân bản. '
+          'Bạn vui lòng bấm nút "Import" bên cạnh để nạp file backup máy ảo có sẵn (.tar.gz, .zip), '
+          'hoặc chuyển sang chế độ "Thiết bị ngoại vi (WiFi ADB)" để kết nối trực tiếp điện thoại thật.'
+        );
       }
       // Ưu tiên chọn base AVD có sẵn snapshot default_boot và dung lượng userdata lớn nhất (đầy đủ app)
       String? bestCandidate;
@@ -2277,10 +2528,10 @@ for root, _, files in os.walk(target_dir):
     }
 
     // TRƯỜNG HỢP 2: Khởi chạy Android Emulator chuẩn Android Studio trên máy Local
-    // 1. Kiểm tra Android Emulator binary
-    final emulatorBin = _findAndroidEmulatorExecutable();
+    // 1. Kiểm tra hoặc tự động tải Android Emulator binary từ Google repo nếu máy chưa có
+    final emulatorBin = await resolveAndroidEmulatorExecutable();
     if (emulatorBin == null) {
-      throw Exception('Không tìm thấy Android Emulator trên hệ thống. Vui lòng chuyển sang tab Thiết bị ngoại vi (WiFi ADB) hoặc cài đặt môi trường giả lập.');
+      throw Exception('Không tìm thấy Android Emulator trên hệ thống và không thể tải tự động. Vui lòng chuyển sang tab Thiết bị ngoại vi (WiFi ADB) hoặc kiểm tra kết nối mạng.');
     }
 
     // 2. Xác định tên AVD để khởi chạy
@@ -2469,6 +2720,14 @@ for root, _, files in os.walk(target_dir):
       if (!env.containsKey('DISPLAY') || env['DISPLAY']!.isEmpty) {
         env['DISPLAY'] = ':0';
       }
+      // Đảm bảo emulator tìm thấy SDK và config nếu chạy từ embedded path
+      final sdkDir = Directory(p.dirname(p.dirname(emulatorBin)));
+      if (!env.containsKey('ANDROID_HOME') && sdkDir.existsSync()) {
+        env['ANDROID_HOME'] = sdkDir.path;
+      }
+      if (!env.containsKey('ANDROID_SDK_ROOT') && sdkDir.existsSync()) {
+        env['ANDROID_SDK_ROOT'] = sdkDir.path;
+      }
       final proc = await Process.start(
         emulatorBin,
         emulatorArgs,
@@ -2656,15 +2915,27 @@ for root, _, files in os.walk(target_dir):
   /// Đóng riêng trình duyệt của IP mà không làm mất hầm SOCKS5 nếu device vẫn đang chạy
   Future<void> closeBrowserForIp(String ip) async {
     final session = _activeSessions[ip];
-    if (session?.browserProcess != null) {
-      try {
-        session!.browserProcess!.kill();
-      } catch (_) {}
-      session?.browserProcess = null;
+    if (session != null) {
+      if (session.browserProcess != null) {
+        try {
+          session.browserProcess!.kill();
+        } catch (_) {}
+        session.browserProcess = null;
+      }
+      session.browserLaunchedAt = null;
     }
     try {
       final sanitizedIp = ip.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      if (!Platform.isWindows) {
+      if (Platform.isWindows) {
+        try {
+          final winProfileNeedle = 'browser_profiles\\\\ip_$sanitizedIp';
+          await Process.run('powershell', [
+            '-NoProfile',
+            '-Command',
+            "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*$winProfileNeedle*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }"
+          ]);
+        } catch (_) {}
+      } else {
         await Process.run('pkill', ['-f', 'browser_profiles/ip_$sanitizedIp']);
       }
       final homeDir = Platform.environment['USERPROFILE'] ??

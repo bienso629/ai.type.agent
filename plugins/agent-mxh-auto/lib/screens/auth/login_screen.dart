@@ -202,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               ),
                               const SizedBox(height: 10),
                               const Text(
-                                'Phần mềm AI quản lý MXH tự động',
+                                'Diễn viên MXH',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 16.5,
@@ -246,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   onTap: () => _handleSelectAccount(acc),
                                   borderRadius: BorderRadius.circular(20),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF1E293B),
                                       borderRadius: BorderRadius.circular(20),
@@ -426,7 +426,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Máy chủ xác thực (Server)',
+                            'Sân khấu xác thực',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -579,7 +579,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                             const SizedBox(width: 6),
                             const Text(
-                              'Phần mềm AI quản lý MXH tự động',
+                              'Diễn viên MXH',
                               style: TextStyle(
                                 fontSize: 10.5,
                                 color: AppColors.textDim,

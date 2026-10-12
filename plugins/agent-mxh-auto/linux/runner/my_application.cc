@@ -17,7 +17,7 @@ G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   GtkWindow* win = GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(view)));
-  gtk_window_fullscreen(win);
+  gtk_window_maximize(win);
   gtk_widget_show(GTK_WIDGET(win));
 }
 
@@ -47,8 +47,9 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "Phần mềm AI quản lý MXH tự động");
+    gtk_header_bar_set_title(header_bar, "Diễn viên MXH");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
+    gtk_header_bar_set_decoration_layout(header_bar, ":minimize,maximize,close");
 
     GtkCssProvider* provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(
@@ -81,7 +82,7 @@ static void my_application_activate(GApplication* application) {
 
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "Phần mềm AI quản lý MXH tự động");
+    gtk_window_set_title(window, "Diễn viên MXH");
   }
 
   gtk_window_set_default_size(window, 1280, 720);
@@ -128,7 +129,7 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
-  gtk_window_fullscreen(window);
+  gtk_window_maximize(window);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -196,7 +197,7 @@ MyApplication* my_application_new() {
   // corresponding .desktop file. This ensures better integration by allowing
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
-  g_set_application_name("MXH tự động");
+  g_set_application_name("Diễn viên MXH");
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",

@@ -73,13 +73,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           children: [
             Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 22),
             SizedBox(width: 8),
-            Text('Chuyển Đổi Máy Chủ VPS'),
+            Text('Chuyển Đổi Sân Khấu VPS'),
           ],
         ),
         content: serverProvider.servers.isEmpty
             ? const Padding(
                 padding: EdgeInsets.all(20),
-                child: Text('Chưa có máy chủ nào trong danh sách', style: TextStyle(color: AppColors.textMuted)),
+                child: Text('Chưa có Sân khấu nào trong danh sách', style: TextStyle(color: AppColors.textMuted)),
               )
             : ListView.builder(
                 shrinkWrap: true,
@@ -254,7 +254,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'MXH tự động',
+                              'Diễn viên MXH',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -293,7 +293,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'MÁY CHỦ HIỆN TẠI',
+                        'SÂN KHẤU HIỆN TẠI',
                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textDim, letterSpacing: 0.5),
                       ),
                       const SizedBox(height: 6),
@@ -315,7 +315,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    serverProvider.selectedServer?.name ?? 'Chọn Máy Chủ...',
+                                    serverProvider.selectedServer?.name ?? 'Chọn Sân Khấu...',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
@@ -481,7 +481,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         children: [
                           Icon(Icons.shield_rounded, size: 14, color: AppColors.accent),
                           SizedBox(width: 6),
-                          Text('MXH tự động Desktop', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
+                          Text('Diễn viên MXH', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
                         ],
                       ),
                       Text('v1.3.0', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textDim)),
@@ -562,7 +562,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ],
         ),
         content: const Text(
-          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản MXH tự động?',
+          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản Diễn viên MXH?',
           style: TextStyle(fontSize: 13, color: AppColors.textBody),
         ),
         actions: [
