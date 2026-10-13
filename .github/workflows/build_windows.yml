@@ -1,0 +1,52 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Portable ZIP
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Flutter Windows Application
+        run: flutter build windows --release
+
+      - name: Package Portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist-win -Force | Out-Null
+          Compress-Archive -Path 'build\windows\x64\runner\Release\*' -DestinationPath 'dist-win\ai-type-agent_1.4.0_windows_x64.zip' -Force
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-type-agent-windows
+          path: dist-win/*.zip
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-build-${{ github.run_number }}
+          name: Windows build ${{ github.run_number }}
+          files: dist-win/*.zip
+          make_latest: true
