@@ -796,6 +796,88 @@ async def upload_mineru_result(req: MinerUResultRequest, background_tasks: Backg
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 
+# ============================================================================
+# SYNC DỮ LIỆU FAISS TỪ LOCAL (ai.type Desktop) LÊN SERVER
+# ============================================================================
+class SyncLocalDocRequest(BaseModel):
+    username: str
+    doc_type: Optional[str] = None
+    filename: str
+    markdown: Optional[str] = None
+    content_json: Optional[str] = None
+
+class SyncLocalFaissRequest(BaseModel):
+    username: str
+    doc_type: Optional[str] = None
+    faiss_base64: str
+    pkl_base64: str
+    filenames: List[str] = []
+
+@app.post("/sync-local-doc")
+async def sync_local_doc(req: SyncLocalDocRequest):
+    """Nhận 1 tài liệu đã bóc tách từ local (Markdown + MinerU JSON) và lưu vào thư mục tài liệu của user."""
+    try:
+        save_dir = get_user_pdf_dir(req.username, req.doc_type)
+        os.makedirs(save_dir, exist_ok=True)
+        base_name = os.path.splitext(os.path.basename(req.filename))[0]
+        written = []
+        if req.content_json:
+            json_path = os.path.join(save_dir, f"{base_name}.mineru.json")
+            async with aiofiles.open(json_path, "w", encoding="utf-8") as out:
+                await out.write(req.content_json)
+            written.append(f"{base_name}.mineru.json")
+        if req.markdown:
+            md_path = os.path.join(save_dir, f"{base_name}.md")
+            async with aiofiles.open(md_path, "w", encoding="utf-8") as out:
+                await out.write(req.markdown)
+            written.append(f"{base_name}.md")
+        return {"success": True, "filename": req.filename, "written": written}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, detail=str(e))
+
+@app.post("/sync-local-faiss")
+async def sync_local_faiss(req: SyncLocalFaissRequest):
+    """Ghi đè index.faiss + index.pkl bằng bản local và đánh dấu các tài liệu tương ứng là đã index."""
+    if not HAS_INDEXING_UTILS:
+        raise HTTPException(500, detail="Missing indexing_utils")
+    try:
+        import base64
+        save_dir = get_user_pdf_dir(req.username, req.doc_type)
+        _, index_dir = indexing_utils._ensure_dirs_for_type(req.username, req.doc_type)
+        os.makedirs(index_dir, exist_ok=True)
+
+        faiss_file = os.path.join(index_dir, "index.faiss")
+        pkl_file = os.path.join(index_dir, "index.pkl")
+        async with aiofiles.open(faiss_file, "wb") as f_out:
+            await f_out.write(base64.b64decode(req.faiss_base64))
+        async with aiofiles.open(pkl_file, "wb") as p_out:
+            await p_out.write(base64.b64decode(req.pkl_base64))
+
+        # Dùng sha256 thật của file để indexer coi như "không đổi" và không build lại đè bản vừa sync
+        meta = indexing_utils._load_meta(index_dir)
+        files_map = meta.setdefault("files", {})
+        marked = 0
+        for name in req.filenames:
+            base_name = os.path.splitext(os.path.basename(name))[0]
+            for candidate in (f"{base_name}.mineru.json", f"{base_name}.pdf"):
+                p = os.path.abspath(os.path.join(save_dir, candidate))
+                if os.path.exists(p):
+                    files_map[p] = indexing_utils._file_sha256(p)
+                    marked += 1
+        indexing_utils._save_meta(index_dir, meta)
+
+        print(f"[SyncLocalFaiss] {req.username}/{req.doc_type}: faiss={os.path.getsize(faiss_file)}B, pkl={os.path.getsize(pkl_file)}B, marked={marked}")
+        return {
+            "success": True,
+            "faiss_size": os.path.getsize(faiss_file),
+            "pkl_size": os.path.getsize(pkl_file),
+            "marked_files": marked
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, detail=str(e))
+
 @app.get("/list-files/{username}")
 async def list_user_files(username: str):
     if not HAS_INDEXING_UTILS:

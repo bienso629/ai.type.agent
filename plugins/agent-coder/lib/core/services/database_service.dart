@@ -550,6 +550,8 @@ class DatabaseService {
     try {
       final db = await _getDb();
       await db.delete('chat_messages', where: 'session_id = ?', whereArgs: [sessionId]);
+      // Xóa luôn ID phiên CLI để lần gửi sau tạo conversation mới, không resume phiên cũ
+      await db.update('chat_sessions', {'cli_conv_id': null}, where: 'id = ?', whereArgs: [sessionId]);
       return true;
     } catch (_) {
       return false;
