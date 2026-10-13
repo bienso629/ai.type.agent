@@ -28,7 +28,15 @@ jobs:
         run: flutter pub get
 
       - name: Build Flutter Windows Application
-        run: flutter build windows --release
+        shell: pwsh
+        run: |
+          flutter build windows --release 2>&1 | Tee-Object -FilePath build.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $lines = Get-Content build.log | Select-String -Pattern 'error|Error|failed' | Select-Object -First 25
+            foreach ($l in $lines) { Write-Host "::error::$($l.Line.Trim())" }
+            exit $code
+          }
 
       - name: Package Portable ZIP
         shell: pwsh
