@@ -45,11 +45,29 @@ jobs:
           New-Item -ItemType Directory -Path dist-win -Force | Out-Null
           Compress-Archive -Path 'build\windows\x64\runner\Release\*' -DestinationPath 'dist-win\ai-type-agent_1.4.0_windows_x64.zip' -Force
 
+      - name: Build Setup Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe",
+            "C:\ProgramData\chocolatey\bin\iscc.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { Write-Host "::error::Không tìm thấy ISCC.exe"; exit 1 }
+          & "$iscc" "scripts\installer_windows.iss" 2>&1 | Tee-Object -FilePath iscc.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content iscc.log | Select-String -Pattern 'Error|error' | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
+            exit $LASTEXITCODE
+          }
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ai-type-agent-windows
-          path: dist-win/*.zip
+          path: |
+            dist-win/*.zip
+            dist-win/*.exe
           retention-days: 14
 
       - name: Publish GitHub Release
@@ -57,5 +75,7 @@ jobs:
         with:
           tag_name: windows-build-${{ github.run_number }}
           name: Windows build ${{ github.run_number }}
-          files: dist-win/*.zip
+          files: |
+            dist-win/*.zip
+            dist-win/*.exe
           make_latest: true
