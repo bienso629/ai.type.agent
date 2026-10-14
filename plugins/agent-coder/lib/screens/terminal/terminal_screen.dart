@@ -1750,11 +1750,22 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     focusNode: pane.focusNode,
                     theme: _terminalTheme,
                     cursorType: TerminalCursorType.block,
+                    alwaysShowCursor: isThisPaneActive,
+                    hardwareKeyboardOnly: Platform.isWindows || Platform.isLinux || Platform.isMacOS,
+                    onTapUp: (_, _) {
+                      if (_activePaneIndex != windowIndex || (isChild ? _activeSubPaneId != pane.id : _activeSubPaneId != null)) {
+                        setState(() {
+                          _activePaneIndex = windowIndex;
+                          _activeSubPaneId = isChild ? pane.id : null;
+                        });
+                      }
+                      pane.focusNode.requestFocus();
+                    },
                     padding: const EdgeInsets.only(left: 8, top: 6, bottom: 6, right: 6),
                     textStyle: const TerminalStyle(
                       fontSize: 13.5,
                       fontFamily: 'Ubuntu Mono',
-                      fontFamilyFallback: ['UbuntuMono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', 'monospace'],
+                      fontFamilyFallback: ['UbuntuMono', 'DejaVu Sans Mono', 'Liberation Mono', 'Consolas', 'Courier New', 'monospace'],
                       height: 1.2,
                     ),
                     autofocus: isThisPaneActive,
