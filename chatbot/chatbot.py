@@ -813,6 +813,43 @@ class SyncLocalFaissRequest(BaseModel):
     pkl_base64: str
     filenames: List[str] = []
 
+class SyncManifestFile(BaseModel):
+    name: str          # ví dụ: "abc.md" hoặc "abc.mineru.json"
+    sha256: str
+
+class SyncLocalManifestRequest(BaseModel):
+    username: str
+    doc_type: Optional[str] = None
+    files: List[SyncManifestFile] = []
+    faiss_sha256: Optional[str] = None
+    pkl_sha256: Optional[str] = None
+
+@app.post("/sync-local-manifest")
+async def sync_local_manifest(req: SyncLocalManifestRequest):
+    """So sánh sha256 local với server, trả về danh sách file cần đẩy lên (thiếu hoặc khác nội dung)."""
+    if not HAS_INDEXING_UTILS:
+        raise HTTPException(500, detail="Missing indexing_utils")
+    try:
+        save_dir = get_user_pdf_dir(req.username, req.doc_type)
+        need = []
+        for f in req.files:
+            safe_name = os.path.basename(f.name)
+            p = os.path.join(save_dir, safe_name)
+            if not os.path.exists(p) or indexing_utils._file_sha256(p) != f.sha256:
+                need.append(f.name)
+
+        index_dir = os.path.join(indexing_utils.INDEX_BASE_DIR, req.doc_type, req.username) if req.doc_type and req.doc_type != "None" \
+            else os.path.join(indexing_utils.INDEX_BASE_DIR, req.username)
+        need_faiss = False
+        for local_hash, fname in ((req.faiss_sha256, "index.faiss"), (req.pkl_sha256, "index.pkl")):
+            p = os.path.join(index_dir, fname)
+            if not local_hash or not os.path.exists(p) or indexing_utils._file_sha256(p) != local_hash:
+                need_faiss = True
+        return {"need": need, "need_faiss": need_faiss, "total": len(req.files)}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, detail=str(e))
+
 @app.post("/sync-local-doc")
 async def sync_local_doc(req: SyncLocalDocRequest):
     """Nhận 1 tài liệu đã bóc tách từ local (Markdown + MinerU JSON) và lưu vào thư mục tài liệu của user."""
