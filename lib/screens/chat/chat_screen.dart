@@ -894,8 +894,146 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildServerDropdown(ServerProvider serverProvider) {
+  void _handleServerSelected(ServerProvider serverProvider, ServerModel srv) async {
     final chat = context.read<ChatProvider>();
+    if (srv.id == '__manage_servers__') {
+      widget.onNavigateToServers?.call();
+    } else if (srv.id == 'local' || srv.serverIp == '127.0.0.1' || srv.serverIp == 'localhost') {
+      await serverProvider.selectServer(ServerModel(
+        id: 'local',
+        name: 'Local Machine',
+        serverIp: '127.0.0.1',
+      ));
+      await chat.setServerForCurrentSession('Local Machine');
+      if (mounted) {
+        AppToast.success(context, 'Agent chuyển sang thực thi trên Local Machine');
+      }
+    } else {
+      await serverProvider.selectServer(srv);
+      await chat.setServerForCurrentSession(srv.name);
+      if (mounted) {
+        AppToast.success(context, 'Agent chuyển sang kết nối máy chủ SSH: ${srv.name}');
+      }
+    }
+  }
+
+  bool _isRemoteServerActive(ServerProvider serverProvider) {
+    final s = serverProvider.selectedServer;
+    return s != null && s.serverIp != '127.0.0.1' && s.serverIp != 'localhost';
+  }
+
+  /// Xây dựng danh sách mục chọn máy chủ (Local Machine / VPS / Quản lý) dùng chung
+  /// cho dropdown trên đầu trang và nút Server cạnh nút Scope dưới ô nhập liệu.
+  List<PopupMenuEntry<ServerModel>> _buildServerMenuItems(ServerProvider serverProvider, bool isLocal) {
+    final list = <PopupMenuEntry<ServerModel>>[];
+
+    // 1. Local Machine item
+    list.add(
+      PopupMenuItem<ServerModel>(
+        value: ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'),
+        child: Row(
+          children: [
+            const Icon(Icons.laptop_chromebook_rounded, size: 16, color: AppColors.accent),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Local Machine', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                  Text('Thực thi trực tiếp trên máy cục bộ', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+            if (isLocal) const Icon(Icons.check_rounded, size: 16, color: AppColors.accent),
+          ],
+        ),
+      ),
+    );
+
+    // 2. VPS Servers list
+    if (serverProvider.servers.isNotEmpty) {
+      list.add(const PopupMenuDivider());
+      for (final s in serverProvider.servers) {
+        final isSel = !isLocal &&
+            (s.id == serverProvider.selectedServer?.id || s.serverIp == serverProvider.selectedServer?.serverIp);
+        list.add(
+          PopupMenuItem<ServerModel>(
+            value: s,
+            child: Row(
+              children: [
+                const Icon(Icons.dns_rounded, size: 16, color: AppColors.primaryLight),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(s.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
+                      Text('${s.sshUser}@${s.serverIp}:${s.sshPort}', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                    ],
+                  ),
+                ),
+                if (isSel) const Icon(Icons.check_rounded, size: 16, color: AppColors.primaryLight),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    // 3. Manage Servers item
+    if (widget.onNavigateToServers != null) {
+      list.add(const PopupMenuDivider());
+      list.add(
+        PopupMenuItem<ServerModel>(
+          value: ServerModel(id: '__manage_servers__', name: 'Quản lý máy chủ', serverIp: ''),
+          child: const Row(
+            children: [
+              Icon(Icons.settings_suggest_outlined, size: 16, color: AppColors.textDim),
+              SizedBox(width: 10),
+              Text(
+                'Quản lý máy chủ & Thêm mới...',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return list;
+  }
+
+  /// Mở menu chọn nhanh máy chủ ngay tại vị trí nút Server (bên cạnh nút Scope)
+  Future<void> _showQuickServerMenu(BuildContext btnContext, ServerProvider serverProvider) async {
+    final RenderBox button = btnContext.findRenderObject() as RenderBox;
+    final RenderBox overlay = Navigator.of(btnContext).overlay!.context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(const Offset(0, 0), ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(const Offset(0, 8)), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final selected = await showMenu<ServerModel>(
+      context: btnContext,
+      position: position,
+      color: AppColors.cardBg,
+      constraints: const BoxConstraints(minWidth: 250, maxWidth: 300),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+        side: const BorderSide(color: AppColors.borderDark),
+      ),
+      items: _buildServerMenuItems(serverProvider, !_isRemoteServerActive(serverProvider)),
+    );
+
+    if (!mounted || selected == null) return;
+    _handleServerSelected(serverProvider, selected);
+  }
+
+  Widget _buildServerDropdown(ServerProvider serverProvider) {
     final isLocal = serverProvider.selectedServer == null ||
         serverProvider.selectedServer!.serverIp == '127.0.0.1' ||
         serverProvider.selectedServer!.serverIp == 'localhost';
@@ -913,107 +1051,8 @@ class _ChatScreenState extends State<ChatScreen> {
         borderRadius: BorderRadius.circular(4),
         side: const BorderSide(color: AppColors.borderDark),
       ),
-      onSelected: (srv) async {
-        if (srv.id == '__manage_servers__') {
-          widget.onNavigateToServers?.call();
-        } else if (srv.id == 'local' || srv.serverIp == '127.0.0.1' || srv.serverIp == 'localhost') {
-          await serverProvider.selectServer(ServerModel(
-            id: 'local',
-            name: 'Local Machine',
-            serverIp: '127.0.0.1',
-          ));
-          await chat.setServerForCurrentSession('Local Machine');
-          if (mounted) {
-            AppToast.success(context, 'Agent chuyển sang thực thi trên Local Machine');
-          }
-        } else {
-          await serverProvider.selectServer(srv);
-          await chat.setServerForCurrentSession(srv.name);
-          if (mounted) {
-            AppToast.success(context, 'Agent chuyển sang kết nối máy chủ SSH: ${srv.name}');
-          }
-        }
-      },
-      itemBuilder: (ctx) {
-        final list = <PopupMenuEntry<ServerModel>>[];
-
-        // 1. Local Machine item
-        list.add(
-          PopupMenuItem<ServerModel>(
-            value: ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'),
-            child: Row(
-              children: [
-                const Icon(Icons.laptop_chromebook_rounded, size: 16, color: AppColors.accent),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('Local Machine', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
-                      Text('Thực thi trực tiếp trên máy cục bộ', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
-                    ],
-                  ),
-                ),
-                if (isLocal) const Icon(Icons.check_rounded, size: 16, color: AppColors.accent),
-              ],
-            ),
-          ),
-        );
-
-        // 2. VPS Servers list
-        if (serverProvider.servers.isNotEmpty) {
-          list.add(const PopupMenuDivider());
-          for (final s in serverProvider.servers) {
-            final isSel = !isLocal &&
-                (s.id == serverProvider.selectedServer?.id || s.serverIp == serverProvider.selectedServer?.serverIp);
-            list.add(
-              PopupMenuItem<ServerModel>(
-                value: s,
-                child: Row(
-                  children: [
-                    const Icon(Icons.dns_rounded, size: 16, color: AppColors.primaryLight),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(s.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite)),
-                          Text('${s.sshUser}@${s.serverIp}:${s.sshPort}', style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
-                        ],
-                      ),
-                    ),
-                    if (isSel) const Icon(Icons.check_rounded, size: 16, color: AppColors.primaryLight),
-                  ],
-                ),
-              ),
-            );
-          }
-        }
-
-        // 3. Manage Servers item
-        if (widget.onNavigateToServers != null) {
-          list.add(const PopupMenuDivider());
-          list.add(
-            PopupMenuItem<ServerModel>(
-              value: ServerModel(id: '__manage_servers__', name: 'Quản lý máy chủ', serverIp: ''),
-              child: const Row(
-                children: [
-                  Icon(Icons.settings_suggest_outlined, size: 16, color: AppColors.textDim),
-                  SizedBox(width: 10),
-                  Text(
-                    'Quản lý máy chủ & Thêm mới...',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return list;
-      },
+      onSelected: (srv) => _handleServerSelected(serverProvider, srv),
+      itemBuilder: (ctx) => _buildServerMenuItems(serverProvider, isLocal),
       child: Container(
               height: 36,
               constraints: const BoxConstraints(minWidth: 100, maxWidth: 150),
@@ -2535,6 +2574,41 @@ class _ChatScreenState extends State<ChatScreen> {
                           icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
                           label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
                           onPressed: _triggerScopePicker,
+                        ),
+                        const SizedBox(width: 8),
+                        // Nút kết nối nhanh máy chủ có sẵn (bên cạnh nút Scope)
+                        Builder(
+                          builder: (btnCtx) => OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 32),
+                              fixedSize: const Size.fromHeight(32),
+                              side: BorderSide(
+                                color: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan : AppColors.borderDark,
+                              ),
+                              backgroundColor: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            ),
+                            icon: Icon(
+                              Icons.dns_rounded,
+                              size: 14,
+                              color: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan : AppColors.textBody,
+                            ),
+                            label: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 110),
+                              child: Text(
+                                _isRemoteServerActive(serverProvider) ? serverProvider.selectedServer!.name : 'Server',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan : AppColors.textBody,
+                                  fontWeight: _isRemoteServerActive(serverProvider) ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                            onPressed: () => _showQuickServerMenu(btnCtx, serverProvider),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         OutlinedButton.icon(
