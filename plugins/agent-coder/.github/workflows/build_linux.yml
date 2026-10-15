@@ -1,0 +1,127 @@
+name: Build Linux (Ubuntu)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Ubuntu DEB + Portable
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libcups2-dev libsqlite3-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.44.2'
+          cache: true
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Flutter Linux Application
+        run: |
+          flutter build linux --release 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E 'error|Error|failed' build.log | head -25 | while read -r l; do
+              echo "::error::$l"
+            done
+            exit "$code"
+          fi
+
+      - name: Package Portable tar.gz
+        run: |
+          mkdir -p dist-linux
+          tar -czf "dist-linux/ai-type-agent_1.4.0_linux_x64.tar.gz" -C build/linux/x64/release/bundle .
+
+      - name: Build DEB Package
+        run: |
+          BUNDLE=build/linux/x64/release/bundle
+          DEBROOT=debroot
+          rm -rf "$DEBROOT"
+          mkdir -p "$DEBROOT/DEBIAN" \
+            "$DEBROOT/opt/ai-type-agent" \
+            "$DEBROOT/usr/share/applications" \
+            "$DEBROOT/usr/share/icons/hicolor/512x512/apps"
+
+          cp -r "$BUNDLE/." "$DEBROOT/opt/ai-type-agent/"
+
+          cat > "$DEBROOT/usr/share/applications/ai-type-agent.desktop" <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=AI Type Agent
+          Comment=AI coding assistant with local terminal and server management
+          Exec=/opt/ai-type-agent/ai-type-agent
+          Icon=/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png
+          Terminal=false
+          Categories=Development;Utility;
+          StartupWMClass=ai-type-agent
+          EOF
+
+          cp assets/app_icon.png "$DEBROOT/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png"
+
+          cat > "$DEBROOT/DEBIAN/control" <<EOF
+          Package: ai-type-agent
+          Version: 1.4.0
+          Section: devel
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libcups2, libsqlite3-0, liblzma5
+          Maintainer: YenAI <bienso629@users.noreply.github.com>
+          Homepage: https://github.com/bienso629/ai.type.agent
+          Description: AI Type Agent - AI coding assistant
+           AI coding assistant with local terminal (PTY), SSH server
+           management and multi-session support. Built with Flutter.
+          EOF
+
+          cat > "$DEBROOT/DEBIAN/postinst" <<EOF
+          #!/bin/sh
+          set -e
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database >/dev/null 2>&1 || true
+          fi
+          if command -v update-icon-caches >/dev/null 2>&1; then
+            update-icon-caches /usr/share/icons/hicolor >/dev/null 2>&1 || true
+          fi
+          exit 0
+          EOF
+          chmod 755 "$DEBROOT/DEBIAN/postinst"
+
+          dpkg-deb --root-owner-group --build "$DEBROOT" "dist-linux/ai-type-agent_1.4.0_linux_amd64.deb"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-type-agent-linux
+          path: |
+            dist-linux/*.tar.gz
+            dist-linux/*.deb
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: linux-build-${{ github.run_number }}
+          name: Linux build ${{ github.run_number }}
+          files: |
+            dist-linux/*.tar.gz
+            dist-linux/*.deb
+          make_latest: true
