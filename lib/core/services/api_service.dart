@@ -668,6 +668,12 @@ class ApiService {
         }
 
         var accumulatedReply = '';
+        bool finished = false;
+        void completeOnce(String reply) {
+          if (finished) return;
+          finished = true;
+          onDone(reply);
+        }
 
         streamedResponse.stream
             .transform(utf8.decoder)
@@ -678,7 +684,8 @@ class ApiService {
             if (trimmed.startsWith('data:')) {
               final jsonStr = trimmed.substring(5).trim();
               if (jsonStr.isEmpty || jsonStr == '[DONE]') {
-                onDone(accumulatedReply);
+                // [DONE] chi la ket thuc mot luot stream - KHONG bao xong som,
+                // phai doi su kien 'done' that su hoac stream dong hoan toan
                 return;
               }
               try {
@@ -698,7 +705,7 @@ class ApiService {
                   onTool(item);
                 } else if (type == 'done') {
                   final finalReply = data['reply']?.toString() ?? accumulatedReply;
-                  onDone(finalReply);
+                  completeOnce(finalReply);
                 } else if (type == 'error') {
                   onError(data['message'] ?? data['error'] ?? 'AI Error');
                 }
@@ -707,7 +714,7 @@ class ApiService {
           },
           onError: (e) => onError(e),
           onDone: () {
-            onDone(accumulatedReply);
+            completeOnce(accumulatedReply);
             streamClient?.close();
           },
           cancelOnError: true,
