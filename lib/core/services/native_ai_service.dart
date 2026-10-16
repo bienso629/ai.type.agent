@@ -407,12 +407,28 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           final toolCallsMap = <int, Map<String, dynamic>>{};
 
           final streamCompleter = Completer<void>();
+          // Watchdog chống ngắt stream giữa chừng: nếu quá 90 giây không nhận thêm
+          // dữ liệu nào từ AI (dù chưa [DONE] và chưa đóng kết nối), coi như luồng
+          // bị đứt ngầm và chủ động tách Completer để vòng lặp xử lý tiếp.
+          bool streamDataEnded = false;
+          int lastStreamActivityMs = DateTime.now().millisecondsSinceEpoch;
+          void resetInactivity() {
+            lastStreamActivityMs = DateTime.now().millisecondsSinceEpoch;
+          }
+          final inactivityTimer = Timer.periodic(const Duration(seconds: 5), (t) {
+            final elapsed = DateTime.now().millisecondsSinceEpoch - lastStreamActivityMs;
+            if (!streamCompleter.isCompleted && elapsed >= 90000) {
+              t.cancel();
+              if (!streamCompleter.isCompleted) streamCompleter.complete();
+            }
+          });
 
           response.stream
               .transform(utf8.decoder)
               .transform(const LineSplitter())
               .listen(
             (line) {
+              resetInactivity();
               final trimmed = line.trim();
               if (trimmed.isEmpty) return;
               if (trimmed == 'data: [DONE]') {
@@ -461,9 +477,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               }
             },
             onError: (err) {
+              resetInactivity();
               if (!streamCompleter.isCompleted) streamCompleter.completeError(err);
             },
             onDone: () {
+              resetInactivity();
+              streamDataEnded = true;
+              inactivityTimer.cancel();
               if (!streamCompleter.isCompleted) streamCompleter.complete();
               client.close();
             },
@@ -471,6 +491,19 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           );
 
           await streamCompleter.future;
+          inactivityTimer.cancel();
+
+          // Nếu luồng đứt ngầm (watchdog đánh thức) mà model chưa kịp gọi tool:
+          // ép thêm lượt mới yêu cầu model chạy tiếp thay vì kết luận xong sớm.
+          if (!streamDataEnded && toolCallsMap.isEmpty && turnCount < maxTurns && !isCancelled) {
+            final resumeNote =
+                '[HỆ THỐNG] Kết nối stream bị gián đoạn giữa chừng. Hãy tiếp tục thực hiện nốt công việc đang dở, không được tự ý kết luận đã hoàn tất.';
+            messages.add({
+              'role': 'assistant',
+              'content': stepContent.isNotEmpty ? '$stepContent\n\n$resumeNote' : resumeNote,
+            });
+            continue;
+          }
 
           // Check if tools were called
           if (toolCallsMap.isNotEmpty) {
@@ -559,10 +592,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         }
 
         // Save assistant message to Database
+        const fallbackReply =
+            'Agent kết thúc lượt xử lý mà không sinh thêm nội dung hoặc lệnh mới. '
+            'Nếu công việc chưa xong, hãy yêu cầu tiếp tục để agent chạy nốt.';
         final assistantMsg = ChatMessageModel(
           sessionId: sessionId,
           role: 'assistant',
-          content: finalReply.isNotEmpty ? finalReply : 'Đã hoàn tất thao tác.',
+          content: finalReply.isNotEmpty ? finalReply : fallbackReply,
           model: targetModel,
           toolExecutions: allExecutedTools,
           createdAt: DateTime.now(),
@@ -570,12 +606,12 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         await _dbService.insertMessage(assistantMsg);
 
         if (finalReply.isEmpty) {
-          onDone('Đã hoàn tất thao tác.');
+          onDone(fallbackReply);
         } else if (turnCount >= maxTurns && !isCancelled) {
           // Vuot gioi han luot tool - tac vu CHUA xong, phai noi ro de nguoi dung biet
           onDone(
-            '$finalReply\n\n> **Luu y:** Agent da dat gioi han $maxTurns luot thuc thi cong cu trong mot luot xu ly. '
-            'Tac vu co the chua hoan toan - neu con viec dang lam dang, hay nhap "tiep tuc" de agent chay tiep.',
+            '$finalReply\n\n> **Lưu ý:** Agent đã đạt giới hạn $maxTurns lượt thực thi công cụ trong một lượt xử lý. '
+            'Công việc có thể chưa hoàn tất — nếu còn việc đang làm dở, hãy nhắn "tiếp tục" để agent chạy nốt.',
           );
         } else {
           onDone(finalReply);
@@ -1087,8 +1123,8 @@ fi
           final rawResult = fullOutput.toString().trim();
           final result = stripSystemMessages(rawResult);
           finishSession(
-            '$result\n\n> **Canh bao:** Agent $cliName da bi dung dot ngot (ma thoat: $exitCode) truoc khi hoan tat tac vu. '
-            'Cau tra loi tren co the chua du - ban co the yeu cau "tiep tuc" de agent lam not phan con lai.',
+            '$result\n\n> **Cảnh báo:** Agent $cliName đã bị dừng đột ngột (mã thoát: $exitCode) trước khi hoàn tất tác vụ. '
+            'Câu trả lời trên có thể chưa đủ — hãy yêu cầu "tiếp tục" để agent làm nốt phần còn lại.',
           );
         } else {
           final errStr = errOutput.toString().trim();
