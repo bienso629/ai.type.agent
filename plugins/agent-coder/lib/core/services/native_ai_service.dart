@@ -569,7 +569,17 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         );
         await _dbService.insertMessage(assistantMsg);
 
-        onDone(finalReply.isNotEmpty ? finalReply : 'Đã hoàn tất thao tác.');
+        if (finalReply.isEmpty) {
+          onDone('Đã hoàn tất thao tác.');
+        } else if (turnCount >= maxTurns && !isCancelled) {
+          // Vuot gioi han luot tool - tac vu CHUA xong, phai noi ro de nguoi dung biet
+          onDone(
+            '$finalReply\n\n> **Luu y:** Agent da dat gioi han $maxTurns luot thuc thi cong cu trong mot luot xu ly. '
+            'Tac vu co the chua hoan toan - neu con viec dang lam dang, hay nhap "tiep tuc" de agent chay tiep.',
+          );
+        } else {
+          onDone(finalReply);
+        }
       } catch (e) {
         onError('Lỗi xử lý AI: $e');
       }
@@ -869,9 +879,9 @@ fi
         }
       } else if (m.contains('antigravity') || m == 'agy') {
         if (cliConvId != null && cliConvId.isNotEmpty) {
-          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low'];
         } else {
-          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low', '--print-timeout', '15m0s'];
+          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low'];
         }
       } else if (m.contains('gemini')) {
         args = ['-p', contextualPrompt];
@@ -1069,8 +1079,17 @@ fi
 
       final exitCode = await process.exitCode;
       if (!hasFinished) {
-        if (exitCode == 0 || fullOutput.isNotEmpty) {
+        if (exitCode == 0) {
           finishSession();
+        } else if (fullOutput.isNotEmpty) {
+          // Agent bi dung giua chung (timeout/crash) nhung da co output -
+          // bao xong kem canh bao ro rang de nguoi dung biet tac vu CHUA hoan tat
+          final rawResult = fullOutput.toString().trim();
+          final result = stripSystemMessages(rawResult);
+          finishSession(
+            '$result\n\n> **Canh bao:** Agent $cliName da bi dung dot ngot (ma thoat: $exitCode) truoc khi hoan tat tac vu. '
+            'Cau tra loi tren co the chua du - ban co the yeu cau "tiep tuc" de agent lam not phan con lai.',
+          );
         } else {
           final errStr = errOutput.toString().trim();
           final rawStr = rawStdout.toString().trim();

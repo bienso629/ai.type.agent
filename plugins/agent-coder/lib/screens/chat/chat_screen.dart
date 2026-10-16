@@ -1954,19 +1954,33 @@ class _ChatScreenState extends State<ChatScreen> {
                           styleSheet: _sharedMarkdownStyle,
                         ),
 
-                      if (msg.content.isEmpty && msg.isStreaming)
-                        const Row(
+                      if (msg.isStreaming) ...[
+                        const SizedBox(height: 6),
+                        Row(
                           mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            SizedBox(
+                            const SizedBox(
                               width: 12,
                               height: 12,
                               child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primaryLight),
                             ),
-                            SizedBox(width: 8),
-                            Text('Đang xử lý...', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                msg.content.isEmpty
+                                    ? 'Đang xử lý...'
+                                    : (chat.getSessionStatus(msg.sessionId).isNotEmpty
+                                        ? chat.getSessionStatus(msg.sessionId)
+                                        : 'Agent vẫn đang làm việc, vui lòng chờ...'),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                              ),
+                            ),
                           ],
                         ),
+                      ],
                     ],
                   ),
                 ),
