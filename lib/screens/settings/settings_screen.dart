@@ -335,11 +335,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Text('Tên Model (AI Model Name)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
-                                    TextField(
-                                      controller: _modelCtrl,
-                                      decoration: const InputDecoration(
-                                        hintText: 'glm-5.3 hoặc gpt-4o hoặc deepseek-chat',
-                                        prefixIcon: Icon(Icons.smart_toy_outlined, size: 18),
+                                    SizedBox(
+                                      height: 40,
+                                      child: TextField(
+                                        controller: _modelCtrl,
+                                        maxLines: 1,
+                                        textAlignVertical: TextAlignVertical.center,
+                                        style: const TextStyle(fontSize: 12.5),
+                                        decoration: const InputDecoration(
+                                          hintText: 'glm-5.3 hoặc gpt-4o hoặc deepseek-chat',
+                                          hintStyle: TextStyle(fontSize: 11.5),
+                                          prefixIcon: Icon(Icons.smart_toy_outlined, size: 16),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -352,11 +363,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Text('Địa Chỉ API (Base URL)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
-                                    TextField(
-                                      controller: _baseUrlCtrl,
-                                      decoration: const InputDecoration(
-                                        hintText: 'https://openrouter.ai/api/v1',
-                                        prefixIcon: Icon(Icons.link_rounded, size: 18),
+                                    SizedBox(
+                                      height: 40,
+                                      child: TextField(
+                                        controller: _baseUrlCtrl,
+                                        maxLines: 1,
+                                        textAlignVertical: TextAlignVertical.center,
+                                        style: const TextStyle(fontSize: 12.5),
+                                        decoration: const InputDecoration(
+                                          hintText: 'https://openrouter.ai/api/v1',
+                                          hintStyle: TextStyle(fontSize: 11.5),
+                                          prefixIcon: Icon(Icons.link_rounded, size: 16),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -367,19 +389,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 16),
                           const Text('API Key (Khoá xác thực bí mật)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                           const SizedBox(height: 6),
-                          TextField(
-                            controller: _apiKeyCtrl,
-                            obscureText: _obscureProxyKey,
-                            decoration: InputDecoration(
-                              hintText: 'sk-or-v1-... / sk-... (API Key)',
-                              prefixIcon: const Icon(Icons.key_rounded, size: 18),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscureProxyKey ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                                  size: 16,
-                                  color: AppColors.textMuted,
+                          SizedBox(
+                            height: 40,
+                            child: TextField(
+                              controller: _apiKeyCtrl,
+                              obscureText: _obscureProxyKey,
+                              maxLines: 1,
+                              textAlignVertical: TextAlignVertical.center,
+                              style: const TextStyle(fontSize: 12.5),
+                              decoration: InputDecoration(
+                                hintText: 'sk-or-v1-... / sk-... (API Key)',
+                                hintStyle: const TextStyle(fontSize: 11.5),
+                                prefixIcon: const Icon(Icons.key_rounded, size: 16),
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                constraints: const BoxConstraints(minHeight: 40, maxHeight: 40),
+                                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscureProxyKey ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                    size: 16,
+                                    color: AppColors.textMuted,
+                                  ),
+                                  onPressed: () => setState(() => _obscureProxyKey = !_obscureProxyKey),
                                 ),
-                                onPressed: () => setState(() => _obscureProxyKey = !_obscureProxyKey),
                               ),
                             ),
                           ),
@@ -429,11 +462,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Text('Tên Model Gemini (Google AI Studio)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
-                                    TextField(
-                                      controller: _googleStudioModelCtrl,
-                                      decoration: const InputDecoration(
-                                        hintText: 'gemini-2.5-flash hoặc gemini-2.5-pro',
-                                        prefixIcon: Icon(Icons.auto_awesome_outlined, size: 18),
+                                    SizedBox(
+                                      height: 40,
+                                      child: TextField(
+                                        controller: _googleStudioModelCtrl,
+                                        maxLines: 1,
+                                        textAlignVertical: TextAlignVertical.center,
+                                        style: const TextStyle(fontSize: 12.5),
+                                        decoration: const InputDecoration(
+                                          hintText: 'gemini-2.5-flash hoặc gemini-2.5-pro',
+                                          hintStyle: TextStyle(fontSize: 11.5),
+                                          prefixIcon: Icon(Icons.auto_awesome_outlined, size: 16),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -446,12 +490,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Text('Địa Chỉ API Google AI Studio', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
-                                    TextField(
-                                      readOnly: true,
-                                      controller: TextEditingController(text: 'https://generativelanguage.googleapis.com/v1beta/openai'),
-                                      style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-                                      decoration: const InputDecoration(
-                                        prefixIcon: Icon(Icons.cloud_done_rounded, size: 18, color: AppColors.accent),
+                                    SizedBox(
+                                      height: 40,
+                                      child: TextField(
+                                        readOnly: true,
+                                        controller: TextEditingController(text: 'https://generativelanguage.googleapis.com/v1beta/openai'),
+                                        maxLines: 1,
+                                        textAlignVertical: TextAlignVertical.center,
+                                        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                                        decoration: const InputDecoration(
+                                          prefixIcon: Icon(Icons.cloud_done_rounded, size: 16, color: AppColors.accent),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -465,40 +518,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
                           ),
                           const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SizedBox(
-                                  height: 40,
+                          SizedBox(
+                            height: 40,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(
                                   child: TextField(
                                     controller: _newGoogleKeyCtrl,
                                     onSubmitted: (_) => _addGoogleStudioKeysFromInput(),
+                                    maxLines: 1,
+                                    textAlignVertical: TextAlignVertical.center,
                                     style: const TextStyle(fontSize: 12.5),
                                     decoration: const InputDecoration(
                                       hintText: 'AIzaSy... (1 hoặc nhiều API Key)',
                                       hintStyle: TextStyle(fontSize: 11.5),
                                       prefixIcon: Icon(Icons.vpn_key_rounded, size: 16),
                                       isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      prefixIconConstraints: BoxConstraints(minWidth: 36),
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                      constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
+                                      prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primaryLight,
-                                  foregroundColor: AppColors.bgDark,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                                  minimumSize: const Size(0, 40),
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                const SizedBox(width: 10),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryLight,
+                                    foregroundColor: AppColors.bgDark,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                                    minimumSize: const Size(0, 40),
+                                    fixedSize: const Size.fromHeight(40),
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
+                                  label: const Text('Thêm Key', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  onPressed: _addGoogleStudioKeysFromInput,
                                 ),
-                                icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
-                                label: const Text('Thêm Key', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                onPressed: _addGoogleStudioKeysFromInput,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 14),
                           Row(
