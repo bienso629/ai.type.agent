@@ -240,7 +240,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                    minimumSize: const Size(0, 32),
+                    fixedSize: const Size.fromHeight(32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   icon: const Icon(Icons.save_rounded, size: 16),
                   label: const Text('Lưu Cấu Hình', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -336,7 +339,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     const Text('Tên Model (AI Model Name)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
                                     SizedBox(
-                                      height: 40,
+                                      height: 32,
                                       child: TextField(
                                         controller: _modelCtrl,
                                         maxLines: 1,
@@ -348,8 +351,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           prefixIcon: Icon(Icons.smart_toy_outlined, size: 16),
                                           isDense: true,
                                           contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
                                         ),
                                       ),
                                     ),
@@ -364,7 +367,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     const Text('Địa Chỉ API (Base URL)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
                                     SizedBox(
-                                      height: 40,
+                                      height: 32,
                                       child: TextField(
                                         controller: _baseUrlCtrl,
                                         maxLines: 1,
@@ -376,8 +379,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           prefixIcon: Icon(Icons.link_rounded, size: 16),
                                           isDense: true,
                                           contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
                                         ),
                                       ),
                                     ),
@@ -390,7 +393,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const Text('API Key (Khoá xác thực bí mật)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                           const SizedBox(height: 6),
                           SizedBox(
-                            height: 40,
+                            height: 32,
                             child: TextField(
                               controller: _apiKeyCtrl,
                               obscureText: _obscureProxyKey,
@@ -403,8 +406,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 prefixIcon: const Icon(Icons.key_rounded, size: 16),
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                constraints: const BoxConstraints(minHeight: 40, maxHeight: 40),
-                                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+                                constraints: const BoxConstraints(minHeight: 32, maxHeight: 32),
+                                prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 32),
                                 suffixIcon: IconButton(
                                   icon: Icon(
                                     _obscureProxyKey ? Icons.visibility_off_rounded : Icons.visibility_rounded,
@@ -463,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     const Text('Tên Model Gemini (Google AI Studio)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
                                     SizedBox(
-                                      height: 40,
+                                      height: 32,
                                       child: TextField(
                                         controller: _googleStudioModelCtrl,
                                         maxLines: 1,
@@ -475,8 +478,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           prefixIcon: Icon(Icons.auto_awesome_outlined, size: 16),
                                           isDense: true,
                                           contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
                                         ),
                                       ),
                                     ),
@@ -491,7 +494,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     const Text('Địa Chỉ API Google AI Studio', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
                                     const SizedBox(height: 6),
                                     SizedBox(
-                                      height: 40,
+                                      height: 32,
                                       child: TextField(
                                         readOnly: true,
                                         controller: TextEditingController(text: 'https://generativelanguage.googleapis.com/v1beta/openai'),
@@ -502,8 +505,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           prefixIcon: Icon(Icons.cloud_done_rounded, size: 16, color: AppColors.accent),
                                           isDense: true,
                                           contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
                                         ),
                                       ),
                                     ),
@@ -519,7 +522,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           const SizedBox(height: 6),
                           SizedBox(
-                            height: 40,
+                            height: 32,
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -536,8 +539,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       prefixIcon: Icon(Icons.vpn_key_rounded, size: 16),
                                       isDense: true,
                                       contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                      constraints: BoxConstraints(minHeight: 40, maxHeight: 40),
-                                      prefixIconConstraints: BoxConstraints(minWidth: 36, minHeight: 40),
+                                      constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
+                                      prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
                                     ),
                                   ),
                                 ),
@@ -547,8 +550,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     backgroundColor: AppColors.primaryLight,
                                     foregroundColor: AppColors.bgDark,
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                                    minimumSize: const Size(0, 40),
-                                    fixedSize: const Size.fromHeight(40),
+                                    minimumSize: const Size(0, 32),
+                                    fixedSize: const Size.fromHeight(32),
                                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),
                                   icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
