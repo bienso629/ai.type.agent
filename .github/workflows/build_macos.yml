@@ -1,0 +1,88 @@
+name: Build macOS Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS DMG + ZIP
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.44.2'
+          cache: true
+
+      - name: Get Dependencies & CocoaPods
+        run: |
+          flutter config --enable-macos-desktop
+          flutter pub get
+          cd macos && pod install --repo-update && cd ..
+
+      - name: Build Flutter macOS Application
+        run: |
+          flutter build macos --release 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E 'error|Error|failed' build.log | head -25 | while read -r l; do
+              echo "::error::$l"
+            done
+            exit "$code"
+          fi
+
+      - name: Package macOS DMG and Portable ZIP
+        run: |
+          mkdir -p dist-macos
+          APP_DIR="build/macos/Build/Products/Release"
+          APP_BUNDLE=$(ls -d "$APP_DIR"/*.app | head -n 1)
+          APP_NAME=$(basename "$APP_BUNDLE")
+
+          # Sign ad-hoc so macOS Gatekeeper / Apple Silicon allows local execution
+          codesign --force --deep --sign - "$APP_BUNDLE" || true
+
+          # 1. Create Portable ZIP preserving symlinks
+          (cd "$APP_DIR" && ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "$GITHUB_WORKSPACE/dist-macos/ai-type-agent_1.4.0_macos_universal.zip")
+
+          # 2. Create DMG Installer with Applications symlink
+          STAGING_DIR="dmg_staging"
+          rm -rf "$STAGING_DIR"
+          mkdir -p "$STAGING_DIR"
+          cp -R "$APP_BUNDLE" "$STAGING_DIR/AI Type Agent.app"
+          ln -s /Applications "$STAGING_DIR/Applications"
+
+          hdiutil create \
+            -volname "AI Type Agent" \
+            -srcfolder "$STAGING_DIR" \
+            -ov -format UDZO \
+            "dist-macos/ai-type-agent_1.4.0_macos_universal.dmg"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-type-agent-macos
+          path: |
+            dist-macos/*.dmg
+            dist-macos/*.zip
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: macos-build-${{ github.run_number }}
+          name: macOS build ${{ github.run_number }}
+          files: |
+            dist-macos/*.dmg
+            dist-macos/*.zip
+          make_latest: true
