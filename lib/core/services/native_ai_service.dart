@@ -226,15 +226,18 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             onTool: onTool,
             onDone: (reply) async {
               final cleanReply = stripSystemMessages(reply);
+              final emptyNotice =
+                  'Agent $targetModel đã dừng tiến trình mà chưa xuất bản báo cáo kết quả. '
+                  'Nếu công việc chưa hoàn tất, hãy nhắn "tiếp tục" để agent chạy nốt.';
               final assistantMsg = ChatMessageModel(
                 sessionId: sessionId,
                 role: 'assistant',
-                content: cleanReply.isNotEmpty ? cleanReply : 'Đã hoàn tất tác vụ với $targetModel.',
+                content: cleanReply.isNotEmpty ? cleanReply : emptyNotice,
                 model: targetModel,
                 createdAt: DateTime.now(),
               );
               await _dbService.insertMessage(assistantMsg);
-              onDone(cleanReply.isNotEmpty ? cleanReply : 'Đã hoàn tất tác vụ với $targetModel.');
+              onDone(cleanReply.isNotEmpty ? cleanReply : emptyNotice);
             },
             onError: onError,
             isCancelled: () => isCancelled,
@@ -367,7 +370,8 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         String finalReply = '';
         final allExecutedTools = <ToolExecutionItem>[];
         int turnCount = 0;
-        const maxTurns = 20;
+        int emptyTurnRetries = 0;
+        const maxTurns = 25;
 
         while (turnCount < maxTurns && !isCancelled) {
           turnCount++;
@@ -580,6 +584,16 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               onToken('\n\n');
             }
           } else {
+            // Nếu model trả về rỗng sau khi vừa chạy lệnh tool (chưa thực hiện xong hoặc chưa tổng hợp báo cáo):
+            // Chủ động nhắc model tiếp tục làm nốt và báo cáo chi tiết kết quả.
+            if (stepContent.trim().isEmpty && allExecutedTools.isNotEmpty && emptyTurnRetries < 2 && turnCount < maxTurns && !isCancelled) {
+              emptyTurnRetries++;
+              messages.add({
+                'role': 'user',
+                'content': '[HỆ THỐNG] Bạn vừa thực thi lệnh công cụ nhưng chưa đưa ra phản hồi hoặc chưa hoàn tất chỉnh sửa. Nếu tác vụ chưa xong, hãy gọi execute_terminal_command để thực hiện tiếp cho đến khi hoàn tất. Nếu đã xong, bắt buộc phải báo cáo chi tiết những gì đã kiểm tra/thay đổi và kết quả cụ thể.',
+              });
+              continue;
+            }
             // Finished generation without more tools
             finalReply = stepContent;
             break;
@@ -592,9 +606,32 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         }
 
         // Save assistant message to Database
-        const fallbackReply =
-            'Agent kết thúc lượt xử lý mà không sinh thêm nội dung hoặc lệnh mới. '
-            'Nếu công việc chưa xong, hãy yêu cầu tiếp tục để agent chạy nốt.';
+        final String fallbackReply;
+        if (allExecutedTools.isNotEmpty) {
+          final toolSummary = StringBuffer(
+            '**Báo cáo trạng thái thực thi:**\n\n'
+            'Agent đã chạy **${allExecutedTools.length} lệnh terminal** nhưng mô hình AI kết thúc lượt mà chưa xuất bản báo cáo tổng kết. '
+            'Dưới đây là chi tiết các bước đã chạy để bạn đối chiếu:\n\n',
+          );
+          for (var i = 0; i < allExecutedTools.length; i++) {
+            final t = allExecutedTools[i];
+            final outPreview = t.output.trim().length > 400
+                ? '${t.output.trim().substring(0, 400)}...'
+                : t.output.trim();
+            toolSummary.writeln('${i + 1}. Lệnh: `${t.command}`');
+            if (outPreview.isNotEmpty) {
+              toolSummary.writeln('   - Kết quả: `$outPreview`');
+            }
+          }
+          toolSummary.writeln(
+            '\n> **Trạng thái:** Nếu các lệnh trên mới chỉ là bước tìm kiếm/kiểm tra và chưa sửa file, nghĩa là tiến trình AI đã dừng sớm. Hãy nhắn **"tiếp tục"** để Agent thực hiện nốt phần chỉnh sửa.',
+          );
+          fallbackReply = toolSummary.toString().trim();
+        } else {
+          fallbackReply =
+              'Agent kết thúc lượt xử lý mà không sinh thêm nội dung hoặc lệnh mới. '
+              'Nếu công việc chưa xong, hãy nhắn "tiếp tục" để agent chạy nốt.';
+        }
         final assistantMsg = ChatMessageModel(
           sessionId: sessionId,
           role: 'assistant',
@@ -944,7 +981,10 @@ fi
         hasFinished = true;
         final rawResult = fullOutput.toString().trim();
         final result = stripSystemMessages(rawResult);
-        onDone(result.isNotEmpty ? result : (fallbackReply ?? 'Đã hoàn tất tác vụ với $cliName.'));
+        final defaultEmpty =
+            'Agent $cliName đã dừng tiến trình mà chưa xuất bản báo cáo kết quả. '
+            'Nếu công việc chưa hoàn tất, hãy nhắn "tiếp tục" để agent chạy nốt.';
+        onDone(result.isNotEmpty ? result : (fallbackReply ?? defaultEmpty));
         try {
           process.kill();
         } catch (_) {}
