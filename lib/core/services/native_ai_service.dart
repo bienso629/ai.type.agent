@@ -23,13 +23,14 @@ class NativeAiService {
 
   static int _googleStudioKeyIndex = 0;
 
-  static List<String> extractGoogleStudioKeys(Map<String, dynamic> cfg) {
-    final raw = cfg['google_studio_api_keys'];
+  static List<String> extractApiKeys(dynamic raw) {
     final keys = <String>[];
     if (raw is List) {
       for (final item in raw) {
-        final s = item?.toString().trim() ?? '';
-        if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
+        for (final part in (item?.toString() ?? '').split(RegExp(r'[\r\n,;\s]+'))) {
+          final s = part.trim();
+          if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
+        }
       }
     } else if (raw is String && raw.trim().isNotEmpty) {
       final str = raw.trim();
@@ -37,18 +38,39 @@ class NativeAiService {
         final decoded = jsonDecode(str);
         if (decoded is List) {
           for (final item in decoded) {
-            final s = item?.toString().trim() ?? '';
-            if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
+            for (final part in (item?.toString() ?? '').split(RegExp(r'[\r\n,;\s]+'))) {
+              final s = part.trim();
+              if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
+            }
           }
           return keys;
         }
       } catch (_) {}
-      for (final line in str.split(RegExp(r'[\r\n,;]+'))) {
+      for (final line in str.split(RegExp(r'[\r\n,;\s]+'))) {
         final s = line.trim();
         if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
       }
     }
     return keys;
+  }
+
+  static List<String> extractGoogleStudioKeys(Map<String, dynamic> cfg) {
+    return extractApiKeys(cfg['google_studio_api_keys']);
+  }
+
+  static List<String> extractAllCandidateKeys(Map<String, dynamic> cfg, {required bool preferGoogleStudio}) {
+    final googleKeys = extractGoogleStudioKeys(cfg);
+    final proxyKeys = extractApiKeys(cfg['proxy_api_key']);
+    final combined = <String>[];
+    final firstList = preferGoogleStudio ? googleKeys : proxyKeys;
+    final secondList = preferGoogleStudio ? proxyKeys : googleKeys;
+    for (final k in firstList) {
+      if (k.isNotEmpty && !combined.contains(k)) combined.add(k);
+    }
+    for (final k in secondList) {
+      if (k.isNotEmpty && !combined.contains(k)) combined.add(k);
+    }
+    return combined;
   }
 
   static final RegExp _systemMessageRegex = RegExp(
@@ -219,16 +241,23 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             : (cfg['ai_model']?.toString() ?? 'glm-5.3');
         final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
 
-        final bool useGoogleStudio = (providerTab == 'google_studio' ||
-                (targetModel.toLowerCase().startsWith('gemini-') && ! _isCliModel(targetModel) && googleKeys.isNotEmpty && (cfg['proxy_api_key']?.toString().trim().isEmpty ?? true))) &&
-            googleKeys.isNotEmpty;
+        final proxyBaseRaw = cfg['proxy_base_url']?.toString().trim() ?? '';
+        final isGoogleEndpoint = proxyBaseRaw.contains('generativelanguage.googleapis.com');
+        final isGeminiTarget = targetModel.toLowerCase().contains('gemini') && !_isCliModel(targetModel);
 
-        var baseUrl = useGoogleStudio
+        final bool useGoogleStudio = (providerTab == 'google_studio' || isGoogleEndpoint || isGeminiTarget) &&
+            (googleKeys.isNotEmpty || isGoogleEndpoint);
+
+        final candidateKeys = (useGoogleStudio || isGeminiTarget || isGoogleEndpoint)
+            ? extractAllCandidateKeys(cfg, preferGoogleStudio: providerTab == 'google_studio' || googleKeys.isNotEmpty)
+            : extractApiKeys(cfg['proxy_api_key']);
+
+        var baseUrl = (providerTab == 'google_studio' || (useGoogleStudio && proxyBaseRaw.isEmpty))
             ? 'https://generativelanguage.googleapis.com/v1beta/openai'
-            : (cfg['proxy_base_url']?.toString() ?? 'https://openrouter.ai/api/v1');
-        var apiKey = useGoogleStudio
-            ? googleKeys[_googleStudioKeyIndex % googleKeys.length]
-            : (cfg['proxy_api_key']?.toString() ?? '');
+            : (proxyBaseRaw.isNotEmpty ? proxyBaseRaw : 'https://generativelanguage.googleapis.com/v1beta/openai');
+        var apiKey = candidateKeys.isNotEmpty
+            ? candidateKeys[_googleStudioKeyIndex % candidateKeys.length]
+            : (cfg['proxy_api_key']?.toString().trim() ?? '');
 
         if (baseUrl.endsWith('/')) {
           baseUrl = baseUrl.substring(0, baseUrl.length - 1);
@@ -425,10 +454,12 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           String lastErrBody = '';
           int lastStatusCode = 0;
 
-          final int maxKeyAttempts = (useGoogleStudio && googleKeys.isNotEmpty) ? googleKeys.length : 1;
+          final int maxKeyAttempts = candidateKeys.isNotEmpty ? candidateKeys.length : 1;
+          final int startKeyIndex = _googleStudioKeyIndex;
           for (int attempt = 0; attempt < maxKeyAttempts; attempt++) {
-            if (useGoogleStudio && googleKeys.isNotEmpty) {
-              apiKey = googleKeys[(_googleStudioKeyIndex + attempt) % googleKeys.length];
+            final int currentKeyIdx = candidateKeys.isNotEmpty ? (startKeyIndex + attempt) % candidateKeys.length : 0;
+            if (candidateKeys.isNotEmpty) {
+              apiKey = candidateKeys[currentKeyIdx];
             }
             final req = http.Request('POST', Uri.parse('$baseUrl/chat/completions'));
             req.headers.addAll({
@@ -444,26 +475,46 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             });
 
             onStatus(turnCount == 1
-                ? (useGoogleStudio && maxKeyAttempts > 1
-                    ? 'Đang suy nghĩ (Google Studio Key #${((_googleStudioKeyIndex + attempt) % googleKeys.length) + 1}/${googleKeys.length})...'
+                ? (maxKeyAttempts > 1
+                    ? 'Đang suy nghĩ (API Key #${currentKeyIdx + 1}/$maxKeyAttempts)...'
                     : 'Đang suy nghĩ...')
-                : 'Đang xử lý bước tiếp theo...');
+                : (maxKeyAttempts > 1
+                    ? 'Đang xử lý bước tiếp theo (API Key #${currentKeyIdx + 1}/$maxKeyAttempts)...'
+                    : 'Đang xử lý bước tiếp theo...'));
 
-            final res = await client.send(req);
-            if (res.statusCode == 200) {
-              if (useGoogleStudio && googleKeys.isNotEmpty) {
-                // Advance round-robin index for next request
-                _googleStudioKeyIndex = (_googleStudioKeyIndex + attempt + 1) % googleKeys.length;
+            try {
+              final res = await client.send(req);
+              if (res.statusCode == 200) {
+                if (candidateKeys.isNotEmpty) {
+                  // Advance round-robin index past the working key for the next turn/request
+                  _googleStudioKeyIndex = (currentKeyIdx + 1) % candidateKeys.length;
+                }
+                response = res;
+                break;
+              } else {
+                lastStatusCode = res.statusCode;
+                lastErrBody = await res.stream.bytesToString();
+                client.close();
+                if (candidateKeys.isNotEmpty) {
+                  // Immediately advance static index past the failed/leaked/rate-limited key
+                  _googleStudioKeyIndex = (currentKeyIdx + 1) % candidateKeys.length;
+                }
+                if (attempt + 1 < maxKeyAttempts) {
+                  final int nextKeyIdx = (startKeyIndex + attempt + 1) % candidateKeys.length;
+                  onStatus('API Key #${currentKeyIdx + 1}/$maxKeyAttempts gặp lỗi ($lastStatusCode), đang tự động chuyển sang Key #${nextKeyIdx + 1}/$maxKeyAttempts...');
+                  client = http.Client();
+                  continue;
+                }
+                break;
               }
-              response = res;
-              break;
-            } else {
-              lastStatusCode = res.statusCode;
-              lastErrBody = await res.stream.bytesToString();
+            } catch (reqErr) {
+              lastStatusCode = 0;
+              lastErrBody = reqErr.toString();
               client.close();
-              // If rate limited (429), quota exceeded (403), invalid key (400/401), or server error (5xx) on Google Studio, rotate to next key
-              if (useGoogleStudio && attempt + 1 < maxKeyAttempts) {
-                onStatus('Key #${((_googleStudioKeyIndex + attempt) % googleKeys.length) + 1} gặp lỗi ($lastStatusCode), đang tự động chuyển sang API Key tiếp theo...');
+              if (candidateKeys.isNotEmpty) {
+                _googleStudioKeyIndex = (currentKeyIdx + 1) % candidateKeys.length;
+              }
+              if (attempt + 1 < maxKeyAttempts) {
                 client = http.Client();
                 continue;
               }

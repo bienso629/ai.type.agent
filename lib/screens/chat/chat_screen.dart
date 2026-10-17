@@ -1968,10 +1968,10 @@ class _ChatScreenState extends State<ChatScreen> {
                             const SizedBox(width: 8),
                             Flexible(
                               child: Text(
-                                msg.content.isEmpty
-                                    ? 'Đang xử lý...'
-                                    : (chat.getSessionStatus(msg.sessionId).isNotEmpty
-                                        ? chat.getSessionStatus(msg.sessionId)
+                                chat.getSessionStatus(msg.sessionId).isNotEmpty
+                                    ? chat.getSessionStatus(msg.sessionId)
+                                    : (msg.content.isEmpty
+                                        ? 'Đang kết nối API...'
                                         : 'Agent vẫn đang làm việc, vui lòng chờ...'),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,

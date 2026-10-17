@@ -120,12 +120,6 @@ class ApiService {
           : (providerTab == 'google_studio'
               ? 'https://generativelanguage.googleapis.com/v1beta/openai'
               : (cfg['proxy_base_url']?.toString().trim() ?? ''));
-      final apiKey = (customApiKey != null && customApiKey.trim().isNotEmpty)
-          ? customApiKey.trim()
-          : (providerTab == 'google_studio' && googleKeys.isNotEmpty
-              ? googleKeys.first
-              : (cfg['proxy_api_key']?.toString().trim() ?? ''));
-
       if (baseUrl.isEmpty) {
         baseUrl = 'https://openrouter.ai/api/v1';
       }
@@ -133,16 +127,32 @@ class ApiService {
         baseUrl = baseUrl.substring(0, baseUrl.length - 1);
       }
 
+      final isGoogleUrl = baseUrl.contains('generativelanguage.googleapis.com');
+      final candidateKeys = (customApiKey != null && customApiKey.trim().isNotEmpty)
+          ? NativeAiService.extractApiKeys(customApiKey)
+          : ((providerTab == 'google_studio' || isGoogleUrl)
+              ? NativeAiService.extractAllCandidateKeys(cfg, preferGoogleStudio: providerTab == 'google_studio' || googleKeys.isNotEmpty)
+              : NativeAiService.extractApiKeys(cfg['proxy_api_key']));
+
       final url = Uri.parse('$baseUrl/models');
-      final headers = <String, String>{
-        'Content-Type': 'application/json',
-      };
-      if (apiKey.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $apiKey';
+      http.Response? res;
+      final maxAttempts = candidateKeys.isNotEmpty ? candidateKeys.length : 1;
+      for (int i = 0; i < maxAttempts; i++) {
+        final key = candidateKeys.isNotEmpty ? candidateKeys[i] : '';
+        final headers = <String, String>{
+          'Content-Type': 'application/json',
+          if (key.isNotEmpty) 'Authorization': 'Bearer $key',
+        };
+        try {
+          final r = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
+          if (r.statusCode == 200) {
+            res = r;
+            break;
+          }
+        } catch (_) {}
       }
 
-      final res = await _client.get(url, headers: headers).timeout(const Duration(seconds: 10));
-      if (res.statusCode == 200) {
+      if (res != null && res.statusCode == 200) {
         final decoded = jsonDecode(utf8.decode(res.bodyBytes));
         final modelsList = <String>[];
 
