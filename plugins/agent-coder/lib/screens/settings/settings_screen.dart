@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/native_ai_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../providers/server_provider.dart';
@@ -20,6 +21,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://openrouter.ai/api/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
   final TextEditingController _promptCtrl = TextEditingController();
+
+  String _selectedTab = 'proxy'; // 'proxy' | 'google_studio'
+  final TextEditingController _googleStudioModelCtrl = TextEditingController(text: 'gemini-2.5-flash');
+  final TextEditingController _newGoogleKeyCtrl = TextEditingController();
+  final List<String> _googleStudioKeys = [];
+  bool _obscureProxyKey = true;
+  bool _obscureGoogleKeys = true;
 
   static const String defaultPrompt = '''(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
 - THƯ MỤC LÀM VIỆC MỤC TIÊU (SCOPE BẮT BUỘC): {workDir}
@@ -42,6 +50,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _baseUrlCtrl.dispose();
     _apiKeyCtrl.dispose();
     _promptCtrl.dispose();
+    _googleStudioModelCtrl.dispose();
+    _newGoogleKeyCtrl.dispose();
     super.dispose();
   }
 
@@ -53,27 +63,115 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (cfg['proxy_base_url'] != null) _baseUrlCtrl.text = cfg['proxy_base_url'].toString();
       if (cfg['proxy_api_key'] != null) _apiKeyCtrl.text = cfg['proxy_api_key'].toString();
       _promptCtrl.text = cfg['custom_prompt']?.toString() ?? defaultPrompt;
+
+      final savedTab = cfg['ai_provider_tab']?.toString() ?? 'proxy';
+      final savedGoogleModel = cfg['google_studio_model']?.toString() ?? 'gemini-2.5-flash';
+      final extractedKeys = NativeAiService.extractGoogleStudioKeys(cfg);
+
+      if (mounted) {
+        setState(() {
+          _selectedTab = (savedTab == 'google_studio') ? 'google_studio' : 'proxy';
+          _googleStudioModelCtrl.text = savedGoogleModel.isNotEmpty ? savedGoogleModel : 'gemini-2.5-flash';
+          _googleStudioKeys
+            ..clear()
+            ..addAll(extractedKeys);
+        });
+      }
     } catch (_) {}
+  }
+
+  void _addGoogleStudioKeysFromInput() {
+    final raw = _newGoogleKeyCtrl.text.trim();
+    if (raw.isEmpty) return;
+
+    final parts = raw
+        .split(RegExp(r'[\r\n,;\s]+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    int added = 0;
+    setState(() {
+      for (final k in parts) {
+        if (!_googleStudioKeys.contains(k)) {
+          _googleStudioKeys.add(k);
+          added++;
+        }
+      }
+      _newGoogleKeyCtrl.clear();
+    });
+
+    if (added > 0) {
+      AppToast.success(context, 'Đã thêm $added API Key Google Studio vào danh sách!');
+    } else {
+      AppToast.info(context, 'API Key này đã có trong danh sách.');
+    }
+  }
+
+  void _removeGoogleStudioKey(int index) {
+    if (index < 0 || index >= _googleStudioKeys.length) return;
+    setState(() {
+      _googleStudioKeys.removeAt(index);
+    });
+  }
+
+  String _maskApiKey(String key) {
+    if (!_obscureGoogleKeys) return key;
+    if (key.length <= 10) return '••••••••••';
+    return '${key.substring(0, 6)}••••••••••••••••••••${key.substring(key.length - 4)}';
+  }
+
+  void _applyGoogleModelPreset(String modelName) {
+    setState(() {
+      _googleStudioModelCtrl.text = modelName;
+    });
+    AppToast.info(context, 'Đã chọn model Google Studio: $modelName');
   }
 
   Future<void> _saveAISettings() async {
     try {
+      if (_newGoogleKeyCtrl.text.trim().isNotEmpty) {
+        _addGoogleStudioKeysFromInput();
+      }
+
+      final activeModel = _selectedTab == 'google_studio'
+          ? (_googleStudioModelCtrl.text.trim().isNotEmpty ? _googleStudioModelCtrl.text.trim() : 'gemini-2.5-flash')
+          : _modelCtrl.text.trim();
+
       final ok = await _api.saveConfig({
-        'ai_model': _modelCtrl.text.trim(),
+        'ai_provider_tab': _selectedTab,
+        'ai_model': activeModel,
         'proxy_base_url': _baseUrlCtrl.text.trim(),
         'proxy_api_key': _apiKeyCtrl.text.trim(),
+        'google_studio_model': _googleStudioModelCtrl.text.trim().isNotEmpty
+            ? _googleStudioModelCtrl.text.trim()
+            : 'gemini-2.5-flash',
+        'google_studio_api_keys': List<String>.from(_googleStudioKeys),
         'custom_prompt': _promptCtrl.text.trim(),
       });
       if (mounted) {
         if (ok) {
           final serverProvider = context.read<ServerProvider>();
-          serverProvider.setCloudAiModel(_modelCtrl.text.trim());
-          serverProvider.fetchModels(
-            forceRefresh: true,
-            customBaseUrl: _baseUrlCtrl.text.trim(),
-            customApiKey: _apiKeyCtrl.text.trim(),
+          serverProvider.setCloudAiModel(activeModel);
+          if (_selectedTab == 'google_studio') {
+            serverProvider.fetchModels(
+              forceRefresh: true,
+              customBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+              customApiKey: _googleStudioKeys.isNotEmpty ? _googleStudioKeys.first : '',
+            );
+          } else {
+            serverProvider.fetchModels(
+              forceRefresh: true,
+              customBaseUrl: _baseUrlCtrl.text.trim(),
+              customApiKey: _apiKeyCtrl.text.trim(),
+            );
+          }
+          AppToast.success(
+            context,
+            _selectedTab == 'google_studio'
+                ? 'Đã lưu cấu hình Google AI Studio (${_googleStudioKeys.length} API Keys) thành công!'
+                : 'Đã lưu cấu hình AI Model, Proxy API & Custom Prompt thành công!',
           );
-          AppToast.success(context, 'Đã lưu cấu hình AI Model, API & Custom Prompt thành công!');
         } else {
           AppToast.error(context, 'Lưu cấu hình thất bại!');
         }
@@ -170,82 +268,351 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.memory_rounded, size: 18, color: AppColors.primaryLight),
-                            SizedBox(width: 8),
-                            Text(
-                              '1. Cấu Hình AI Model & Proxy API',
-                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Chọn nhà cung cấp nhanh (Quick Presets):',
-                          style: TextStyle(fontSize: 11, color: AppColors.textDim),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _buildPresetChip('OpenRouter (GLM-5.3)', 'https://openrouter.ai/api/v1', 'glm-5.3'),
-                            _buildPresetChip('OpenAI (GPT-4o)', 'https://api.openai.com/v1', 'gpt-4o'),
-                            _buildPresetChip('DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat'),
-                            _buildPresetChip('Local Ollama', 'http://127.0.0.1:11434/v1', 'llama3.2:latest'),
-                            _buildPresetChip('Zhipu GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash'),
-                          ],
-                        ),
-                        const Divider(height: 24),
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Tên Model (AI Model Name)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _modelCtrl,
-                                    decoration: const InputDecoration(
-                                      hintText: 'glm-5.3 hoặc gpt-4o hoặc deepseek-chat',
-                                      prefixIcon: Icon(Icons.smart_toy_outlined, size: 18),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            const Row(
+                              children: [
+                                Icon(Icons.memory_rounded, size: 18, color: AppColors.primaryLight),
+                                SizedBox(width: 8),
+                                Text(
+                                  '1. Cấu Hình AI Model & Proxy API',
+                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBg,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.borderDark),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Text('Địa Chỉ API (Base URL)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _baseUrlCtrl,
-                                    decoration: const InputDecoration(
-                                      hintText: 'https://openrouter.ai/api/v1',
-                                      prefixIcon: Icon(Icons.link_rounded, size: 18),
-                                    ),
+                                  _buildTabButton(
+                                    id: 'proxy',
+                                    icon: Icons.hub_rounded,
+                                    label: 'AI Model & Proxy',
+                                  ),
+                                  const SizedBox(width: 4),
+                                  _buildTabButton(
+                                    id: 'google_studio',
+                                    icon: Icons.auto_awesome_rounded,
+                                    label: 'API key Google Studio',
+                                    badgeCount: _googleStudioKeys.length,
                                   ),
                                 ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        const Text('API Key (Khoá xác thực bí mật)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: _apiKeyCtrl,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            hintText: 'sk-or-v1-... / sk-... (API Key)',
-                            prefixIcon: Icon(Icons.key_rounded, size: 18),
+                        const SizedBox(height: 14),
+                        if (_selectedTab == 'proxy') ...[
+                          const Text(
+                            'Chọn nhà cung cấp nhanh (Quick Presets):',
+                            style: TextStyle(fontSize: 11, color: AppColors.textDim),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildPresetChip('OpenRouter (GLM-5.3)', 'https://openrouter.ai/api/v1', 'glm-5.3'),
+                              _buildPresetChip('OpenAI (GPT-4o)', 'https://api.openai.com/v1', 'gpt-4o'),
+                              _buildPresetChip('DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat'),
+                              _buildPresetChip('Local Ollama', 'http://127.0.0.1:11434/v1', 'llama3.2:latest'),
+                              _buildPresetChip('Zhipu GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash'),
+                            ],
+                          ),
+                          const Divider(height: 24),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Tên Model (AI Model Name)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _modelCtrl,
+                                      decoration: const InputDecoration(
+                                        hintText: 'glm-5.3 hoặc gpt-4o hoặc deepseek-chat',
+                                        prefixIcon: Icon(Icons.smart_toy_outlined, size: 18),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Địa Chỉ API (Base URL)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _baseUrlCtrl,
+                                      decoration: const InputDecoration(
+                                        hintText: 'https://openrouter.ai/api/v1',
+                                        prefixIcon: Icon(Icons.link_rounded, size: 18),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          const Text('API Key (Khoá xác thực bí mật)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _apiKeyCtrl,
+                            obscureText: _obscureProxyKey,
+                            decoration: InputDecoration(
+                              hintText: 'sk-or-v1-... / sk-... (API Key)',
+                              prefixIcon: const Icon(Icons.key_rounded, size: 18),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscureProxyKey ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                  size: 16,
+                                  color: AppColors.textMuted,
+                                ),
+                                onPressed: () => setState(() => _obscureProxyKey = !_obscureProxyKey),
+                              ),
+                            ),
+                          ),
+                        ] else ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.auto_awesome_rounded, size: 18, color: AppColors.accentCyan),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Cấu hình nhiều API Key của Google AI Studio miễn phí (aistudio.google.com). Hệ thống tự động xoay vòng (Round-Robin) giữa các Key và tự động đổi sang Key khác ngay lập tức nếu gặp giới hạn Rate Limit (429).',
+                                    style: TextStyle(fontSize: 11.5, color: AppColors.textWhite, height: 1.4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Chọn nhanh Model Gemini (Google AI Studio):',
+                            style: TextStyle(fontSize: 11, color: AppColors.textDim),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildGoogleModelChip('gemini-2.5-flash'),
+                              _buildGoogleModelChip('gemini-2.5-pro'),
+                              _buildGoogleModelChip('gemini-2.5-flash-lite'),
+                              _buildGoogleModelChip('gemini-2.0-flash'),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Tên Model Gemini (Google AI Studio)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      controller: _googleStudioModelCtrl,
+                                      decoration: const InputDecoration(
+                                        hintText: 'gemini-2.5-flash hoặc gemini-2.5-pro',
+                                        prefixIcon: Icon(Icons.auto_awesome_outlined, size: 18),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Địa Chỉ API Google AI Studio', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
+                                    const SizedBox(height: 6),
+                                    TextField(
+                                      readOnly: true,
+                                      controller: TextEditingController(text: 'https://generativelanguage.googleapis.com/v1beta/openai'),
+                                      style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                                      decoration: const InputDecoration(
+                                        prefixIcon: Icon(Icons.cloud_done_rounded, size: 18, color: AppColors.accent),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Thêm API Key Google Studio (Có thể dán 1 hoặc nhiều key cách nhau bởi dấu phẩy / khoảng trắng / xuống dòng):',
+                            style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _newGoogleKeyCtrl,
+                                  onSubmitted: (_) => _addGoogleStudioKeysFromInput(),
+                                  decoration: const InputDecoration(
+                                    hintText: 'AIzaSy... (Nhập 1 hoặc nhiều API Key rồi bấm Thêm Key)',
+                                    prefixIcon: Icon(Icons.vpn_key_rounded, size: 18),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryLight,
+                                  foregroundColor: AppColors.bgDark,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                ),
+                                icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
+                                label: const Text('Thêm Key', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                onPressed: _addGoogleStudioKeysFromInput,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Danh sách API Key Google Studio đang hoạt động (${_googleStudioKeys.length} keys):',
+                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                              ),
+                              Row(
+                                children: [
+                                  if (_googleStudioKeys.isNotEmpty) ...[
+                                    TextButton.icon(
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      icon: Icon(
+                                        _obscureGoogleKeys ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                        size: 14,
+                                        color: AppColors.accentCyan,
+                                      ),
+                                      label: Text(
+                                        _obscureGoogleKeys ? 'Hiện Key' : 'Ẩn Key',
+                                        style: const TextStyle(fontSize: 11, color: AppColors.accentCyan),
+                                      ),
+                                      onPressed: () => setState(() => _obscureGoogleKeys = !_obscureGoogleKeys),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    TextButton.icon(
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      icon: const Icon(Icons.delete_sweep_rounded, size: 14, color: Colors.redAccent),
+                                      label: const Text('Xoá tất cả', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                                      onPressed: () => setState(() => _googleStudioKeys.clear()),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          if (_googleStudioKeys.isEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBg,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.borderDark),
+                              ),
+                              child: const Column(
+                                children: [
+                                  Icon(Icons.key_off_rounded, size: 24, color: AppColors.textMuted),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    'Chưa có API Key Google Studio nào. Hãy thêm 1 hoặc nhiều key miễn phí vào ô bên trên rồi bấm Lưu Cấu Hình.',
+                                    style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Container(
+                              constraints: const BoxConstraints(maxHeight: 220),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBg,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.borderDark),
+                              ),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                itemCount: _googleStudioKeys.length,
+                                separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.borderDark),
+                                itemBuilder: (ctx, idx) {
+                                  final k = _googleStudioKeys[idx];
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'Key #${idx + 1}',
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.accentCyan,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            _maskApiKey(k),
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontSize: 12,
+                                              color: AppColors.textWhite,
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
+                                          tooltip: 'Xoá API Key này',
+                                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                          padding: EdgeInsets.zero,
+                                          onPressed: () => _removeGoogleStudioKey(idx),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
                         const Divider(height: 24),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -403,6 +770,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTabButton({
+    required String id,
+    required IconData icon,
+    required String label,
+    int badgeCount = 0,
+  }) {
+    final isSelected = _selectedTab == id;
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: () => setState(() => _selectedTab = id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected ? AppColors.textWhite : AppColors.textMuted,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? AppColors.textWhite : AppColors.textMuted,
+              ),
+            ),
+            if (badgeCount > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.bgDark.withValues(alpha: 0.35) : AppColors.primary.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$badgeCount',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? AppColors.textWhite : AppColors.accentCyan,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoogleModelChip(String model) {
+    final isSelected = _googleStudioModelCtrl.text.trim() == model;
+    return ActionChip(
+      backgroundColor: isSelected ? AppColors.primary.withValues(alpha: 0.25) : AppColors.inputBg,
+      side: BorderSide(color: isSelected ? AppColors.primaryLight : AppColors.borderDark),
+      label: Text(
+        model,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? AppColors.accentCyan : AppColors.textWhite,
+        ),
+      ),
+      onPressed: () => _applyGoogleModelPreset(model),
     );
   }
 

@@ -21,6 +21,36 @@ class NativeAiService {
   final DatabaseService _dbService = DatabaseService();
   final NativeSshService _sshService = NativeSshService();
 
+  static int _googleStudioKeyIndex = 0;
+
+  static List<String> extractGoogleStudioKeys(Map<String, dynamic> cfg) {
+    final raw = cfg['google_studio_api_keys'];
+    final keys = <String>[];
+    if (raw is List) {
+      for (final item in raw) {
+        final s = item?.toString().trim() ?? '';
+        if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
+      }
+    } else if (raw is String && raw.trim().isNotEmpty) {
+      final str = raw.trim();
+      try {
+        final decoded = jsonDecode(str);
+        if (decoded is List) {
+          for (final item in decoded) {
+            final s = item?.toString().trim() ?? '';
+            if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
+          }
+          return keys;
+        }
+      } catch (_) {}
+      for (final line in str.split(RegExp(r'[\r\n,;]+'))) {
+        final s = line.trim();
+        if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
+      }
+    }
+    return keys;
+  }
+
   static final RegExp _systemMessageRegex = RegExp(
     r'(?:The following is a <SYSTEM_MESSAGE>[^\n]*\n+)?<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>',
     caseSensitive: false,
@@ -180,10 +210,25 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     () async {
       try {
         final cfg = await _configService.loadConfig();
-        var baseUrl = cfg['proxy_base_url']?.toString() ?? 'https://openrouter.ai/api/v1';
-        final apiKey = cfg['proxy_api_key']?.toString() ?? '';
-        final defaultModel = cfg['ai_model']?.toString() ?? 'glm-5.3';
+        final providerTab = cfg['ai_provider_tab']?.toString() ?? 'proxy';
+        final googleKeys = extractGoogleStudioKeys(cfg);
+        final googleStudioModel = cfg['google_studio_model']?.toString().trim() ?? 'gemini-2.5-flash';
+
+        final defaultModel = (providerTab == 'google_studio')
+            ? (googleStudioModel.isNotEmpty ? googleStudioModel : 'gemini-2.5-flash')
+            : (cfg['ai_model']?.toString() ?? 'glm-5.3');
         final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
+
+        final bool useGoogleStudio = (providerTab == 'google_studio' ||
+                (targetModel.toLowerCase().startsWith('gemini-') && ! _isCliModel(targetModel) && googleKeys.isNotEmpty && (cfg['proxy_api_key']?.toString().trim().isEmpty ?? true))) &&
+            googleKeys.isNotEmpty;
+
+        var baseUrl = useGoogleStudio
+            ? 'https://generativelanguage.googleapis.com/v1beta/openai'
+            : (cfg['proxy_base_url']?.toString() ?? 'https://openrouter.ai/api/v1');
+        var apiKey = useGoogleStudio
+            ? googleKeys[_googleStudioKeyIndex % googleKeys.length]
+            : (cfg['proxy_api_key']?.toString() ?? '');
 
         if (baseUrl.endsWith('/')) {
           baseUrl = baseUrl.substring(0, baseUrl.length - 1);
@@ -375,32 +420,63 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
         while (turnCount < maxTurns && !isCancelled) {
           turnCount++;
-          final client = http.Client();
-          final request = http.Request('POST', Uri.parse('$baseUrl/chat/completions'));
-          request.headers.addAll({
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
-          });
+          http.Client client = http.Client();
+          http.StreamedResponse? response;
+          String lastErrBody = '';
+          int lastStatusCode = 0;
 
-          final requestBody = {
-            'model': targetModel,
-            'messages': messages,
-            'tools': tools,
-            'stream': true,
-          };
-          request.body = jsonEncode(requestBody);
+          final int maxKeyAttempts = (useGoogleStudio && googleKeys.isNotEmpty) ? googleKeys.length : 1;
+          for (int attempt = 0; attempt < maxKeyAttempts; attempt++) {
+            if (useGoogleStudio && googleKeys.isNotEmpty) {
+              apiKey = googleKeys[(_googleStudioKeyIndex + attempt) % googleKeys.length];
+            }
+            final req = http.Request('POST', Uri.parse('$baseUrl/chat/completions'));
+            req.headers.addAll({
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+            });
+            req.body = jsonEncode({
+              'model': targetModel.replaceFirst(RegExp(r'^models/'), ''),
+              'messages': messages,
+              'tools': tools,
+              'stream': true,
+            });
 
-          onStatus(turnCount == 1 ? 'Đang suy nghĩ...' : 'Đang xử lý bước tiếp theo...');
-          final response = await client.send(request);
+            onStatus(turnCount == 1
+                ? (useGoogleStudio && maxKeyAttempts > 1
+                    ? 'Đang suy nghĩ (Google Studio Key #${((_googleStudioKeyIndex + attempt) % googleKeys.length) + 1}/${googleKeys.length})...'
+                    : 'Đang suy nghĩ...')
+                : 'Đang xử lý bước tiếp theo...');
 
-          if (response.statusCode != 200) {
-            final errBody = await response.stream.bytesToString();
-            String errorMsg = 'AI API Error (${response.statusCode}): $errBody';
-            if (response.statusCode == 401) {
-              errorMsg += '\n\n💡 Hướng dẫn khắc phục:\n'
-                  '1. Vào mục "Cấu hình" (bên menu trái) -> Nhập "Proxy API Key" hợp lệ và lưu cấu hình.\n'
-                  '2. Hoặc bấm vào góc trên bên trái (chỗ đang chọn $targetModel) và chọn "Google Antigravity CLI" để chạy trực tiếp trên máy không cần API Key.';
+            final res = await client.send(req);
+            if (res.statusCode == 200) {
+              if (useGoogleStudio && googleKeys.isNotEmpty) {
+                // Advance round-robin index for next request
+                _googleStudioKeyIndex = (_googleStudioKeyIndex + attempt + 1) % googleKeys.length;
+              }
+              response = res;
+              break;
+            } else {
+              lastStatusCode = res.statusCode;
+              lastErrBody = await res.stream.bytesToString();
+              client.close();
+              // If rate limited (429), quota exceeded (403), invalid key (400/401), or server error (5xx) on Google Studio, rotate to next key
+              if (useGoogleStudio && attempt + 1 < maxKeyAttempts) {
+                onStatus('Key #${((_googleStudioKeyIndex + attempt) % googleKeys.length) + 1} gặp lỗi ($lastStatusCode), đang tự động chuyển sang API Key tiếp theo...');
+                client = http.Client();
+                continue;
+              }
+              break;
+            }
+          }
+
+          if (response == null || response.statusCode != 200) {
+            String errorMsg = 'AI API Error ($lastStatusCode): $lastErrBody';
+            if (lastStatusCode == 401 || lastStatusCode == 400 || lastStatusCode == 429) {
+              errorMsg += '\n\nHướng dẫn khắc phục:\n'
+                  '1. Vào mục "Cấu hình" -> Kiểm tra lại danh sách "API Key Google Studio" hoặc "Proxy API Key" và bấm Lưu Cấu Hình.\n'
+                  '2. Nếu dùng Google AI Studio miễn phí bị giới hạn hạn ngạch (429), hãy thêm nhiều API Key từ các project khác nhau để hệ thống tự động xoay vòng.';
             }
             onError(errorMsg);
             client.close();
@@ -664,7 +740,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
   }
 
   bool _isCliModel(String model) {
-    final m = model.toLowerCase();
+    final m = model.toLowerCase().trim();
     return m.contains('cli') || m == 'agy' || m == 'claude' || m == 'gemini';
   }
 

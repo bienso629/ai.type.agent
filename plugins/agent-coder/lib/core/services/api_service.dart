@@ -112,12 +112,19 @@ class ApiService {
   Future<List<String>> fetchRemoteModels({String? customBaseUrl, String? customApiKey}) async {
     try {
       final cfg = await getConfig();
+      final providerTab = cfg['ai_provider_tab']?.toString() ?? 'proxy';
+      final googleKeys = NativeAiService.extractGoogleStudioKeys(cfg);
+
       var baseUrl = (customBaseUrl != null && customBaseUrl.trim().isNotEmpty)
           ? customBaseUrl.trim()
-          : (cfg['proxy_base_url']?.toString().trim() ?? '');
+          : (providerTab == 'google_studio'
+              ? 'https://generativelanguage.googleapis.com/v1beta/openai'
+              : (cfg['proxy_base_url']?.toString().trim() ?? ''));
       final apiKey = (customApiKey != null && customApiKey.trim().isNotEmpty)
           ? customApiKey.trim()
-          : (cfg['proxy_api_key']?.toString().trim() ?? '');
+          : (providerTab == 'google_studio' && googleKeys.isNotEmpty
+              ? googleKeys.first
+              : (cfg['proxy_api_key']?.toString().trim() ?? ''));
 
       if (baseUrl.isEmpty) {
         baseUrl = 'https://openrouter.ai/api/v1';
@@ -142,7 +149,7 @@ class ApiService {
         if (decoded is Map && decoded['data'] is List) {
           for (final item in decoded['data']) {
             if (item is Map && item['id'] != null) {
-              final id = item['id'].toString().trim();
+              final id = item['id'].toString().trim().replaceFirst(RegExp(r'^models/'), '');
               if (id.isNotEmpty && !modelsList.contains(id)) {
                 modelsList.add(id);
               }
@@ -154,7 +161,7 @@ class ApiService {
         } else if (decoded is List) {
           for (final item in decoded) {
             if (item is Map && item['id'] != null) {
-              final id = item['id'].toString().trim();
+              final id = item['id'].toString().trim().replaceFirst(RegExp(r'^models/'), '');
               if (id.isNotEmpty && !modelsList.contains(id)) {
                 modelsList.add(id);
               }
