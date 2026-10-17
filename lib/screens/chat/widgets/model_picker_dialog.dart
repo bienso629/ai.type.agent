@@ -106,6 +106,18 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
       return m.toLowerCase().contains(q);
     }).toList();
 
+    // Google AI Studio free models: preset + gemini models fetched from remote
+    final googlePresetModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+    final remoteGeminiModels = serverProvider.remoteModels
+        .where((m) => m.toLowerCase().contains('gemini'))
+        .where((m) => !googlePresetModels.contains(m))
+        .toList();
+    final allGoogleModels = [...googlePresetModels, ...remoteGeminiModels];
+    final filteredGoogleModels = allGoogleModels.where((m) {
+      if (q.isEmpty) return true;
+      return m.toLowerCase().contains(q);
+    }).toList();
+
     return Dialog(
       backgroundColor: AppColors.cardBg,
       elevation: 24,
@@ -293,7 +305,110 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
 
                   const SizedBox(height: 18),
 
-                  // --- SECTION 2: CLOUD API MODELS ---
+                  // --- SECTION 2: GOOGLE AI STUDIO (MIEN PHI) ---
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.auto_awesome_rounded, size: 14, color: Colors.greenAccent),
+                          SizedBox(width: 6),
+                          Text(
+                            'GOOGLE AI STUDIO (MIỄN PHÍ)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                              color: Colors.greenAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (serverProvider.googleStudioKeys.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.greenAccent.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${serverProvider.googleStudioKeys.length} keys',
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.greenAccent),
+                              ),
+                            ),
+                          if (serverProvider.isGoogleStudioActive) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.accent.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.accent, width: 0.8),
+                              ),
+                              child: const Text(
+                                'NGUỒN ĐANG DÙNG',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accent),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  ...filteredGoogleModels.map((m) {
+                    final isSel = serverProvider.isGoogleStudioActive && currentModel == m;
+                    return _buildModelCard(
+                      title: m,
+                      subtitle: 'Miễn phí • Google AI Studio',
+                      icon: Icons.auto_awesome_rounded,
+                      iconColor: Colors.greenAccent,
+                      isSelected: isSel,
+                      onTap: () {
+                        if (serverProvider.googleStudioKeys.isEmpty) {
+                          AppToast.info(
+                            context,
+                            'Chưa có API Key Google Studio. Hãy vào Cấu hình, tab "API key Google Studio" để thêm key miễn phí.',
+                          );
+                          return;
+                        }
+                        serverProvider.setActiveAgentWithSource(m, useGoogleStudio: true);
+                        Navigator.pop(context);
+                        AppToast.success(context, 'Đã chọn model Google Studio (miễn phí): $m');
+                      },
+                    );
+                  }),
+
+                  if (serverProvider.googleStudioKeys.isEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.inputBg,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.borderDark),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, size: 16, color: Colors.amberAccent),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Chưa có API Key Google Studio. Hãy thêm key miễn phí trong Cấu hình để dùng các model này.',
+                              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 18),
+
+                  // --- SECTION 3: CLOUD API MODELS (TRA PHI) ---
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
@@ -314,14 +429,33 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                             ),
                           ],
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.refresh_rounded, size: 14, color: AppColors.textDim),
-                          tooltip: 'Làm mới danh sách models từ Server',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                          onPressed: () {
-                            serverProvider.fetchModels(forceRefresh: true);
-                          },
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (!serverProvider.isGoogleStudioActive)
+                              Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.accent, width: 0.8),
+                                ),
+                                child: const Text(
+                                  'NGUỒN ĐANG DÙNG',
+                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.accent),
+                                ),
+                              ),
+                            IconButton(
+                              icon: const Icon(Icons.refresh_rounded, size: 14, color: AppColors.textDim),
+                              tooltip: 'Làm mới danh sách models từ Server',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                              onPressed: () {
+                                serverProvider.fetchModels(forceRefresh: true);
+                              },
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -340,7 +474,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
                     )
                   else if (filteredCloudModels.isNotEmpty)
                     ...filteredCloudModels.map((m) {
-                      final isSel = currentModel == m;
+                      final isSel = !serverProvider.isGoogleStudioActive && currentModel == m;
                       IconData icon = Icons.memory_rounded;
                       if (m.contains('glm')) {
                         icon = Icons.auto_awesome_rounded;
@@ -358,13 +492,13 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
 
                       return _buildModelCard(
                         title: m,
-                        subtitle: 'Cloud API Model',
+                        subtitle: 'Trả phí • Proxy API',
                         icon: icon,
                         isSelected: isSel,
                         onTap: () {
-                          serverProvider.setActiveAgent(m);
+                          serverProvider.setActiveAgentWithSource(m, useGoogleStudio: false);
                           Navigator.pop(context);
-                          AppToast.success(context, 'Đã chọn Cloud Model: $m');
+                          AppToast.success(context, 'Đã chọn Cloud Model (Proxy trả phí): $m');
                         },
                       );
                     })
@@ -437,6 +571,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
     required String title,
     required String subtitle,
     required IconData icon,
+    Color? iconColor,
     required bool isSelected,
     required VoidCallback onTap,
   }) {
@@ -460,7 +595,7 @@ class _ModelPickerDialogState extends State<ModelPickerDialog> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
               children: [
-                Icon(icon, size: 16, color: isSelected ? AppColors.accent : AppColors.textMuted),
+                Icon(icon, size: 16, color: isSelected ? AppColors.accent : (iconColor ?? AppColors.textMuted)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(

@@ -21,6 +21,9 @@ class ServerProvider extends ChangeNotifier {
   bool _isScanningCliAgents = false;
   String? _error;
   String? _modelsError;
+  String _providerTab = 'proxy';
+  List<String> _googleStudioKeys = [];
+  String _googleStudioModel = 'gemini-2.5-flash';
 
   List<ServerModel> get servers => _servers;
   ServerModel? get selectedServer => _selectedServer;
@@ -32,6 +35,10 @@ class ServerProvider extends ChangeNotifier {
   bool get isLoadingModels => _isLoadingModels;
   bool get isScanningCliAgents => _isScanningCliAgents;
   String? get modelsError => _modelsError;
+  String get providerTab => _providerTab;
+  bool get isGoogleStudioActive => _providerTab == 'google_studio';
+  List<String> get googleStudioKeys => _googleStudioKeys;
+  String get googleStudioModel => _googleStudioModel;
 
   String get currentAiModel {
     if (_activeAgent.isNotEmpty) {
@@ -106,6 +113,28 @@ class ServerProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> setActiveAgentWithSource(String agent, {required bool useGoogleStudio}) async {
+    if (agent.isEmpty) return;
+    _activeAgent = agent;
+    if (!_isCli(agent)) {
+      _cloudAiModel = agent;
+    }
+    _providerTab = useGoogleStudio ? 'google_studio' : 'proxy';
+    if (useGoogleStudio) {
+      _googleStudioModel = agent;
+    }
+    _checkPreloadState();
+    notifyListeners();
+    try {
+      await _api.saveConfig({
+        'active_agent_engine': agent,
+        'ai_model': agent,
+        'ai_provider_tab': _providerTab,
+        if (useGoogleStudio) 'google_studio_model': agent,
+      });
+    } catch (_) {}
+  }
+
   Future<void> loadGlobalConfig() async {
     try {
       final cfg = await _api.getConfig();
@@ -124,6 +153,10 @@ class ServerProvider extends ChangeNotifier {
       } else {
         _activeAgent = _cloudAiModel;
       }
+      _providerTab = (cfg['ai_provider_tab']?.toString() == 'google_studio') ? 'google_studio' : 'proxy';
+      _googleStudioKeys = NativeAiService.extractGoogleStudioKeys(cfg);
+      final gsm = cfg['google_studio_model']?.toString().trim() ?? '';
+      _googleStudioModel = gsm.isNotEmpty ? gsm : 'gemini-2.5-flash';
       _checkPreloadState();
       notifyListeners();
     } catch (_) {}

@@ -468,12 +468,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Row(
                             children: [
                               Expanded(
-                                child: TextField(
-                                  controller: _newGoogleKeyCtrl,
-                                  onSubmitted: (_) => _addGoogleStudioKeysFromInput(),
-                                  decoration: const InputDecoration(
-                                    hintText: 'AIzaSy... (Nhập 1 hoặc nhiều API Key rồi bấm Thêm Key)',
-                                    prefixIcon: Icon(Icons.vpn_key_rounded, size: 18),
+                                child: SizedBox(
+                                  height: 40,
+                                  child: TextField(
+                                    controller: _newGoogleKeyCtrl,
+                                    onSubmitted: (_) => _addGoogleStudioKeysFromInput(),
+                                    style: const TextStyle(fontSize: 12.5),
+                                    decoration: const InputDecoration(
+                                      hintText: 'AIzaSy... (1 hoặc nhiều API Key)',
+                                      hintStyle: TextStyle(fontSize: 11.5),
+                                      prefixIcon: Icon(Icons.vpn_key_rounded, size: 16),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      prefixIconConstraints: BoxConstraints(minWidth: 36),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -482,7 +490,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primaryLight,
                                   foregroundColor: AppColors.bgDark,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                                  minimumSize: const Size(0, 40),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),
                                 icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
                                 label: const Text('Thêm Key', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -557,7 +567,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             )
                           else
                             Container(
-                              constraints: const BoxConstraints(maxHeight: 220),
+                              constraints: BoxConstraints(maxHeight: (_googleStudioKeys.length * 46).clamp(100.0, 420.0).toDouble()),
                               decoration: BoxDecoration(
                                 color: AppColors.inputBg,
                                 borderRadius: BorderRadius.circular(4),
