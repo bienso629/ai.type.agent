@@ -26,6 +26,9 @@ class LocalConfigService {
     'proxy_api_key': '',
     'proxy_base_url': 'https://openrouter.ai/api/v1',
     'ai_model': 'glm-5.3',
+    'ai_provider_tab': 'proxy',
+    'google_studio_model': 'gemini-2.5-flash',
+    'google_studio_api_keys': <String>[],
     'custom_prompt': '''(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
 - THƯ MỤC LÀM VIỆC MỤC TIÊU (SCOPE BẮT BUỘC): {workDir}
 - Mọi lệnh terminal, tạo file, cấu hình mã nguồn, cài đặt gói BẮT BUỘC thực hiện trực tiếp tại thư mục {workDir} (hoặc tạo thư mục con ngay trong {workDir}). Tuyệt đối KHÔNG tạo ở scratch/ hay bất kỳ thư mục nào khác ngoài {workDir}.
@@ -120,7 +123,7 @@ class LocalConfigService {
           final dec = _enc.decryptValue(v);
           if (k == 'ssh_port' || k == 'api_port') {
             result[k] = int.tryParse(dec) ?? dec;
-          } else if (k == 'servers') {
+          } else if (k == 'servers' || k == 'google_studio_api_keys') {
             try {
               final parsed = jsonDecode(dec);
               if (parsed is List) {
