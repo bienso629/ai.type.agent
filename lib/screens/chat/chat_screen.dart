@@ -912,7 +912,12 @@ class _ChatScreenState extends State<ChatScreen> {
       await serverProvider.selectServer(srv);
       await chat.setServerForCurrentSession(srv.name);
       if (mounted) {
-        AppToast.success(context, 'Agent chuyển sang kết nối máy chủ SSH: ${srv.name}');
+        final currentScope = chat.currentSessionScope;
+        if (currentScope != null && currentScope.isNotEmpty) {
+          AppToast.success(context, 'Đã liên thông Scope "$currentScope" với máy chủ SSH: ${srv.name}');
+        } else {
+          AppToast.success(context, 'Agent chuyển sang kết nối máy chủ SSH: ${srv.name}');
+        }
       }
     }
   }
@@ -2264,6 +2269,43 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                   ),
                                 ],
+                              ),
+                            ),
+                          ],
+                          if (serverProvider.selectedServer != null &&
+                              serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                              serverProvider.selectedServer!.serverIp != 'localhost') ...[
+                            const SizedBox(width: 8),
+                            Builder(
+                              builder: (chipCtx) => Tooltip(
+                                message: 'Bấm để đổi máy chủ liên thông với Scope này',
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(3),
+                                  onTap: () => _showQuickServerMenu(chipCtx, serverProvider),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.accentCyan.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(3),
+                                      border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.sync_alt_rounded, size: 11, color: AppColors.accentCyan),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Server: ${serverProvider.selectedServer!.name}',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: AppColors.accentCyan,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ],

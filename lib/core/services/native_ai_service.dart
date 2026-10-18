@@ -325,14 +325,22 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             ? customPrompt.trim()
             : systemPromptBase;
 
-        if (targetServerModel != null) {
-          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Mọi lệnh terminal của bạn sẽ được gửi trực tiếp qua SSH tới máy chủ này.';
+        if (targetServerModel != null && workingDir != null && workingDir.isNotEmpty) {
+          sysPrompt += '\n\n🔗 LIÊN THÔNG SCOPE CỤC BỘ & MÁY CHỦ TỪ XA:';
+          sysPrompt += '\n- THƯ MỤC SCOPE CỤC BỘ (MÃ NGUỒN GỐC): `$workingDir`';
+          sysPrompt += '\n- MÁY CHỦ TỪ XA (ĐÍCH ĐẾN): [${targetServerModel.name}] (${targetServerModel.serverIp})';
+          sysPrompt += '\n  + Tài khoản SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}';
+          sysPrompt += '\n  + Thư mục làm việc trên Server (Remote WorkDir): `${targetServerModel.remoteWorkDir}`';
+          sysPrompt += '\n- QUY TẮC PHỐI HỢP: Scope là thư mục mã nguồn chuẩn trên máy cục bộ, còn Server là máy chủ từ xa. Khi người dùng yêu cầu đối chiếu hoặc ghi đè mã nguồn từ Scope lên Server, hãy đọc chính xác từng tệp/thư mục tại Scope cục bộ, so sánh với mã nguồn trên Server và thực hiện đồng bộ/ghi đè chuẩn xác tuyệt đối qua SSH/SCP/rsync.';
+          sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
+        } else if (targetServerModel != null) {
+          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Thư mục làm việc từ xa: `${targetServerModel.remoteWorkDir}`. Mọi lệnh terminal được gửi trực tiếp qua SSH tới máy chủ này.';
         } else {
           sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
-        }
-        if (workingDir != null && workingDir.isNotEmpty) {
-          sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
-          sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
+          if (workingDir != null && workingDir.isNotEmpty) {
+            sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
+            sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
+          }
         }
         if (docFiles != null && docFiles.isNotEmpty) {
           sysPrompt += '\n\n📚 TÀI LIỆU DỰ ÁN (SCOPE DOCUMENTATION):';
@@ -911,12 +919,26 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       }
 
       onStatus('Đang gửi lệnh tới $remoteBinary CLI trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp})...');
+      
+      String remoteContextGuide = '';
+      if (workingDir != null && workingDir.isNotEmpty) {
+        remoteContextGuide = '''
+
+=== THÔNG TIN LIÊN THÔNG SCOPE CỤC BỘ & MÁY CHỦ TARGET ===
+- Thư mục Scope nguồn (Local Scope trên máy người dùng): `$workingDir`
+- Máy chủ hiện tại đang chạy lệnh: ${targetServerModel.name} (${targetServerModel.serverIp})
+- Thư mục làm việc từ xa (Remote WorkDir): `${targetServerModel.remoteWorkDir}`
+- LƯU Ý KHI THAO TÁC: Nếu người dùng yêu cầu đối chiếu code ở Scope với Server hoặc ghi đè code từ Scope lên Server, hãy lưu ý Scope là thư mục mã nguồn tại máy cục bộ `$workingDir`, còn vị trí mã nguồn trên Server này nằm tại `${targetServerModel.remoteWorkDir}`.
+=== HẾT THÔNG TIN LIÊN THÔNG ===
+''';
+      }
+
       final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
           ? customPromptTemplate.trim()
           : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn. Tuyệt đối không đọc, truy cập hoặc làm lộ các file cấu hình config*.json, .env hay credential của hệ thống và người dùng)';
       final effectivePrompt = attachmentPromptBlock.isNotEmpty
-          ? '$prompt\n\n$attachmentPromptBlock\n$promptSuffix'
-          : '$prompt\n\n$promptSuffix';
+          ? '$prompt\n\n$attachmentPromptBlock$remoteContextGuide\n$promptSuffix'
+          : '$prompt\n\n$remoteContextGuide$promptSuffix';
       final cleanPrompt = effectivePrompt;
       final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
 
