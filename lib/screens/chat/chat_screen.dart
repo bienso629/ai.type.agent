@@ -914,7 +914,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         final currentScope = chat.currentSessionScope;
         if (currentScope != null && currentScope.isNotEmpty) {
-          AppToast.success(context, 'Đã liên thông Scope "$currentScope" với máy chủ SSH: ${srv.name}');
+          AppToast.success(context, 'Đã bổ sung máy chủ SSH "${srv.name}" cho Scope này (Scope vẫn là ưu tiên chính)');
         } else {
           AppToast.success(context, 'Agent chuyển sang kết nối máy chủ SSH: ${srv.name}');
         }
@@ -2278,7 +2278,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             const SizedBox(width: 8),
                             Builder(
                               builder: (chipCtx) => Tooltip(
-                                message: 'Bấm để đổi máy chủ liên thông với Scope này',
+                                message: 'Server bổ sung: Agent SSH lên máy chủ này khi cần điều khiển (Scope vẫn ưu tiên chính). Bấm để đổi máy chủ',
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(3),
                                   onTap: () => _showQuickServerMenu(chipCtx, serverProvider),

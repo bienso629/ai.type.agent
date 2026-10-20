@@ -101,7 +101,8 @@ class NativeAiService {
   }
 
   static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
-Bạn có quyền thực thi lệnh bash/shell/terminal thực tế qua công cụ `execute_terminal_command`.
+Bạn có quyền thực thi lệnh bash/shell/terminal thực tế qua công cụ `execute_terminal_command` (máy tính cục bộ tại Scope - luôn là ưu tiên hàng đầu).
+Khi phiên làm việc có máy chủ từ xa được liên kết, bạn còn có công cụ `execute_server_command` để SSH lên điều khiển máy chủ đó. Scope cục bộ luôn là nguồn mã nguồn chuẩn để đối chiếu; Server chỉ là thông tin bổ sung phục vụ kết nối.
 
 CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
@@ -155,17 +156,12 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         return 'LỖI BẢO MẬT (SECURITY POLICY): Lệnh bị từ chối thực thi do vi phạm chính sách an toàn. Agent không được phép truy cập, đọc hoặc hiển thị file cấu hình tài khoản (config*.json, .env, credential DB).';
       }
       if (server != null && server.serverIp != '127.0.0.1' && server.serverIp != 'localhost') {
-        return await _sshService.executeCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds, server: server);
+        final remoteDir = (workingDir != null && workingDir.isNotEmpty) ? workingDir : server.remoteWorkDir;
+        return await _sshService.executeCommand(command, workingDir: remoteDir, timeoutSeconds: timeoutSeconds, server: server);
       }
-      final cfg = await _configService.loadConfig();
-      final serverIp = cfg['server_ip']?.toString() ?? '127.0.0.1';
-      final isRemote = serverIp.isNotEmpty && serverIp != '127.0.0.1' && serverIp != 'localhost';
-
-      if (isRemote) {
-        return await _sshService.executeCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds);
-      } else {
-        return await _executeLocalCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds);
-      }
+      // Phân cấp bắt buộc: lệnh terminal mặc định luôn chạy cục bộ ngay tại Scope.
+      // Máy chủ từ xa chỉ được điều khiển qua công cụ execute_server_command riêng.
+      return await _executeLocalCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds);
     } catch (e) {
       return 'Lỗi thực thi lệnh: $e';
     }
@@ -326,12 +322,16 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             : systemPromptBase;
 
         if (targetServerModel != null && workingDir != null && workingDir.isNotEmpty) {
-          sysPrompt += '\n\n🔗 LIÊN THÔNG SCOPE CỤC BỘ & MÁY CHỦ TỪ XA:';
-          sysPrompt += '\n- THƯ MỤC SCOPE CỤC BỘ (MÃ NGUỒN GỐC): `$workingDir`';
-          sysPrompt += '\n- MÁY CHỦ TỪ XA (ĐÍCH ĐẾN): [${targetServerModel.name}] (${targetServerModel.serverIp})';
+          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
+          sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC (SCOPE - NGỮ CẢNH CHÍNH, ƯU TIÊN HÀNG ĐẦU): `$workingDir`';
+          sysPrompt += '\nMọi lệnh terminal, tạo file, cấu hình mã nguồn mặc định thực thi trực tiếp tại Scope này bằng công cụ `execute_terminal_command`.';
+          sysPrompt += '\n\n🔗 MÁY CHỦ TỪ XA BỔ SUNG (SSH) - CHỈ LÀ THÔNG TIN BỔ SUNG ĐỂ KẾT NỐI ĐIỀU KHIỂN, KHÔNG THAY THẾ SCOPE:';
+          sysPrompt += '\n- SCOPE CỤC BỘ (NGUỒN MÃ NGUỒN CHUẨN ĐỂ ĐỐI CHIẾU): `$workingDir`';
+          sysPrompt += '\n- MÁY CHỦ TỪ XA (BỔ SUNG): [${targetServerModel.name}] (${targetServerModel.serverIp})';
           sysPrompt += '\n  + Tài khoản SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}';
           sysPrompt += '\n  + Thư mục làm việc trên Server (Remote WorkDir): `${targetServerModel.remoteWorkDir}`';
-          sysPrompt += '\n- QUY TẮC PHỐI HỢP: Scope là thư mục mã nguồn chuẩn trên máy cục bộ, còn Server là máy chủ từ xa. Khi người dùng yêu cầu đối chiếu hoặc ghi đè mã nguồn từ Scope lên Server, hãy đọc chính xác từng tệp/thư mục tại Scope cục bộ, so sánh với mã nguồn trên Server và thực hiện đồng bộ/ghi đè chuẩn xác tuyệt đối qua SSH/SCP/rsync.';
+          sysPrompt += '\n- CÔNG CỤ SSH RIÊNG: Khi cần xem hoặc điều khiển máy chủ từ xa, dùng công cụ `execute_server_command` (mỗi lệnh được chạy trực tiếp qua SSH trên máy chủ này, thư mục mặc định là Remote WorkDir ở trên).';
+          sysPrompt += '\n- QUY TẮC PHỐI HỢP SCOPE → SERVER: Scope luôn là nguồn mã nguồn chuẩn để đối chiếu. Khi người dùng yêu cầu lấy code ở Scope để đối chiếu chính xác và ghi đè lên Server, thực hiện trình tự: (1) Đọc/xác minh tệp tại Scope cục bộ bằng `execute_terminal_command`; (2) Đọc/so sánh phía Server bằng `execute_server_command` (cat, md5sum, diff...); (3) Ghi đè chính xác nội dung chuẩn từ Scope lên Server (chạy scp/rsync từ máy cục bộ qua `execute_terminal_command`, hoặc ghi nội dung qua heredoc/tee bằng `execute_server_command`); (4) Kiểm chứng lại kết quả trên Server sau khi ghi đè.';
           sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
         } else if (targetServerModel != null) {
           sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Thư mục làm việc từ xa: `${targetServerModel.remoteWorkDir}`. Mọi lệnh terminal được gửi trực tiếp qua SSH tới máy chủ này.';
@@ -434,7 +434,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             'type': 'function',
             'function': {
               'name': 'execute_terminal_command',
-              'description': 'Thực thi lệnh terminal bash/shell trên máy tính cục bộ (Local OS).',
+              'description': 'Thực thi lệnh terminal bash/shell trên máy tính cục bộ (Local OS) ngay tại thư mục Scope. Đây là công cụ ưu tiên hàng đầu.',
               'parameters': {
                 'type': 'object',
                 'properties': {
@@ -446,7 +446,25 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
                 'required': ['command']
               }
             }
-          }
+          },
+          if (targetServerModel != null)
+            {
+              'type': 'function',
+              'function': {
+                'name': 'execute_server_command',
+                'description': 'Thực thi lệnh terminal bash/shell trên máy chủ từ xa ${targetServerModel.name} (${targetServerModel.serverIp}) qua SSH. Chỉ dùng khi cần xem hoặc điều khiển máy chủ này; Scope cục bộ vẫn là ưu tiên chính của phiên làm việc.',
+                'parameters': {
+                  'type': 'object',
+                  'properties': {
+                    'command': {
+                      'type': 'string',
+                      'description': 'Lệnh shell/bash cần chạy trên máy chủ từ xa qua SSH'
+                    }
+                  },
+                  'required': ['command']
+                }
+              }
+            },
         ];
 
         String finalReply = '';
@@ -682,7 +700,23 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               );
               onTool(toolItem);
 
-              final cmdOutput = await _executeCommand(cmd, workingDir: workingDir, server: targetServerModel);
+              final bool isServerToolCall = funcName.trim() == 'execute_server_command';
+              String cmdOutput;
+              if (isServerToolCall) {
+                if (targetServerModel == null) {
+                  cmdOutput = 'LỖI: Phiên làm việc chưa chọn máy chủ nào. Hãy dùng execute_terminal_command để chạy cục bộ tại Scope.';
+                } else {
+                  final remoteDir = targetServerModel.remoteWorkDir;
+                  cmdOutput = await _executeCommand(
+                    cmd,
+                    workingDir: (remoteDir.isNotEmpty) ? remoteDir : null,
+                    timeoutSeconds: 120,
+                    server: targetServerModel,
+                  );
+                }
+              } else {
+                cmdOutput = await _executeCommand(cmd, workingDir: workingDir);
+              }
 
               final finishedTool = ToolExecutionItem(
                 tool: funcName,
@@ -924,12 +958,12 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       if (workingDir != null && workingDir.isNotEmpty) {
         remoteContextGuide = '''
 
-=== THÔNG TIN LIÊN THÔNG SCOPE CỤC BỘ & MÁY CHỦ TARGET ===
-- Thư mục Scope nguồn (Local Scope trên máy người dùng): `$workingDir`
-- Máy chủ hiện tại đang chạy lệnh: ${targetServerModel.name} (${targetServerModel.serverIp})
-- Thư mục làm việc từ xa (Remote WorkDir): `${targetServerModel.remoteWorkDir}`
-- LƯU Ý KHI THAO TÁC: Nếu người dùng yêu cầu đối chiếu code ở Scope với Server hoặc ghi đè code từ Scope lên Server, hãy lưu ý Scope là thư mục mã nguồn tại máy cục bộ `$workingDir`, còn vị trí mã nguồn trên Server này nằm tại `${targetServerModel.remoteWorkDir}`.
-=== HẾT THÔNG TIN LIÊN THÔNG ===
+=== PHÂN CẤP NGỮ CẢNH: SCOPE CỤC BỘ (ƯU TIÊN HÀNG ĐẦU) & MÁY CHỦ HIỆN TẠI ===
+- SCOPE CỤC BỘ (NGỮ CẢNH CHÍNH CỦA NGƯỜI DÙNG, NGUỒN MÃ CHUẨN ĐỂ ĐỐI CHIẾU): `$workingDir` - thư mục này nằm trên máy cá nhân của người dùng, KHÔNG tồn tại bên trong máy chủ hiện tại. Tuyệt đối không cd hay thao tác như thể nó có ở đây.
+- Môi trường thực thi hiện tại: Bạn đang chạy trực tiếp trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp}), thư mục làm việc `${targetServerModel.remoteWorkDir}`.
+- Khi người dùng yêu cầu lấy code ở Scope để đối chiếu/ghi đè lên Server: đối chiếu dựa trên nội dung tệp/tài liệu đã được nhúng trong prompt (nếu có); nếu thiếu nội dung tệp ở Scope, hãy liệt kê rõ đường dẫn tệp cần thiết để người dùng cung cấp thêm, hoặc đề nghị chuyển sang mô hình chat có bộ công cụ hai chiều (execute_terminal_command cho Scope cục bộ, execute_server_command cho Server).
+- Công việc sửa code/thực thi trên máy chủ mặc định thực hiện tại `${targetServerModel.remoteWorkDir}`.
+=== HẾT PHÂN CẤP NGỮ CẢNH ===
 ''';
       }
 
@@ -974,7 +1008,8 @@ else
   echo "- Hoặc nếu máy chủ chạy dịch vụ systemd (ai-agent.service), hãy chuyển cấu hình máy chủ sang 'Chế độ 1: Dịch vụ AI Agent (Systemd)'."
 fi
 ''';
-      final result = await _executeCommand(cmd, workingDir: workingDir, timeoutSeconds: 600, server: targetServerModel);
+      final remoteWorkDir = (targetServerModel.remoteWorkDir.isNotEmpty) ? targetServerModel.remoteWorkDir : null;
+      final result = await _executeCommand(cmd, workingDir: remoteWorkDir, timeoutSeconds: 600, server: targetServerModel);
       final convMatch = RegExp(r'"conversation_id":\s*"([^"]+)"').firstMatch(result);
       if (convMatch != null) {
         final foundConv = convMatch.group(1);
@@ -1008,6 +1043,17 @@ fi
 - Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
 - TUYỆT ĐỐI CẤM TRUY CẬP, ĐỌC, IN RA MÀN HÌNH HOẶC GIẢI MÃ BẤT KỲ FILE CẤU HÌNH TÀI KHOẢN NÀO (như config*.json, ~/.ai_type_agent/config*.json, ~/.tadu_ai_agent/config*.json, .env, chat_history*.db, các khóa bảo mật hệ thống). Nếu người dùng yêu cầu đọc file config tài khoản, phải từ chối vì lý do bảo mật.
 - Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''';
+      }
+
+      // Bổ sung thông tin máy chủ SSH phụ trợ (nếu phiên liên kết Server) - Scope vẫn là ưu tiên chính
+      if (targetServerModel != null) {
+        final srvBuf = StringBuffer();
+        srvBuf.writeln('\n\n=== MÁY CHỦ TỪ XA BỔ SUNG (SSH) - PHỤC VỤ CHO SCOPE, KHÔNG THAY THẾ SCOPE ===');
+        srvBuf.writeln('- Scope cục bộ (ngữ cảnh chính, ưu tiên hàng đầu, môi trường thực thi mặc định): `$workDir`.');
+        srvBuf.writeln('- Máy chủ từ xa bổ sung: ${targetServerModel.name} (${targetServerModel.serverIp}), SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}, Remote WorkDir: `${targetServerModel.remoteWorkDir}`.');
+        srvBuf.writeln('- Bạn đang chạy cục bộ tại Scope nên không có công cụ SSH riêng của ứng dụng; khi cần đối chiếu hoặc ghi đè code từ Scope lên Server, hãy dùng lệnh ssh/scp/rsync từ shell (chỉ khả dụng khi máy này có khóa SSH hoặc sshpass), hoặc đề nghị người dùng chuyển sang mô hình chat có bộ công cụ hai chiều (execute_terminal_command cho Scope, execute_server_command cho Server).');
+        srvBuf.writeln('=== HẾT THÔNG TIN MÁY CHỦ BỔ SUNG ===');
+        promptSuffix = '$promptSuffix${srvBuf.toString()}';
       }
 
       // Đọc và đính kèm nội dung các file tài liệu / rules được chọn vào prompt
