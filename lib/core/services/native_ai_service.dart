@@ -626,6 +626,25 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
                             toolCallsMap[idx]!['arguments'] =
                                 (toolCallsMap[idx]!['arguments'] as String) + tc['function']['arguments'].toString();
                           }
+
+                          // Gemini 3 (OpenAI-compat) gắn thought_signature vào
+                          // extra_content.google của từng tool_call trong delta.
+                          // Bắt buộc giữ lại để gửi kèm lịch sử ở lượt sau, nếu
+                          // không API trả 400
+                          // "Function call is missing a thought_signature".
+                          final extraContent = tc['extra_content'];
+                          if (extraContent is Map) {
+                            final google = extraContent['google'];
+                            if (google is Map &&
+                                google['thought_signature'] != null &&
+                                google['thought_signature'].toString().isNotEmpty) {
+                              toolCallsMap[idx]!['extra_content'] = {
+                                'google': {
+                                  'thought_signature': google['thought_signature'],
+                                },
+                              };
+                            }
+                          }
                         }
                       }
                     }
@@ -679,7 +698,10 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
                 'function': {
                   'name': funcName,
                   'arguments': rawArgs,
-                }
+                },
+                // Gửi lại thought_signature của Google kèm tool_call khi replay
+                // lịch sử, nếu không lượt gọi tool thứ hai bị 400 INVALID_ARGUMENT.
+                if (tc['extra_content'] != null) 'extra_content': tc['extra_content'],
               });
 
               // Execute tool
