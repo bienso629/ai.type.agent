@@ -127,11 +127,11 @@ class ApiService {
         baseUrl = baseUrl.substring(0, baseUrl.length - 1);
       }
 
-      final isGoogleUrl = baseUrl.contains('generativelanguage.googleapis.com');
+      // Chỉ lấy key đúng nguồn theo tab đang chọn, không trộn Proxy với Google Studio.
       final candidateKeys = (customApiKey != null && customApiKey.trim().isNotEmpty)
           ? NativeAiService.extractApiKeys(customApiKey)
-          : ((providerTab == 'google_studio' || isGoogleUrl)
-              ? NativeAiService.extractAllCandidateKeys(cfg, preferGoogleStudio: providerTab == 'google_studio' || googleKeys.isNotEmpty)
+          : (providerTab == 'google_studio'
+              ? googleKeys
               : NativeAiService.extractApiKeys(cfg['proxy_api_key']));
 
       final url = Uri.parse('$baseUrl/models');

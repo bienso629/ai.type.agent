@@ -237,23 +237,23 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             : (cfg['ai_model']?.toString() ?? 'glm-5.3');
         final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
 
+        // Phân luồng nghiêm ngặt theo tab người dùng đã chọn:
+        // - 'google_studio': chỉ dùng Base URL + danh sách API Key Google Studio.
+        // - 'proxy': chỉ dùng Base URL + API Key của AI Model & Proxy,
+        //   tuyệt đối không fallback / trộn sang API Key Google Studio.
         final proxyBaseRaw = cfg['proxy_base_url']?.toString().trim() ?? '';
-        final isGoogleEndpoint = proxyBaseRaw.contains('generativelanguage.googleapis.com');
-        final isGeminiTarget = targetModel.toLowerCase().contains('gemini') && !_isCliModel(targetModel);
+        final bool useGoogleStudio = providerTab == 'google_studio';
 
-        final bool useGoogleStudio = (providerTab == 'google_studio' || isGoogleEndpoint || isGeminiTarget) &&
-            (googleKeys.isNotEmpty || isGoogleEndpoint);
-
-        final candidateKeys = (useGoogleStudio || isGeminiTarget || isGoogleEndpoint)
-            ? extractAllCandidateKeys(cfg, preferGoogleStudio: providerTab == 'google_studio' || googleKeys.isNotEmpty)
+        final List<String> candidateKeys = useGoogleStudio
+            ? googleKeys
             : extractApiKeys(cfg['proxy_api_key']);
 
-        var baseUrl = (providerTab == 'google_studio' || (useGoogleStudio && proxyBaseRaw.isEmpty))
+        var baseUrl = useGoogleStudio
             ? 'https://generativelanguage.googleapis.com/v1beta/openai'
-            : (proxyBaseRaw.isNotEmpty ? proxyBaseRaw : 'https://generativelanguage.googleapis.com/v1beta/openai');
+            : (proxyBaseRaw.isNotEmpty ? proxyBaseRaw : 'https://openrouter.ai/api/v1');
         var apiKey = candidateKeys.isNotEmpty
             ? candidateKeys[_googleStudioKeyIndex % candidateKeys.length]
-            : (cfg['proxy_api_key']?.toString().trim() ?? '');
+            : '';
 
         if (baseUrl.endsWith('/')) {
           baseUrl = baseUrl.substring(0, baseUrl.length - 1);
