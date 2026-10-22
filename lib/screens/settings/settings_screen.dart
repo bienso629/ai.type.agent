@@ -153,6 +153,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (ok) {
           final serverProvider = context.read<ServerProvider>();
           serverProvider.setCloudAiModel(activeModel);
+          await serverProvider.loadGlobalConfig();
+          if (!mounted) return;
           if (_selectedTab == 'google_studio') {
             serverProvider.fetchModels(
               forceRefresh: true,
