@@ -23,6 +23,7 @@ import '../../core/widgets/attachment_hover_preview.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../core/widgets/chat_avatar.dart';
 import 'widgets/model_picker_dialog.dart';
+import 'widgets/work_schedule_dialog.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
@@ -1328,6 +1329,60 @@ class _ChatScreenState extends State<ChatScreen> {
                               fontSize: 11.5,
                               fontWeight: FontWeight.bold,
                               color: _showDocViewerPanel ? AppColors.accentCyan : AppColors.textWhite,
+                              height: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () {
+                      final session = chat.currentSession;
+                      if (session == null) return;
+                      WorkScheduleDialog.show(
+                        context,
+                        sessionId: session.id,
+                        workingDir: chat.currentSessionScope,
+                        docFiles: List<String>.from(chat.currentSessionDocFiles),
+                        model: serverProvider.currentAiModel,
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.borderDark, width: 0.8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryLight.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.calendar_month_rounded,
+                                size: 14,
+                                color: AppColors.primaryLight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Lịch làm việc',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textWhite,
                               height: 1.1,
                             ),
                           ),
