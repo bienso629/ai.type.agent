@@ -1169,9 +1169,9 @@ fi
         }
       } else if (m.contains('antigravity') || m == 'agy') {
         if (cliConvId != null && cliConvId.isNotEmpty) {
-          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low'];
+          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions'];
         } else {
-          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions', '--effort', 'low'];
+          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions'];
         }
       } else if (m.contains('gemini')) {
         args = ['-p', contextualPrompt];
