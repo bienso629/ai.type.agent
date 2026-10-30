@@ -56,6 +56,10 @@ class _ChatScreenState extends State<ChatScreen> {
   // Terminal split side panel visibility
   bool _showTerminalPanel = true;
 
+  /// Dieu khien TerminalScreen trong panel chat: bam nut Graphify loai
+  /// "chay ngay" se mo tab terminal moi va thi hanh lenh tai Scope hoi thoai.
+  final GlobalKey<TerminalScreenState> _terminalPanelKey = GlobalKey<TerminalScreenState>();
+
   // Doc viewer split side panel visibility
   bool _showDocViewerPanel = false;
   String? _selectedViewerDocPath;
@@ -1040,7 +1044,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   /// Mo menu chon nhanh lenh Graphify ngay tai vi tri nut (ben canh nut Attach).
-  /// Chon lenh se chen vao o nhap lieu tai vi tri con tro de nguoi dung dien tham so roi Gui.
+  /// Lenh khong can tham so (co tia set) se CHAY NGAY trong tab Terminal moi
+  /// tai Scope hoi thoai. Lenh can tham so (query/path/explain...) chi duoc
+  /// chen vao o nhap lieu de nguoi dung dien tham so roi Gui.
   Future<void> _showGraphifyMenu(BuildContext btnContext) async {
     final RenderBox button = btnContext.findRenderObject() as RenderBox;
     final RenderBox overlay = Navigator.of(btnContext).overlay!.context.findRenderObject() as RenderBox;
@@ -1067,9 +1073,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
 
-    PopupMenuItem<String> commandItem(String label, String desc, String command, IconData icon) =>
+    PopupMenuItem<String> commandItem(String label, String desc, String command, IconData icon, {required bool autoRun}) =>
         PopupMenuItem<String>(
-          value: command,
+          value: autoRun ? 'AUTO|$command' : 'INSERT|$command',
           height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
@@ -1102,6 +1108,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
+              if (autoRun) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.bolt_rounded, size: 16, color: AppColors.accentCyan),
+              ],
             ],
           ),
         );
@@ -1117,30 +1127,67 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       items: [
         headerItem('LAM MOI & CAI DAT'),
-        commandItem('graphify update .', 'Lam moi do thi tu code da sua (khong ton LLM)', 'graphify update .', Icons.update_rounded),
-        commandItem('graphify watch .', 'Tu dong rebuild do thi khi code thay doi', 'graphify watch .', Icons.visibility_rounded),
-        commandItem('graphify install', 'Cai skill graphify vao AI platform', 'graphify install', Icons.download_rounded),
-        commandItem('graphify uninstall', 'Go graphify khoi moi platform', 'graphify uninstall', Icons.delete_outline_rounded),
+        commandItem('graphify update .', 'Lam moi do thi tu code da sua (khong ton LLM)', 'graphify update .', Icons.update_rounded, autoRun: true),
+        commandItem('graphify watch .', 'Tu dong rebuild do thi khi code thay doi', 'graphify watch .', Icons.visibility_rounded, autoRun: true),
+        commandItem('graphify install', 'Cai skill graphify vao AI platform', 'graphify install', Icons.download_rounded, autoRun: true),
+        commandItem('graphify uninstall', 'Go graphify khoi moi platform', 'graphify uninstall', Icons.delete_outline_rounded, autoRun: true),
         const PopupMenuDivider(),
         headerItem('TRUY VAN & PHAN TICH'),
-        commandItem('graphify query "?"', 'Hoi dap tren do thi kien truc du an', 'graphify query "?"', Icons.help_outline_rounded),
-        commandItem('graphify path "A" "B"', 'Duong lien ket ngan nhat giua 2 node', 'graphify path "A" "B"', Icons.route_rounded),
-        commandItem('graphify explain "?"', 'Giai thich 1 node va cac ket noi cua no', 'graphify explain "?"', Icons.lightbulb_outline_rounded),
-        commandItem('graphify affected "?"', 'Tim node bi anh huong khi doi 1 node', 'graphify affected "?"', Icons.device_hub_rounded),
-        commandItem('graphify god-nodes', 'Danh sach hub kien truc ket noi nhieu nhat', 'graphify god-nodes', Icons.star_outline_rounded),
+        commandItem('graphify query "?"', 'Hoi dap tren do thi kien truc du an', 'graphify query "?"', Icons.help_outline_rounded, autoRun: false),
+        commandItem('graphify path "A" "B"', 'Duong lien ket ngan nhat giua 2 node', 'graphify path "A" "B"', Icons.route_rounded, autoRun: false),
+        commandItem('graphify explain "?"', 'Giai thich 1 node va cac ket noi cua no', 'graphify explain "?"', Icons.lightbulb_outline_rounded, autoRun: false),
+        commandItem('graphify affected "?"', 'Tim node bi anh huong khi doi 1 node', 'graphify affected "?"', Icons.device_hub_rounded, autoRun: false),
+        commandItem('graphify god-nodes', 'Danh sach hub kien truc ket noi nhieu nhat', 'graphify god-nodes', Icons.star_outline_rounded, autoRun: true),
         const PopupMenuDivider(),
         headerItem('TIEN ICH'),
-        commandItem('graphify add <url>', 'Them URL/tai lieu vao do thi', 'graphify add ', Icons.add_link_rounded),
-        commandItem('graphify tree', 'Sinh HTML cay thu muc D3 collapsible', 'graphify tree', Icons.account_tree_rounded),
-        commandItem('graphify check-update .', 'Kiem tra do thi co can lam moi khong', 'graphify check-update .', Icons.fact_check_outlined),
-        commandItem('graphify cluster-only .', 'Chay lai phan cum module + bao cao', 'graphify cluster-only . --no-viz', Icons.bubble_chart_rounded),
-        commandItem('graphify reflect', 'Tong hop bai hoc tu memory thanh LESSONS.md', 'graphify reflect', Icons.psychology_outlined),
+        commandItem('graphify add <url>', 'Them URL/tai lieu vao do thi', 'graphify add ', Icons.add_link_rounded, autoRun: false),
+        commandItem('graphify tree', 'Sinh HTML cay thu muc D3 collapsible', 'graphify tree', Icons.account_tree_rounded, autoRun: true),
+        commandItem('graphify check-update .', 'Kiem tra do thi co can lam moi khong', 'graphify check-update .', Icons.fact_check_outlined, autoRun: true),
+        commandItem('graphify cluster-only .', 'Chay lai phan cum module + bao cao', 'graphify cluster-only . --no-viz', Icons.bubble_chart_rounded, autoRun: true),
+        commandItem('graphify reflect', 'Tong hop bai hoc tu memory thanh LESSONS.md', 'graphify reflect', Icons.psychology_outlined, autoRun: true),
       ],
     );
 
     if (!mounted || selected == null) return;
-    _insertGraphifyCommand(selected);
-    AppToast.info(context, 'Da chen lenh Graphify - dien tham so vao "..." roi bam Gui nhe');
+    final isAuto = selected.startsWith('AUTO|');
+    final command = selected.split('|').skip(1).join('|');
+    if (!isAuto) {
+      _insertGraphifyCommand(command);
+      AppToast.info(context, 'Da chen lenh Graphify - dien tham so vao "..." roi bam Gui nhe');
+      return;
+    }
+    _runGraphifyCommandInTerminal(command);
+  }
+
+  /// Chay ngay lenh Graphify trong tab Terminal moi tai Scope hoi thoai hien tai
+  /// (bam nut la chay, khong can dien tham so hay bam Gui).
+  void _runGraphifyCommandInTerminal(String command) {
+    final scope = context.read<ChatProvider>().currentSessionScope;
+    final scopePath = scope?.trim() ?? '';
+    if (scopePath.isEmpty || !Directory(scopePath).existsSync()) {
+      AppToast.warning(context, 'Chua gan Scope hop le - hay chon thu muc du an roi thu lai nhe');
+      return;
+    }
+    if (_terminalPanelKey.currentState == null) {
+      // Panel Terminal dang dong (chua mount trong tree) - mo lai roi chay lenh sau frame build
+      AppToast.info(context, 'Dang mo Terminal roi chay "$command"...');
+    } else {
+      AppToast.success(context, 'Dang chay "$command" trong tab Terminal moi tai Scope');
+    }
+    setState(() {
+      _showTerminalPanel = true;
+      _showDocViewerPanel = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final st = _terminalPanelKey.currentState;
+      if (st == null) {
+        if (mounted) {
+          AppToast.warning(context, 'Terminal chua san sang - thu lai sau vai giay nhe');
+        }
+        return;
+      }
+      st.openPaneWithCommand(command, scopePath);
+    });
   }
 
   /// Chen lenh Graphify vao o nhap lieu tai vi tri con tro hien tai.
@@ -1597,6 +1644,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 child: TickerMode(
                                   enabled: _showTerminalPanel,
                                   child: TerminalScreen(
+                                    key: _terminalPanelKey,
                                     onHidePanel: () {
                                       setState(() {
                                         _showTerminalPanel = false;
@@ -2883,6 +2931,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             onPressed: () => _showGraphifyMenu(btnCtx),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         // Model Selector Button
                         OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(

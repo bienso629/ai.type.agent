@@ -40,6 +40,10 @@ class TerminalPaneItem {
 
   String? workingDirectory;
 
+  /// Lenh se tu dong chay ngay sau khi PTY khoi tao xong
+  /// (vi du: nut Graphify tren man hinh chat bam la chay luong trong tab moi).
+  String? initialCommand;
+
   // Split state specifically for this window/pane
   TerminalSplitDirection splitDirection = TerminalSplitDirection.none;
   TerminalPaneItem? childPane;
@@ -50,6 +54,7 @@ class TerminalPaneItem {
     this.isRemoteSsh = false,
     this.server,
     this.workingDirectory,
+    this.initialCommand,
   }) {
     focusNode = FocusNode();
     terminal = Terminal(
@@ -140,10 +145,10 @@ class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key, this.onHidePanel});
 
   @override
-  State<TerminalScreen> createState() => _TerminalScreenState();
+  State<TerminalScreen> createState() => TerminalScreenState();
 }
 
-class _TerminalScreenState extends State<TerminalScreen> {
+class TerminalScreenState extends State<TerminalScreen> {
   final List<TerminalPaneItem> _panes = [];
   int _activePaneIndex = 0;
   String? _activeSubPaneId;
@@ -182,6 +187,38 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     _loadSavedTerminalSessions();
+  }
+
+  /// Mo tab terminal moi (goi tu ben ngoai qua GlobalKey, vi du nut Graphify
+  /// trong man hinh chat) va tu dong chay mot lenh ngay sau khi shell san sang.
+  void openPaneWithCommand(String command, String? workingDirectory) {
+    if (_panes.length >= 6) {
+      // Het cho tab: dung tab active va chay lenh trong do
+      final pane = _activePane;
+      if (pane != null) {
+        pane.terminal.write('$command\n');
+        try {
+          pane.pty?.write(utf8.encode('$command\n'));
+          pane.sshSession?.stdin.add(utf8.encode('$command\n'));
+        } catch (_) {}
+      }
+      return;
+    }
+    final id = 'pane_${DateTime.now().millisecondsSinceEpoch}';
+    final newPane = TerminalPaneItem(
+      id: id,
+      title: 'Local Machine',
+      isRemoteSsh: false,
+      workingDirectory: workingDirectory,
+      initialCommand: command,
+    );
+    setState(() {
+      _panes.add(newPane);
+      _activePaneIndex = _panes.length - 1;
+      _activeSubPaneId = null;
+    });
+    _connectPane(newPane);
+    _saveTerminalSessions();
   }
 
   Future<void> _loadSavedTerminalSessions() async {
@@ -362,6 +399,20 @@ class _TerminalScreenState extends State<TerminalScreen> {
         setState(() {
           pane.isConnected = true;
           pane.isConnecting = false;
+        });
+      }
+
+      // Tu dong chay lenh khoi tao (neu co) sau khi shell hoat dong on dinh.
+      // Cho de nho de bash nap xong profile, tranh lenh bi chan vo prompt.
+      if (pane.initialCommand != null && pane.initialCommand!.trim().isNotEmpty) {
+        final cmd = pane.initialCommand!;
+        Future.delayed(const Duration(milliseconds: 450), () {
+          if (pane.pty == null) return;
+          try {
+            pane.terminal.write('$cmd\r');
+            pane.pty!.write(utf8.encode('$cmd\r'));
+          } catch (_) {}
+          pane.initialCommand = null;
         });
       }
 
@@ -1815,3 +1866,4 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
   }
 }
+
