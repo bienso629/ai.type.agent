@@ -41,7 +41,7 @@ class TerminalPaneItem {
   String? workingDirectory;
 
   /// Lenh se tu dong chay ngay sau khi PTY khoi tao xong
-  /// (vi du: nut Graphify tren man hinh chat bam la chay luong trong tab moi).
+  /// (vi du: tac vu tu dong o nen hoac hanh vi nhanh tu giao dien bam la chay
   String? initialCommand;
 
   // Split state specifically for this window/pane
@@ -189,7 +189,7 @@ class TerminalScreenState extends State<TerminalScreen> {
     _loadSavedTerminalSessions();
   }
 
-  /// Mo tab terminal moi (goi tu ben ngoai qua GlobalKey, vi du nut Graphify
+  /// Mo tab terminal moi (goi tu ben ngoai qua GlobalKey khi can chay nhanh
   /// trong man hinh chat) va tu dong chay mot lenh ngay sau khi shell san sang.
   void openPaneWithCommand(String command, String? workingDirectory) {
     if (_panes.length >= 6) {

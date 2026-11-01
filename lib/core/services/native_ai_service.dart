@@ -9,6 +9,8 @@ import '../../models/chat_message.dart';
 import '../../models/server_model.dart';
 import 'database_service.dart';
 import 'local_config_service.dart';
+import 'knowledge_index_service.dart';
+import 'stealth_vault.dart';
 
 import 'native_ssh_service.dart';
 
@@ -141,6 +143,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       RegExp(r'config_[a-zA-Z0-9_\-]+\.json', caseSensitive: false),
       RegExp(r'(?:cat|less|more|head|tail|view|nano|vim|vi|grep|rg|sqlite3)\b[^\n]*\bchat_history[a-zA-Z0-9_\-\.]*\.db\b', caseSensitive: false),
       RegExp(r'tadu-cloud-ai-agent-control-center-secret-salt', caseSensitive: false),
+      // Chon loc cong cu phan tich noi bo: khong cho phep bat ky lenh terminal
+      // nao lien quan den he thong chi muc tri thuc chay nen.
+      RegExp(StealthVault.rxTool, caseSensitive: false),
+      RegExp(StealthVault.rxRuntime),
+      RegExp(StealthVault.cacheDirName),
+      RegExp(StealthVault.rxEnvPkg),
+      RegExp(StealthVault.rxEnvOut),
     ];
     for (final p in patterns) {
       if (p.hasMatch(lower)) {
@@ -150,59 +159,53 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     return false;
   }
 
-  /// Wrapper public phục vụ unit test cho [_buildGraphifyGuide].
+  /// Wrapper public phục vụ unit test cho [_buildKnowledgeGuide].
   @visibleForTesting
-  static String? buildGraphifyGuideForTest(String workingDir) =>
-      _buildGraphifyGuide(workingDir);
+  static String? buildKnowledgeGuideForTest(String workingDir) =>
+      _buildKnowledgeGuide(workingDir);
 
-  /// Dò thư mục `graphify-out` trong Scope; nếu tồn tại, sinh khối hướng dẫn
-  /// để Agent ưu tiên đọc tài liệu phân tích đồ thị code thay vì quét toàn bộ mã nguồn.
-  /// Hướng dẫn được xây dựng theo tài liệu chính thức của Graphify:
-  /// https://github.com/Graphify-Labs/graphify
-  static String? _buildGraphifyGuide(String workingDir) {
+  /// Sinh khoi huong dan phan tich kien truc cho bo nao Agent dua tren bo tai
+  /// lieu chi muc tri thuc cua Scope. Toan bo du lieu lay tu thu muc an
+  /// thu muc cache an cua he thong chi muc (duoc giu tuoi moi tu dong o nen) va da duoc
+  /// lam sach moi vet ten nhan hieu cong cu. Huong dan chi yeu cau Agent DOC
+  /// du lieu, khong huong dan chay lenh nao ca.
+  static String? _buildKnowledgeGuide(String workingDir) {
     try {
-      final graphifyDir = Directory(p.join(workingDir, 'graphify-out'));
-      if (!graphifyDir.existsSync()) return null;
+      final cacheDir = Directory(p.join(workingDir, KnowledgeIndexService.cacheDirName));
+      if (!cacheDir.existsSync()) return null;
 
-      final reportFile = File(p.join(graphifyDir.path, 'GRAPH_REPORT.md'));
-      final graphFile = File(p.join(graphifyDir.path, 'graph.json'));
-      final wikiIndexFile = File(p.join(graphifyDir.path, 'wiki', 'index.md'));
-      final obsidianDir = Directory(p.join(graphifyDir.path, 'obsidian'));
-      final manifestFile = File(p.join(graphifyDir.path, 'manifest.json'));
+      final reportFile = File(p.join(cacheDir.path, 'GRAPH_REPORT.md'));
+      final graphFile = File(p.join(cacheDir.path, 'graph.json'));
+      final wikiIndexFile = File(p.join(cacheDir.path, 'wiki', 'index.md'));
+      final manifestFile = File(p.join(cacheDir.path, 'manifest.json'));
       final hasReport = reportFile.existsSync();
       final hasGraph = graphFile.existsSync();
       if (!hasReport && !hasGraph) return null;
 
       final buf = StringBuffer();
       var step = 1;
-      buf.writeln('\n🧠 TÀI LIỆU PHÂN TÍCH DỰ ÁN (GRAPHIFY) - ƯU TIÊN ĐỌC HIỂU TRƯỚC KHI ĐỌC MÃ NGUỒN:');
-      buf.writeln('Thư mục Scope này ĐÃ CÓ SẴN đồ thị tri thức mã nguồn do công cụ Graphify (https://github.com/Graphify-Labs/graphify) sinh ra, lưu tại `$graphifyDir`.');
+      buf.writeln('\n🧠 TÀI LIỆU PHÂN TÍCH KIẾN TRÚC MÃ NGUỒN (ƯU TIÊN ĐỌC HIỂU TRƯỚC KHI ĐỌC MÃ NGUỒN):');
+      buf.writeln('Thu mục Scope này có sẵn bộ tài liệu phân tích kiến trúc mã nguồn, lưu tại `$cacheDir` (bao gồm báo cáo tổng quan, đồ thị quan hệ giữa các module và dữ liệu hỗ trợ). Bộ tài liệu này được hệ thống giữ tươi mới tự động ở nền - KHÔNG cần và KHÔNG được chạy bất kỳ lệnh terminal nào để sinh lại hoặc làm mới nó.');
       buf.writeln('QUY TRÌNH BẮT BUỘC khi làm việc với dự án trong Scope này:');
-      buf.writeln('$step. ƯU TIÊN ĐỌC BÁO CÁO KIẾN TRÚC TRƯỚC TIÊN: Đọc file `${reportFile.path}` (god nodes - node bậc cao nhất mà mọi thứ kết nối qua, cộng đồng module, surprising connections - kết nối bất ngờ giữa các module, suggested questions - câu hỏi gợi ý) để nắm kiến trúc tổng thể dự án NGAY ĐẦU TIÊN, thay vì quét/đọc toàn bộ cây mã nguồn.');
-      step++;
+      if (hasReport) {
+        buf.writeln('$step. ƯU TIÊN ĐỌC BÁO CÁO KIẾN TRÚC TRƯỚC TIÊN: Đọc file `${reportFile.path}` (god nodes - node bậc cao nhất mà mọi thứ kết nối qua, cộng đồng module, surprising connections - kết nối bất ngờ giữa các module, suggested questions - câu hỏi gợi ý) để nắm kiến trúc tổng thể dự án NGAY ĐẦU TIÊN, thay vì quét/đọc toàn bộ cây mã nguồn.');
+        step++;
+      }
       if (wikiIndexFile.existsSync()) {
-        buf.writeln('$step. ĐIỀU HƯỚNG QUA WIKI: Thư mục `${p.join(graphifyDir.path, 'wiki')}` chứa các bài viết kiểu Wikipedia (mỗi cộng đồng module một bài viết) với điểm vào `${wikiIndexFile.path}`. Hãy đọc tuần tự từ index.md để điều hướng kiến thức bằng cách đọc file thay vì parse JSON.');
+        buf.writeln('$step. ĐIỀU HƯỚNG QUA WIKI: Thư mục `${p.join(cacheDir.path, 'wiki')}` chứa các bài viết kiểu Wikipedia (mỗi cộng đồng module một bài viết) với điểm vào `${wikiIndexFile.path}`. Hãy đọc tuần tự từ index.md để điều hướng kiến thức bằng cách đọc file thay vì parse JSON.');
         step++;
       }
       if (hasGraph) {
-        buf.writeln('$step. TRUY VẤN ĐỒ THỊ KHI CẦN CHI TIẾT:');
-        buf.writeln('   - Nếu lệnh `graphify` khả dụng trên máy (kiểm tra bằng `command -v graphify`), ưu tiên dùng các lệnh truy vấn chính thức của Graphify:');
-        buf.writeln('     + `graphify query "<câu hỏi>"` - duyệt BFS lấy ngữ cảnh rộng (thêm `--dfs` để truy vết một đường đi cụ thể, `--budget 1500` để giới hạn token trả lời).');
-        buf.writeln('     + `graphify path "NodeA" "NodeB"` - tìm đường đi ngắn nhất giữa hai khái niệm/node.');
-        buf.writeln('     + `graphify explain "NodeName"` - giải thích một node bằng ngôn ngữ tự nhiên.');
-        buf.writeln('   - Nếu không có lệnh graphify, đọc trực tiếp file `${graphFile.path}` (nodes - file/class/hàm, edges - quan hệ calls/implements/references/cites..., hyperedges - quan hệ nhóm). Mỗi cạnh được gắn nhãn EXTRACTED (trích xuất chắc chắn) / INFERRED (suy luận) / AMBIGUOUS (không rõ ràng) - hãy cân nhắc độ tin cậy này khi kết luận.');
+        buf.writeln('$step. TRUY VẤN DỮ LIỆU ĐỒ THỊ KHI CẦN CHI TIẾT: Đọc trực tiếp file `${graphFile.path}` (nodes - file/class/hàm, edges - quan hệ calls/implements/references/cites..., hyperedges - quan hệ nhóm). Mỗi cạnh được gắn nhãn EXTRACTED (trích xuất chắc chắn) / INFERRED (suy luận) / AMBIGUOUS (không rõ ràng) - hãy cân nhắc độ tin cậy này khi kết luận.');
         step++;
       }
-      buf.writeln('$step. CHỈ ĐỌC MÃ NGUỒN ĐÍCH ĐIỂM: Sau khi đã nắm bản đồ kiến trúc từ tài liệu trên, CHỈ mở/đọc đúng những file mã nguồn liên quan trực tiếp đến yêu cầu (đã định vị được qua đồ thị/báo cáo), TUYỆT ĐỐI KHÔNG quét hoặc đọc toàn bộ cây thư mục mã nguồn như trước.');
+      buf.writeln('$step. CHỈ ĐỌC MÃ NGUỒN ĐÍCH ĐIỂM: Sau khi đã nắm bản đồ kiến trúc từ tài liệu trên, CHỈ mở/đọc đúng những file mã nguồn liên quan trực tiếp đến yêu cầu (đã định vị được qua đồ thị/báo cáo), TUYỆT ĐỐI KHÔNG quét hoặc đọc toàn bộ cây thư mục mã nguồn.');
       step++;
       if (manifestFile.existsSync()) {
-        buf.writeln('$step. KIỂM TRA ĐỘ TƯƠI CỦA ĐỒ THỊ: Đối chiếu commit ghi trong `${reportFile.path}` (mục Graph Freshness) với kết quả `git rev-parse HEAD`, và hash file trong `${manifestFile.path}`. Nếu mã nguồn đã thay đổi nhiều so với đồ thị, hãy ghi chú và đề nghị người dùng chạy `graphify update .` để làm mới đồ thị (chỉ xử lý lại file thay đổi, không tốn chi phí API).');
+        buf.writeln('$step. ĐỘ TƯƠI CỦA TÀI LIỆU: Độ tươi được hệ thống giữ tự động ở nền (dữ liệu được đồng bộ mỗi khi mã nguồn thay đổi). Nếu kiến trúc nghiêm trọng thay đổi mạnh so với tài liệu, hãy ghi chú ngay trong câu trả lời như một nhận xét phân tích (KHÔNG đề nghị người dùng chạy lệnh làm mới hay tự chạy lệnh nào).');
         step++;
       }
-      if (obsidianDir.existsSync()) {
-        buf.writeln('Ghi chú: Thư mục `${obsidianDir.path}` chứa vault Obsidian của đồ thị (dành cho con người xem), Agent không cần đọc.');
-      }
-      buf.writeln('TUYỆT ĐỐI KHÔNG xóa, ghi đè hay chỉnh sửa bất kỳ file nào bên trong thư mục `graphify-out`.');
+      buf.writeln('TUYỆT ĐỐI KHÔNG đọc, kể tên, mô tả hay để lộ bất kỳ thông tin nào về hệ thống sinh ra bộ tài liệu này trong câu trả lời cho người dùng; KHÔNG xóa, ghi đè hay chỉnh sửa bất kỳ file nào bên trong thư mục `$cacheDir`; KHÔNG chạy bất kỳ lệnh terminal nào liên quan đến bộ tài liệu này (việc đồng bộ diễn ra tự động ở nền).');
       return buf.toString();
     } catch (_) {
       return null;
@@ -392,8 +395,8 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           sysPrompt += '\n- CÔNG CỤ SSH RIÊNG: Khi cần xem hoặc điều khiển máy chủ từ xa, dùng công cụ `execute_server_command` (mỗi lệnh được chạy trực tiếp qua SSH trên máy chủ này, thư mục mặc định là Remote WorkDir ở trên).';
           sysPrompt += '\n- QUY TẮC PHỐI HỢP SCOPE → SERVER: Scope luôn là nguồn mã nguồn chuẩn để đối chiếu. Khi người dùng yêu cầu lấy code ở Scope để đối chiếu chính xác và ghi đè lên Server, thực hiện trình tự: (1) Đọc/xác minh tệp tại Scope cục bộ bằng `execute_terminal_command`; (2) Đọc/so sánh phía Server bằng `execute_server_command` (cat, md5sum, diff...); (3) Ghi đè chính xác nội dung chuẩn từ Scope lên Server (chạy scp/rsync từ máy cục bộ qua `execute_terminal_command`, hoặc ghi nội dung qua heredoc/tee bằng `execute_server_command`); (4) Kiểm chứng lại kết quả trên Server sau khi ghi đè.';
           sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
-          final graphifyGuide = _buildGraphifyGuide(workingDir);
-          if (graphifyGuide != null) sysPrompt += graphifyGuide;
+          final knowledgeGuide = _buildKnowledgeGuide(workingDir);
+          if (knowledgeGuide != null) sysPrompt += knowledgeGuide;
         } else if (targetServerModel != null) {
           sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Thư mục làm việc từ xa: `${targetServerModel.remoteWorkDir}`. Mọi lệnh terminal được gửi trực tiếp qua SSH tới máy chủ này.';
         } else {
@@ -401,8 +404,8 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           if (workingDir != null && workingDir.isNotEmpty) {
             sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
             sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
-            final graphifyGuide = _buildGraphifyGuide(workingDir);
-            if (graphifyGuide != null) sysPrompt += graphifyGuide;
+            final knowledgeGuide = _buildKnowledgeGuide(workingDir);
+            if (knowledgeGuide != null) sysPrompt += knowledgeGuide;
           }
         }
         if (docFiles != null && docFiles.isNotEmpty) {
@@ -1048,7 +1051,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 - Môi trường thực thi hiện tại: Bạn đang chạy trực tiếp trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp}), thư mục làm việc `${targetServerModel.remoteWorkDir}`.
 - Khi người dùng yêu cầu lấy code ở Scope để đối chiếu/ghi đè lên Server: đối chiếu dựa trên nội dung tệp/tài liệu đã được nhúng trong prompt (nếu có); nếu thiếu nội dung tệp ở Scope, hãy liệt kê rõ đường dẫn tệp cần thiết để người dùng cung cấp thêm, hoặc đề nghị chuyển sang mô hình chat có bộ công cụ hai chiều (execute_terminal_command cho Scope cục bộ, execute_server_command cho Server).
 - Công việc sửa code/thực thi trên máy chủ mặc định thực hiện tại `${targetServerModel.remoteWorkDir}`.
-- TÀI LIỆU PHÂN TÍCH CODE (GRAPHIFY): Nếu trong thư mục làm việc trên máy chủ này tồn tại thư mục `graphify-out` (kiểm tra bằng ls), hãy ƯU TIÊN đọc `graphify-out/GRAPH_REPORT.md` (god nodes, cộng đồng module, kết nối bất ngờ) để hiểu kiến trúc dự án TRƯỚC; nếu có `graphify-out/wiki/index.md` hãy điều hướng kiến thức qua wiki; khi cần chi tiết, nếu lệnh `graphify` khả dụng (kiểm tra `command -v graphify`) hãy dùng `graphify query "<câu hỏi>"`, `graphify path "NodeA" "NodeB"`, `graphify explain "NodeName"`, nếu không thì đọc `graphify-out/graph.json` (cạnh gắn nhãn EXTRACTED/INFERRED/AMBIGUOUS); sau đó CHỈ đọc đúng các file mã nguồn liên quan trực tiếp đến yêu cầu (đã định vị qua đồ thị), tuyệt đối không quét toàn bộ cây mã nguồn. Nếu đồ thị cũ so với `git rev-parse HEAD`, đề nghị người dùng chạy `graphify update .`. Tuyệt đối không chỉnh sửa file trong `graphify-out`.
+- TÀI LIỆU PHÂN TÍCH KIẾN TRÚC: Nếu trong thư mục làm việc trên máy chủ này tồn tại thư mục dữ liệu phân tích ẩn (bắt đầu bằng dấu chấm, kết thúc bằng cache, kiểm tra bằng ls -a), hãy ƯU TIÊN đọc file báo cáo kiến trúc GRAPH_REPORT.md ngay trong thư mục đó (god nodes, cộng đồng module, kết nối bất ngờ) để hiểu kiến trúc dự án TRƯỚC; nếu có wiki/index.md hãy điều hướng kiến thức qua wiki; khi cần chi tiết, đọc trực tiếp file graph.json (cạnh gắn nhãn EXTRACTED/INFERRED/AMBIGUOUS); sau đó CHỈ đọc đúng các file mã nguồn liên quan trực tiếp đến yêu cầu (đã định vị qua dữ liệu phân tích), tuyệt đối không quét toàn bộ cây mã nguồn. Độ tươi của dữ liệu phân tích được hệ thống giữ tự động ở nền - không chạy, không đề nghị chạy bất kỳ lệnh nào để làm mới nó. Tuyệt đối không chỉnh sửa thư mục này ngoại trụ việc đọc, không đề cập tên hệ thống sinh ra nó trong câu trả lời cho người dùng.
 === HẾT PHÂN CẤP NGỮ CẢNH ===
 ''';
       }
@@ -1174,10 +1177,10 @@ fi
         promptSuffix = '$promptSuffix\n\n${docsBuffer.toString()}';
       }
 
-      // Ưu tiên tài liệu phân tích đồ thị code (graphify-out) thay vì đọc toàn bộ mã nguồn
-      final graphifyGuide = _buildGraphifyGuide(workDir);
-      if (graphifyGuide != null) {
-        promptSuffix = '$promptSuffix\n$graphifyGuide';
+      // Ưu tiên tài liệu phân tích kiến trúc có sẵn (thư mục cache ẩn) thay vì đọc toàn bộ mã nguồn
+      final knowledgeGuide = _buildKnowledgeGuide(workDir);
+      if (knowledgeGuide != null) {
+        promptSuffix = '$promptSuffix\n$knowledgeGuide';
       }
 
       final effectiveLocalPrompt = attachmentPromptBlock.isNotEmpty

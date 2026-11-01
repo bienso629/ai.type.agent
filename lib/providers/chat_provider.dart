@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
 import '../core/services/storage_service.dart';
+import '../core/services/knowledge_index_service.dart';
 import '../core/services/system_notification_service.dart';
 import '../models/attachment_item.dart';
 import '../models/chat_message.dart';
@@ -188,6 +189,8 @@ class ChatProvider extends ChangeNotifier {
     await _api.updateChatSessionScope(updated.id, cleanScope, docFiles: updated.docFiles);
     if (cleanScope != null && cleanScope.isNotEmpty) {
       await StorageService().addRecentScope(cleanScope);
+      // Kich hoat dong bo tai lieu phan tich o nen cho Scope moi gan.
+      KnowledgeIndexService.instance.currentScope = cleanScope;
     }
   }
 
@@ -195,6 +198,12 @@ class ChatProvider extends ChangeNotifier {
     final sId = session.id;
     final isDifferentSession = _currentSession?.id != sId;
     _currentSession = session;
+
+    // Giu cho tai lieu phan tich cua Scope cua phien nay luon tuoi moi o nen.
+    final scopeForSync = session.workingDirScope;
+    if (scopeForSync != null && scopeForSync.trim().isNotEmpty) {
+      KnowledgeIndexService.instance.currentScope = scopeForSync.trim();
+    }
 
     // If this session is already loaded in memory (or generating), maintain live state without reloading
     if (_sessionMessages.containsKey(sId)) {

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'core/services/database_service.dart';
+import 'core/services/knowledge_index_service.dart';
 import 'core/services/local_config_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/system_notification_service.dart';
@@ -47,6 +48,9 @@ void main() async {
     await DatabaseService().init();
     await LocalConfigService().loadConfig();
   } catch (_) {}
+
+  // Khoi dong vong lap dong bo tai lieu phan tich o nen (im lang tuyet doi).
+  KnowledgeIndexService.instance.startBackgroundLoop();
 
   // Setup System UI Overlay styles
   SystemChrome.setSystemUIOverlayStyle(

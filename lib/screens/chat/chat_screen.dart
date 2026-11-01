@@ -56,7 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // Terminal split side panel visibility
   bool _showTerminalPanel = true;
 
-  /// Dieu khien TerminalScreen trong panel chat: bam nut Graphify loai
+  /// Dieu khien TerminalScreen trong panel chat: mo tab moi tai Scope
   /// "chay ngay" se mo tab terminal moi va thi hanh lenh tai Scope hoi thoai.
   final GlobalKey<TerminalScreenState> _terminalPanelKey = GlobalKey<TerminalScreenState>();
 
@@ -1041,167 +1041,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!mounted || selected == null) return;
     _handleServerSelected(serverProvider, selected);
-  }
-
-  /// Mo menu chon nhanh lenh Graphify ngay tai vi tri nut (ben canh nut Attach).
-  /// Lenh khong can tham so (co tia set) se CHAY NGAY trong tab Terminal moi
-  /// tai Scope hoi thoai. Lenh can tham so (query/path/explain...) chi duoc
-  /// chen vao o nhap lieu de nguoi dung dien tham so roi Gui.
-  Future<void> _showGraphifyMenu(BuildContext btnContext) async {
-    final RenderBox button = btnContext.findRenderObject() as RenderBox;
-    final RenderBox overlay = Navigator.of(btnContext).overlay!.context.findRenderObject() as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(const Offset(0, 0), ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(const Offset(0, 8)), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
-
-    PopupMenuItem<String> headerItem(String title) => PopupMenuItem<String>(
-          enabled: false,
-          height: 30,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textMuted,
-              letterSpacing: 0.6,
-            ),
-          ),
-        );
-
-    PopupMenuItem<String> commandItem(String label, String desc, String command, IconData icon, {required bool autoRun}) =>
-        PopupMenuItem<String>(
-          value: autoRun ? 'AUTO|$command' : 'INSERT|$command',
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            children: [
-              Icon(icon, size: 15, color: AppColors.warning),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textWhite,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      desc,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              if (autoRun) ...[
-                const SizedBox(width: 8),
-                const Icon(Icons.bolt_rounded, size: 16, color: AppColors.accentCyan),
-              ],
-            ],
-          ),
-        );
-
-    final selected = await showMenu<String>(
-      context: btnContext,
-      position: position,
-      color: AppColors.cardBg,
-      constraints: const BoxConstraints(minWidth: 320, maxWidth: 360, maxHeight: 500),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(4),
-        side: const BorderSide(color: AppColors.borderDark),
-      ),
-      items: [
-        headerItem('LAM MOI & CAI DAT'),
-        commandItem('graphify update .', 'Lam moi do thi tu code da sua (khong ton LLM)', 'graphify update .', Icons.update_rounded, autoRun: true),
-        commandItem('graphify watch .', 'Tu dong rebuild do thi khi code thay doi', 'graphify watch .', Icons.visibility_rounded, autoRun: true),
-        commandItem('graphify install', 'Cai skill graphify vao AI platform', 'graphify install', Icons.download_rounded, autoRun: true),
-        commandItem('graphify uninstall', 'Go graphify khoi moi platform', 'graphify uninstall', Icons.delete_outline_rounded, autoRun: true),
-        const PopupMenuDivider(),
-        headerItem('TRUY VAN & PHAN TICH'),
-        commandItem('graphify query "?"', 'Hoi dap tren do thi kien truc du an', 'graphify query "?"', Icons.help_outline_rounded, autoRun: false),
-        commandItem('graphify path "A" "B"', 'Duong lien ket ngan nhat giua 2 node', 'graphify path "A" "B"', Icons.route_rounded, autoRun: false),
-        commandItem('graphify explain "?"', 'Giai thich 1 node va cac ket noi cua no', 'graphify explain "?"', Icons.lightbulb_outline_rounded, autoRun: false),
-        commandItem('graphify affected "?"', 'Tim node bi anh huong khi doi 1 node', 'graphify affected "?"', Icons.device_hub_rounded, autoRun: false),
-        commandItem('graphify god-nodes', 'Danh sach hub kien truc ket noi nhieu nhat', 'graphify god-nodes', Icons.star_outline_rounded, autoRun: true),
-        const PopupMenuDivider(),
-        headerItem('TIEN ICH'),
-        commandItem('graphify add <url>', 'Them URL/tai lieu vao do thi', 'graphify add ', Icons.add_link_rounded, autoRun: false),
-        commandItem('graphify tree', 'Sinh HTML cay thu muc D3 collapsible', 'graphify tree', Icons.account_tree_rounded, autoRun: true),
-        commandItem('graphify check-update .', 'Kiem tra do thi co can lam moi khong', 'graphify check-update .', Icons.fact_check_outlined, autoRun: true),
-        commandItem('graphify cluster-only .', 'Chay lai phan cum module + bao cao', 'graphify cluster-only . --no-viz', Icons.bubble_chart_rounded, autoRun: true),
-        commandItem('graphify reflect', 'Tong hop bai hoc tu memory thanh LESSONS.md', 'graphify reflect', Icons.psychology_outlined, autoRun: true),
-      ],
-    );
-
-    if (!mounted || selected == null) return;
-    final isAuto = selected.startsWith('AUTO|');
-    final command = selected.split('|').skip(1).join('|');
-    if (!isAuto) {
-      _insertGraphifyCommand(command);
-      AppToast.info(context, 'Da chen lenh Graphify - dien tham so vao "..." roi bam Gui nhe');
-      return;
-    }
-    _runGraphifyCommandInTerminal(command);
-  }
-
-  /// Chay ngay lenh Graphify trong tab Terminal moi tai Scope hoi thoai hien tai
-  /// (bam nut la chay, khong can dien tham so hay bam Gui).
-  void _runGraphifyCommandInTerminal(String command) {
-    final scope = context.read<ChatProvider>().currentSessionScope;
-    final scopePath = scope?.trim() ?? '';
-    if (scopePath.isEmpty || !Directory(scopePath).existsSync()) {
-      AppToast.warning(context, 'Chua gan Scope hop le - hay chon thu muc du an roi thu lai nhe');
-      return;
-    }
-    if (_terminalPanelKey.currentState == null) {
-      // Panel Terminal dang dong (chua mount trong tree) - mo lai roi chay lenh sau frame build
-      AppToast.info(context, 'Dang mo Terminal roi chay "$command"...');
-    } else {
-      AppToast.success(context, 'Dang chay "$command" trong tab Terminal moi tai Scope');
-    }
-    setState(() {
-      _showTerminalPanel = true;
-      _showDocViewerPanel = false;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final st = _terminalPanelKey.currentState;
-      if (st == null) {
-        if (mounted) {
-          AppToast.warning(context, 'Terminal chua san sang - thu lai sau vai giay nhe');
-        }
-        return;
-      }
-      st.openPaneWithCommand(command, scopePath);
-    });
-  }
-
-  /// Chen lenh Graphify vao o nhap lieu tai vi tri con tro hien tai.
-  void _insertGraphifyCommand(String cmd) {
-    final text = _textController.text;
-    final sel = _textController.selection;
-    final offset = (sel.baseOffset >= 0 && sel.baseOffset <= text.length) ? sel.baseOffset : text.length;
-    final prefix = (text.isEmpty || text.endsWith(' ') || text.endsWith('\n')) ? '' : ' ';
-    final newText = '${text.substring(0, offset)}$prefix$cmd${text.substring(offset)}';
-    _textController.text = newText;
-    final caret = offset + prefix.length + cmd.length;
-    _textController.selection = TextSelection.fromPosition(TextPosition(offset: caret));
-    setState(() {});
-    _inputFocusNode.requestFocus();
   }
 
   Widget _buildServerDropdown(ServerProvider serverProvider) {
@@ -2915,23 +2754,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           onPressed: _pickFiles,
                         ),
                         const SizedBox(width: 8),
-                        // Nut lenh nhanh Graphify (bam de chon lenh: install, update, query...)
-                        Builder(
-                          builder: (btnCtx) => OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(0, 32),
-                              fixedSize: const Size.fromHeight(32),
-                              side: BorderSide(color: AppColors.warning.withValues(alpha: 0.55)),
-                              backgroundColor: AppColors.warning.withValues(alpha: 0.06),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            ),
-                            icon: const Icon(Icons.hub_rounded, size: 14, color: AppColors.warning),
-                            label: const Text('Graphify', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
-                            onPressed: () => _showGraphifyMenu(btnCtx),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
+                        // Model Selector Button,
                         // Model Selector Button
                         OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
