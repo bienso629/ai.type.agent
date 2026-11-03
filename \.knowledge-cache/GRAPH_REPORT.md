@@ -1,4 +1,4 @@
-# Graph Report - agent-coder  (2026-11-01)
+# Graph Report - agent-coder  (2026-11-02)
 
 ## Corpus Check
 - 121 files · ~121,562 words
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `aa125b24`
+- Built from commit: `9ca4770b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 
 
