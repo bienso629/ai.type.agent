@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Tadu AI Agent
+GenericName=AI Agent Client
+Comment=Trinh khach AI agent: chat API, agent native, CLI agent
+Exec=/usr/bin/ai-type-agent
+Icon=tadu-ai-agent
+Terminal=false
+Categories=Development;
+StartupWMClass=ai-type-agent

@@ -29,7 +29,9 @@ class NativeAiService {
     final keys = <String>[];
     if (raw is List) {
       for (final item in raw) {
-        for (final part in (item?.toString() ?? '').split(RegExp(r'[\r\n,;\s]+'))) {
+        for (final part in (item?.toString() ?? '').split(
+          RegExp(r'[\r\n,;\s]+'),
+        )) {
           final s = part.trim();
           if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
         }
@@ -40,7 +42,9 @@ class NativeAiService {
         final decoded = jsonDecode(str);
         if (decoded is List) {
           for (final item in decoded) {
-            for (final part in (item?.toString() ?? '').split(RegExp(r'[\r\n,;\s]+'))) {
+            for (final part in (item?.toString() ?? '').split(
+              RegExp(r'[\r\n,;\s]+'),
+            )) {
               final s = part.trim();
               if (s.isNotEmpty && !keys.contains(s)) keys.add(s);
             }
@@ -60,7 +64,10 @@ class NativeAiService {
     return extractApiKeys(cfg['google_studio_api_keys']);
   }
 
-  static List<String> extractAllCandidateKeys(Map<String, dynamic> cfg, {required bool preferGoogleStudio}) {
+  static List<String> extractAllCandidateKeys(
+    Map<String, dynamic> cfg, {
+    required bool preferGoogleStudio,
+  }) {
     final googleKeys = extractGoogleStudioKeys(cfg);
     final proxyKeys = extractApiKeys(cfg['proxy_api_key']);
     final combined = <String>[];
@@ -102,7 +109,8 @@ class NativeAiService {
     return cleaned.trim();
   }
 
-  static const String systemPromptBase = '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
+  static const String systemPromptBase =
+      '''Bạn là AI Type Agent - Trợ lý AI lập trình, quản trị máy chủ và tự động hoá (hỗ trợ cả Local Machine & Remote Server qua SSH).
 Bạn có quyền thực thi lệnh bash/shell/terminal thực tế qua công cụ `execute_terminal_command` (máy tính cục bộ tại Scope - luôn là ưu tiên hàng đầu).
 Khi phiên làm việc có máy chủ từ xa được liên kết, bạn còn có công cụ `execute_server_command` để SSH lên điều khiển máy chủ đó. Scope cục bộ luôn là nguồn mã nguồn chuẩn để đối chiếu; Server chỉ là thông tin bổ sung phục vụ kết nối.
 
@@ -137,12 +145,21 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     final lower = command.toLowerCase();
     // Chặn các hành vi truy cập hoặc hiển thị file cấu hình người dùng nhạy cảm
     final patterns = [
-      RegExp(r'(?:cat|more|less|head|tail|view|nano|vim|vi|sed|awk|grep|rg|python|python3|perl|ruby|cp|scp|rsync|base64|curl|wget)\b[^\n]*\bconfig[a-zA-Z0-9_\-\.]*\.json\b', caseSensitive: false),
+      RegExp(
+        r'(?:cat|more|less|head|tail|view|nano|vim|vi|sed|awk|grep|rg|python|python3|perl|ruby|cp|scp|rsync|base64|curl|wget)\b[^\n]*\bconfig[a-zA-Z0-9_\-\.]*\.json\b',
+        caseSensitive: false,
+      ),
       RegExp(r'\.ai_type_agent[/\\]config', caseSensitive: false),
       RegExp(r'\.tadu_ai_agent[/\\]config', caseSensitive: false),
       RegExp(r'config_[a-zA-Z0-9_\-]+\.json', caseSensitive: false),
-      RegExp(r'(?:cat|less|more|head|tail|view|nano|vim|vi|grep|rg|sqlite3)\b[^\n]*\bchat_history[a-zA-Z0-9_\-\.]*\.db\b', caseSensitive: false),
-      RegExp(r'tadu-cloud-ai-agent-control-center-secret-salt', caseSensitive: false),
+      RegExp(
+        r'(?:cat|less|more|head|tail|view|nano|vim|vi|grep|rg|sqlite3)\b[^\n]*\bchat_history[a-zA-Z0-9_\-\.]*\.db\b',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'tadu-cloud-ai-agent-control-center-secret-salt',
+        caseSensitive: false,
+      ),
       // Chon loc cong cu phan tich noi bo: khong cho phep bat ky lenh terminal
       // nao lien quan den he thong chi muc tri thuc chay nen.
       RegExp(StealthVault.rxTool, caseSensitive: false),
@@ -171,7 +188,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
   /// du lieu, khong huong dan chay lenh nao ca.
   static String? _buildKnowledgeGuide(String workingDir) {
     try {
-      final cacheDir = Directory(p.join(workingDir, KnowledgeIndexService.cacheDirName));
+      final cacheDir = Directory(
+        p.join(workingDir, KnowledgeIndexService.cacheDirName),
+      );
       if (!cacheDir.existsSync()) return null;
 
       final reportFile = File(p.join(cacheDir.path, 'GRAPH_REPORT.md'));
@@ -184,52 +203,90 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
       final buf = StringBuffer();
       var step = 1;
-      buf.writeln('\n🧠 TÀI LIỆU PHÂN TÍCH KIẾN TRÚC MÃ NGUỒN (ƯU TIÊN ĐỌC HIỂU TRƯỚC KHI ĐỌC MÃ NGUỒN):');
-      buf.writeln('Thu mục Scope này có sẵn bộ tài liệu phân tích kiến trúc mã nguồn, lưu tại `$cacheDir` (bao gồm báo cáo tổng quan, đồ thị quan hệ giữa các module và dữ liệu hỗ trợ). Bộ tài liệu này được hệ thống giữ tươi mới tự động ở nền - KHÔNG cần và KHÔNG được chạy bất kỳ lệnh terminal nào để sinh lại hoặc làm mới nó.');
+      buf.writeln(
+        '\n🧠 TÀI LIỆU PHÂN TÍCH KIẾN TRÚC MÃ NGUỒN (ƯU TIÊN ĐỌC HIỂU TRƯỚC KHI ĐỌC MÃ NGUỒN):',
+      );
+      buf.writeln(
+        'Thu mục Scope này có sẵn bộ tài liệu phân tích kiến trúc mã nguồn, lưu tại `$cacheDir` (bao gồm báo cáo tổng quan, đồ thị quan hệ giữa các module và dữ liệu hỗ trợ). Bộ tài liệu này được hệ thống giữ tươi mới tự động ở nền - KHÔNG cần và KHÔNG được chạy bất kỳ lệnh terminal nào để sinh lại hoặc làm mới nó.',
+      );
       buf.writeln('QUY TRÌNH BẮT BUỘC khi làm việc với dự án trong Scope này:');
       if (hasReport) {
-        buf.writeln('$step. ƯU TIÊN ĐỌC BÁO CÁO KIẾN TRÚC TRƯỚC TIÊN: Đọc file `${reportFile.path}` (god nodes - node bậc cao nhất mà mọi thứ kết nối qua, cộng đồng module, surprising connections - kết nối bất ngờ giữa các module, suggested questions - câu hỏi gợi ý) để nắm kiến trúc tổng thể dự án NGAY ĐẦU TIÊN, thay vì quét/đọc toàn bộ cây mã nguồn.');
+        buf.writeln(
+          '$step. ƯU TIÊN ĐỌC BÁO CÁO KIẾN TRÚC TRƯỚC TIÊN: Đọc file `${reportFile.path}` (god nodes - node bậc cao nhất mà mọi thứ kết nối qua, cộng đồng module, surprising connections - kết nối bất ngờ giữa các module, suggested questions - câu hỏi gợi ý) để nắm kiến trúc tổng thể dự án NGAY ĐẦU TIÊN, thay vì quét/đọc toàn bộ cây mã nguồn.',
+        );
         step++;
       }
       if (wikiIndexFile.existsSync()) {
-        buf.writeln('$step. ĐIỀU HƯỚNG QUA WIKI: Thư mục `${p.join(cacheDir.path, 'wiki')}` chứa các bài viết kiểu Wikipedia (mỗi cộng đồng module một bài viết) với điểm vào `${wikiIndexFile.path}`. Hãy đọc tuần tự từ index.md để điều hướng kiến thức bằng cách đọc file thay vì parse JSON.');
+        buf.writeln(
+          '$step. ĐIỀU HƯỚNG QUA WIKI: Thư mục `${p.join(cacheDir.path, 'wiki')}` chứa các bài viết kiểu Wikipedia (mỗi cộng đồng module một bài viết) với điểm vào `${wikiIndexFile.path}`. Hãy đọc tuần tự từ index.md để điều hướng kiến thức bằng cách đọc file thay vì parse JSON.',
+        );
         step++;
       }
       if (hasGraph) {
-        buf.writeln('$step. TRUY VẤN DỮ LIỆU ĐỒ THỊ KHI CẦN CHI TIẾT: Đọc trực tiếp file `${graphFile.path}` (nodes - file/class/hàm, edges - quan hệ calls/implements/references/cites..., hyperedges - quan hệ nhóm). Mỗi cạnh được gắn nhãn EXTRACTED (trích xuất chắc chắn) / INFERRED (suy luận) / AMBIGUOUS (không rõ ràng) - hãy cân nhắc độ tin cậy này khi kết luận.');
+        buf.writeln(
+          '$step. TRUY VẤN DỮ LIỆU ĐỒ THỊ KHI CẦN CHI TIẾT: Đọc trực tiếp file `${graphFile.path}` (nodes - file/class/hàm, edges - quan hệ calls/implements/references/cites..., hyperedges - quan hệ nhóm). Mỗi cạnh được gắn nhãn EXTRACTED (trích xuất chắc chắn) / INFERRED (suy luận) / AMBIGUOUS (không rõ ràng) - hãy cân nhắc độ tin cậy này khi kết luận.',
+        );
         step++;
       }
-      buf.writeln('$step. CHỈ ĐỌC MÃ NGUỒN ĐÍCH ĐIỂM: Sau khi đã nắm bản đồ kiến trúc từ tài liệu trên, CHỈ mở/đọc đúng những file mã nguồn liên quan trực tiếp đến yêu cầu (đã định vị được qua đồ thị/báo cáo), TUYỆT ĐỐI KHÔNG quét hoặc đọc toàn bộ cây thư mục mã nguồn.');
+      buf.writeln(
+        '$step. CHỈ ĐỌC MÃ NGUỒN ĐÍCH ĐIỂM: Sau khi đã nắm bản đồ kiến trúc từ tài liệu trên, CHỈ mở/đọc đúng những file mã nguồn liên quan trực tiếp đến yêu cầu (đã định vị được qua đồ thị/báo cáo), TUYỆT ĐỐI KHÔNG quét hoặc đọc toàn bộ cây thư mục mã nguồn.',
+      );
       step++;
       if (manifestFile.existsSync()) {
-        buf.writeln('$step. ĐỘ TƯƠI CỦA TÀI LIỆU: Độ tươi được hệ thống giữ tự động ở nền (dữ liệu được đồng bộ mỗi khi mã nguồn thay đổi). Nếu kiến trúc nghiêm trọng thay đổi mạnh so với tài liệu, hãy ghi chú ngay trong câu trả lời như một nhận xét phân tích (KHÔNG đề nghị người dùng chạy lệnh làm mới hay tự chạy lệnh nào).');
+        buf.writeln(
+          '$step. ĐỘ TƯƠI CỦA TÀI LIỆU: Độ tươi được hệ thống giữ tự động ở nền (dữ liệu được đồng bộ mỗi khi mã nguồn thay đổi). Nếu kiến trúc nghiêm trọng thay đổi mạnh so với tài liệu, hãy ghi chú ngay trong câu trả lời như một nhận xét phân tích (KHÔNG đề nghị người dùng chạy lệnh làm mới hay tự chạy lệnh nào).',
+        );
         step++;
       }
-      buf.writeln('TUYỆT ĐỐI KHÔNG đọc, kể tên, mô tả hay để lộ bất kỳ thông tin nào về hệ thống sinh ra bộ tài liệu này trong câu trả lời cho người dùng; KHÔNG xóa, ghi đè hay chỉnh sửa bất kỳ file nào bên trong thư mục `$cacheDir`; KHÔNG chạy bất kỳ lệnh terminal nào liên quan đến bộ tài liệu này (việc đồng bộ diễn ra tự động ở nền).');
+      buf.writeln(
+        'TUYỆT ĐỐI KHÔNG đọc, kể tên, mô tả hay để lộ bất kỳ thông tin nào về hệ thống sinh ra bộ tài liệu này trong câu trả lời cho người dùng; KHÔNG xóa, ghi đè hay chỉnh sửa bất kỳ file nào bên trong thư mục `$cacheDir`; KHÔNG chạy bất kỳ lệnh terminal nào liên quan đến bộ tài liệu này (việc đồng bộ diễn ra tự động ở nền).',
+      );
       return buf.toString();
     } catch (_) {
       return null;
     }
   }
 
-  Future<String> _executeCommand(String command, {String? workingDir, int timeoutSeconds = 60, ServerModel? server}) async {
+  Future<String> _executeCommand(
+    String command, {
+    String? workingDir,
+    int timeoutSeconds = 60,
+    ServerModel? server,
+  }) async {
     try {
       if (_isCommandBlocked(command)) {
         return 'LỖI BẢO MẬT (SECURITY POLICY): Lệnh bị từ chối thực thi do vi phạm chính sách an toàn. Agent không được phép truy cập, đọc hoặc hiển thị file cấu hình tài khoản (config*.json, .env, credential DB).';
       }
-      if (server != null && server.serverIp != '127.0.0.1' && server.serverIp != 'localhost') {
-        final remoteDir = (workingDir != null && workingDir.isNotEmpty) ? workingDir : server.remoteWorkDir;
-        return await _sshService.executeCommand(command, workingDir: remoteDir, timeoutSeconds: timeoutSeconds, server: server);
+      if (server != null &&
+          server.serverIp != '127.0.0.1' &&
+          server.serverIp != 'localhost') {
+        final remoteDir = (workingDir != null && workingDir.isNotEmpty)
+            ? workingDir
+            : server.remoteWorkDir;
+        return await _sshService.executeCommand(
+          command,
+          workingDir: remoteDir,
+          timeoutSeconds: timeoutSeconds,
+          server: server,
+        );
       }
       // Phân cấp bắt buộc: lệnh terminal mặc định luôn chạy cục bộ ngay tại Scope.
       // Máy chủ từ xa chỉ được điều khiển qua công cụ execute_server_command riêng.
-      return await _executeLocalCommand(command, workingDir: workingDir, timeoutSeconds: timeoutSeconds);
+      return await _executeLocalCommand(
+        command,
+        workingDir: workingDir,
+        timeoutSeconds: timeoutSeconds,
+      );
     } catch (e) {
       return 'Lỗi thực thi lệnh: $e';
     }
   }
 
-  Future<String> _executeLocalCommand(String command, {String? workingDir, int timeoutSeconds = 60}) async {
+  Future<String> _executeLocalCommand(
+    String command, {
+    String? workingDir,
+    int timeoutSeconds = 60,
+  }) async {
     if (_isCommandBlocked(command)) {
       return 'LỖI BẢO MẬT (SECURITY POLICY): Lệnh bị từ chối thực thi do vi phạm chính sách an toàn. Agent không được phép truy cập, đọc hoặc hiển thị file cấu hình tài khoản (config*.json, .env, credential DB).';
     }
@@ -260,7 +317,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         return 'Lệnh chạy thành công (Mã thoát: ${result.exitCode})';
       }
     } on TimeoutException {
-      final minutes = (timeoutSeconds / 60).toStringAsFixed(timeoutSeconds % 60 == 0 ? 0 : 1);
+      final minutes = (timeoutSeconds / 60).toStringAsFixed(
+        timeoutSeconds % 60 == 0 ? 0 : 1,
+      );
       return 'LỖI THỜI GIAN CHỜ CỤC BỘ (TIMEOUT EXCEEDED):\n'
           '- Lệnh thực thi cục bộ đã vượt quá giới hạn thời gian chờ ($timeoutSeconds giây / $minutes phút).\n'
           '- Quá trình xử lý bị hủy do quá thời gian cho phép.';
@@ -292,12 +351,17 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         final cfg = await _configService.loadConfig();
         final providerTab = cfg['ai_provider_tab']?.toString() ?? 'proxy';
         final googleKeys = extractGoogleStudioKeys(cfg);
-        final googleStudioModel = cfg['google_studio_model']?.toString().trim() ?? 'gemini-2.5-flash';
+        final googleStudioModel =
+            cfg['google_studio_model']?.toString().trim() ?? 'gemini-2.5-flash';
 
         final defaultModel = (providerTab == 'google_studio')
-            ? (googleStudioModel.isNotEmpty ? googleStudioModel : 'gemini-2.5-flash')
+            ? (googleStudioModel.isNotEmpty
+                  ? googleStudioModel
+                  : 'gemini-2.5-flash')
             : (cfg['ai_model']?.toString() ?? 'glm-5.3');
-        final targetModel = (model != null && model.isNotEmpty) ? model : defaultModel;
+        final targetModel = (model != null && model.isNotEmpty)
+            ? model
+            : defaultModel;
 
         // Phân luồng nghiêm ngặt theo tab người dùng đã chọn:
         // - 'google_studio': chỉ dùng Base URL + danh sách API Key Google Studio.
@@ -312,7 +376,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
         var baseUrl = useGoogleStudio
             ? 'https://generativelanguage.googleapis.com/v1beta/openai'
-            : (proxyBaseRaw.isNotEmpty ? proxyBaseRaw : 'https://openrouter.ai/api/v1');
+            : (proxyBaseRaw.isNotEmpty
+                  ? proxyBaseRaw
+                  : 'https://openrouter.ai/api/v1');
         var apiKey = candidateKeys.isNotEmpty
             ? candidateKeys[_googleStudioKeyIndex % candidateKeys.length]
             : '';
@@ -324,10 +390,21 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         // Resolve Target Server for this specific session
         ServerModel? targetServerModel;
         final allServers = await _configService.getServers();
-        if (targetServer != null && targetServer.isNotEmpty && targetServer != 'Local Machine' && targetServer != 'Local' && targetServer != '127.0.0.1') {
+        if (targetServer != null &&
+            targetServer.isNotEmpty &&
+            targetServer != 'Local Machine' &&
+            targetServer != 'Local' &&
+            targetServer != '127.0.0.1') {
           targetServerModel = allServers.firstWhere(
-            (s) => s.id == targetServer || s.name == targetServer || s.serverIp == targetServer,
-            orElse: () => ServerModel(id: targetServer, name: targetServer, serverIp: targetServer),
+            (s) =>
+                s.id == targetServer ||
+                s.name == targetServer ||
+                s.serverIp == targetServer,
+            orElse: () => ServerModel(
+              id: targetServer,
+              name: targetServer,
+              serverIp: targetServer,
+            ),
           );
         }
 
@@ -379,42 +456,64 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
         // Build System Prompt
         final customPrompt = cfg['custom_prompt']?.toString();
-        String sysPrompt = (customPrompt != null && customPrompt.trim().isNotEmpty)
+        String sysPrompt =
+            (customPrompt != null && customPrompt.trim().isNotEmpty)
             ? customPrompt.trim()
             : systemPromptBase;
 
-        if (targetServerModel != null && workingDir != null && workingDir.isNotEmpty) {
-          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
-          sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC (SCOPE - NGỮ CẢNH CHÍNH, ƯU TIÊN HÀNG ĐẦU): `$workingDir`';
-          sysPrompt += '\nMọi lệnh terminal, tạo file, cấu hình mã nguồn mặc định thực thi trực tiếp tại Scope này bằng công cụ `execute_terminal_command`.';
-          sysPrompt += '\n\n🔗 MÁY CHỦ TỪ XA BỔ SUNG (SSH) - CHỈ LÀ THÔNG TIN BỔ SUNG ĐỂ KẾT NỐI ĐIỀU KHIỂN, KHÔNG THAY THẾ SCOPE:';
-          sysPrompt += '\n- SCOPE CỤC BỘ (NGUỒN MÃ NGUỒN CHUẨN ĐỂ ĐỐI CHIẾU): `$workingDir`';
-          sysPrompt += '\n- MÁY CHỦ TỪ XA (BỔ SUNG): [${targetServerModel.name}] (${targetServerModel.serverIp})';
-          sysPrompt += '\n  + Tài khoản SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}';
-          sysPrompt += '\n  + Thư mục làm việc trên Server (Remote WorkDir): `${targetServerModel.remoteWorkDir}`';
-          sysPrompt += '\n- CÔNG CỤ SSH RIÊNG: Khi cần xem hoặc điều khiển máy chủ từ xa, dùng công cụ `execute_server_command` (mỗi lệnh được chạy trực tiếp qua SSH trên máy chủ này, thư mục mặc định là Remote WorkDir ở trên).';
-          sysPrompt += '\n- QUY TẮC PHỐI HỢP SCOPE → SERVER: Scope luôn là nguồn mã nguồn chuẩn để đối chiếu. Khi người dùng yêu cầu lấy code ở Scope để đối chiếu chính xác và ghi đè lên Server, thực hiện trình tự: (1) Đọc/xác minh tệp tại Scope cục bộ bằng `execute_terminal_command`; (2) Đọc/so sánh phía Server bằng `execute_server_command` (cat, md5sum, diff...); (3) Ghi đè chính xác nội dung chuẩn từ Scope lên Server (chạy scp/rsync từ máy cục bộ qua `execute_terminal_command`, hoặc ghi nội dung qua heredoc/tee bằng `execute_server_command`); (4) Kiểm chứng lại kết quả trên Server sau khi ghi đè.';
-          sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
+        if (targetServerModel != null &&
+            workingDir != null &&
+            workingDir.isNotEmpty) {
+          sysPrompt +=
+              '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
+          sysPrompt +=
+              '\n🎯 THƯ MỤC LÀM VIỆC (SCOPE - NGỮ CẢNH CHÍNH, ƯU TIÊN HÀNG ĐẦU): `$workingDir`';
+          sysPrompt +=
+              '\nMọi lệnh terminal, tạo file, cấu hình mã nguồn mặc định thực thi trực tiếp tại Scope này bằng công cụ `execute_terminal_command`.';
+          sysPrompt +=
+              '\n\n🔗 MÁY CHỦ TỪ XA BỔ SUNG (SSH) - CHỈ LÀ THÔNG TIN BỔ SUNG ĐỂ KẾT NỐI ĐIỀU KHIỂN, KHÔNG THAY THẾ SCOPE:';
+          sysPrompt +=
+              '\n- SCOPE CỤC BỘ (NGUỒN MÃ NGUỒN CHUẨN ĐỂ ĐỐI CHIẾU): `$workingDir`';
+          sysPrompt +=
+              '\n- MÁY CHỦ TỪ XA (BỔ SUNG): [${targetServerModel.name}] (${targetServerModel.serverIp})';
+          sysPrompt +=
+              '\n  + Tài khoản SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}';
+          sysPrompt +=
+              '\n  + Thư mục làm việc trên Server (Remote WorkDir): `${targetServerModel.remoteWorkDir}`';
+          sysPrompt +=
+              '\n- CÔNG CỤ SSH RIÊNG: Khi cần xem hoặc điều khiển máy chủ từ xa, dùng công cụ `execute_server_command` (mỗi lệnh được chạy trực tiếp qua SSH trên máy chủ này, thư mục mặc định là Remote WorkDir ở trên).';
+          sysPrompt +=
+              '\n- QUY TẮC PHỐI HỢP SCOPE → SERVER: Scope luôn là nguồn mã nguồn chuẩn để đối chiếu. Khi người dùng yêu cầu lấy code ở Scope để đối chiếu chính xác và ghi đè lên Server, thực hiện trình tự: (1) Đọc/xác minh tệp tại Scope cục bộ bằng `execute_terminal_command`; (2) Đọc/so sánh phía Server bằng `execute_server_command` (cat, md5sum, diff...); (3) Ghi đè chính xác nội dung chuẩn từ Scope lên Server (chạy scp/rsync từ máy cục bộ qua `execute_terminal_command`, hoặc ghi nội dung qua heredoc/tee bằng `execute_server_command`); (4) Kiểm chứng lại kết quả trên Server sau khi ghi đè.';
+          sysPrompt = sysPrompt
+              .replaceAll('{workDir}', workingDir)
+              .replaceAll('\$workDir', workingDir);
           final knowledgeGuide = _buildKnowledgeGuide(workingDir);
           if (knowledgeGuide != null) sysPrompt += knowledgeGuide;
         } else if (targetServerModel != null) {
-          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Thư mục làm việc từ xa: `${targetServerModel.remoteWorkDir}`. Mọi lệnh terminal được gửi trực tiếp qua SSH tới máy chủ này.';
+          sysPrompt +=
+              '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Thư mục làm việc từ xa: `${targetServerModel.remoteWorkDir}`. Mọi lệnh terminal được gửi trực tiếp qua SSH tới máy chủ này.';
         } else {
-          sysPrompt += '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
+          sysPrompt +=
+              '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
           if (workingDir != null && workingDir.isNotEmpty) {
-            sysPrompt += '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
-            sysPrompt = sysPrompt.replaceAll('{workDir}', workingDir).replaceAll('\$workDir', workingDir);
+            sysPrompt +=
+                '\n🎯 THƯ MỤC LÀM VIỆC: `$workingDir`\nMọi lệnh terminal phải thực hiện bên trong thư mục này.';
+            sysPrompt = sysPrompt
+                .replaceAll('{workDir}', workingDir)
+                .replaceAll('\$workDir', workingDir);
             final knowledgeGuide = _buildKnowledgeGuide(workingDir);
             if (knowledgeGuide != null) sysPrompt += knowledgeGuide;
           }
         }
         if (docFiles != null && docFiles.isNotEmpty) {
           sysPrompt += '\n\n📚 TÀI LIỆU DỰ ÁN (SCOPE DOCUMENTATION):';
-          sysPrompt += '\nĐây là danh sách các tệp tài liệu đặc tả, yêu cầu kỹ thuật thuộc phạm vi dự án này:';
+          sysPrompt +=
+              '\nĐây là danh sách các tệp tài liệu đặc tả, yêu cầu kỹ thuật thuộc phạm vi dự án này:';
           for (final doc in docFiles) {
             sysPrompt += '\n- `$doc`';
           }
-          sysPrompt += '\nKHI THỰC HIỆN CÁC YÊU CẦU: Hãy chủ động đọc hoặc tham chiếu nội dung từ các file tài liệu trên khi cần thiết để hiểu đúng kiến trúc, nghiệp vụ và quy chuẩn dự án.';
+          sysPrompt +=
+              '\nKHI THỰC HIỆN CÁC YÊU CẦU: Hãy chủ động đọc hoặc tham chiếu nội dung từ các file tài liệu trên khi cần thiết để hiểu đúng kiến trúc, nghiệp vụ và quy chuẩn dự án.';
         }
 
         final messages = <Map<String, dynamic>>[
@@ -427,10 +526,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             final role = h['role']?.toString() ?? 'user';
             final content = h['content']?.toString() ?? '';
             if (content.isNotEmpty) {
-              messages.add({
-                'role': role,
-                'content': content,
-              });
+              messages.add({'role': role, 'content': content});
             }
           }
         } else {
@@ -438,10 +534,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           final dbHistory = await _dbService.getMessages(sessionId, limit: 15);
           for (final m in dbHistory.messages) {
             if (m.content != message && m.content.isNotEmpty) {
-              messages.add({
-                'role': m.role,
-                'content': m.content,
-              });
+              messages.add({'role': m.role, 'content': m.content});
             }
           }
         }
@@ -457,25 +550,34 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           for (final att in attachments) {
             final locDesc = att.remotePath != null && att.remotePath!.isNotEmpty
                 ? 'Đường dẫn tệp trên VPS: `${att.remotePath}`'
-                : (att.path != null && att.path!.isNotEmpty ? 'Đường dẫn tệp cục bộ: `${att.path}`' : '');
+                : (att.path != null && att.path!.isNotEmpty
+                      ? 'Đường dẫn tệp cục bộ: `${att.path}`'
+                      : '');
             if (att.isImage) {
               textBuffer.writeln('\n--- [Ảnh đính kèm: ${att.name}] ---');
               if (locDesc.isNotEmpty) textBuffer.writeln(locDesc);
-              textBuffer.writeln('Người dùng đã đính kèm ảnh chụp màn hình/hình ảnh này. Hãy xem xét nội dung bức ảnh.');
+              textBuffer.writeln(
+                'Người dùng đã đính kèm ảnh chụp màn hình/hình ảnh này. Hãy xem xét nội dung bức ảnh.',
+              );
 
               // If content has base64 data URI (data:image/...;base64,...), include in vision payload
               if (att.content.startsWith('data:image/')) {
                 contentParts.add({
                   'type': 'image_url',
-                  'image_url': {
-                    'url': att.content,
-                  },
+                  'image_url': {'url': att.content},
                 });
               }
             } else {
               textBuffer.writeln('\n--- [Tệp đính kèm: ${att.name}] ---');
               if (locDesc.isNotEmpty) textBuffer.writeln(locDesc);
-              textBuffer.writeln(att.content);
+              if (att.isMediaFile) {
+                textBuffer.writeln(
+                  'Loại tệp: video/audio. Mô hình không thể đọc trực tiếp nội dung tệp video/audio. '
+                  'Câu trả lời phải NGẮN GỌN, chỉ nêu lý do không xử lý được tệp này, không phân tích thêm.',
+                );
+              } else {
+                textBuffer.writeln(att.content);
+              }
             }
           }
 
@@ -500,36 +602,40 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             'type': 'function',
             'function': {
               'name': 'execute_terminal_command',
-              'description': 'Thực thi lệnh terminal bash/shell trên máy tính cục bộ (Local OS) ngay tại thư mục Scope. Đây là công cụ ưu tiên hàng đầu.',
+              'description':
+                  'Thực thi lệnh terminal bash/shell trên máy tính cục bộ (Local OS) ngay tại thư mục Scope. Đây là công cụ ưu tiên hàng đầu.',
               'parameters': {
                 'type': 'object',
                 'properties': {
                   'command': {
                     'type': 'string',
-                    'description': 'Lệnh shell/bash cần chạy trên máy tính cục bộ'
-                  }
+                    'description':
+                        'Lệnh shell/bash cần chạy trên máy tính cục bộ',
+                  },
                 },
-                'required': ['command']
-              }
-            }
+                'required': ['command'],
+              },
+            },
           },
           if (targetServerModel != null)
             {
               'type': 'function',
               'function': {
                 'name': 'execute_server_command',
-                'description': 'Thực thi lệnh terminal bash/shell trên máy chủ từ xa ${targetServerModel.name} (${targetServerModel.serverIp}) qua SSH. Chỉ dùng khi cần xem hoặc điều khiển máy chủ này; Scope cục bộ vẫn là ưu tiên chính của phiên làm việc.',
+                'description':
+                    'Thực thi lệnh terminal bash/shell trên máy chủ từ xa ${targetServerModel.name} (${targetServerModel.serverIp}) qua SSH. Chỉ dùng khi cần xem hoặc điều khiển máy chủ này; Scope cục bộ vẫn là ưu tiên chính của phiên làm việc.',
                 'parameters': {
                   'type': 'object',
                   'properties': {
                     'command': {
                       'type': 'string',
-                      'description': 'Lệnh shell/bash cần chạy trên máy chủ từ xa qua SSH'
-                    }
+                      'description':
+                          'Lệnh shell/bash cần chạy trên máy chủ từ xa qua SSH',
+                    },
                   },
-                  'required': ['command']
-                }
-              }
+                  'required': ['command'],
+                },
+              },
             },
         ];
 
@@ -539,21 +645,53 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         int emptyTurnRetries = 0;
         const maxTurns = 25;
 
-        while (turnCount < maxTurns && !isCancelled) {
+        // Số lần được phép tự bơm nhắc "làm tiếp" khi tác vụ chưa hoàn tất,
+        // thay vì nhả task dở dang về cho người dùng.
+        int continuationRetries = 0;
+        const maxContinuationRetries = 3;
+
+        while ((turnCount < maxTurns ||
+                continuationRetries < maxContinuationRetries) &&
+            !isCancelled) {
           turnCount++;
+
+          // Đã chạm trần lượt công cụ nhưng tác vụ chưa được xác nhận hoàn tất:
+          // tự bơm nhắc "làm tiếp" và cấp thêm một lượt đầy đủ (reset ngân sách
+          // lượt) thay vì nhả task dở dang về cho người dùng.
+          if (turnCount > maxTurns) {
+            if (continuationRetries < maxContinuationRetries && !isCancelled) {
+              continuationRetries++;
+              turnCount = 0;
+              messages.add({
+                'role': 'user',
+                'content':
+                    '[HỆ THỐNG] Đã đạt giới hạn $maxTurns lượt thực thi công cụ nhưng tác vụ chưa được xác nhận hoàn tất. Tiếp tục thực hiện nốt phần việc đang dở cho đến khi hoàn thành, không được tự ý kết luận đã xong. Sau khi hoàn tất, báo cáo chi tiết kết quả cụ thể.',
+              });
+              continue;
+            }
+            break;
+          }
+
           http.Client client = http.Client();
           http.StreamedResponse? response;
           String lastErrBody = '';
           int lastStatusCode = 0;
 
-          final int maxKeyAttempts = candidateKeys.isNotEmpty ? candidateKeys.length : 1;
+          final int maxKeyAttempts = candidateKeys.isNotEmpty
+              ? candidateKeys.length
+              : 1;
           final int startKeyIndex = _googleStudioKeyIndex;
           for (int attempt = 0; attempt < maxKeyAttempts; attempt++) {
-            final int currentKeyIdx = candidateKeys.isNotEmpty ? (startKeyIndex + attempt) % candidateKeys.length : 0;
+            final int currentKeyIdx = candidateKeys.isNotEmpty
+                ? (startKeyIndex + attempt) % candidateKeys.length
+                : 0;
             if (candidateKeys.isNotEmpty) {
               apiKey = candidateKeys[currentKeyIdx];
             }
-            final req = http.Request('POST', Uri.parse('$baseUrl/chat/completions'));
+            final req = http.Request(
+              'POST',
+              Uri.parse('$baseUrl/chat/completions'),
+            );
             req.headers.addAll({
               'Content-Type': 'application/json',
               'Accept': 'application/json',
@@ -566,34 +704,46 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               'stream': true,
             });
 
-            onStatus(turnCount == 1
-                ? (maxKeyAttempts > 1
-                    ? 'Đang suy nghĩ (API Key #${currentKeyIdx + 1}/$maxKeyAttempts)...'
-                    : 'Đang suy nghĩ...')
-                : (maxKeyAttempts > 1
-                    ? 'Đang xử lý bước tiếp theo (API Key #${currentKeyIdx + 1}/$maxKeyAttempts)...'
-                    : 'Đang xử lý bước tiếp theo...'));
+            onStatus(
+              turnCount == 1
+                  ? (maxKeyAttempts > 1
+                        ? 'Đang suy nghĩ (API Key #${currentKeyIdx + 1}/$maxKeyAttempts)...'
+                        : 'Đang suy nghĩ...')
+                  : (maxKeyAttempts > 1
+                        ? 'Đang xử lý bước tiếp theo (API Key #${currentKeyIdx + 1}/$maxKeyAttempts)...'
+                        : 'Đang xử lý bước tiếp theo...'),
+            );
 
             try {
-              final res = await client.send(req);
+              // Chặn treo vô hạn ở bước kết nối/gửi request (TCP half-open...)
+              final res = await client
+                  .send(req)
+                  .timeout(const Duration(seconds: 60));
               if (res.statusCode == 200) {
                 if (candidateKeys.isNotEmpty) {
                   // Advance round-robin index past the working key for the next turn/request
-                  _googleStudioKeyIndex = (currentKeyIdx + 1) % candidateKeys.length;
+                  _googleStudioKeyIndex =
+                      (currentKeyIdx + 1) % candidateKeys.length;
                 }
                 response = res;
                 break;
               } else {
                 lastStatusCode = res.statusCode;
-                lastErrBody = await res.stream.bytesToString();
+                lastErrBody = await res.stream.bytesToString().timeout(
+                  const Duration(seconds: 30),
+                );
                 client.close();
                 if (candidateKeys.isNotEmpty) {
                   // Immediately advance static index past the failed/leaked/rate-limited key
-                  _googleStudioKeyIndex = (currentKeyIdx + 1) % candidateKeys.length;
+                  _googleStudioKeyIndex =
+                      (currentKeyIdx + 1) % candidateKeys.length;
                 }
                 if (attempt + 1 < maxKeyAttempts) {
-                  final int nextKeyIdx = (startKeyIndex + attempt + 1) % candidateKeys.length;
-                  onStatus('API Key #${currentKeyIdx + 1}/$maxKeyAttempts gặp lỗi ($lastStatusCode), đang tự động chuyển sang Key #${nextKeyIdx + 1}/$maxKeyAttempts...');
+                  final int nextKeyIdx =
+                      (startKeyIndex + attempt + 1) % candidateKeys.length;
+                  onStatus(
+                    'API Key #${currentKeyIdx + 1}/$maxKeyAttempts gặp lỗi ($lastStatusCode), đang tự động chuyển sang Key #${nextKeyIdx + 1}/$maxKeyAttempts...',
+                  );
                   client = http.Client();
                   continue;
                 }
@@ -604,7 +754,8 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               lastErrBody = reqErr.toString();
               client.close();
               if (candidateKeys.isNotEmpty) {
-                _googleStudioKeyIndex = (currentKeyIdx + 1) % candidateKeys.length;
+                _googleStudioKeyIndex =
+                    (currentKeyIdx + 1) % candidateKeys.length;
               }
               if (attempt + 1 < maxKeyAttempts) {
                 client = http.Client();
@@ -616,8 +767,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
           if (response == null || response.statusCode != 200) {
             String errorMsg = 'AI API Error ($lastStatusCode): $lastErrBody';
-            if (lastStatusCode == 401 || lastStatusCode == 400 || lastStatusCode == 429) {
-              errorMsg += '\n\nHướng dẫn khắc phục:\n'
+            if (lastStatusCode == 401 ||
+                lastStatusCode == 400 ||
+                lastStatusCode == 429) {
+              errorMsg +=
+                  '\n\nHướng dẫn khắc phục:\n'
                   '1. Vào mục "Cấu hình" -> Kiểm tra lại danh sách "API Key Google Studio" hoặc "Proxy API Key" và bấm Lưu Cấu Hình.\n'
                   '2. Nếu dùng Google AI Studio miễn phí bị giới hạn hạn ngạch (429), hãy thêm nhiều API Key từ các project khác nhau để hệ thống tự động xoay vòng.';
             }
@@ -638,136 +792,170 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           void resetInactivity() {
             lastStreamActivityMs = DateTime.now().millisecondsSinceEpoch;
           }
-          final inactivityTimer = Timer.periodic(const Duration(seconds: 5), (t) {
-            final elapsed = DateTime.now().millisecondsSinceEpoch - lastStreamActivityMs;
+
+          final inactivityTimer = Timer.periodic(const Duration(seconds: 5), (
+            t,
+          ) {
+            final elapsed =
+                DateTime.now().millisecondsSinceEpoch - lastStreamActivityMs;
             if (!streamCompleter.isCompleted && elapsed >= 90000) {
               t.cancel();
               if (!streamCompleter.isCompleted) streamCompleter.complete();
             }
           });
 
-          response.stream
+          final streamSub = response.stream
               .transform(utf8.decoder)
               .transform(const LineSplitter())
               .listen(
-            (line) {
-              resetInactivity();
-              final trimmed = line.trim();
-              if (trimmed.isEmpty) return;
-              if (trimmed == 'data: [DONE]') {
-                return;
-              }
-              if (trimmed.startsWith('data:')) {
-                final jsonStr = trimmed.substring(5).trim();
-                try {
-                  final data = jsonDecode(jsonStr);
-                  final choices = data['choices'] as List<dynamic>?;
-                  if (choices != null && choices.isNotEmpty) {
-                    final delta = choices[0]['delta'] as Map<String, dynamic>?;
-                    if (delta != null) {
-                      // Text content delta
-                      if (delta['content'] != null) {
-                        final token = delta['content'].toString();
-                        stepContent += token;
-                        onToken(token);
-                      }
-
-                      // Tool calls delta
-                      if (delta['tool_calls'] != null) {
-                        final tcs = delta['tool_calls'] as List<dynamic>;
-                        for (final tc in tcs) {
-                          final idx = tc['index'] as int? ?? 0;
-                          toolCallsMap.putIfAbsent(idx, () => {
-                            'id': tc['id'] ?? '',
-                            'name': tc['function']?['name'] ?? '',
-                            'arguments': '',
-                          });
-                          if (tc['id'] != null && tc['id'].toString().isNotEmpty) {
-                            toolCallsMap[idx]!['id'] = tc['id'];
-                          }
-                          if (tc['function']?['name'] != null) {
-                            toolCallsMap[idx]!['name'] = tc['function']['name'];
-                          }
-                          if (tc['function']?['arguments'] != null) {
-                            toolCallsMap[idx]!['arguments'] =
-                                (toolCallsMap[idx]!['arguments'] as String) + tc['function']['arguments'].toString();
+                (line) {
+                  resetInactivity();
+                  final trimmed = line.trim();
+                  if (trimmed.isEmpty) return;
+                  if (trimmed == 'data: [DONE]') {
+                    return;
+                  }
+                  if (trimmed.startsWith('data:')) {
+                    final jsonStr = trimmed.substring(5).trim();
+                    try {
+                      final data = jsonDecode(jsonStr);
+                      final choices = data['choices'] as List<dynamic>?;
+                      if (choices != null && choices.isNotEmpty) {
+                        final delta =
+                            choices[0]['delta'] as Map<String, dynamic>?;
+                        if (delta != null) {
+                          // Text content delta
+                          if (delta['content'] != null) {
+                            final token = delta['content'].toString();
+                            stepContent += token;
+                            onToken(token);
                           }
 
-                          // Gemini 3 (OpenAI-compat) gắn thought_signature vào
-                          // extra_content.google của từng tool_call trong delta.
-                          // Bắt buộc giữ lại để gửi kèm lịch sử ở lượt sau, nếu
-                          // không API trả 400
-                          // "Function call is missing a thought_signature".
-                          final extraContent = tc['extra_content'];
-                          if (extraContent is Map) {
-                            final google = extraContent['google'];
-                            if (google is Map &&
-                                google['thought_signature'] != null &&
-                                google['thought_signature'].toString().isNotEmpty) {
-                              toolCallsMap[idx]!['extra_content'] = {
-                                'google': {
-                                  'thought_signature': google['thought_signature'],
+                          // Tool calls delta
+                          if (delta['tool_calls'] != null) {
+                            final tcs = delta['tool_calls'] as List<dynamic>;
+                            for (final tc in tcs) {
+                              final idx = tc['index'] as int? ?? 0;
+                              toolCallsMap.putIfAbsent(
+                                idx,
+                                () => {
+                                  'id': tc['id'] ?? '',
+                                  'name': tc['function']?['name'] ?? '',
+                                  'arguments': '',
                                 },
-                              };
+                              );
+                              if (tc['id'] != null &&
+                                  tc['id'].toString().isNotEmpty) {
+                                toolCallsMap[idx]!['id'] = tc['id'];
+                              }
+                              if (tc['function']?['name'] != null) {
+                                toolCallsMap[idx]!['name'] =
+                                    tc['function']['name'];
+                              }
+                              if (tc['function']?['arguments'] != null) {
+                                toolCallsMap[idx]!['arguments'] =
+                                    (toolCallsMap[idx]!['arguments']
+                                        as String) +
+                                    tc['function']['arguments'].toString();
+                              }
+
+                              // Gemini 3 (OpenAI-compat) gắn thought_signature vào
+                              // extra_content.google của từng tool_call trong delta.
+                              // Bắt buộc giữ lại để gửi kèm lịch sử ở lượt sau, nếu
+                              // không API trả 400
+                              // "Function call is missing a thought_signature".
+                              final extraContent = tc['extra_content'];
+                              if (extraContent is Map) {
+                                final google = extraContent['google'];
+                                if (google is Map &&
+                                    google['thought_signature'] != null &&
+                                    google['thought_signature']
+                                        .toString()
+                                        .isNotEmpty) {
+                                  toolCallsMap[idx]!['extra_content'] = {
+                                    'google': {
+                                      'thought_signature':
+                                          google['thought_signature'],
+                                    },
+                                  };
+                                }
+                              }
                             }
                           }
                         }
                       }
-                    }
+                    } catch (_) {}
                   }
-                } catch (_) {}
-              }
-            },
-            onError: (err) {
-              resetInactivity();
-              if (!streamCompleter.isCompleted) streamCompleter.completeError(err);
-            },
-            onDone: () {
-              resetInactivity();
-              streamDataEnded = true;
-              inactivityTimer.cancel();
-              if (!streamCompleter.isCompleted) streamCompleter.complete();
-              client.close();
-            },
-            cancelOnError: true,
-          );
+                },
+                onError: (err) {
+                  resetInactivity();
+                  client.close();
+                  if (!streamCompleter.isCompleted) {
+                    streamCompleter.completeError(err);
+                  }
+                },
+                onDone: () {
+                  resetInactivity();
+                  streamDataEnded = true;
+                  inactivityTimer.cancel();
+                  if (!streamCompleter.isCompleted) streamCompleter.complete();
+                  client.close();
+                },
+                cancelOnError: true,
+              );
 
           await streamCompleter.future;
           inactivityTimer.cancel();
 
+          // Nếu watchdog đánh thức (stream đứt ngầm) hoặc tác vụ bị hủy giữa
+          // chừng: dọn subscription + client cũ, tránh rò kết nối và treo lượt sau.
+          if (!streamDataEnded) {
+            try {
+              await streamSub.cancel();
+            } catch (_) {}
+            client.close();
+          } else if (isCancelled) {
+            client.close();
+          }
+
           // Nếu luồng đứt ngầm (watchdog đánh thức) mà model chưa kịp gọi tool:
           // ép thêm lượt mới yêu cầu model chạy tiếp thay vì kết luận xong sớm.
-          if (!streamDataEnded && toolCallsMap.isEmpty && turnCount < maxTurns && !isCancelled) {
+          if (!streamDataEnded &&
+              toolCallsMap.isEmpty &&
+              turnCount < maxTurns &&
+              !isCancelled) {
             final resumeNote =
                 '[HỆ THỐNG] Kết nối stream bị gián đoạn giữa chừng. Hãy tiếp tục thực hiện nốt công việc đang dở, không được tự ý kết luận đã hoàn tất.';
             messages.add({
               'role': 'assistant',
-              'content': stepContent.isNotEmpty ? '$stepContent\n\n$resumeNote' : resumeNote,
+              'content': stepContent.isNotEmpty
+                  ? '$stepContent\n\n$resumeNote'
+                  : resumeNote,
             });
             continue;
           }
 
           // Check if tools were called
           if (toolCallsMap.isNotEmpty) {
+            emptyTurnRetries = 0;
             final formattedToolCalls = <Map<String, dynamic>>[];
             final executedToolResults = <Map<String, dynamic>>[];
 
             for (final entry in toolCallsMap.entries) {
               final tc = entry.value;
               final toolCallId = tc['id']?.toString() ?? 'call_${entry.key}';
-              final funcName = tc['name']?.toString() ?? 'execute_terminal_command';
+              final funcName =
+                  tc['name']?.toString() ?? 'execute_terminal_command';
               final rawArgs = tc['arguments']?.toString() ?? '{}';
 
               formattedToolCalls.add({
                 'id': toolCallId,
                 'type': 'function',
-                'function': {
-                  'name': funcName,
-                  'arguments': rawArgs,
-                },
+                'function': {'name': funcName, 'arguments': rawArgs},
                 // Gửi lại thought_signature của Google kèm tool_call khi replay
                 // lịch sử, nếu không lượt gọi tool thứ hai bị 400 INVALID_ARGUMENT.
-                if (tc['extra_content'] != null) 'extra_content': tc['extra_content'],
+                if (tc['extra_content'] != null)
+                  'extra_content': tc['extra_content'],
               });
 
               // Execute tool
@@ -788,11 +976,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               );
               onTool(toolItem);
 
-              final bool isServerToolCall = funcName.trim() == 'execute_server_command';
+              final bool isServerToolCall =
+                  funcName.trim() == 'execute_server_command';
               String cmdOutput;
               if (isServerToolCall) {
                 if (targetServerModel == null) {
-                  cmdOutput = 'LỖI: Phiên làm việc chưa chọn máy chủ nào. Hãy dùng execute_terminal_command để chạy cục bộ tại Scope.';
+                  cmdOutput =
+                      'LỖI: Phiên làm việc chưa chọn máy chủ nào. Hãy dùng execute_terminal_command để chạy cục bộ tại Scope.';
                 } else {
                   final remoteDir = targetServerModel.remoteWorkDir;
                   cmdOutput = await _executeCommand(
@@ -843,22 +1033,52 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           } else {
             // Nếu model trả về rỗng sau khi vừa chạy lệnh tool (chưa thực hiện xong hoặc chưa tổng hợp báo cáo):
             // Chủ động nhắc model tiếp tục làm nốt và báo cáo chi tiết kết quả.
-            if (stepContent.trim().isEmpty && allExecutedTools.isNotEmpty && emptyTurnRetries < 2 && turnCount < maxTurns && !isCancelled) {
+            if (stepContent.trim().isEmpty &&
+                allExecutedTools.isNotEmpty &&
+                emptyTurnRetries < 2 &&
+                turnCount < maxTurns &&
+                !isCancelled) {
               emptyTurnRetries++;
               messages.add({
                 'role': 'user',
-                'content': '[HỆ THỐNG] Bạn vừa thực thi lệnh công cụ nhưng chưa đưa ra phản hồi hoặc chưa hoàn tất chỉnh sửa. Nếu tác vụ chưa xong, hãy gọi execute_terminal_command để thực hiện tiếp cho đến khi hoàn tất. Nếu đã xong, bắt buộc phải báo cáo chi tiết những gì đã kiểm tra/thay đổi và kết quả cụ thể.',
+                'content':
+                    '[HỆ THỐNG] Bạn vừa thực thi lệnh công cụ nhưng chưa đưa ra phản hồi hoặc chưa hoàn tất chỉnh sửa. Nếu tác vụ chưa xong, hãy gọi execute_terminal_command để thực hiện tiếp cho đến khi hoàn tất. Nếu đã xong, bắt buộc phải báo cáo chi tiết những gì đã kiểm tra/thay đổi và kết quả cụ thể.',
               });
               continue;
             }
             // Finished generation without more tools
+            emptyTurnRetries = 0;
+
+            // Cổng hoàn tất: model nhả văn bản kết thúc nhưng mang dấu hiệu
+            // chưa xong (bị cắt giữa chừng, tự nhận đang làm dở...). Tự bơm
+            // nhắc "làm tiếp" kèm nội dung vừa rồi để model chạy nốt thay vì
+            // nhả task dở dang về cho người dùng.
+            if (continuationRetries < maxContinuationRetries &&
+                !isCancelled &&
+                _looksIncomplete(stepContent) &&
+                !_looksComplete(stepContent)) {
+              continuationRetries++;
+              turnCount = 0;
+              if (stepContent.trim().isNotEmpty) {
+                messages.add({'role': 'assistant', 'content': stepContent});
+              }
+              messages.add({
+                'role': 'user',
+                'content':
+                    '[HỆ THỐNG] Phản hồi trước bị ngắt hoặc mang dấu hiệu công việc chưa hoàn tất. Tiếp tục thực hiện nốt phần việc đang dở cho đến khi hoàn thành, không được tự ý kết luận đã xong. Chỉ khi hoàn tất mới đưa báo cáo tổng kết cuối cùng.',
+              });
+              continue;
+            }
+
             finalReply = stepContent;
             break;
           }
         }
 
         // Final reply fallback if not captured
-        if (finalReply.isEmpty && messages.isNotEmpty && messages.last['role'] == 'assistant') {
+        if (finalReply.isEmpty &&
+            messages.isNotEmpty &&
+            messages.last['role'] == 'assistant') {
           finalReply = messages.last['content']?.toString() ?? '';
         }
 
@@ -902,10 +1122,11 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         if (finalReply.isEmpty) {
           onDone(fallbackReply);
         } else if (turnCount >= maxTurns && !isCancelled) {
-          // Vuot gioi han luot tool - tac vu CHUA xong, phai noi ro de nguoi dung biet
+          // Vượt giới hạn lượt công cụ cả sau khi đã tự động kéo dài — tác vụ
+          // CHƯA xong, phải nói rõ để người dùng biết.
           onDone(
-            '$finalReply\n\n> **Lưu ý:** Agent đã đạt giới hạn $maxTurns lượt thực thi công cụ trong một lượt xử lý. '
-            'Công việc có thể chưa hoàn tất — nếu còn việc đang làm dở, hãy nhắn "tiếp tục" để agent chạy nốt.',
+            '$finalReply\n\n> **Lưu ý:** Agent đã đạt giới hạn $maxTurns lượt thực thi công cụ và đã tự động nhắc bản thân làm tiếp thêm $maxContinuationRetries lượt, '
+            'nhưng công việc vẫn chưa được xác nhận hoàn tất. Nếu còn việc đang làm dở, hãy nhắn "tiếp tục" để agent chạy nốt.',
           );
         } else {
           onDone(finalReply);
@@ -915,9 +1136,57 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       }
     }();
 
-    return controller.stream.listen((_) {}, onDone: () {
+    // Bật cờ hủy khi UI chủ động dừng (stopGenerating): onDone KHÔNG được gọi
+    // khi subscription bị cancel, nên phải dùng onCancel để truyền cờ xuống.
+    controller.onCancel = () {
       isCancelled = true;
-    });
+    };
+    return controller.stream.listen((_) {});
+  }
+
+  /// Văn bản kết thúc "sạch" (kết thúc bằng dấu câu, khối code, v.v.).
+  static bool _endsCleanly(String text) {
+    final t = text.trimRight();
+    if (t.isEmpty) return true;
+    const cleanEndings = [
+      '.',
+      '!',
+      '?',
+      ':',
+      ';',
+      ')',
+      ']',
+      '}',
+      '"',
+      "'",
+      '`',
+      '*',
+    ];
+    if (cleanEndings.any(t.endsWith)) return true;
+    return false;
+  }
+
+  /// Heuristic nhận biết phản hồi mang dấu hiệu chưa hoàn thành (bị cắt giữa
+  /// chừng hoặc tự nhận đang làm dở) — dùng để tự bơm nhắc "làm tiếp" thay vì
+  /// nhả task dở dang về cho người dùng.
+  static bool _looksIncomplete(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return false;
+    final incompletePattern = RegExp(
+      r'(chưa (hoàn thành|hoàn tất|xong|kịp)|đang (thực hiện|làm|tiến hành|xử lý|chạy)|sẽ (tiếp tục|làm|thực hiện|kiểm tra)|cần (tiếp tục|thêm|kiểm tra)|tôi (sẽ|cần) tiếp|tiếp tục (với|thực hiện|làm nốt|làm)|bị (ngắt|cắt) giữa|to be continued|incomplete|not (yet )?(finished|complete|done)|continuing|i will continue|let me continue)',
+      caseSensitive: false,
+    );
+    if (incompletePattern.hasMatch(t)) return true;
+    return !_endsCleanly(t);
+  }
+
+  /// Dấu hiệu phản hồi xác nhận đã hoàn tất công việc.
+  static bool _looksComplete(String text) {
+    final completePattern = RegExp(
+      r'(hoàn thành|hoàn tất|đã xong|xong xuôi|đã sửa xong|đã kiểm tra xong|completed|successfully|all tests? pass|done\.?$)',
+      caseSensitive: false,
+    );
+    return completePattern.hasMatch(text.trim());
   }
 
   bool _isCliModel(String model) {
@@ -1009,27 +1278,41 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       for (final att in attachments) {
         final loc = att.remotePath != null && att.remotePath!.isNotEmpty
             ? 'Đường dẫn tệp trên VPS: `${att.remotePath}`'
-            : (att.path != null && att.path!.isNotEmpty ? 'Đường dẫn tệp cục bộ: `${att.path}`' : '');
+            : (att.path != null && att.path!.isNotEmpty
+                  ? 'Đường dẫn tệp cục bộ: `${att.path}`'
+                  : '');
         if (att.isImage) {
           attBuf.writeln('\n- [Ảnh: ${att.name}]');
           if (loc.isNotEmpty) attBuf.writeln('  $loc');
-          attBuf.writeln('  Người dùng đã đính kèm ảnh này. Agent hãy dùng công cụ/tool đọc tệp hoặc xem ảnh tại đường dẫn trên để nắm bắt thông tin giao diện hoặc lỗi và xử lý trực tiếp.');
+          attBuf.writeln(
+            '  Người dùng đã đính kèm ảnh này. Agent hãy dùng công cụ/tool đọc tệp hoặc xem ảnh tại đường dẫn trên để nắm bắt thông tin giao diện hoặc lỗi và xử lý trực tiếp.',
+          );
         } else {
           attBuf.writeln('\n- [Tệp: ${att.name}]');
           if (loc.isNotEmpty) attBuf.writeln('  $loc');
-          if (att.content.isNotEmpty && !att.content.startsWith('data:')) {
+          if (att.isMediaFile) {
+            attBuf.writeln(
+              '  Loại tệp: video/audio. Không thể đọc trực tiếp nội dung tệp video/audio. '
+              'Trả lời NGẮN GỌN lý do không xử lý được tệp này.',
+            );
+          } else if (att.content.isNotEmpty &&
+              !att.content.startsWith('data:')) {
             attBuf.writeln('  Nội dung tệp:\n${att.content}');
           }
         }
       }
-      attBuf.writeln('\n[YÊU CẦU XỬ LÝ ĐÍNH KÈM]: Agent hãy chủ động đọc, phân tích tệp/ảnh tại đường dẫn trên để giải quyết yêu cầu của người dùng. TUYỆT ĐỐI KHÔNG lặp lại hoặc in lại đoạn văn bản "=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===" này trong câu trả lời.');
+      attBuf.writeln(
+        '\n[YÊU CẦU XỬ LÝ ĐÍNH KÈM]: Agent hãy chủ động đọc, phân tích tệp/ảnh tại đường dẫn trên để giải quyết yêu cầu của người dùng. TUYỆT ĐỐI KHÔNG lặp lại hoặc in lại đoạn văn bản "=== TỆP & ẢNH ĐÍNH KÈM TỪ NGƯỜI DÙNG ===" này trong câu trả lời.',
+      );
       attBuf.writeln('=== HẾT PHẦN ĐÍNH KÈM ===\n');
       attachmentPromptBlock = attBuf.toString();
     }
 
     if (targetServerModel != null) {
-      final configuredBinary = targetServerModel.cliBinary.isNotEmpty ? targetServerModel.cliBinary : 'agy';
-      
+      final configuredBinary = targetServerModel.cliBinary.isNotEmpty
+          ? targetServerModel.cliBinary
+          : 'agy';
+
       String remoteBinary = configuredBinary;
       final m = cliName.toLowerCase();
       if (m.contains('claude')) {
@@ -1040,11 +1323,14 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         remoteBinary = 'agy';
       }
 
-      onStatus('Đang gửi lệnh tới $remoteBinary CLI trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp})...');
-      
+      onStatus(
+        'Đang gửi lệnh tới $remoteBinary CLI trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp})...',
+      );
+
       String remoteContextGuide = '';
       if (workingDir != null && workingDir.isNotEmpty) {
-        remoteContextGuide = '''
+        remoteContextGuide =
+            '''
 
 === PHÂN CẤP NGỮ CẢNH: SCOPE CỤC BỘ (ƯU TIÊN HÀNG ĐẦU) & MÁY CHỦ HIỆN TẠI ===
 - SCOPE CỤC BỘ (NGỮ CẢNH CHÍNH CỦA NGƯỜI DÙNG, NGUỒN MÃ CHUẨN ĐỂ ĐỐI CHIẾU): `$workingDir` - thư mục này nằm trên máy cá nhân của người dùng, KHÔNG tồn tại bên trong máy chủ hiện tại. Tuyệt đối không cd hay thao tác như thể nó có ở đây.
@@ -1056,7 +1342,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 ''';
       }
 
-      final promptSuffix = (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty)
+      final promptSuffix =
+          (customPromptTemplate != null &&
+              customPromptTemplate.trim().isNotEmpty)
           ? customPromptTemplate.trim()
           : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn. Tuyệt đối không đọc, truy cập hoặc làm lộ các file cấu hình config*.json, .env hay credential của hệ thống và người dùng)';
       final effectivePrompt = attachmentPromptBlock.isNotEmpty
@@ -1065,22 +1353,26 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       final cleanPrompt = effectivePrompt;
       final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
 
-      String remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
+      String remoteCliArgs =
+          "-p '$escapedPrompt' --dangerously-skip-permissions";
       if (remoteBinary == 'agy' || remoteBinary.contains('antigravity')) {
         if (cliConvId != null && cliConvId.isNotEmpty) {
-          remoteCliArgs = "--conversation '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
+          remoteCliArgs =
+              "--conversation '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
         } else {
           remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
         }
       } else if (remoteBinary == 'claude' || remoteBinary.contains('claude')) {
         if (cliConvId != null && cliConvId.isNotEmpty) {
-          remoteCliArgs = "--session-id '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
+          remoteCliArgs =
+              "--session-id '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
         } else {
           remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
         }
       }
 
-      final cmd = '''
+      final cmd =
+          '''
 export PATH="\$HOME/.local/bin:\$HOME/bin:\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"
 if command -v $remoteBinary >/dev/null 2>&1; then
   $remoteBinary $remoteCliArgs 2>&1
@@ -1097,9 +1389,18 @@ else
   echo "- Hoặc nếu máy chủ chạy dịch vụ systemd (ai-agent.service), hãy chuyển cấu hình máy chủ sang 'Chế độ 1: Dịch vụ AI Agent (Systemd)'."
 fi
 ''';
-      final remoteWorkDir = (targetServerModel.remoteWorkDir.isNotEmpty) ? targetServerModel.remoteWorkDir : null;
-      final result = await _executeCommand(cmd, workingDir: remoteWorkDir, timeoutSeconds: 600, server: targetServerModel);
-      final convMatch = RegExp(r'"conversation_id":\s*"([^"]+)"').firstMatch(result);
+      final remoteWorkDir = (targetServerModel.remoteWorkDir.isNotEmpty)
+          ? targetServerModel.remoteWorkDir
+          : null;
+      final result = await _executeCommand(
+        cmd,
+        workingDir: remoteWorkDir,
+        timeoutSeconds: 600,
+        server: targetServerModel,
+      );
+      final convMatch = RegExp(
+        r'"conversation_id":\s*"([^"]+)"',
+      ).firstMatch(result);
       if (convMatch != null) {
         final foundConv = convMatch.group(1);
         if (foundConv != null && foundConv.isNotEmpty) {
@@ -1118,13 +1419,15 @@ fi
           : (Platform.environment['HOME'] ?? Directory.current.path);
 
       String promptSuffix;
-      if (customPromptTemplate != null && customPromptTemplate.trim().isNotEmpty) {
+      if (customPromptTemplate != null &&
+          customPromptTemplate.trim().isNotEmpty) {
         promptSuffix = customPromptTemplate
             .replaceAll('{workDir}', workDir)
             .replaceAll('\$workDir', workDir)
             .trim();
       } else {
-        promptSuffix = '''(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
+        promptSuffix =
+            '''(Yêu cầu thực thi bắt buộc dành cho Agent CLI):
 - THƯ MỤC LÀM VIỆC MỤC TIÊU (SCOPE BẮT BUỘC): `$workDir`
 - Mọi lệnh terminal, tạo file, cấu hình mã nguồn, cài đặt gói BẮT BUỘC thực hiện trực tiếp tại thư mục `$workDir` (hoặc tạo thư mục con ngay trong `$workDir`). Tuyệt đối KHÔNG tạo ở scratch/ hay bất kỳ thư mục nào khác ngoài `$workDir`.
 - TUYỆT ĐỐI KHÔNG TỰ CHẠY LỆNH SERVER CHẠY NỀN VÔ TẬN (như `npm run dev`, `npm run start`, `node server.js`, `python manage.py runserver`, `flask run`). Hãy biên dịch kiểm tra lỗi bằng `npm run build` hoặc lệnh test tương tự, sau đó in rõ câu lệnh và hướng dẫn người dùng chạy server ở Terminal hoặc ngoài hệ thống.
@@ -1137,10 +1440,18 @@ fi
       // Bổ sung thông tin máy chủ SSH phụ trợ (nếu phiên liên kết Server) - Scope vẫn là ưu tiên chính
       if (targetServerModel != null) {
         final srvBuf = StringBuffer();
-        srvBuf.writeln('\n\n=== MÁY CHỦ TỪ XA BỔ SUNG (SSH) - PHỤC VỤ CHO SCOPE, KHÔNG THAY THẾ SCOPE ===');
-        srvBuf.writeln('- Scope cục bộ (ngữ cảnh chính, ưu tiên hàng đầu, môi trường thực thi mặc định): `$workDir`.');
-        srvBuf.writeln('- Máy chủ từ xa bổ sung: ${targetServerModel.name} (${targetServerModel.serverIp}), SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}, Remote WorkDir: `${targetServerModel.remoteWorkDir}`.');
-        srvBuf.writeln('- Bạn đang chạy cục bộ tại Scope nên không có công cụ SSH riêng của ứng dụng; khi cần đối chiếu hoặc ghi đè code từ Scope lên Server, hãy dùng lệnh ssh/scp/rsync từ shell (chỉ khả dụng khi máy này có khóa SSH hoặc sshpass), hoặc đề nghị người dùng chuyển sang mô hình chat có bộ công cụ hai chiều (execute_terminal_command cho Scope, execute_server_command cho Server).');
+        srvBuf.writeln(
+          '\n\n=== MÁY CHỦ TỪ XA BỔ SUNG (SSH) - PHỤC VỤ CHO SCOPE, KHÔNG THAY THẾ SCOPE ===',
+        );
+        srvBuf.writeln(
+          '- Scope cục bộ (ngữ cảnh chính, ưu tiên hàng đầu, môi trường thực thi mặc định): `$workDir`.',
+        );
+        srvBuf.writeln(
+          '- Máy chủ từ xa bổ sung: ${targetServerModel.name} (${targetServerModel.serverIp}), SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}, Remote WorkDir: `${targetServerModel.remoteWorkDir}`.',
+        );
+        srvBuf.writeln(
+          '- Bạn đang chạy cục bộ tại Scope nên không có công cụ SSH riêng của ứng dụng; khi cần đối chiếu hoặc ghi đè code từ Scope lên Server, hãy dùng lệnh ssh/scp/rsync từ shell (chỉ khả dụng khi máy này có khóa SSH hoặc sshpass), hoặc đề nghị người dùng chuyển sang mô hình chat có bộ công cụ hai chiều (execute_terminal_command cho Scope, execute_server_command cho Server).',
+        );
         srvBuf.writeln('=== HẾT THÔNG TIN MÁY CHỦ BỔ SUNG ===');
         promptSuffix = '$promptSuffix${srvBuf.toString()}';
       }
@@ -1148,8 +1459,12 @@ fi
       // Đọc và đính kèm nội dung các file tài liệu / rules được chọn vào prompt
       if (docFiles != null && docFiles.isNotEmpty) {
         final docsBuffer = StringBuffer();
-        docsBuffer.writeln('\n\n=== TÀI LIỆU DỰ ÁN & RULES BẮT BUỘC THAM CHIẾU (SCOPE DOCS) ===');
-        docsBuffer.writeln('Người dùng đã chỉ định các tệp tài liệu và rules dưới đây để Agent tuân thủ và hiểu rõ yêu cầu dự án:\n');
+        docsBuffer.writeln(
+          '\n\n=== TÀI LIỆU DỰ ÁN & RULES BẮT BUỘC THAM CHIẾU (SCOPE DOCS) ===',
+        );
+        docsBuffer.writeln(
+          'Người dùng đã chỉ định các tệp tài liệu và rules dưới đây để Agent tuân thủ và hiểu rõ yêu cầu dự án:\n',
+        );
 
         for (final docPath in docFiles) {
           final file = File(docPath);
@@ -1164,7 +1479,9 @@ fi
                 docsBuffer.writeln(content);
                 docsBuffer.writeln('--- HẾT TẬP TIN: $docName ---\n');
               } else {
-                docsBuffer.writeln('- Đường dẫn file tài liệu: `$docPath` (Kích thước lớn: ${(len / 1024).round()} KB, Agent hãy chủ động đọc khi cần)');
+                docsBuffer.writeln(
+                  '- Đường dẫn file tài liệu: `$docPath` (Kích thước lớn: ${(len / 1024).round()} KB, Agent hãy chủ động đọc khi cần)',
+                );
               }
             } catch (_) {
               docsBuffer.writeln('- Đường dẫn file tài liệu: `$docPath`');
@@ -1192,11 +1509,22 @@ fi
 
       // Build contextual prompt for CLI models that do not support multi-turn session IDs
       String contextualPrompt = cleanPrompt;
-      if (m.contains('gemini') || (!m.contains('agy') && !m.contains('antigravity') && !m.contains('claude'))) {
+      if (m.contains('gemini') ||
+          (!m.contains('agy') &&
+              !m.contains('antigravity') &&
+              !m.contains('claude'))) {
         final recentHistory = (history != null && history.isNotEmpty)
             ? history
-            : (await _dbService.getMessages(sessionId, limit: 10)).messages.map((e) => {'role': e.role, 'content': e.content}).toList();
-        final pastMessages = recentHistory.where((h) => (h['content']?.toString().trim().isNotEmpty ?? false) && h['content'] != prompt).toList();
+            : (await _dbService.getMessages(sessionId, limit: 10)).messages
+                  .map((e) => {'role': e.role, 'content': e.content})
+                  .toList();
+        final pastMessages = recentHistory
+            .where(
+              (h) =>
+                  (h['content']?.toString().trim().isNotEmpty ?? false) &&
+                  h['content'] != prompt,
+            )
+            .toList();
         if (pastMessages.isNotEmpty) {
           final historyBuf = StringBuffer();
           historyBuf.writeln('=== LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ ===');
@@ -1205,7 +1533,8 @@ fi
             historyBuf.writeln('[$roleName]: ${h['content']}');
           }
           historyBuf.writeln('=== KẾT THÚC LỊCH SỬ HỘI THOẠI ===\n');
-          contextualPrompt = '${historyBuf.toString()}\n[Câu hỏi / Yêu cầu mới nhất của Người dùng]:\n$prompt\n\n$promptSuffix';
+          contextualPrompt =
+              '${historyBuf.toString()}\n[Câu hỏi / Yêu cầu mới nhất của Người dùng]:\n$prompt\n\n$promptSuffix';
         }
       }
 
@@ -1236,15 +1565,49 @@ fi
       List<String> args;
       if (m.contains('claude')) {
         if (cliConvId != null && cliConvId.isNotEmpty) {
-          args = ['--session-id', cliConvId, '-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+          args = [
+            '--session-id',
+            cliConvId,
+            '-p',
+            cleanPrompt,
+            '--output-format',
+            'stream-json',
+            '--verbose',
+            '--dangerously-skip-permissions',
+          ];
         } else {
-          args = ['-p', cleanPrompt, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+          args = [
+            '-p',
+            cleanPrompt,
+            '--output-format',
+            'stream-json',
+            '--verbose',
+            '--dangerously-skip-permissions',
+          ];
         }
       } else if (m.contains('antigravity') || m == 'agy') {
         if (cliConvId != null && cliConvId.isNotEmpty) {
-          args = ['--conversation', cliConvId, '--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions'];
+          args = [
+            '--conversation',
+            cliConvId,
+            '--print',
+            cleanPrompt,
+            '--input-format',
+            'text',
+            '--output-format',
+            'stream-json',
+            '--dangerously-skip-permissions',
+          ];
         } else {
-          args = ['--print', cleanPrompt, '--input-format', 'text', '--output-format', 'stream-json', '--dangerously-skip-permissions'];
+          args = [
+            '--print',
+            cleanPrompt,
+            '--input-format',
+            'text',
+            '--output-format',
+            'stream-json',
+            '--dangerously-skip-permissions',
+          ];
         }
       } else if (m.contains('gemini')) {
         args = ['-p', contextualPrompt];
@@ -1266,7 +1629,7 @@ fi
       final errOutput = StringBuffer();
       bool hasFinished = false;
 
-      void finishSession([String? fallbackReply]) {
+      void finishSession([String? fallbackReply, String? warningSuffix]) {
         if (hasFinished) return;
         hasFinished = true;
         final rawResult = fullOutput.toString().trim();
@@ -1274,7 +1637,13 @@ fi
         final defaultEmpty =
             'Agent $cliName đã dừng tiến trình mà chưa xuất bản báo cáo kết quả. '
             'Nếu công việc chưa hoàn tất, hãy nhắn "tiếp tục" để agent chạy nốt.';
-        onDone(result.isNotEmpty ? result : (fallbackReply ?? defaultEmpty));
+        var finalText = result.isNotEmpty
+            ? result
+            : (fallbackReply ?? defaultEmpty);
+        if (warningSuffix != null && warningSuffix.isNotEmpty) {
+          finalText = '$finalText\n\n$warningSuffix';
+        }
+        onDone(finalText);
         try {
           process.kill();
         } catch (_) {}
@@ -1283,10 +1652,44 @@ fi
       // Close stdin asynchronously
       process.stdin.close().catchError((_) {});
 
-      process.stdout
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen((line) {
+      // Watchdog chống treo tiến trình CLI: người dùng hủy tác vụ hoặc tiến
+      // trình im lặng quá lâu (không còn stdout/stderr) thì chủ động kill và
+      // kết thúc phiên, thay vì chờ exitCode vô hạn.
+      const cliInactivity = Duration(minutes: 3);
+      int lastCliActivityMs = DateTime.now().millisecondsSinceEpoch;
+      void resetCliActivity() {
+        lastCliActivityMs = DateTime.now().millisecondsSinceEpoch;
+      }
+
+      final cliWatchdog = Timer.periodic(const Duration(seconds: 5), (t) {
+        if (hasFinished) {
+          t.cancel();
+          return;
+        }
+        if (isCancelled()) {
+          t.cancel();
+          finishSession(
+            null,
+            'Đã dừng tiến trình $cliName theo yêu cầu của người dùng.',
+          );
+          return;
+        }
+        final elapsed =
+            DateTime.now().millisecondsSinceEpoch - lastCliActivityMs;
+        if (elapsed >= cliInactivity.inMilliseconds) {
+          t.cancel();
+          finishSession(
+            null,
+            'Tiến trình $cliName không xuất thêm dữ liệu nào trong ${cliInactivity.inMinutes} phút nên đã bị dừng. '
+            'Nếu công việc chưa xong, hãy nhắn "tiếp tục" để agent chạy nốt.',
+          );
+        }
+      });
+
+      process.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((
+        line,
+      ) {
+        resetCliActivity();
         if (isCancelled() || hasFinished) return;
         final trimmed = line.trim();
         if (trimmed.isEmpty) return;
@@ -1296,11 +1699,17 @@ fi
           final json = jsonDecode(trimmed);
           if (json is Map<String, dynamic>) {
             // Track and store persistent conversation_id for subsequent turns
-            final emittedConvId = json['conversation_id']?.toString() ??
-                (json['result'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
-                (json['step_update'] as Map<String, dynamic>?)?['conversation_id']?.toString() ??
+            final emittedConvId =
+                json['conversation_id']?.toString() ??
+                (json['result'] as Map<String, dynamic>?)?['conversation_id']
+                    ?.toString() ??
+                (json['step_update']
+                        as Map<String, dynamic>?)?['conversation_id']
+                    ?.toString() ??
                 json['session_id']?.toString();
-            if (emittedConvId != null && emittedConvId.isNotEmpty && emittedConvId != cliConvId) {
+            if (emittedConvId != null &&
+                emittedConvId.isNotEmpty &&
+                emittedConvId != cliConvId) {
               cliConvId = emittedConvId;
               _dbService.setCliConversationId(sessionId, emittedConvId);
             }
@@ -1311,7 +1720,10 @@ fi
               if (event == 'step_update') {
                 final step = json['step_update'] as Map<String, dynamic>?;
                 final stepType = step?['step_type']?.toString();
-                final textDelta = step?['text_delta']?.toString() ?? step?['content']?.toString() ?? step?['text']?.toString();
+                final textDelta =
+                    step?['text_delta']?.toString() ??
+                    step?['content']?.toString() ??
+                    step?['text']?.toString();
                 final errorMsg = step?['error']?.toString();
 
                 if (textDelta != null && textDelta.isNotEmpty) {
@@ -1323,22 +1735,28 @@ fi
                 } else if (stepType == 'tool' || stepType == 'tool_call') {
                   final state = step?['state']?.toString();
                   final toolInfo = step?['tool_info'] as Map<String, dynamic>?;
-                  final toolParams = toolInfo?['parameters'] as Map<String, dynamic>? ??
+                  final toolParams =
+                      toolInfo?['parameters'] as Map<String, dynamic>? ??
                       step?['tool_args'] as Map<String, dynamic>? ??
                       step?['parameters'] as Map<String, dynamic>? ??
                       step?['args'] as Map<String, dynamic>?;
-                  final toolName = step?['tool_name']?.toString() ?? toolInfo?['name']?.toString() ?? 'công cụ';
+                  final toolName =
+                      step?['tool_name']?.toString() ??
+                      toolInfo?['name']?.toString() ??
+                      'công cụ';
 
                   String cmdDesc = '';
                   if (toolParams != null) {
                     if (toolParams['CommandLine'] != null) {
                       cmdDesc = toolParams['CommandLine'].toString();
                     } else if (toolParams['TargetFile'] != null) {
-                      cmdDesc = '${toolParams['Instruction'] ?? 'Sửa file'}: ${toolParams['TargetFile']}';
+                      cmdDesc =
+                          '${toolParams['Instruction'] ?? 'Sửa file'}: ${toolParams['TargetFile']}';
                     } else if (toolParams['AbsolutePath'] != null) {
                       cmdDesc = 'Đọc file: ${toolParams['AbsolutePath']}';
                     } else if (toolParams['Query'] != null) {
-                      cmdDesc = 'Tìm "${toolParams['Query']}" trong ${toolParams['SearchPath'] ?? ''}';
+                      cmdDesc =
+                          'Tìm "${toolParams['Query']}" trong ${toolParams['SearchPath'] ?? ''}';
                     } else if (toolParams['DirectoryPath'] != null) {
                       cmdDesc = 'Xem thư mục: ${toolParams['DirectoryPath']}';
                     } else if (toolParams['toolAction'] != null) {
@@ -1354,12 +1772,18 @@ fi
                   if (state == 'ACTIVE') {
                     onStatus('Đang thực thi $toolName: $cmdDesc...');
                   } else {
-                    final output = toolInfo?['output']?.toString() ?? step?['output']?.toString() ?? step?['tool_result']?.toString() ?? '';
-                    onTool(ToolExecutionItem(
-                      tool: toolName,
-                      command: cmdDesc,
-                      output: output,
-                    ));
+                    final output =
+                        toolInfo?['output']?.toString() ??
+                        step?['output']?.toString() ??
+                        step?['tool_result']?.toString() ??
+                        '';
+                    onTool(
+                      ToolExecutionItem(
+                        tool: toolName,
+                        command: cmdDesc,
+                        output: output,
+                      ),
+                    );
                   }
                 } else if (stepType == 'thought' || stepType == 'thinking') {
                   onStatus('AI đang suy nghĩ và lập kế hoạch...');
@@ -1372,13 +1796,19 @@ fi
                 if (resp != null && resp.isNotEmpty && fullOutput.isEmpty) {
                   fullOutput.write(resp);
                   onToken(resp);
-                } else if (status == 'ERROR' && errorMsg != null && errorMsg.isNotEmpty && fullOutput.isEmpty) {
+                } else if (status == 'ERROR' &&
+                    errorMsg != null &&
+                    errorMsg.isNotEmpty &&
+                    fullOutput.isEmpty) {
                   fullOutput.write('\n[Lỗi Antigravity]: $errorMsg\n');
                   onToken('\n[Lỗi Antigravity]: $errorMsg\n');
                 }
                 // Do not finishSession() here - wait for full process exitCode!
               } else if (event == 'error') {
-                final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
+                final err =
+                    json['error']?.toString() ??
+                    json['message']?.toString() ??
+                    '';
                 if (err.isNotEmpty && fullOutput.isEmpty) {
                   fullOutput.write('\n[Lỗi Antigravity]: $err\n');
                   onToken('\n[Lỗi Antigravity]: $err\n');
@@ -1404,7 +1834,10 @@ fi
                   onToken(result);
                 }
               } else if (type == 'error') {
-                final err = json['error']?.toString() ?? json['message']?.toString() ?? '';
+                final err =
+                    json['error']?.toString() ??
+                    json['message']?.toString() ??
+                    '';
                 if (err.isNotEmpty) {
                   fullOutput.write('\n[Lỗi Claude]: $err\n');
                   onToken('\n[Lỗi Claude]: $err\n');
@@ -1437,6 +1870,7 @@ fi
       });
 
       process.stderr.transform(utf8.decoder).listen((data) {
+        resetCliActivity();
         if (!isCancelled() && !hasFinished) {
           errOutput.write(data);
           debugPrint('[$cliName stderr]: $data');
@@ -1444,6 +1878,7 @@ fi
       });
 
       final exitCode = await process.exitCode;
+      cliWatchdog.cancel();
       if (!hasFinished) {
         if (exitCode == 0) {
           finishSession();
@@ -1461,12 +1896,16 @@ fi
           final rawStr = rawStdout.toString().trim();
           final displayErr = errStr.isNotEmpty
               ? errStr
-              : (rawStr.isNotEmpty ? rawStr : 'Không có phản hồi từ tiến trình (Mã thoát: $exitCode)');
+              : (rawStr.isNotEmpty
+                    ? rawStr
+                    : 'Không có phản hồi từ tiến trình (Mã thoát: $exitCode)');
           onError('Agent $cliName báo lỗi (mã $exitCode): $displayErr');
         }
       }
     } catch (e) {
-      onError('Không thể chạy CLI $cliName: $e. Hãy kiểm tra đường dẫn hoặc quyền thực thi.');
+      onError(
+        'Không thể chạy CLI $cliName: $e. Hãy kiểm tra đường dẫn hoặc quyền thực thi.',
+      );
     }
   }
 }

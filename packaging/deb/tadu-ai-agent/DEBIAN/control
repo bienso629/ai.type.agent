@@ -1,0 +1,12 @@
+Package: tadu-ai-agent
+Version: 1.0.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Installed-Size: 39782
+Depends: libgtk-3-0
+Maintainer: Tadu Dev <dev@tadu.local>
+Description: Tadu AI Agent - trinh khach AI agent da che do
+ Ung dung chat AI voi ba che do: server API, agent native va CLI agent.
+ .
+ Ban dung Linux (GTK) dong goi dang .deb, cai dat vao /opt/tadu-ai-agent.

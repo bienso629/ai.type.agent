@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "lib/core/services/api_service.dart": {
-    "mtime": 1792659040.2998667,
-    "seen": 1793446473.441927,
-    "ast_hash": "27164b968a1c0073e9ec9c75afdd79be",
+    "mtime": 1793765163.750949,
+    "seen": 1793765284.393255,
+    "ast_hash": "77926098a6f1fe3f98c1f2cb67d634ad",
     "semantic_hash": ""
   },
   "lib/core/services/cli_scanner_service.dart": {
@@ -162,9 +162,9 @@
     "semantic_hash": ""
   },
   "lib/core/services/native_ai_service.dart": {
-    "mtime": 1793442491.516658,
-    "seen": 1793446473.4419389,
-    "ast_hash": "a1f291359294de1037fba015f6eaa8e3",
+    "mtime": 1794214408.870064,
+    "seen": 1794216172.5888934,
+    "ast_hash": "731be118ae6b7e6d3702decdb6654c62",
     "semantic_hash": ""
   },
   "lib/core/services/native_ssh_service.dart": {
@@ -246,9 +246,9 @@
     "semantic_hash": ""
   },
   "lib/models/attachment_item.dart": {
-    "mtime": 1792224946.7137249,
-    "seen": 1793446473.441963,
-    "ast_hash": "ad111da351cb56129a7f2f1cd4494b37",
+    "mtime": 1793753892.174499,
+    "seen": 1793754627.0268512,
+    "ast_hash": "19cd43cf5e1351da9b2477a9a69876c2",
     "semantic_hash": ""
   },
   "lib/models/chat_message.dart": {
@@ -474,9 +474,9 @@
     "semantic_hash": ""
   },
   "scripts/build_deb.sh": {
-    "mtime": 1793338292.3583362,
-    "seen": 1793446473.4420254,
-    "ast_hash": "39df31d944ce9d8bdc17b992edd8c9c1",
+    "mtime": 1793755085.8368495,
+    "seen": 1793756067.9992394,
+    "ast_hash": "ce49983c3680625662296542422637de",
     "semantic_hash": ""
   },
   "scripts/build_linux.sh": {
@@ -1113,6 +1113,66 @@
     "mtime": 1792224946.7245164,
     "seen": 1793446473.442201,
     "ast_hash": "0bb06a6e78eac44920cdbf0294ee4645",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/DEBIAN/postinst": {
+    "mtime": 1793765621.2233913,
+    "seen": 1793765819.5903573,
+    "ast_hash": "2e17a0a64e8f117bb104a1b2783ea288",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/data/flutter_assets/FontManifest.json": {
+    "mtime": 1792808465.0,
+    "seen": 1793765819.590359,
+    "ast_hash": "dc3d03800ccca4601324923c0b1d6d57",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/data/flutter_assets/NativeAssetsManifest.json": {
+    "mtime": 1792808465.0,
+    "seen": 1793765819.5903604,
+    "ast_hash": "4ffe031fb5eecaf7ba035a81daa50e39",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/data/flutter_assets/version.json": {
+    "mtime": 1792808465.0,
+    "seen": 1793765819.5903614,
+    "ast_hash": "add64a8e9814e2eb4f2f06b5b1da827e",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/lib/native_assets.json": {
+    "mtime": 1793443348.0,
+    "seen": 1793765819.5903623,
+    "ast_hash": "01506a9a8be13f9c8df46ff895eba14f",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/data/flutter_assets/assets/app_icon.png": {
+    "mtime": 1792808464.0,
+    "seen": 1793765819.5904722,
+    "ast_hash": "4a30d5b9abe0ae20bb4261af5981b0ac",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/data/flutter_assets/assets/logo.png": {
+    "mtime": 1792808464.0,
+    "seen": 1793765819.5904734,
+    "ast_hash": "4a30d5b9abe0ae20bb4261af5981b0ac",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/data/flutter_assets/assets/logo.svg": {
+    "mtime": 1792808464.0,
+    "seen": 1793765819.5904741,
+    "ast_hash": "cdecd581e10182b88a4017178438f762",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/opt/tadu-ai-agent/data/flutter_assets/assets/web.png": {
+    "mtime": 1792808464.0,
+    "seen": 1793765819.5904753,
+    "ast_hash": "3675e2f094c180655673b3fbd9ae3782",
+    "semantic_hash": ""
+  },
+  "packaging/deb/tadu-ai-agent/usr/share/icons/hicolor/512x512/apps/tadu-ai-agent.png": {
+    "mtime": 1793765621.2226796,
+    "seen": 1793765819.5904763,
+    "ast_hash": "4a30d5b9abe0ae20bb4261af5981b0ac",
     "semantic_hash": ""
   }
 }

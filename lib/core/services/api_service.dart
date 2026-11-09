@@ -662,6 +662,15 @@ class ApiService {
       }
 
       http.Client? streamClient;
+      StreamSubscription<String>? innerSub;
+      // Cờ hủy từ UI (stopGenerating): phải đóng kết nối thật sự, không chỉ
+      // hủy subscription bề mặt.
+      bool streamCancelled = false;
+      controller.onCancel = () {
+        streamCancelled = true;
+        innerSub?.cancel();
+        streamClient?.close();
+      };
       try {
         final baseUrl = await _getBaseUrl();
         streamClient = http.Client();
@@ -673,13 +682,28 @@ class ApiService {
           'message': message,
           if (model != null && model.isNotEmpty) 'model': model,
           if (attachments != null && attachments.isNotEmpty)
-            'attachments': attachments.map((e) => e.toJson()).toList(),
+            'attachments': attachments.map((e) {
+              // Video/audio: khong nhung base64/noi dung nhi phan len server
+              if (e.isMediaFile) {
+                return e.copyWith(content: '').toJson();
+              }
+              return e.toJson();
+            }).toList(),
           if (history != null) 'history': history,
           if (workingDir != null) 'working_dir': workingDir,
         });
 
-        final streamedResponse = await streamClient.send(request);
+        // Chặn treo vĩnh viễn khi không thể kết nối/gửi request tới máy chủ
+        final streamedResponse = await streamClient
+            .send(request)
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () => throw TimeoutException(
+                  'Không thể kết nối tới máy chủ AI (quá 30 giây).',
+                  const Duration(seconds: 30)),
+            );
         if (streamedResponse.statusCode != 200) {
+          streamClient.close();
           onError('Server returned error: ${streamedResponse.statusCode}');
           return;
         }
@@ -692,11 +716,35 @@ class ApiService {
           onDone(reply);
         }
 
-        streamedResponse.stream
+        // Watchdog chống đứt kết nối ngầm: quá 90 giây không nhận thêm dữ liệu
+        // SSE nào (dù chưa done) thì coi như luồng đã chết -> hoàn tất kèm cảnh
+        // báo, hủy subscription và đóng client thay vì treo vô hạn.
+        int lastSseActivityMs = DateTime.now().millisecondsSinceEpoch;
+        final sseWatchdog = Timer.periodic(const Duration(seconds: 5), (t) {
+          if (finished || streamCancelled) {
+            t.cancel();
+            return;
+          }
+          final elapsed = DateTime.now().millisecondsSinceEpoch - lastSseActivityMs;
+          if (elapsed >= 90000) {
+            t.cancel();
+            final partial = accumulatedReply.trim();
+            completeOnce(partial.isEmpty
+                ? 'Máy chủ AI không gửi thêm dữ liệu nào trong 90 giây (kết nối có thể đã đứt ngầm). Hãy thử gửi lại yêu cầu.'
+                : '$partial\n\n> **Cảnh báo:** Kết nối tới máy chủ AI bị gián đoạn (quá 90 giây không có dữ liệu). '
+                    'Phần trả lời trên có thể chưa đầy đủ — hãy nhắn "tiếp tục" để chạy nốt.');
+            innerSub?.cancel();
+            streamClient?.close();
+          }
+        });
+
+        innerSub = streamedResponse.stream
             .transform(utf8.decoder)
             .transform(const LineSplitter())
             .listen(
           (line) {
+            lastSseActivityMs = DateTime.now().millisecondsSinceEpoch;
+            if (streamCancelled) return;
             final trimmed = line.trim();
             if (trimmed.startsWith('data:')) {
               final jsonStr = trimmed.substring(5).trim();
@@ -729,15 +777,24 @@ class ApiService {
               } catch (_) {}
             }
           },
-          onError: (e) => onError(e),
+          onError: (e) {
+            sseWatchdog.cancel();
+            streamClient?.close();
+            if (streamCancelled || finished) return;
+            onError(e);
+          },
           onDone: () {
+            sseWatchdog.cancel();
+            if (streamCancelled) return;
             completeOnce(accumulatedReply);
             streamClient?.close();
           },
           cancelOnError: true,
         );
       } catch (e) {
-        onError(e);
+        if (!streamCancelled) {
+          onError(e);
+        }
         streamClient?.close();
       }
     }();

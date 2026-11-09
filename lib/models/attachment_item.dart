@@ -43,6 +43,20 @@ class AttachmentItem {
         lower.endsWith('.bmp');
   }
 
+  static const Set<String> _mediaExtensions = {
+    '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp',
+    '.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a', '.wma', '.opus',
+  };
+
+  static bool _checkIsMedia(String filename) {
+    final lower = filename.toLowerCase();
+    return _mediaExtensions.any(lower.endsWith);
+  }
+
+  /// Tệp video/audio: model không thể đọc nội dung nhị phân,
+  /// tuyệt đối không nhúng base64 vào prompt (gây tràn ngữ cảnh).
+  bool get isMediaFile => _checkIsMedia(name);
+
   factory AttachmentItem.fromJson(Map<String, dynamic> json) {
     final name = json['name']?.toString() ?? 'file';
     return AttachmentItem(
@@ -111,6 +125,9 @@ class AttachmentItem {
         final mime = (ext == 'jpg' || ext == 'jpeg') ? 'image/jpeg' : 'image/$ext';
         final b64 = base64Encode(bytes);
         content = 'data:$mime;base64,$b64';
+      } else if (_checkIsMedia(name)) {
+        // Video/audio: KHÔNG nhúng base64 (model không đọc được, sẽ phá ngữ cảnh)
+        content = '';
       } else {
         try {
           content = utf8.decode(bytes);
@@ -145,6 +162,9 @@ class AttachmentItem {
       final mime = (ext == 'jpg' || ext == 'jpeg') ? 'image/jpeg' : 'image/$ext';
       final b64 = base64Encode(bytes);
       content = 'data:$mime;base64,$b64';
+    } else if (_checkIsMedia(name)) {
+      // Video/audio: KHÔNG nhúng base64 (model không đọc được, sẽ phá ngữ cảnh)
+      content = '';
     } else {
       try {
         content = utf8.decode(bytes);
