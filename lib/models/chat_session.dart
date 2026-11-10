@@ -13,6 +13,10 @@ class ChatSessionModel {
   final List<String> docFiles;
   final String? targetServer;
 
+  /// Danh sách nhiều máy chủ SSH liên kết với phiên (multi-select).
+  /// Phần tử đầu luôn trùng với [targetServer] (server chính) để tương thích ngược.
+  final List<String> targetServers;
+
   ChatSessionModel({
     required this.id,
     required this.title,
@@ -25,8 +29,27 @@ class ChatSessionModel {
     this.workingDirScope,
     this.docFiles = const [],
     this.targetServer,
+    this.targetServers = const [],
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
+
+  /// Phân tích danh sách server từ JSON (list) hoặc chuỗi ngăn cách ';'.
+  static List<String> parseServers(dynamic raw) {
+    if (raw == null) return const [];
+    if (raw is List) {
+      return raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          return decoded.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+        }
+      } catch (_) {}
+      return raw.split(';').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+    return const [];
+  }
 
   factory ChatSessionModel.fromJson(Map<String, dynamic> json) {
     final mCount = int.tryParse(json['message_count']?.toString() ?? '0') ?? 0;
@@ -67,6 +90,7 @@ class ChatSessionModel {
       workingDirScope: json['working_dir']?.toString() ?? json['working_dir_scope']?.toString(),
       docFiles: parseDocs(json['doc_files'] ?? json['scope_doc_files']),
       targetServer: json['target_server']?.toString() ?? json['server_name']?.toString(),
+      targetServers: parseServers(json['target_servers']),
     );
   }
 
@@ -84,6 +108,7 @@ class ChatSessionModel {
         if (docFiles.isNotEmpty) 'doc_files': jsonEncode(docFiles),
         if (targetServer != null && targetServer!.isNotEmpty)
           'target_server': targetServer,
+        if (targetServers.isNotEmpty) 'target_servers': jsonEncode(targetServers),
       };
 
   ChatSessionModel copyWith({
@@ -101,6 +126,8 @@ class ChatSessionModel {
     bool clearDocFiles = false,
     String? targetServer,
     bool clearTargetServer = false,
+    List<String>? targetServers,
+    bool clearTargetServers = false,
   }) {
     return ChatSessionModel(
       id: id ?? this.id,
@@ -114,6 +141,7 @@ class ChatSessionModel {
       workingDirScope: clearWorkingDirScope ? null : (workingDirScope ?? this.workingDirScope),
       docFiles: clearDocFiles ? const [] : (docFiles ?? this.docFiles),
       targetServer: clearTargetServer ? null : (targetServer ?? this.targetServer),
+      targetServers: clearTargetServers ? const [] : (targetServers ?? this.targetServers),
     );
   }
 }

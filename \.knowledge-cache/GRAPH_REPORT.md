@@ -1,17 +1,17 @@
-# Graph Report - agent-coder  (2026-11-09)
+# Graph Report - agent-coder  (2026-11-10)
 
 ## Corpus Check
-- 126 files · ~123,134 words
+- 126 files · ~125,377 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 77 file(s) not represented in the graph (top: (none) 14, .xml 8, .xcconfig 8)
 
 ## Summary
-- 2188 nodes · 2848 edges · 105 communities (78 shown, 27 thin omitted)
+- 2202 nodes · 2866 edges · 107 communities (78 shown, 29 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 18 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `add63521`
+- Built from commit: `756b31cd`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 
 
@@ -65,12 +65,12 @@
 - win32_window.cpp
 - app_toast.dart
 - Win32Window
-- chat_session.dart
+- dart:io
 - CHANGELOG.md
-- tadu_dialog.dart
+- package:flutter/material.dart
 - flutter_launcher_icons
 - files_screen.dart
-- ../../core/theme/app_theme.dart
+- _CustomWindowFrameState
 - dart:convert
 - ffigen.yaml
 - clipboard_service.dart
@@ -79,7 +79,7 @@
 - ServerProvider
 - model_picker_dialog.dart
 - main.dart
-- package:flutter/material.dart
+- chat_avatar.dart
 - Dart_NativeArgument_Value
 - manifest.json
 - system_notification_service.dart
@@ -109,11 +109,13 @@
 - build_macos.sh
 - install_ubuntu.sh
 - Point
+- gateway_config_screen.dart
+- attachment_hover_preview.dart
 
 ## God Nodes (most connected - your core abstractions)
 1. `ServerProvider` - 48 edges
 2. `dependencies` - 28 edges
-3. `ChatProvider` - 21 edges
+3. `ChatProvider` - 22 edges
 4. `Win32Window` - 21 edges
 5. `ApiService` - 12 edges
 6. `Dart_NativeArgument_Value` - 11 edges
@@ -137,7 +139,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (105 total, 27 thin omitted)
+## Communities (107 total, 29 thin omitted)
 
 ### Community 0 - "flutter_pty_bindings_generated.dart"
 Cohesion: 0.01
@@ -145,7 +147,7 @@ Nodes (113): ackRead, arguments, as_array, as_bool, as_capability, as_double, as
 
 ### Community 1 - "chat_screen.dart"
 Cohesion: 0.01
-Nodes (125): add_inline_runs, _aiPromptController, _api, _apiService, _attachedFiles, _buildGreetingBubble, _buildInputBar, _buildLoadMoreBanner (+117 more)
+Nodes (131): add_inline_runs, _aiPromptController, _api, _apiService, _attachedFiles, _buildGreetingBubble, _buildInputBar, _buildLoadMoreBanner (+123 more)
 
 ### Community 2 - "flutter_pty_unix.c"
 Cohesion: 0.06
@@ -180,12 +182,12 @@ Cohesion: 0.04
 Nodes (41): _ai, checkHealth, clearChatHistory, _client, createChatSession, _db, deleteAllChatSessions, deleteChatSession (+33 more)
 
 ### Community 10 - "chat_message.dart"
-Cohesion: 0.08
-Nodes (22): attachments, ChatHistoryResult, ChatMessageModel, command, content, createdAt, fromJson, hasMore (+14 more)
+Cohesion: 0.04
+Nodes (39): attachments, ChatHistoryResult, ChatMessageModel, command, content, createdAt, fromJson, hasMore (+31 more)
 
 ### Community 11 - "chat_provider.dart"
 Cohesion: 0.05
-Nodes (41): anySessionGenerating, _api, clearHistory, createNewSession, _currentSession, currentSessionDocFiles, currentSessionScope, currentStatus (+33 more)
+Nodes (42): anySessionGenerating, _api, clearHistory, createNewSession, _currentSession, currentSessionDocFiles, currentSessionScope, currentStatus (+34 more)
 
 ### Community 12 - "my_application.cc"
 Cohesion: 0.06
@@ -212,8 +214,8 @@ Cohesion: 0.06
 Nodes (29): _builtCommit, cacheDirFor, cacheDirName, _currentScope, dispose, ensureRuntime, _entryScriptPath, _gitHead (+21 more)
 
 ### Community 18 - "native_ai_service.dart"
-Cohesion: 0.06
-Nodes (28): _attachmentEchoRegex, _buildKnowledgeGuide, buildKnowledgeGuideForTest, _configService, _dbService, disposeAgyWorkers, _endsCleanly, _executeCommand (+20 more)
+Cohesion: 0.05
+Nodes (29): _attachmentEchoRegex, _buildKnowledgeGuide, buildKnowledgeGuideForTest, _configService, _dbService, _declaredIntentNoTool, disposeAgyWorkers, _endsCleanly (+21 more)
 
 ### Community 19 - "flutter_pty.dart"
 Cohesion: 0.06
@@ -276,8 +278,8 @@ Cohesion: 0.09
 Nodes (20): _api, dispose, fetchLogs, isAutoRefresh, _isLoading, isLocal, _lines, _logs (+12 more)
 
 ### Community 34 - "custom_window_frame.dart"
-Cohesion: 0.05
-Nodes (35): AttachmentHoverPreview, _AttachmentHoverPreviewState, build, _buildErrorPlaceholder, _buildImageWidget, child, createState, dispose (+27 more)
+Cohesion: 0.10
+Nodes (19): build, _checkMaximized, child, createState, dispose, icon, initState, isClose (+11 more)
 
 ### Community 35 - "api_constants.dart"
 Cohesion: 0.08
@@ -297,7 +299,7 @@ Nodes (22): env, runs-on, steps, timeout-minutes, APP_STORE_CONNECT_ISSUER_ID, A
 
 ### Community 39 - "State"
 Cohesion: 0.11
-Nodes (22): _CodeBlockWidget, _CodeBlockWidgetState, _CommandRunnerModal, _CommandRunnerModalState, _RecentQuestionItem, _RecentQuestionItemState, _ScopeDocsListDialog, _ScopeDocsListDialogState (+14 more)
+Nodes (22): ChatScreen, _ChatScreenState, _CommandRunnerModal, _CommandRunnerModalState, _MultiServerPickerDialog, _MultiServerPickerDialogState, _RecentQuestionItem, _RecentQuestionItemState (+14 more)
 
 ### Community 40 - "dashboard_screen.dart"
 Cohesion: 0.12
@@ -308,8 +310,8 @@ Cohesion: 0.09
 Nodes (17): _api, _cpuHistory, dispose, _error, executeServiceAction, fetchMetrics, getServiceStatus, _isLoading (+9 more)
 
 ### Community 42 - "dart:io"
-Cohesion: 0.10
-Nodes (12): binary, _candidateAgents, CliScannerService, _getSearchPaths, id, _instance, label, LocalCliAgent (+4 more)
+Cohesion: 0.14
+Nodes (11): binary, _candidateAgents, CliScannerService, _getSearchPaths, id, _instance, label, LocalCliAgent (+3 more)
 
 ### Community 43 - "auth_provider.dart"
 Cohesion: 0.10
@@ -320,7 +322,7 @@ Cohesion: 0.08
 Nodes (22): _checkIsImage, _checkIsMedia, content, copyWith, downloadProgress, error, fromBytes, fromFile (+14 more)
 
 ### Community 45 - "gateway_provider.dart"
-Cohesion: 0.11
+Cohesion: 0.12
 Nodes (13): StorageService, _api, _errorMessage, GatewayStatus, _gatewayUrl, init, isConnected, _pingMs (+5 more)
 
 ### Community 46 - "win32_window.cpp"
@@ -335,29 +337,21 @@ Nodes (35): _animCtrl, AppToast, build, createState, dispose, duration, error, _
 Cohesion: 0.18
 Nodes (7): Size, height, width, Win32Window, child_content_, quit_on_close_, window_handle_
 
-### Community 49 - "chat_session.dart"
-Cohesion: 0.12
-Nodes (15): answerCount, ChatSessionModel, copyWith, createdAt, docFiles, fromJson, id, isPinned (+7 more)
-
 ### Community 50 - "CHANGELOG.md"
 Cohesion: 0.12
 Nodes (15): 0.0.1, 0.0.2, 0.0.3, 0.0.4, 0.0.5, 0.0.6, 0.0.7, 0.1.0 (+7 more)
 
-### Community 52 - "tadu_dialog.dart"
-Cohesion: 0.17
-Nodes (8): actions, build, content, maxHeight, maxWidth, minWidth, onClose, title
+### Community 52 - "package:flutter/material.dart"
+Cohesion: 0.08
+Nodes (16): AppLogo, borderRadius, build, fit, size, ChatAvatar, actions, build (+8 more)
 
 ### Community 53 - "flutter_launcher_icons"
 Cohesion: 0.14
 Nodes (14): flutter_launcher_icons, android, image_path, ios, linux, macos, min_sdk_android, web (+6 more)
 
 ### Community 54 - "files_screen.dart"
-Cohesion: 0.18
-Nodes (9): ApiService, _api, build, createState, _currentPath, _directories, initState, _isLoading (+1 more)
-
-### Community 55 - "../../core/theme/app_theme.dart"
-Cohesion: 0.21
-Nodes (9): GatewayProvider, build, createState, dispose, GatewayConfigScreen, _GatewayConfigScreenState, initState, _tokenCtrl (+1 more)
+Cohesion: 0.17
+Nodes (11): ApiService, _api, build, createState, _currentPath, _directories, FilesScreen, _FilesScreenState (+3 more)
 
 ### Community 56 - "dart:convert"
 Cohesion: 0.15
@@ -368,7 +362,7 @@ Cohesion: 0.15
 Nodes (12): comments, length, style, description, functions, includes, headers, entry-points (+4 more)
 
 ### Community 58 - "clipboard_service.dart"
-Cohesion: 0.18
+Cohesion: 0.17
 Nodes (6): 1, ClipboardService, getClipboardImage, _getLinuxClipboardImage, _getMacClipboardImage, _getWindowsClipboardImage
 
 ### Community 59 - "utils.cpp"
@@ -376,20 +370,20 @@ Cohesion: 0.19
 Nodes (4): wWinMain(), CreateAndAttachConsole(), GetCommandLineArguments(), Utf8FromUtf16()
 
 ### Community 60 - "pdf_export_service.dart"
-Cohesion: 0.15
+Cohesion: 0.17
 Nodes (5): _buildInlineSpans, _cleanEmoji, exportMessageToPdf, _loadLogoImage, PdfExportService
 
 ### Community 61 - "ServerProvider"
-Cohesion: 0.10
-Nodes (26): ChatProvider, ServerProvider, _applyInlineDirAsScope, build, _buildMessageItem, ChatScreen, _ChatScreenState, _handleInputKeyEvent (+18 more)
+Cohesion: 0.09
+Nodes (27): ChatProvider, ServerProvider, _applyInlineDirAsScope, build, _buildMessageItem, _CodeBlockWidget, _CodeBlockWidgetState, _handleInputKeyEvent (+19 more)
 
 ### Community 62 - "model_picker_dialog.dart"
-Cohesion: 0.17
+Cohesion: 0.15
 Nodes (11): build, _buildModelCard, createState, dispose, ModelPickerDialog, _ModelPickerDialogState, _searchCtrl, _searchQuery (+3 more)
 
-### Community 65 - "package:flutter/material.dart"
-Cohesion: 0.09
-Nodes (17): AppLogo, borderRadius, build, fit, size, build, ChatAvatar, _initials (+9 more)
+### Community 65 - "chat_avatar.dart"
+Cohesion: 0.18
+Nodes (9): build, _initials, isLocal, isUser, server, serverName, size, userName (+1 more)
 
 ### Community 66 - "Dart_NativeArgument_Value"
 Cohesion: 0.18
@@ -451,25 +445,33 @@ Nodes (3): Dart_NativeArgument_Descriptor, index, type
 Cohesion: 0.50
 Nodes (3): Point, x, y
 
+### Community 105 - "gateway_config_screen.dart"
+Cohesion: 0.25
+Nodes (9): GatewayProvider, build, createState, dispose, GatewayConfigScreen, _GatewayConfigScreenState, initState, _tokenCtrl (+1 more)
+
+### Community 106 - "attachment_hover_preview.dart"
+Cohesion: 0.12
+Nodes (14): AttachmentHoverPreview, _AttachmentHoverPreviewState, build, _buildErrorPlaceholder, _buildImageWidget, child, createState, dispose (+6 more)
+
 ## Knowledge Gaps
-- **1182 isolated node(s):** `ApiConstants`, `defaultGatewayUrl`, `epConfig`, `epServers`, `epServersUpdate` (+1177 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1658 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **27 thin communities (<3 nodes) omitted from report** — run truy van do thi to explore isolated nodes.
+- **1192 isolated node(s):** `ApiConstants`, `defaultGatewayUrl`, `epConfig`, `epServers`, `epServersUpdate` (+1187 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1669 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **29 thin communities (<3 nodes) omitted from report** — run truy van do thi to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `StorageService` connect `gateway_provider.dart` to `chat_screen.dart`, `terminal_screen.dart`, `storage_service.dart`, `api_service.dart`, `auth_provider.dart`, `server_provider.dart`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+  _High betweenness centrality (0.033) - this node is a cross-community bridge._
 - **What connects `ApiConstants`, `defaultGatewayUrl`, `epConfig` to the rest of the system?**
-  _1182 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _1192 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `flutter_pty_bindings_generated.dart` be split into smaller, more focused modules?**
   _Cohesion score 0.012658227848101266 - nodes in this community are weakly interconnected._
 - **Why does `ApiService` connect `files_screen.dart` to `servers_screen.dart`, `logs_provider.dart`, `chat_screen.dart`, `work_schedule_dialog.dart`, `api_service.dart`, `metrics_provider.dart`, `chat_provider.dart`, `gateway_provider.dart`, `server_provider.dart`, `session_list_sidebar.dart`, `settings_screen.dart`?**
   _High betweenness centrality (0.018) - this node is a cross-community bridge._
 - **Should `chat_screen.dart` be split into smaller, more focused modules?**
-  _Cohesion score 0.013793103448275862 - nodes in this community are weakly interconnected._
-- **Why does `ServerProvider` connect `ServerProvider` to `servers_screen.dart`, `chat_screen.dart`, `terminal_screen.dart`, `logs_dialog.dart`, `State`, `dashboard_screen.dart`, `session_list_sidebar.dart`, `server_provider.dart`, `settings_screen.dart`, `ServerProvider`, `files_screen.dart`, `../../core/theme/app_theme.dart`, `model_picker_dialog.dart`?**
-  _High betweenness centrality (0.018) - this node is a cross-community bridge._
+  _Cohesion score 0.013245033112582781 - nodes in this community are weakly interconnected._
+- **Why does `Win32Window` connect `Win32Window` to `flutter_window.h`, `.MessageHandler`, `FlutterWindow`, `Point`, `win32_window.cpp`?**
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Should `flutter_pty_unix.c` be split into smaller, more focused modules?**
   _Cohesion score 0.06412583182093164 - nodes in this community are weakly interconnected._

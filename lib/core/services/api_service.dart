@@ -464,9 +464,10 @@ class ApiService {
     String title = 'Cuộc hội thoại mới',
     String? workingDir,
     String? targetServer,
+    List<String>? targetServers,
   }) async {
     if (await _isNativeMode()) {
-      return await _db.createSession(title: title, workingDir: workingDir, targetServer: targetServer);
+      return await _db.createSession(title: title, workingDir: workingDir, targetServer: targetServer, targetServers: targetServers);
     }
     final baseUrl = await _getBaseUrl();
     final res = await _client.post(
@@ -476,6 +477,7 @@ class ApiService {
         'title': title,
         if (workingDir != null && workingDir.isNotEmpty) 'working_dir': workingDir,
         if (targetServer != null && targetServer.isNotEmpty) 'target_server': targetServer,
+        if (targetServers != null && targetServers.isNotEmpty) 'target_servers': jsonEncode(targetServers),
       }),
     );
     if (res.statusCode == 200) {
@@ -485,9 +487,9 @@ class ApiService {
     throw Exception('Failed to create session');
   }
 
-  Future<bool> updateChatSessionServer(String sessionId, String? targetServer) async {
+  Future<bool> updateChatSessionServer(String sessionId, String? targetServer, {List<String>? targetServers}) async {
     if (await _isNativeMode()) {
-      return await _db.updateSessionServer(sessionId, targetServer);
+      return await _db.updateSessionServer(sessionId, targetServer, targetServers: targetServers);
     }
     return true;
   }
@@ -632,6 +634,7 @@ class ApiService {
     String? workingDir,
     List<String>? docFiles,
     String? targetServer,
+    List<String>? targetServers,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
     required void Function(ToolExecutionItem tool) onTool,
@@ -651,6 +654,7 @@ class ApiService {
           workingDir: workingDir,
           docFiles: docFiles,
           targetServer: targetServer,
+          targetServers: targetServers,
           onToken: onToken,
           onStatus: onStatus,
           onTool: onTool,

@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "lib/core/services/api_service.dart": {
-    "mtime": 1793765163.750949,
-    "seen": 1793765284.393255,
-    "ast_hash": "77926098a6f1fe3f98c1f2cb67d634ad",
+    "mtime": 1794283382.815294,
+    "seen": 1794283540.254038,
+    "ast_hash": "12c18822163283b3c95c1549aa63178a",
     "semantic_hash": ""
   },
   "lib/core/services/cli_scanner_service.dart": {
@@ -138,9 +138,9 @@
     "semantic_hash": ""
   },
   "lib/core/services/database_service.dart": {
-    "mtime": 1792224946.7119563,
-    "seen": 1793446473.4419322,
-    "ast_hash": "c2ed476e878bd0dec376acbbe211d888",
+    "mtime": 1794296090.5527723,
+    "seen": 1794296169.4922833,
+    "ast_hash": "13ce53770d6c3c605eb72b02f2ad5021",
     "semantic_hash": ""
   },
   "lib/core/services/encryption_service.dart": {
@@ -162,9 +162,9 @@
     "semantic_hash": ""
   },
   "lib/core/services/native_ai_service.dart": {
-    "mtime": 1794214408.870064,
-    "seen": 1794216172.5888934,
-    "ast_hash": "731be118ae6b7e6d3702decdb6654c62",
+    "mtime": 1794283693.1297908,
+    "seen": 1794284387.7763932,
+    "ast_hash": "d5d73034ec012fe4882f11abbc530307",
     "semantic_hash": ""
   },
   "lib/core/services/native_ssh_service.dart": {
@@ -258,9 +258,9 @@
     "semantic_hash": ""
   },
   "lib/models/chat_session.dart": {
-    "mtime": 1792224946.7140427,
-    "seen": 1793446473.441967,
-    "ast_hash": "462180b9d0e18ee407b9ba1535c82825",
+    "mtime": 1794283338.35708,
+    "seen": 1794283344.9204967,
+    "ast_hash": "096a9219ecea54328fdbe1d9e929960d",
     "semantic_hash": ""
   },
   "lib/models/file_item.dart": {
@@ -288,9 +288,9 @@
     "semantic_hash": ""
   },
   "lib/providers/chat_provider.dart": {
-    "mtime": 1793441457.4681785,
-    "seen": 1793446473.4419754,
-    "ast_hash": "3655de4ab79a6f6dfcfb0cb271c8b778",
+    "mtime": 1794296090.5526257,
+    "seen": 1794296169.4923146,
+    "ast_hash": "28a415d96114ee921dbe00ee6f6f50e7",
     "semantic_hash": ""
   },
   "lib/providers/gateway_provider.dart": {
@@ -324,9 +324,9 @@
     "semantic_hash": ""
   },
   "lib/screens/chat/chat_screen.dart": {
-    "mtime": 1793441408.4614863,
-    "seen": 1793446473.4419854,
-    "ast_hash": "eae798f2c2bdd34dff72358c07b424f7",
+    "mtime": 1794296090.552194,
+    "seen": 1794296169.4923234,
+    "ast_hash": "a2492a5ae5a2035c4203658f92a9c64e",
     "semantic_hash": ""
   },
   "lib/screens/chat/widgets/model_picker_dialog.dart": {
@@ -336,9 +336,9 @@
     "semantic_hash": ""
   },
   "lib/screens/chat/widgets/session_list_sidebar.dart": {
-    "mtime": 1792224946.715678,
-    "seen": 1793446473.4419885,
-    "ast_hash": "d2042f39194a23aba3f8b23bfcb71dd2",
+    "mtime": 1794283947.8034832,
+    "seen": 1794284387.7764409,
+    "ast_hash": "4ec91795d21dbc55fa4ddcd43f1bae34",
     "semantic_hash": ""
   },
   "lib/screens/chat/widgets/work_schedule_dialog.dart": {
@@ -468,15 +468,15 @@
     "semantic_hash": ""
   },
   "pubspec.yaml": {
-    "mtime": 1792224946.7207026,
-    "seen": 1793446473.4420238,
-    "ast_hash": "1f9574fe34e3efaef9a79a2602f0c1c6",
+    "mtime": 1794296194.695006,
+    "seen": 1794297016.492866,
+    "ast_hash": "6552e97669d6abaa6a4453f7c1497df8",
     "semantic_hash": ""
   },
   "scripts/build_deb.sh": {
-    "mtime": 1793755085.8368495,
-    "seen": 1793756067.9992394,
-    "ast_hash": "ce49983c3680625662296542422637de",
+    "mtime": 1794291283.755169,
+    "seen": 1794291466.0470037,
+    "ast_hash": "08ee5207898ba7078a074ec5ba075e37",
     "semantic_hash": ""
   },
   "scripts/build_linux.sh": {

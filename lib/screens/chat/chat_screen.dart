@@ -868,12 +868,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final activeServerName = (sessionServer != null && sessionServer.isNotEmpty)
         ? sessionServer
         : (serverProvider.selectedServer?.name ?? 'Local Machine');
+    // Ưu tiên danh sách nhiều server của phiên; fallback theo server chính.
+    final sessionServers = chat.currentSession?.targetServers;
+    final activeServers = (sessionServers != null && sessionServers.isNotEmpty)
+        ? sessionServers
+        : [if (activeServerName != 'Local Machine') activeServerName];
     chat.sendMessage(
       text,
       model: serverProvider.currentAiModel,
       attachments: attachmentsToSend,
       workingDir: chat.currentSessionScope,
       targetServer: activeServerName,
+      targetServers: activeServers,
     );
     _safeScrollToBottom();
   }
@@ -909,7 +915,7 @@ class _ChatScreenState extends State<ChatScreen> {
         name: 'Local Machine',
         serverIp: '127.0.0.1',
       ));
-      await chat.setServerForCurrentSession('Local Machine');
+      await chat.setServerForCurrentSession('Local Machine', targetServers: const []);
       if (mounted) {
         AppToast.success(context, 'Agent chuyển sang thực thi trên Local Machine');
       }
@@ -1015,32 +1021,47 @@ class _ChatScreenState extends State<ChatScreen> {
     return list;
   }
 
-  /// Mở menu chọn nhanh máy chủ ngay tại vị trí nút Server (bên cạnh nút Scope)
+  /// Mở dialog CHỌN NHIỀU MÁY CHỦ (multi-select) ngay tại vị trí nút Server.
+  /// Các server được tick sẽ đồng thời liên kết với phiên chat: Agent nhận đủ
+  /// công cụ SSH riêng cho từng máy để kết nối dự án local với các server đó.
   Future<void> _showQuickServerMenu(BuildContext btnContext, ServerProvider serverProvider) async {
-    final RenderBox button = btnContext.findRenderObject() as RenderBox;
-    final RenderBox overlay = Navigator.of(btnContext).overlay!.context.findRenderObject() as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(const Offset(0, 0), ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(const Offset(0, 8)), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
+    final chat = context.read<ChatProvider>();
+    final current = chat.currentSession;
+    bool isLocalServerName(String? name) => name == null ||
+        name.isEmpty ||
+        name == 'Local Machine' ||
+        name == 'Local' ||
+        name == 'localhost' ||
+        name == '127.0.0.1';
+    final List<String> preSelected = (current?.targetServers.isNotEmpty ?? false)
+        ? current!.targetServers.where((e) => !isLocalServerName(e)).toList()
+        : (current?.targetServer != null && !isLocalServerName(current!.targetServer)
+            ? [current.targetServer!]
+            : <String>[]);
 
-    final selected = await showMenu<ServerModel>(
+    final result = await showDialog<List<String>>(
       context: btnContext,
-      position: position,
-      color: AppColors.cardBg,
-      constraints: const BoxConstraints(minWidth: 250, maxWidth: 300),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(4),
-        side: const BorderSide(color: AppColors.borderDark),
+      builder: (ctx) => _MultiServerPickerDialog(
+        servers: serverProvider.servers,
+        initialSelected: preSelected,
       ),
-      items: _buildServerMenuItems(serverProvider, !_isRemoteServerActive(serverProvider)),
     );
 
-    if (!mounted || selected == null) return;
-    _handleServerSelected(serverProvider, selected);
+    if (!mounted || result == null) return;
+    final chatProv = context.read<ChatProvider>();
+    if (result.isEmpty) {
+      await chatProv.setServerForCurrentSession('Local Machine', targetServers: const []);
+      await serverProvider.selectServer(ServerModel(id: 'local', name: 'Local Machine', serverIp: '127.0.0.1'));
+      if (mounted) AppToast.success(context, 'Agent chuyển sang thực thi trên Local Machine');
+    } else {
+      await chatProv.setServersForCurrentSession(result);
+      await serverProvider.selectServerByTarget(result.first);
+      if (mounted) {
+        AppToast.success(context, result.length == 1
+            ? 'Đã liên kết máy chủ SSH: ${result.first}'
+            : 'Đã liên kết ${result.length} máy chủ SSH cho phiên này');
+      }
+    }
   }
 
   Widget _buildServerDropdown(ServerProvider serverProvider) {
@@ -1248,6 +1269,38 @@ class _ChatScreenState extends State<ChatScreen> {
                                     currentServerName == 'Local' ||
                                     currentServerName == 'localhost' ||
                                     currentServerName == '127.0.0.1';
+                                final scope = chat.currentSessionScope;
+                                final hasScope = scope != null && scope.isNotEmpty;
+                                final remoteServers = <String>{
+                                  if (chat.currentSession?.targetServers != null) ...chat.currentSession!.targetServers,
+                                  if (serverProvider.selectedServer != null &&
+                                      serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                      serverProvider.selectedServer!.serverIp != 'localhost')
+                                    serverProvider.selectedServer!.name,
+                                }..remove('Local Machine');
+
+                                // Uu tien: neu hoi thoai co Scope tro ve du an local thi
+                                // noi thuc thi chinh luon la du an local, server SSH chi la
+                                // ket noi bo sung (Agent SSH len khi can dieu khien).
+                                if (hasScope) {
+                                  if (remoteServers.isEmpty) {
+                                    return Text(
+                                      'Gắn với dự án: $scope • Thực thi trực tiếp trên máy cục bộ',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                    );
+                                  }
+                                  final extra = remoteServers.length == 1
+                                      ? remoteServers.first
+                                      : '${remoteServers.length} máy chủ';
+                                  return Text(
+                                    'Gắn với dự án: $scope • Máy chủ bổ sung: $extra (SSH khi cần)',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                  );
+                                }
 
                                 if (isLocal) {
                                   return Text(
@@ -1829,11 +1882,13 @@ class _ChatScreenState extends State<ChatScreen> {
           ? null
           : () {
               final activeServerName = serverProvider.selectedServer?.name ?? 'Local Machine';
+              final sessServers = chat.currentSession?.targetServers;
               chat.sendMessage(
                 prompt,
                 model: serverProvider.currentAiModel,
                 workingDir: chat.currentSessionScope,
                 targetServer: activeServerName,
+                targetServers: (sessServers != null && sessServers.isNotEmpty) ? sessServers : null,
               );
               _safeScrollToBottom();
             },
@@ -2111,11 +2166,13 @@ class _ChatScreenState extends State<ChatScreen> {
                           onTap: () {
                             final serverProvider = context.read<ServerProvider>();
                             final activeServerName = serverProvider.selectedServer?.name ?? 'Local Machine';
+                            final sessServers = chat.currentSession?.targetServers;
                             chat.sendMessage(
                               msg.cleanContent,
                               model: serverProvider.currentAiModel,
                               workingDir: chat.currentSessionScope,
                               targetServer: activeServerName,
+                              targetServers: (sessServers != null && sessServers.isNotEmpty) ? sessServers : null,
                             );
                             _safeScrollToBottom();
                           },
@@ -6043,6 +6100,259 @@ class _RecentQuestionItemState extends State<_RecentQuestionItem> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialog chọn NHIỀU máy chủ (multi-select) để liên kết với phiên chat.
+/// Mỗi server được tick sẽ cung cấp cho Agent một công cụ SSH riêng
+/// (execute_server_command_<ten>) nhằm kết nối dự án local với các server đó.
+class _MultiServerPickerDialog extends StatefulWidget {
+  final List<ServerModel> servers;
+  final List<String> initialSelected;
+
+  const _MultiServerPickerDialog({
+    required this.servers,
+    required this.initialSelected,
+  });
+
+  @override
+  State<_MultiServerPickerDialog> createState() => _MultiServerPickerDialogState();
+}
+
+class _MultiServerPickerDialogState extends State<_MultiServerPickerDialog> {
+  late final Set<String> _selected;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    // Chi giu cac gia tri khop dung may chur trong danh sach, loai bo
+    // leftover nhu 'Local Machine' de bo dem "N da chon" luon chinh xac.
+    _selected = widget.initialSelected
+        .where((v) => widget.servers.any((s) => s.name == v || s.id == v || s.serverIp == v))
+        .toSet();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<ServerModel> get _filtered {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return widget.servers;
+    return widget.servers
+        .where((s) =>
+            s.name.toLowerCase().contains(q) ||
+            s.serverIp.toLowerCase().contains(q))
+        .toList();
+  }
+
+  bool _isSelected(ServerModel s) =>
+      _selected.contains(s.name) ||
+      _selected.contains(s.id) ||
+      _selected.contains(s.serverIp);
+
+  void _toggle(ServerModel s) {
+    setState(() {
+      if (_isSelected(s)) {
+        _selected.remove(s.name);
+        _selected.remove(s.id);
+        _selected.remove(s.serverIp);
+      } else {
+        _selected.add(s.name);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remoteServers = widget.servers
+        .where((s) => s.serverIp != '127.0.0.1' && s.serverIp != 'localhost')
+        .toList();
+
+    return Dialog(
+      backgroundColor: AppColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: AppColors.borderDark),
+      ),
+      child: Container(
+        width: 460,
+        constraints: const BoxConstraints(maxHeight: 520),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                const Icon(Icons.dns_rounded, size: 18, color: AppColors.primaryLight),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Liên kết máy chủ SSH cho phiên này',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.textMuted),
+                  onPressed: () => Navigator.pop(context, null),
+                  splashRadius: 16,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Chọn một hoặc nhiều máy chủ. Agent sẽ nhận công cụ SSH riêng cho từng máy để kết nối, đối chiếu và triển khai.',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            // Search
+            TextField(
+              controller: _searchCtrl,
+              style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+              decoration: InputDecoration(
+                hintText: 'Tìm theo tên hoặc IP...',
+                hintStyle: const TextStyle(fontSize: 11, color: AppColors.textDim),
+                prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textDim),
+                isDense: true,
+                filled: true,
+                fillColor: AppColors.bgDark,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(4),
+                  borderSide: const BorderSide(color: AppColors.borderDark),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(4),
+                  borderSide: const BorderSide(color: AppColors.borderDark),
+                ),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+            const SizedBox(height: 8),
+            // Select all / clear
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      for (final s in remoteServers) {
+                        _selected.add(s.name);
+                      }
+                    });
+                  },
+                  child: const Text('Chọn tất cả', style: TextStyle(fontSize: 11, color: AppColors.primaryLight)),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => setState(() => _selected.clear()),
+                  child: const Text('Bỏ chọn hết', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                ),
+                const Spacer(),
+                Text(
+                  '${_selected.length} đã chọn',
+                  style: const TextStyle(fontSize: 11, color: AppColors.accent),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // List
+            Flexible(
+              child: remoteServers.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'Chưa có máy chủ nào trong cấu hình.\nThêm máy chủ ở mục "Quản lý máy chủ".',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _filtered.length,
+                      itemBuilder: (ctx, i) {
+                        final s = _filtered[i];
+                        final sel = _isSelected(s);
+                        return InkWell(
+                          onTap: () => _toggle(s),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: sel ? AppColors.primary.withValues(alpha: 0.12) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: Checkbox(
+                                    value: sel,
+                                    onChanged: (_) => _toggle(s),
+                                    activeColor: AppColors.primary,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                const Icon(Icons.dns_rounded, size: 16, color: AppColors.primaryLight),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        s.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                                      ),
+                                      Text(
+                                        '${s.sshUser}@${s.serverIp}:${s.sshPort}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            const SizedBox(height: 12),
+            // Actions
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(Icons.check_rounded, size: 15),
+                  label: const Text('Áp dụng'),
+                  onPressed: () => Navigator.pop(context, _selected.toList()),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

@@ -113,9 +113,9 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> createNewSession({String title = 'Cuộc hội thoại mới', String? targetServer}) async {
+  Future<void> createNewSession({String title = 'Cuộc hội thoại mới', String? targetServer, List<String>? targetServers}) async {
     try {
-      final newSess = await _api.createChatSession(title: title, targetServer: targetServer);
+      final newSess = await _api.createChatSession(title: title, targetServer: targetServer, targetServers: targetServers);
       _sessions.removeWhere((s) => s.id == newSess.id);
       _sessions.insert(0, newSess);
       _sortSessions();
@@ -128,6 +128,9 @@ class ChatProvider extends ChangeNotifier {
         id: 'sess_${DateTime.now().millisecondsSinceEpoch}',
         title: title,
         targetServer: targetServer,
+        targetServers: (targetServers != null && targetServers.isNotEmpty)
+            ? targetServers
+            : [if (targetServer != null && targetServer.isNotEmpty) targetServer],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -140,9 +143,9 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> setServerForCurrentSession(String? serverName) async {
+  Future<void> setServerForCurrentSession(String? serverName, {List<String>? targetServers}) async {
     if (_currentSession == null) {
-      await createNewSession(targetServer: serverName);
+      await createNewSession(targetServer: serverName, targetServers: targetServers);
       return;
     }
     final cleanServer = (serverName != null && serverName.trim().isNotEmpty) ? serverName.trim() : null;
@@ -150,6 +153,8 @@ class ChatProvider extends ChangeNotifier {
     final updated = _currentSession!.copyWith(
       targetServer: cleanServer,
       clearTargetServer: cleanServer == null,
+      targetServers: targetServers,
+      clearTargetServers: targetServers != null && targetServers.isEmpty,
       updatedAt: now,
     );
     _currentSession = updated;
@@ -159,7 +164,14 @@ class ChatProvider extends ChangeNotifier {
       _sortSessions();
     }
     notifyListeners();
-    await _api.updateChatSessionServer(updated.id, cleanServer);
+    await _api.updateChatSessionServer(updated.id, cleanServer, targetServers: updated.targetServers);
+  }
+
+  /// Gán nhanh danh sách nhiều server cho phiên hiện tại (giữ nguyên server chính).
+  Future<void> setServersForCurrentSession(List<String> servers) async {
+    final clean = servers.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    final primary = clean.isNotEmpty ? clean.first : null;
+    await setServerForCurrentSession(primary, targetServers: clean);
   }
 
   String? get currentSessionScope => _currentSession?.workingDirScope;
@@ -309,6 +321,10 @@ class ChatProvider extends ChangeNotifier {
 
     final finalTitle = (cleanTitle != null && cleanTitle.isNotEmpty) ? cleanTitle : session.title;
     final finalServer = (cleanServer != null && cleanServer.isNotEmpty) ? cleanServer : (session.targetServer ?? 'Local Machine');
+    final isLocalTarget = finalServer == 'Local Machine' ||
+        finalServer == 'Local' ||
+        finalServer == 'localhost' ||
+        finalServer == '127.0.0.1';
 
     // 1. Optimistic local update
     final idx = _sessions.indexWhere((s) => s.id == session.id);
@@ -316,6 +332,7 @@ class ChatProvider extends ChangeNotifier {
       final updated = session.copyWith(
         title: finalTitle,
         targetServer: finalServer,
+        clearTargetServers: isLocalTarget,
         updatedAt: DateTime.now(),
       );
       _sessions[idx] = updated;
@@ -331,7 +348,7 @@ class ChatProvider extends ChangeNotifier {
       await _api.renameChatSession(session.id, cleanTitle);
     }
     if (cleanServer != null && cleanServer.isNotEmpty && cleanServer != session.targetServer) {
-      await _api.updateChatSessionServer(session.id, cleanServer);
+      await _api.updateChatSessionServer(session.id, cleanServer, targetServers: isLocalTarget ? const [] : null);
     }
     await loadSessions(silent: true);
   }
@@ -447,6 +464,7 @@ class ChatProvider extends ChangeNotifier {
     List<AttachmentItem>? attachments,
     String? workingDir,
     String? targetServer,
+    List<String>? targetServers,
   }) async {
     final query = text.trim();
     if (query.isEmpty && (attachments == null || attachments.isEmpty)) return;
@@ -513,6 +531,9 @@ class ChatProvider extends ChangeNotifier {
       workingDir: workingDir ?? _currentSession?.workingDirScope,
       docFiles: _currentSession?.docFiles,
       targetServer: targetServer ?? _currentSession?.targetServer,
+      targetServers: (targetServers != null && targetServers.isNotEmpty)
+          ? targetServers
+          : (_currentSession?.targetServers ?? const []),
       onToken: (token) {
         assistantMsg.content += token;
         assistantMsg.statusMessage = null;

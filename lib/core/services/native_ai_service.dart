@@ -337,6 +337,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     String? workingDir,
     List<String>? docFiles,
     String? targetServer,
+    List<String>? targetServers,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
     required void Function(ToolExecutionItem tool) onTool,
@@ -387,25 +388,55 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           baseUrl = baseUrl.substring(0, baseUrl.length - 1);
         }
 
-        // Resolve Target Server for this specific session
-        ServerModel? targetServerModel;
+        // Resolve Target Server(s) for this specific session.
+        // Hỗ trợ ĐA MÁY CHỦ: mỗi server được chọn sẽ có công cụ SSH riêng
+        // execute_server_command_<sanitized_name> để Agent kết nối đồng thời.
         final allServers = await _configService.getServers();
-        if (targetServer != null &&
-            targetServer.isNotEmpty &&
-            targetServer != 'Local Machine' &&
-            targetServer != 'Local' &&
-            targetServer != '127.0.0.1') {
-          targetServerModel = allServers.firstWhere(
-            (s) =>
-                s.id == targetServer ||
-                s.name == targetServer ||
-                s.serverIp == targetServer,
-            orElse: () => ServerModel(
-              id: targetServer,
-              name: targetServer,
-              serverIp: targetServer,
-            ),
-          );
+        ServerModel? targetServerModel;
+
+        // Danh sách tên server (ưu tiên targetServers; fallback targetServer cũ)
+        final requestedServers = <String>[
+          if (targetServers != null)
+            ...targetServers.map((e) => e.trim()).where((e) => e.isNotEmpty),
+          if ((targetServers == null || targetServers.isEmpty) &&
+              targetServer != null &&
+              targetServer.isNotEmpty)
+            targetServer.trim(),
+        ];
+
+        ServerModel? resolveServerByName(String name) {
+          if (name.isEmpty ||
+              name == 'Local Machine' ||
+              name == 'Local' ||
+              name == 'localhost' ||
+              name == '127.0.0.1') {
+            return null;
+          }
+          try {
+            return allServers.firstWhere(
+              (s) => s.id == name || s.name == name || s.serverIp == name,
+            );
+          } catch (_) {
+            return ServerModel(id: name, name: name, serverIp: name);
+          }
+        }
+
+        final resolvedServers = <ServerModel>[];
+        final seenIds = <String>{};
+        for (final name in requestedServers) {
+          final resolved = resolveServerByName(name);
+          if (resolved == null) continue;
+          if (resolved.serverIp == '127.0.0.1' || resolved.serverIp == 'localhost') {
+            continue;
+          }
+          final key = resolved.id.isNotEmpty ? resolved.id : resolved.serverIp;
+          if (seenIds.contains(key)) continue;
+          seenIds.add(key);
+          resolvedServers.add(resolved);
+        }
+        // Server chính (tương thích ngược): phần tử đầu tiên nếu có.
+        if (resolvedServers.isNotEmpty) {
+          targetServerModel = resolvedServers.first;
         }
 
         // Save user message to database
@@ -461,34 +492,64 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             ? customPrompt.trim()
             : systemPromptBase;
 
-        if (targetServerModel != null &&
-            workingDir != null &&
-            workingDir.isNotEmpty) {
+        if (resolvedServers.isNotEmpty) {
+          // Sinh tên công cụ SSH duy nhất cho từng server để Agent gọi đúng máy.
+          String serverToolName(ServerModel s) {
+            final raw = s.name.isNotEmpty ? s.name : s.serverIp;
+            final sb = StringBuffer();
+            for (final code in raw.runes) {
+              final ch = String.fromCharCode(code);
+              final isAlnum = (code >= 0x30 && code <= 0x39) ||
+                  (code >= 0x41 && code <= 0x5A) ||
+                  (code >= 0x61 && code <= 0x7A);
+              if (isAlnum) {
+                sb.write(ch.toLowerCase());
+              } else if (sb.isNotEmpty && !sb.toString().endsWith('_')) {
+                sb.write('_');
+              }
+            }
+            var name = sb.toString();
+            while (name.endsWith('_')) {
+              name = name.substring(0, name.length - 1);
+            }
+            if (name.isEmpty) name = 'server';
+            return 'execute_server_command_${name}';
+          }
+
           sysPrompt +=
               '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy tính cục bộ (${Platform.operatingSystem}). Mọi lệnh terminal được chạy an toàn trên local shell.';
+          if (workingDir != null && workingDir.isNotEmpty) {
+            sysPrompt +=
+                '\n🎯 THƯ MỤC LÀM VIỆC (SCOPE - NGỮ CẢNH CHÍNH, ƯU TIÊN HÀNG ĐẦU): `$workingDir`';
+            sysPrompt +=
+                '\nMọi lệnh terminal, tạo file, cấu hình mã nguồn mặc định thực thi trực tiếp tại Scope này bằng công cụ `execute_terminal_command`.';
+          }
           sysPrompt +=
-              '\n🎯 THƯ MỤC LÀM VIỆC (SCOPE - NGỮ CẢNH CHÍNH, ƯU TIÊN HÀNG ĐẦU): `$workingDir`';
+              '\n\n🔗 MÁY CHỦ TỪ XA ĐÃ LIÊN KẾT (SSH) - MỤC ĐÍCH: KẾT NỐI DỰ ÁN LOCAL VỚI CÁC MÁY CHỦ NÀY ĐỂ ĐIỀU KHIỂN, ĐỐI CHIẾU, TRIỂN KHAI:';
+          for (final s in resolvedServers) {
+            final toolName = serverToolName(s);
+            sysPrompt +=
+                '\n- MÁY CHỦ [${s.name}] (${s.serverIp}) - CÔNG CỤ: `$toolName`';
+            sysPrompt +=
+                '\n  + Tài khoản SSH: ${s.sshUser}@${s.serverIp}:${s.sshPort}';
+            sysPrompt +=
+                '\n  + Thư mục làm việc trên Server (Remote WorkDir): `${s.remoteWorkDir}`';
+          }
           sysPrompt +=
-              '\nMọi lệnh terminal, tạo file, cấu hình mã nguồn mặc định thực thi trực tiếp tại Scope này bằng công cụ `execute_terminal_command`.';
+              '\n- CÔNG CỤ SSH RIÊNG TỪNG MÁY: Mỗi máy chủ ở trên có một công cụ SSH riêng (tên ghi kèm sau mỗi máy). Gọi đúng công cụ của máy nào thì lệnh được chạy trên máy đó qua SSH, thư mục mặc định là Remote WorkDir của máy.';
+          if (resolvedServers.length > 1) {
+            sysPrompt +=
+                '\n- CHẾ ĐỘ ĐA MÁY CHỦ: Khi tác vụ liên quan nhiều máy (triển khai cùng lúc, đối chiếu cấu hình, đồng bộ code...), hãy thực hiện trên TỪNG máy bằng đúng công cụ tương ứng và báo cáo kết quả riêng cho từng máy.';
+          }
           sysPrompt +=
-              '\n\n🔗 MÁY CHỦ TỪ XA BỔ SUNG (SSH) - CHỈ LÀ THÔNG TIN BỔ SUNG ĐỂ KẾT NỐI ĐIỀU KHIỂN, KHÔNG THAY THẾ SCOPE:';
-          sysPrompt +=
-              '\n- SCOPE CỤC BỘ (NGUỒN MÃ NGUỒN CHUẨN ĐỂ ĐỐI CHIẾU): `$workingDir`';
-          sysPrompt +=
-              '\n- MÁY CHỦ TỪ XA (BỔ SUNG): [${targetServerModel.name}] (${targetServerModel.serverIp})';
-          sysPrompt +=
-              '\n  + Tài khoản SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}';
-          sysPrompt +=
-              '\n  + Thư mục làm việc trên Server (Remote WorkDir): `${targetServerModel.remoteWorkDir}`';
-          sysPrompt +=
-              '\n- CÔNG CỤ SSH RIÊNG: Khi cần xem hoặc điều khiển máy chủ từ xa, dùng công cụ `execute_server_command` (mỗi lệnh được chạy trực tiếp qua SSH trên máy chủ này, thư mục mặc định là Remote WorkDir ở trên).';
-          sysPrompt +=
-              '\n- QUY TẮC PHỐI HỢP SCOPE → SERVER: Scope luôn là nguồn mã nguồn chuẩn để đối chiếu. Khi người dùng yêu cầu lấy code ở Scope để đối chiếu chính xác và ghi đè lên Server, thực hiện trình tự: (1) Đọc/xác minh tệp tại Scope cục bộ bằng `execute_terminal_command`; (2) Đọc/so sánh phía Server bằng `execute_server_command` (cat, md5sum, diff...); (3) Ghi đè chính xác nội dung chuẩn từ Scope lên Server (chạy scp/rsync từ máy cục bộ qua `execute_terminal_command`, hoặc ghi nội dung qua heredoc/tee bằng `execute_server_command`); (4) Kiểm chứng lại kết quả trên Server sau khi ghi đè.';
-          sysPrompt = sysPrompt
-              .replaceAll('{workDir}', workingDir)
-              .replaceAll('\$workDir', workingDir);
-          final knowledgeGuide = _buildKnowledgeGuide(workingDir);
-          if (knowledgeGuide != null) sysPrompt += knowledgeGuide;
+              '\n- QUY TẮC PHỐI HỢP SCOPE → SERVER: Scope luôn là nguồn mã nguồn chuẩn để đối chiếu. Khi người dùng yêu cầu lấy code ở Scope để đối chiếu chính xác và ghi đè lên Server, thực hiện trình tự: (1) Đọc/xác minh tệp tại Scope cục bộ bằng `execute_terminal_command`; (2) Đọc/so sánh phía Server bằng công cụ SSH của máy (cat, md5sum, diff...); (3) Ghi đè chính xác nội dung chuẩn từ Scope lên Server (chạy scp/rsync từ máy cục bộ qua `execute_terminal_command`, hoặc ghi nội dung qua heredoc/tee bằng công cụ SSH của máy); (4) Kiểm chứng lại kết quả trên Server sau khi ghi đè.';
+          if (workingDir != null && workingDir.isNotEmpty) {
+            sysPrompt = sysPrompt
+                .replaceAll('{workDir}', workingDir)
+                .replaceAll('\$workDir', workingDir);
+            final knowledgeGuide = _buildKnowledgeGuide(workingDir);
+            if (knowledgeGuide != null) sysPrompt += knowledgeGuide;
+          }
         } else if (targetServerModel != null) {
           sysPrompt +=
               '\n\n🎯 MÔI TRƯỜNG THỰC THI: Máy chủ từ xa [${targetServerModel.name}] (${targetServerModel.serverIp}). Thư mục làm việc từ xa: `${targetServerModel.remoteWorkDir}`. Mọi lệnh terminal được gửi trực tiếp qua SSH tới máy chủ này.';
@@ -597,6 +658,33 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
         // Add current user message
         messages.add({'role': 'user', 'content': userMessageContent});
 
+        // Sinh tên công cụ SSH duy nhất cho từng server (dùng chung logic với system prompt).
+        String serverToolName(ServerModel s) {
+          final raw = s.name.isNotEmpty ? s.name : s.serverIp;
+          final sb = StringBuffer();
+          for (final code in raw.runes) {
+            final isAlnum = (code >= 0x30 && code <= 0x39) ||
+                (code >= 0x41 && code <= 0x5A) ||
+                (code >= 0x61 && code <= 0x7A);
+            if (isAlnum) {
+              sb.write(String.fromCharCode(code).toLowerCase());
+            } else if (sb.isNotEmpty && !sb.toString().endsWith('_')) {
+              sb.write('_');
+            }
+          }
+          var name = sb.toString();
+          while (name.endsWith('_')) {
+            name = name.substring(0, name.length - 1);
+          }
+          if (name.isEmpty) name = 'server';
+          return 'execute_server_command_${name}';
+        }
+
+        // Bản đồ: tên công cụ SSH -> server tương ứng (dùng khi điều phối thực thi).
+        final serverToolMap = <String, ServerModel>{
+          for (final s in resolvedServers) serverToolName(s): s,
+        };
+
         final tools = [
           {
             'type': 'function',
@@ -617,20 +705,21 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               },
             },
           },
-          if (targetServerModel != null)
+          // Mỗi máy chủ được chọn một công cụ SSH riêng để Agent kết nối đúng máy.
+          for (final s in resolvedServers)
             {
               'type': 'function',
               'function': {
-                'name': 'execute_server_command',
+                'name': serverToolName(s),
                 'description':
-                    'Thực thi lệnh terminal bash/shell trên máy chủ từ xa ${targetServerModel.name} (${targetServerModel.serverIp}) qua SSH. Chỉ dùng khi cần xem hoặc điều khiển máy chủ này; Scope cục bộ vẫn là ưu tiên chính của phiên làm việc.',
+                    'Thực thi lệnh terminal bash/shell trên máy chủ từ xa ${s.name} (${s.serverIp}) qua SSH. Mục đích: kết nối dự án local với máy chủ này để xem, điều khiển, đối chiếu hoặc triển khai. Thư mục làm việc mặc định: ${s.remoteWorkDir}.',
                 'parameters': {
                   'type': 'object',
                   'properties': {
                     'command': {
                       'type': 'string',
                       'description':
-                          'Lệnh shell/bash cần chạy trên máy chủ từ xa qua SSH',
+                          'Lệnh shell/bash cần chạy trên máy chủ ${s.name} qua SSH',
                     },
                   },
                   'required': ['command'],
@@ -782,6 +871,8 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
           String stepContent = '';
           final toolCallsMap = <int, Map<String, dynamic>>{};
+          // Co danh dau: luot stream nay co goi tool hay khong (reset moi luot).
+          bool turnHadTool = false;
 
           final streamCompleter = Completer<void>();
           // Watchdog chống ngắt stream giữa chừng: nếu quá 90 giây không nhận thêm
@@ -938,6 +1029,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           // Check if tools were called
           if (toolCallsMap.isNotEmpty) {
             emptyTurnRetries = 0;
+            turnHadTool = true;
             final formattedToolCalls = <Map<String, dynamic>>[];
             final executedToolResults = <Map<String, dynamic>>[];
 
@@ -976,20 +1068,35 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               );
               onTool(toolItem);
 
+              // Định tuyến công cụ SSH: hỗ trợ cả tên chung cũ
+              // (execute_server_command -> server chính) và tên riêng từng máy
+              // (execute_server_command_<name> -> đúng máy tương ứng).
+              final normalizedFunc = funcName.trim();
+              final bool isGenericServerTool =
+                  normalizedFunc == 'execute_server_command';
+              ServerModel? routedServer;
+              if (isGenericServerTool) {
+                routedServer = targetServerModel;
+              } else if (normalizedFunc.startsWith('execute_server_command_')) {
+                routedServer = serverToolMap[normalizedFunc];
+                if (routedServer == null && resolvedServers.length == 1) {
+                  routedServer = resolvedServers.first;
+                }
+              }
               final bool isServerToolCall =
-                  funcName.trim() == 'execute_server_command';
+                  isGenericServerTool || routedServer != null;
               String cmdOutput;
               if (isServerToolCall) {
-                if (targetServerModel == null) {
+                if (routedServer == null) {
                   cmdOutput =
                       'LỖI: Phiên làm việc chưa chọn máy chủ nào. Hãy dùng execute_terminal_command để chạy cục bộ tại Scope.';
                 } else {
-                  final remoteDir = targetServerModel.remoteWorkDir;
+                  final remoteDir = routedServer.remoteWorkDir;
                   cmdOutput = await _executeCommand(
                     cmd,
                     workingDir: (remoteDir.isNotEmpty) ? remoteDir : null,
                     timeoutSeconds: 120,
-                    server: targetServerModel,
+                    server: routedServer,
                   );
                 }
               } else {
@@ -1053,6 +1160,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             // chưa xong (bị cắt giữa chừng, tự nhận đang làm dở...). Tự bơm
             // nhắc "làm tiếp" kèm nội dung vừa rồi để model chạy nốt thay vì
             // nhả task dở dang về cho người dùng.
+            _declaredIntentNoTool = !turnHadTool;
             if (continuationRetries < maxContinuationRetries &&
                 !isCancelled &&
                 _looksIncomplete(stepContent) &&
@@ -1166,17 +1274,36 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     return false;
   }
 
+  /// Cờ nội bộ: lượt phản hồi hiện tại có tuyên bố ý định làm tiếp nhưng
+  /// không kèm lệnh tool nào (kiểu "nói mà chưa làm"). Được đặt ngay trước
+  /// khi gọi _looksIncomplete ở cổng hoàn tất.
+  static bool _declaredIntentNoTool = false;
+
   /// Heuristic nhận biết phản hồi mang dấu hiệu chưa hoàn thành (bị cắt giữa
   /// chừng hoặc tự nhận đang làm dở) — dùng để tự bơm nhắc "làm tiếp" thay vì
   /// nhả task dở dang về cho người dùng.
   static bool _looksIncomplete(String text) {
     final t = text.trim();
     if (t.isEmpty) return false;
+
+    // Nhóm 1: tự nhận đang làm dở hoặc bị ngắt.
     final incompletePattern = RegExp(
-      r'(chưa (hoàn thành|hoàn tất|xong|kịp)|đang (thực hiện|làm|tiến hành|xử lý|chạy)|sẽ (tiếp tục|làm|thực hiện|kiểm tra)|cần (tiếp tục|thêm|kiểm tra)|tôi (sẽ|cần) tiếp|tiếp tục (với|thực hiện|làm nốt|làm)|bị (ngắt|cắt) giữa|to be continued|incomplete|not (yet )?(finished|complete|done)|continuing|i will continue|let me continue)',
+      r'(chưa (hoàn thành|hoàn tất|xong|kịp)|đang (thực hiện|làm|tiến hành|xử lý|chạy|điều tra|kiểm tra)|cần (tiếp tục|thêm|kiểm tra|thời gian)|tôi (sẽ|cần) tiếp|tiếp tục (với|thực hiện|làm nốt|làm)|bị (ngắt|cắt) giữa|to be continued|incomplete|not (yet )?(finished|complete|done)|continuing|i will continue|let me continue)',
       caseSensitive: false,
     );
     if (incompletePattern.hasMatch(t)) return true;
+
+    // Nhóm 2: tuyên bố ý định sẽ làm (điều tra, kiểm tra, sửa...) mà lượt này
+    // KHÔNG kèm lệnh tool nào — kiểu "nói mà chưa làm" hay khiến task dở dang.
+    // Chỉ áp dụng khi được truyền cờ từ nơi gọi (đã biết lượt này không có tool).
+    if (_declaredIntentNoTool) {
+      final intentPattern = RegExp(
+        r'(tôi (sẽ|cần)|để tôi|cho tôi|hãy để tôi|xin phép|sẽ điều tra|sẽ kiểm tra|sẽ xem|sẽ sửa|sẽ đọc|sẽ phân tích|sẽ trace|sẽ truy|will (investigate|check|trace|read|analyze|fix|examine)|let me (check|trace|read|analyze|investigate|look))',
+        caseSensitive: false,
+      );
+      if (intentPattern.hasMatch(t)) return true;
+    }
+
     return !_endsCleanly(t);
   }
 

@@ -77,6 +77,9 @@ class DatabaseService {
     try {
       await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN cli_conv_id TEXT;');
     } catch (_) {}
+    try {
+      await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN target_servers TEXT;');
+    } catch (_) {}
   }
 
   Future<String> _resolveDbPath() async {
@@ -120,7 +123,7 @@ class DatabaseService {
     try {
       final db = await _getDb();
       final rows = await db.rawQuery(
-        'SELECT id, title, is_pinned, working_dir, doc_files, target_server, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
+        'SELECT id, title, is_pinned, working_dir, doc_files, target_server, target_servers, created_at, updated_at FROM chat_sessions ORDER BY is_pinned DESC, updated_at DESC, id DESC',
       );
 
       final result = <ChatSessionModel>[];
@@ -147,6 +150,15 @@ class DatabaseService {
         final decServer = (rawServer != null && rawServer.isNotEmpty)
             ? _enc.decryptValue(rawServer)
             : 'Local Machine';
+        final rawServers = row['target_servers']?.toString();
+        List<String> serverList = const [];
+        if (rawServers != null && rawServers.isNotEmpty) {
+          try {
+            final decServers = _enc.decryptValue(rawServers);
+            serverList = ChatSessionModel.parseServers(decServers);
+          } catch (_) {}
+        }
+        if (serverList.isEmpty) serverList = [decServer];
 
         // Count user questions (role = 'user')
         final qCountRows = await db.rawQuery(
@@ -181,6 +193,7 @@ class DatabaseService {
             workingDirScope: decScope,
             docFiles: docList,
             targetServer: decServer,
+            targetServers: serverList,
           ),
         );
       }
@@ -195,6 +208,7 @@ class DatabaseService {
     String title = 'Cuộc hội thoại mới',
     String? workingDir,
     String? targetServer,
+    List<String>? targetServers,
   }) async {
     final db = await _getDb();
     final sessId = id ?? 's_${DateTime.now().millisecondsSinceEpoch.toRadixString(16)}';
@@ -202,6 +216,17 @@ class DatabaseService {
     final encScope = (workingDir != null && workingDir.isNotEmpty) ? _enc.encryptValue(workingDir) : null;
     final finalServer = (targetServer != null && targetServer.isNotEmpty) ? targetServer : 'Local Machine';
     final encServer = _enc.encryptValue(finalServer);
+    // Danh sách nhiều server: đảm bảo luôn chứa server chính ở đầu.
+    final mergedServers = <String>[
+      if (targetServers != null) ...targetServers.map((e) => e.trim()).where((e) => e.isNotEmpty),
+      if (targetServers == null || targetServers.isEmpty) finalServer,
+    ];
+    if (!mergedServers.contains(finalServer)) {
+      mergedServers.insert(0, finalServer);
+    }
+    // Khong luu gia tri local vao danh sach nhieu server (giu DB sach se).
+    mergedServers.removeWhere((n) => n == 'Local Machine' || n == 'Local' || n == 'localhost' || n == '127.0.0.1');
+    final encServers = _enc.encryptValue(jsonEncode(mergedServers));
     final now = DateTime.now().toIso8601String();
 
     await db.insert(
@@ -212,6 +237,7 @@ class DatabaseService {
         'is_pinned': 0,
         'working_dir': encScope,
         'target_server': encServer,
+        'target_servers': encServers,
         'created_at': now,
         'updated_at': now,
       },
@@ -224,20 +250,33 @@ class DatabaseService {
       isPinned: false,
       workingDirScope: workingDir,
       targetServer: finalServer,
+      targetServers: mergedServers,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
   }
 
-  Future<bool> updateSessionServer(String id, String? targetServer) async {
+  Future<bool> updateSessionServer(String id, String? targetServer, {List<String>? targetServers}) async {
     try {
       final db = await _getDb();
       final encServer = (targetServer != null && targetServer.isNotEmpty) ? _enc.encryptValue(targetServer) : null;
+      String? encServers;
+      if (targetServers != null) {
+        bool isLocalName(String? n) => n == null || n.isEmpty ||
+            n == 'Local Machine' || n == 'Local' || n == 'localhost' || n == '127.0.0.1';
+        final merged = <String>[
+          if (targetServer != null && targetServer.isNotEmpty && !isLocalName(targetServer)) targetServer.trim(),
+          ...targetServers.map((e) => e.trim()).where((e) => e.isNotEmpty && !isLocalName(e)),
+        ];
+        final finalServers = merged.toSet().toList();
+        encServers = _enc.encryptValue(jsonEncode(finalServers));
+      }
       final now = DateTime.now().toIso8601String();
       await db.update(
         'chat_sessions',
         {
-          'target_server': encServer,
+          if (encServer != null) 'target_server': encServer,
+          if (encServers != null) 'target_servers': encServers,
           'updated_at': now,
         },
         where: 'id = ?',

@@ -6,7 +6,7 @@ cd "$SOURCE_DIR"
 
 APP_NAME="ai-type-agent"
 PKG_NAME="ai-type-agent"
-VERSION="1.4.3"
+VERSION="$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d '+' -f1)"
 ARCH="amd64"
 DIST_DIR="$SOURCE_DIR/dist"
 BUNDLE_DIR="$SOURCE_DIR/build/linux/x64/release/bundle"
@@ -65,6 +65,7 @@ Version: $VERSION
 Section: devel
 Priority: optional
 Architecture: $ARCH
+Depends: libgtk-3-0
 Installed-Size: $INSTALLED_SIZE
 Maintainer: AI Type Agent <support@tadu.vn>
 Description: AI Type Agent - Trợ lý lập trình và Quản trị máy chủ Agentic AI

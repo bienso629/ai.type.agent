@@ -977,7 +977,12 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                                                   q,
                                                   model: serverProvider.currentAiModel,
                                                   workingDir: chat.currentSessionScope,
-                                                  targetServer: serverProvider.selectedServer?.name ?? 'Local Machine',
+                                                  targetServer: (sess.targetServer != null && sess.targetServer!.isNotEmpty)
+                                                      ? sess.targetServer!
+                                                      : (serverProvider.selectedServer?.name ?? 'Local Machine'),
+                                                  targetServers: (sess.targetServers.isNotEmpty)
+                                                      ? sess.targetServers
+                                                      : null,
                                                 );
                                               },
                                             );
