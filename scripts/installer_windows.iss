@@ -1,7 +1,7 @@
 ; Script tạo bộ cài đặt Windows (Setup .exe) bằng Inno Setup cho AI Type Agent
 
 #define MyAppName "AI Type Agent"
-#define MyAppVersion "1.4.0"
+#define MyAppVersion "1.4.5"
 #define MyAppPublisher "Tadu Cloud Team"
 #define MyAppURL "https://tadu.vn"
 #define MyAppExeName "tadu_cloud_ai_agent_mobile.exe"
