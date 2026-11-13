@@ -58,3 +58,8 @@ app.*.map.json
 uploads/
 nguyen_hue_girl_4k.jpg
 screenshot.png
+
+# Dev tool AST cache
+*knowledge-cache*
+graphify-out/
+
