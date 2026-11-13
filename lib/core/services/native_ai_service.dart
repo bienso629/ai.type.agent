@@ -124,10 +124,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 2. TẬP TRUNG ĐÚNG 100% TRỌNG TÂM YÊU CẦU (STRICT SCOPE):
    - CHỈ xử lý ĐÚNG DUY NHẤT mục tiêu mà người dùng đang yêu cầu trong tin nhắn mới nhất.
 
-3. BÁO CÁO KẾT QUẢ CHI TIẾT, RÕ RÀNG, ĐẦY ĐỦ DẪN CHỨNG:
-   - TUYỆT ĐỐI KHÔNG CHỈ TRẢ LỜI CỘC LỐC MỘT CÂU CHUNG CHUNG (như "Đã hoàn tất thao tác", "Đã xong").
-   - BẮT BUỘC phải diễn giải chi tiết: Bạn đã làm những gì, chỉnh sửa những file nào, kết quả lệnh kiểm tra/tìm kiếm ra sao, trích dẫn nội dung cụ thể hoặc kết quả biên dịch/kiểm thử để người dùng nắm rõ.
-   - Trình bày mạch lạc theo các mục kỹ thuật rõ ràng (ví dụ: Các bước đã thực hiện, Nội dung đã thay đổi/tìm thấy, Kết quả kiểm tra).
+3. KHÔNG VIẾT LỜI DẪN DÀI DÒNG KHI ĐANG CHẠY TOOL & BÁO CÁO SÚC TÍCH:
+   - KHI ĐANG TRONG QUÁ TRÌNH GỌI TOOL (`execute_terminal_command` / `execute_server_command`): TUYỆT ĐỐI KHÔNG viết văn bản suy nghĩ dài dòng, không thuyết minh từng bước trung gian, không in lại nội dung file hay log lệnh ra câu trả lời. Hãy gọi tool trực tiếp và im lặng thực thi cho đến khi hoàn tất.
+   - KHI BÁO CÁO KẾT QUẢ CUỐI CÙNG: Trình bày NGẮN GỌN, SÚC TÍCH, ĐI THẲNG VÀO KẾT QUẢ (tối đa khoảng 15 - 30 dòng tóm tắt các file đã sửa, nguyên nhân và kết quả kiểm tra). TUYỆT ĐỐI KHÔNG dump toàn bộ mã nguồn dài hoặc log terminal dài vào câu trả lời gây treo và lag giao diện ứng dụng.
 
 4. PHONG CÁCH TRÌNH BÀY & NGÔN NGỮ:
    - BẮT BUỘC viết TIẾNG VIỆT CÓ ĐẦY ĐỦ DẤU THANH, đúng chính tả và ngữ pháp chuẩn xác.
@@ -452,6 +451,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
         // If user selected a CLI agent (e.g. antigravity-cli, claude-cli, gemini-cli)
         if (_isCliModel(targetModel)) {
+          final cliExecutedTools = <ToolExecutionItem>[];
           await _runCliAgent(
             sessionId: sessionId,
             cliName: targetModel,
@@ -461,10 +461,50 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             workingDir: workingDir,
             docFiles: docFiles,
             targetServerModel: targetServerModel,
+            targetServers: resolvedServers,
             onToken: onToken,
             onStatus: onStatus,
-            onTool: onTool,
+            onTool: (tool) {
+              final cappedOut = tool.output.length > 4000
+                  ? '${tool.output.substring(0, 4000)}\n... [Đã rút gọn ${tool.output.length - 4000} ký tự]'
+                  : tool.output;
+              final normalized = ToolExecutionItem(
+                tool: tool.tool,
+                command: tool.command,
+                output: cappedOut,
+              );
+              var existingIdx = cliExecutedTools.lastIndexWhere(
+                (t) =>
+                    t.tool == normalized.tool &&
+                    t.command == normalized.command &&
+                    t.output == 'Đang thực thi...',
+              );
+              if (existingIdx == -1 &&
+                  normalized.output != 'Đang thực thi...') {
+                existingIdx = cliExecutedTools.lastIndexWhere(
+                  (t) =>
+                      t.tool == normalized.tool &&
+                      t.command == normalized.tool &&
+                      t.output == 'Đang thực thi...',
+                );
+              }
+              if (existingIdx != -1) {
+                cliExecutedTools[existingIdx] = normalized;
+              } else {
+                cliExecutedTools.add(normalized);
+              }
+              onTool(tool);
+            },
             onDone: (reply) async {
+              for (var i = 0; i < cliExecutedTools.length; i++) {
+                if (cliExecutedTools[i].output == 'Đang thực thi...') {
+                  cliExecutedTools[i] = ToolExecutionItem(
+                    tool: cliExecutedTools[i].tool,
+                    command: cliExecutedTools[i].command,
+                    output: '',
+                  );
+                }
+              }
               final cleanReply = stripSystemMessages(reply);
               final emptyNotice =
                   'Agent $targetModel đã dừng tiến trình mà chưa xuất bản báo cáo kết quả. '
@@ -474,6 +514,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
                 role: 'assistant',
                 content: cleanReply.isNotEmpty ? cleanReply : emptyNotice,
                 model: targetModel,
+                toolExecutions: cliExecutedTools,
                 createdAt: DateTime.now(),
               );
               await _dbService.insertMessage(assistantMsg);
@@ -513,7 +554,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               name = name.substring(0, name.length - 1);
             }
             if (name.isEmpty) name = 'server';
-            return 'execute_server_command_${name}';
+            return 'execute_server_command_$name';
           }
 
           sysPrompt +=
@@ -677,7 +718,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             name = name.substring(0, name.length - 1);
           }
           if (name.isEmpty) name = 'server';
-          return 'execute_server_command_${name}';
+          return 'execute_server_command_$name';
         }
 
         // Bản đồ: tên công cụ SSH -> server tương ứng (dùng khi điều phối thực thi).
@@ -1133,9 +1174,9 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               });
             }
 
-            // Add spacing token if there was narration
+            // Xóa văn bản suy nghĩ trung gian trước khi sang bước tool tiếp theo để giữ câu trả lời cuối cùng gọn nhẹ, chống tràn text gây đơ UI
             if (stepContent.isNotEmpty) {
-              onToken('\n\n');
+              onToken('__CLEAR_INTERMEDIATE_THOUGHTS__');
             }
           } else {
             // Nếu model trả về rỗng sau khi vừa chạy lệnh tool (chưa thực hiện xong hoặc chưa tổng hợp báo cáo):
@@ -1316,6 +1357,432 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     return completePattern.hasMatch(text.trim());
   }
 
+  @visibleForTesting
+  static Map<String, dynamic>? asJsonMap(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), v));
+    }
+    if (raw is String) {
+      final trimmed = raw.trim();
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+          final decoded = jsonDecode(trimmed);
+          if (decoded is Map<String, dynamic>) return decoded;
+          if (decoded is Map) {
+            return decoded.map((k, v) => MapEntry(k.toString(), v));
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  @visibleForTesting
+  static String cleanToolParamValue(dynamic raw) {
+    if (raw == null) return '';
+    var s = raw.toString().trim();
+    if (s.length >= 2 &&
+        ((s.startsWith('"') && s.endsWith('"')) ||
+            (s.startsWith("'") && s.endsWith("'")))) {
+      if (s.startsWith('"')) {
+        try {
+          final decoded = jsonDecode(s);
+          if (decoded != null) return decoded.toString().trim();
+        } catch (_) {}
+      }
+      s = s.substring(1, s.length - 1).trim();
+    }
+    return s;
+  }
+
+  @visibleForTesting
+  static String formatCliToolPath(String rawPath, {String? workingDir}) {
+    var cleaned = cleanToolParamValue(rawPath);
+    if (cleaned.isEmpty) return '';
+
+    if (cleaned.startsWith('file://')) {
+      try {
+        cleaned = Uri.parse(cleaned).toFilePath();
+      } catch (_) {
+        cleaned = cleaned.substring(7);
+      }
+    }
+
+    final plainCacheDir = StealthVault.cacheDirName.replaceAll(r'\.', '.');
+    if (plainCacheDir.isNotEmpty && cleaned.contains(plainCacheDir)) {
+      return 'ngữ cảnh kiến trúc dự án';
+    }
+
+    if (workingDir != null && workingDir.trim().isNotEmpty) {
+      final wd = p.normalize(workingDir.trim());
+      final normPath = p.normalize(cleaned);
+      if (normPath == wd) {
+        final base = p.basename(wd);
+        return base.isNotEmpty ? './ ($base)' : normPath;
+      }
+      if (p.isWithin(wd, normPath)) {
+        return p.relative(normPath, from: wd);
+      }
+    }
+
+    final home = Platform.environment['HOME'] ?? '';
+    if (home.isNotEmpty && cleaned.startsWith('$home/')) {
+      return '~/${cleaned.substring(home.length + 1)}';
+    }
+    return cleaned;
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic>? extractCliToolParams(
+    Map<String, dynamic>? step,
+  ) {
+    if (step == null) return null;
+    final merged = <String, dynamic>{};
+    final toolInfo = asJsonMap(step['tool_info']);
+
+    final candidates = <dynamic>[
+      step['input'],
+      step['arguments'],
+      step['args'],
+      step['parameters'],
+      step['tool_args'],
+      toolInfo?['input'],
+      toolInfo?['arguments'],
+      toolInfo?['parameters'],
+    ];
+
+    const actionSubKeys = <String>[
+      'view_file',
+      'read_file',
+      'edit_file',
+      'create_file',
+      'write_file',
+      'run_command',
+      'list_directory',
+      'find_file',
+      'search_directory',
+      'search_web',
+      'read_url_content',
+      'invoke_subagent',
+      'mcp_tool',
+      'custom_tool',
+    ];
+    for (final k in actionSubKeys) {
+      if (step[k] != null) candidates.add(step[k]);
+      if (toolInfo?[k] != null) candidates.add(toolInfo![k]);
+    }
+
+    for (final c in candidates) {
+      final map = asJsonMap(c);
+      if (map != null && map.isNotEmpty) {
+        merged.addAll(map);
+      }
+    }
+    return merged.isEmpty ? null : merged;
+  }
+
+  static String _firstParam(Map<String, dynamic> params, List<String> keys) {
+    for (final k in keys) {
+      if (params.containsKey(k)) {
+        final v = cleanToolParamValue(params[k]);
+        if (v.isNotEmpty) return v;
+      }
+    }
+    final lowerMap = <String, dynamic>{};
+    for (final entry in params.entries) {
+      lowerMap.putIfAbsent(entry.key.toLowerCase(), () => entry.value);
+    }
+    for (final k in keys) {
+      final lk = k.toLowerCase();
+      if (lowerMap.containsKey(lk)) {
+        final v = cleanToolParamValue(lowerMap[lk]);
+        if (v.isNotEmpty) return v;
+      }
+    }
+    return '';
+  }
+
+  @visibleForTesting
+  static String describeCliToolCall({
+    required String toolName,
+    Map<String, dynamic>? toolParams,
+    String? workingDir,
+  }) {
+    final cleanToolName = toolName.trim().isNotEmpty
+        ? toolName.trim()
+        : 'công cụ';
+    if (toolParams == null || toolParams.isEmpty) {
+      return cleanToolName;
+    }
+
+    final lowerTool = cleanToolName.toLowerCase();
+
+    // 1. Terminal / Shell command
+    final cmdLine = _firstParam(toolParams, const [
+      'CommandLine',
+      'command_line',
+      'command',
+      'cmd',
+    ]);
+    if (cmdLine.isNotEmpty) {
+      return cmdLine;
+    }
+
+    // 2. Search / Grep / Find / Glob / Web Search
+    final isSearchTool =
+        lowerTool.contains('search') ||
+        lowerTool.contains('grep') ||
+        lowerTool.contains('find') ||
+        lowerTool.contains('glob');
+    final query = _firstParam(toolParams, const [
+      'Query',
+      'query',
+      'Pattern',
+      'pattern',
+      'glob',
+      'SearchTerm',
+      'search_term',
+    ]);
+    if (lowerTool.contains('web') && query.isNotEmpty) {
+      final domain = _firstParam(toolParams, const ['domain', 'Domain']);
+      return domain.isNotEmpty
+          ? 'Tìm web: "$query" ($domain)'
+          : 'Tìm web: "$query"';
+    }
+    if (isSearchTool && query.isNotEmpty) {
+      final searchDir = _firstParam(toolParams, const [
+        'SearchPath',
+        'search_path',
+        'SearchDirectory',
+        'search_directory',
+        'DirectoryPath',
+        'directory_path',
+        'Path',
+        'path',
+        'include',
+      ]);
+      if (searchDir.isNotEmpty) {
+        final displayDir = formatCliToolPath(searchDir, workingDir: workingDir);
+        return 'Tìm "$query" trong $displayDir';
+      }
+      return 'Tìm "$query"';
+    }
+
+    // 3. Directory listing tools
+    final isListDirTool =
+        lowerTool == 'ls' ||
+        lowerTool.contains('list_dir') ||
+        lowerTool.contains('listdir');
+    if (isListDirTool) {
+      final dirTarget = _firstParam(toolParams, const [
+        'DirectoryPath',
+        'directory_path',
+        'FolderPath',
+        'folder_path',
+        'Path',
+        'path',
+      ]);
+      if (dirTarget.isNotEmpty) {
+        return 'Xem thư mục: ${formatCliToolPath(dirTarget, workingDir: workingDir)}';
+      }
+    }
+
+    // 4. File operations (read_file, view_file, edit_file, write_file, Read, Edit, Write, etc.)
+    final rawFilePath = _firstParam(toolParams, const [
+      'Path',
+      'path',
+      'file_path',
+      'filePath',
+      'AbsolutePath',
+      'absolute_path',
+      'TargetFile',
+      'target_file',
+      'Filename',
+      'filename',
+      'notebook_path',
+      'NotebookPath',
+      'file',
+    ]);
+    if (rawFilePath.isNotEmpty) {
+      final displayPath = formatCliToolPath(
+        rawFilePath,
+        workingDir: workingDir,
+      );
+      final startLine = _firstParam(toolParams, const [
+        'StartLine',
+        'start_line',
+        'offset',
+        'StartLineNumber',
+      ]);
+      final endLine = _firstParam(toolParams, const [
+        'EndLine',
+        'end_line',
+        'EndLineNumber',
+      ]);
+      final limit = _firstParam(toolParams, const ['limit', 'Limit']);
+
+      String rangeSuffix = '';
+      if (startLine.isNotEmpty && endLine.isNotEmpty) {
+        rangeSuffix = ' (dòng $startLine-$endLine)';
+      } else if (startLine.isNotEmpty && limit.isNotEmpty) {
+        final sNum = int.tryParse(startLine);
+        final lNum = int.tryParse(limit);
+        if (sNum != null && lNum != null && lNum > 0) {
+          rangeSuffix = ' (dòng $sNum-${sNum + lNum - 1})';
+        } else {
+          rangeSuffix = ' (từ dòng $startLine, $limit dòng)';
+        }
+      } else if (startLine.isNotEmpty) {
+        rangeSuffix = ' (từ dòng $startLine)';
+      } else if (endLine.isNotEmpty) {
+        rangeSuffix = ' (đến dòng $endLine)';
+      }
+
+      if (lowerTool.contains('read') ||
+          lowerTool.contains('view') ||
+          lowerTool == 'cat') {
+        return 'Đọc file: $displayPath$rangeSuffix';
+      }
+      if (lowerTool.contains('write') || lowerTool.contains('create')) {
+        return 'Ghi file: $displayPath';
+      }
+      if (lowerTool.contains('edit') ||
+          lowerTool.contains('replace') ||
+          lowerTool.contains('patch')) {
+        final instruction = _firstParam(toolParams, const [
+          'Instruction',
+          'instruction',
+        ]);
+        return instruction.isNotEmpty
+            ? '$instruction: $displayPath'
+            : 'Sửa file: $displayPath';
+      }
+      if (lowerTool.contains('delete') ||
+          lowerTool.contains('remove') ||
+          lowerTool == 'rm') {
+        return 'Xóa file: $displayPath';
+      }
+      return '$displayPath$rangeSuffix';
+    }
+
+    // 5. Generic query / directory path / URL
+    if (query.isNotEmpty) {
+      final searchDir = _firstParam(toolParams, const [
+        'SearchPath',
+        'search_path',
+        'DirectoryPath',
+        'directory_path',
+      ]);
+      return searchDir.isNotEmpty
+          ? 'Tìm "$query" trong ${formatCliToolPath(searchDir, workingDir: workingDir)}'
+          : 'Tìm "$query"';
+    }
+
+    final dirOnly = _firstParam(toolParams, const [
+      'DirectoryPath',
+      'directory_path',
+      'FolderPath',
+      'folder_path',
+    ]);
+    if (dirOnly.isNotEmpty) {
+      return 'Xem thư mục: ${formatCliToolPath(dirOnly, workingDir: workingDir)}';
+    }
+
+    final url = _firstParam(toolParams, const ['Url', 'url', 'uri', 'URI']);
+    if (url.isNotEmpty) {
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return 'Đọc URL: $url';
+      }
+      return 'Đọc tài nguyên: ${formatCliToolPath(url, workingDir: workingDir)}';
+    }
+
+    // 6. Subagent / Task / Swarm / Messaging
+    if (lowerTool.contains('subagent') || lowerTool == 'task') {
+      final subDesc = _firstParam(toolParams, const [
+        'Role',
+        'role',
+        'description',
+        'TypeName',
+        'subagent_type',
+      ]);
+      if (subDesc.isNotEmpty) return 'Tác tử phụ: $subDesc';
+    }
+
+    if (lowerTool.contains('manage_task')) {
+      final action = _firstParam(toolParams, const ['Action', 'action']);
+      final taskId = _firstParam(toolParams, const ['TaskId', 'task_id']);
+      if (action.isNotEmpty) {
+        return taskId.isNotEmpty
+            ? 'Quản lý tác vụ: $action ($taskId)'
+            : 'Quản lý tác vụ: $action';
+      }
+    }
+
+    if (lowerTool.contains('swarm')) {
+      final action = _firstParam(toolParams, const ['action', 'Action']);
+      final target = _firstParam(toolParams, const ['name', 'title']);
+      if (action.isNotEmpty) {
+        return target.isNotEmpty
+            ? 'Swarm: $action ($target)'
+            : 'Swarm: $action';
+      }
+    }
+
+    if (lowerTool.contains('send_message')) {
+      final recipient = _firstParam(toolParams, const [
+        'Recipient',
+        'recipient',
+      ]);
+      if (recipient.isNotEmpty) return 'Nhắn tới tác tử: $recipient';
+    }
+
+    final actionLabel = _firstParam(toolParams, const [
+      'toolAction',
+      'toolSummary',
+      'description',
+    ]);
+    if (actionLabel.isNotEmpty) {
+      return actionLabel;
+    }
+
+    // 7. Compact scalar fallback (skip bulky content fields)
+    const ignoredKeys = <String>{
+      'content',
+      'contents',
+      'target',
+      'replacement',
+      'old_string',
+      'new_string',
+      'diff_block',
+      'prompt',
+      'systemprompt',
+      'system_prompt',
+      'waitmsbeforeasync',
+      'isdaemon',
+      'overwrite',
+      'append',
+      'artifactmetadata',
+    };
+    final parts = <String>[];
+    for (final entry in toolParams.entries) {
+      if (ignoredKeys.contains(entry.key.toLowerCase())) continue;
+      final val = entry.value;
+      if (val == null || val is Map || val is List) continue;
+      final s = cleanToolParamValue(val);
+      if (s.isEmpty) continue;
+      final preview = s.length > 60 ? '${s.substring(0, 60)}...' : s;
+      parts.add('${entry.key}=$preview');
+      if (parts.length >= 2) break;
+    }
+    if (parts.isNotEmpty) {
+      return parts.join(', ');
+    }
+
+    return cleanToolName;
+  }
+
   bool _isCliModel(String model) {
     final m = model.toLowerCase().trim();
     return m.contains('cli') || m == 'agy' || m == 'claude' || m == 'gemini';
@@ -1372,6 +1839,305 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
   /// Disposes all prewarmed/active CLI workers from RAM (noop stub)
   static void disposeAgyWorkers() {}
 
+  /// Chuyển đổi tên máy chủ thành định danh lệnh an toàn cho terminal
+  static String sanitizeServerIdentifier(String raw) {
+    final sb = StringBuffer();
+    for (final code in raw.runes) {
+      final isAlnum = (code >= 0x30 && code <= 0x39) ||
+          (code >= 0x41 && code <= 0x5A) ||
+          (code >= 0x61 && code <= 0x7A);
+      if (isAlnum) {
+        sb.write(String.fromCharCode(code).toLowerCase());
+      } else if (sb.isNotEmpty && !sb.toString().endsWith('_')) {
+        sb.write('_');
+      }
+    }
+    var name = sb.toString();
+    while (name.endsWith('_')) {
+      name = name.substring(0, name.length - 1);
+    }
+    return name.isEmpty ? 'server' : name;
+  }
+
+  static const String _sshRunnerScript = r'''#!/usr/bin/env python3
+import sys
+import os
+import argparse
+import pexpect
+import subprocess
+
+def main():
+    parser = argparse.ArgumentParser(description="SSH Runner with non-interactive authentication")
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--port", type=int, default=22)
+    parser.add_argument("--user", default="root")
+    parser.add_argument("--pass-file", default=None)
+    parser.add_argument("--key-file", default=None)
+    parser.add_argument("--dir", default=None)
+    parser.add_argument("cmd", nargs=argparse.REMAINDER)
+    
+    args = parser.parse_args()
+    raw_cmd = args.cmd
+    if raw_cmd and raw_cmd[0] == "--":
+        raw_cmd = raw_cmd[1:]
+    
+    if not raw_cmd:
+        print("Error: No command specified to run on remote host.", file=sys.stderr)
+        sys.exit(1)
+        
+    remote_command = " ".join(raw_cmd)
+    env_setup = 'export PATH="$HOME/.local/bin:$HOME/bin:/usr/local/bin:/usr/bin:/bin:$PATH"'
+    if args.dir and args.dir.strip():
+        remote_command = f'{env_setup}; cd "{args.dir.strip()}" 2>/dev/null; {remote_command}'
+    else:
+        remote_command = f'{env_setup}; {remote_command}'
+
+    password = None
+    if args.pass_file and os.path.isfile(args.pass_file):
+        try:
+            with open(args.pass_file, "r", encoding="utf-8") as f:
+                password = f.read().rstrip("\r\n")
+        except Exception:
+            pass
+
+    key_file = args.key_file if (args.key_file and os.path.isfile(args.key_file)) else None
+
+    ssh_opts = [
+        "-p", str(args.port),
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "LogLevel=ERROR",
+    ]
+    if key_file:
+        ssh_opts.extend(["-i", key_file])
+
+    target = f"{args.user}@{args.host}"
+
+    if not password:
+        full_args = ["ssh"] + ssh_opts + [target, remote_command]
+        res = subprocess.run(full_args)
+        sys.exit(res.returncode)
+
+    ssh_cmd_list = ["ssh"] + ssh_opts + [target, remote_command]
+    try:
+        child = pexpect.spawn(ssh_cmd_list[0], ssh_cmd_list[1:], timeout=300, encoding="utf-8")
+        while True:
+            idx = child.expect([
+                r"(?i)are you sure you want to continue connecting \(yes/no",
+                r"(?i)password:",
+                r"(?i)enter passphrase for key",
+                pexpect.EOF,
+                pexpect.TIMEOUT
+            ], timeout=15)
+            if idx == 0:
+                child.sendline("yes")
+            elif idx == 1 or idx == 2:
+                child.sendline(password)
+                break
+            elif idx == 3 or idx == 4:
+                break
+                
+        child.expect(pexpect.EOF, timeout=300)
+        output = child.before
+        if output:
+            print(output, end="")
+        child.close()
+        sys.exit(child.exitstatus or 0)
+    except pexpect.TIMEOUT:
+        print(f"\n[SSH Timeout]: Lệnh thực thi trên {args.host} vượt quá giới hạn thời gian chờ.", file=sys.stderr)
+        sys.exit(124)
+    except Exception as e:
+        print(f"\n[SSH Error]: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+''';
+
+  static const String _scpRunnerScript = r'''#!/usr/bin/env python3
+import sys
+import os
+import argparse
+import pexpect
+import subprocess
+
+def main():
+    parser = argparse.ArgumentParser(description="SCP Runner with non-interactive authentication")
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--port", type=int, default=22)
+    parser.add_argument("--user", default="root")
+    parser.add_argument("--pass-file", default=None)
+    parser.add_argument("--key-file", default=None)
+    parser.add_argument("--dir", default=None)
+    parser.add_argument("paths", nargs=argparse.REMAINDER)
+    
+    args = parser.parse_args()
+    raw_paths = args.paths
+    if raw_paths and raw_paths[0] == "--":
+        raw_paths = raw_paths[1:]
+        
+    if len(raw_paths) < 2:
+        print("Usage: scp_<server> <source> <destination>", file=sys.stderr)
+        print("Examples:", file=sys.stderr)
+        print("  scp_<server> file.txt remote_file.txt    (upload to remoteWorkDir)", file=sys.stderr)
+        print("  scp_<server> :remote_file.txt file.txt   (download from remoteWorkDir)", file=sys.stderr)
+        sys.exit(1)
+        
+    src = raw_paths[0]
+    dst = raw_paths[1]
+    extra_scp_flags = ["-r"]
+    
+    target_prefix = f"{args.user}@{args.host}:"
+    remote_base = (args.dir.rstrip("/") + "/") if (args.dir and args.dir.strip()) else ""
+    
+    if src.startswith(":"):
+        rel_remote = src[1:]
+        full_remote = rel_remote if rel_remote.startswith("/") else (remote_base + rel_remote)
+        scp_src = f"{target_prefix}{full_remote}"
+        scp_dst = dst
+    else:
+        scp_src = src
+        full_remote = dst if dst.startswith("/") else (remote_base + dst)
+        scp_dst = f"{target_prefix}{full_remote}"
+        
+    password = None
+    if args.pass_file and os.path.isfile(args.pass_file):
+        try:
+            with open(args.pass_file, "r", encoding="utf-8") as f:
+                password = f.read().rstrip("\r\n")
+        except Exception:
+            pass
+
+    key_file = args.key_file if (args.key_file and os.path.isfile(args.key_file)) else None
+
+    scp_opts = [
+        "-P", str(args.port),
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "LogLevel=ERROR",
+    ] + extra_scp_flags
+    if key_file:
+        scp_opts.extend(["-i", key_file])
+
+    full_cmd_list = ["scp"] + scp_opts + [scp_src, scp_dst]
+
+    if not password:
+        res = subprocess.run(full_cmd_list)
+        sys.exit(res.returncode)
+
+    try:
+        child = pexpect.spawn(full_cmd_list[0], full_cmd_list[1:], timeout=300, encoding="utf-8")
+        while True:
+            idx = child.expect([
+                r"(?i)are you sure you want to continue connecting \(yes/no",
+                r"(?i)password:",
+                r"(?i)enter passphrase for key",
+                pexpect.EOF,
+                pexpect.TIMEOUT
+            ], timeout=15)
+            if idx == 0:
+                child.sendline("yes")
+            elif idx == 1 or idx == 2:
+                child.sendline(password)
+                break
+            elif idx == 3 or idx == 4:
+                break
+                
+        child.expect(pexpect.EOF, timeout=300)
+        output = child.before
+        if output:
+            print(output, end="")
+        child.close()
+        sys.exit(child.exitstatus or 0)
+    except Exception as e:
+        print(f"\n[SCP Error]: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+''';
+
+  static Future<String?> _prepareSshHelpers(List<ServerModel> servers) async {
+    if (servers.isEmpty) return null;
+    try {
+      final home = Platform.environment['HOME'] ?? '';
+      if (home.isEmpty) return null;
+      final helperDir = Directory('$home/.ai_type_agent/ssh_helpers');
+      if (!helperDir.existsSync()) {
+        helperDir.createSync(recursive: true);
+      }
+      if (!Platform.isWindows) {
+        try {
+          Process.runSync('chmod', ['700', helperDir.path]);
+        } catch (_) {}
+      }
+
+      // Write runner scripts
+      final sshRunnerFile = File('${helperDir.path}/ssh_runner.py');
+      sshRunnerFile.writeAsStringSync(_sshRunnerScript);
+      final scpRunnerFile = File('${helperDir.path}/scp_runner.py');
+      scpRunnerFile.writeAsStringSync(_scpRunnerScript);
+      if (!Platform.isWindows) {
+        try {
+          Process.runSync('chmod', ['755', sshRunnerFile.path, scpRunnerFile.path]);
+        } catch (_) {}
+      }
+
+      for (final s in servers) {
+        final id = sanitizeServerIdentifier(s.name.isNotEmpty ? s.name : s.serverIp);
+        String? passFilePath;
+        if (s.sshPass.isNotEmpty) {
+          final passFile = File('${helperDir.path}/.pass_$id');
+          passFile.writeAsStringSync(s.sshPass);
+          if (!Platform.isWindows) {
+            try {
+              Process.runSync('chmod', ['600', passFile.path]);
+            } catch (_) {}
+          }
+          passFilePath = passFile.path;
+        }
+
+        String? keyFilePath;
+        if (s.sshKey != null && s.sshKey!.trim().isNotEmpty) {
+          final keyFile = File('${helperDir.path}/.key_$id');
+          keyFile.writeAsStringSync(s.sshKey!.trim());
+          if (!Platform.isWindows) {
+            try {
+              Process.runSync('chmod', ['600', keyFile.path]);
+            } catch (_) {}
+          }
+          keyFilePath = keyFile.path;
+        }
+
+        final passArg = passFilePath != null ? '--pass-file "$passFilePath"' : '';
+        final keyArg = keyFilePath != null ? '--key-file "$keyFilePath"' : '';
+        final remoteDir = s.remoteWorkDir.isNotEmpty ? s.remoteWorkDir : '';
+
+        // Write Unix bash wrapper
+        final sshSh = File('${helperDir.path}/ssh_$id');
+        sshSh.writeAsStringSync('''#!/usr/bin/env bash
+DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "\$DIR/ssh_runner.py" --host "${s.serverIp}" --port "${s.sshPort}" --user "${s.sshUser}" $passArg $keyArg --dir "$remoteDir" -- "\$@"
+''');
+
+        final scpSh = File('${helperDir.path}/scp_$id');
+        scpSh.writeAsStringSync('''#!/usr/bin/env bash
+DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "\$DIR/scp_runner.py" --host "${s.serverIp}" --port "${s.sshPort}" --user "${s.sshUser}" $passArg $keyArg --dir "$remoteDir" -- "\$@"
+''');
+
+        if (!Platform.isWindows) {
+          try {
+            Process.runSync('chmod', ['755', sshSh.path, scpSh.path]);
+          } catch (_) {}
+        }
+      }
+      return helperDir.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _runCliAgent({
     required String sessionId,
     required String cliName,
@@ -1381,6 +2147,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     String? workingDir,
     List<String>? docFiles,
     ServerModel? targetServerModel,
+    List<ServerModel>? targetServers,
     required void Function(String token) onToken,
     required void Function(String status) onStatus,
     required void Function(ToolExecutionItem tool) onTool,
@@ -1435,110 +2202,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       attachmentPromptBlock = attBuf.toString();
     }
 
-    if (targetServerModel != null) {
-      final configuredBinary = targetServerModel.cliBinary.isNotEmpty
-          ? targetServerModel.cliBinary
-          : 'agy';
-
-      String remoteBinary = configuredBinary;
-      final m = cliName.toLowerCase();
-      if (m.contains('claude')) {
-        remoteBinary = 'claude';
-      } else if (m.contains('gemini')) {
-        remoteBinary = 'gemini';
-      } else if (m.contains('antigravity') || m == 'agy') {
-        remoteBinary = 'agy';
-      }
-
-      onStatus(
-        'Đang gửi lệnh tới $remoteBinary CLI trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp})...',
-      );
-
-      String remoteContextGuide = '';
-      if (workingDir != null && workingDir.isNotEmpty) {
-        remoteContextGuide =
-            '''
-
-=== PHÂN CẤP NGỮ CẢNH: SCOPE CỤC BỘ (ƯU TIÊN HÀNG ĐẦU) & MÁY CHỦ HIỆN TẠI ===
-- SCOPE CỤC BỘ (NGỮ CẢNH CHÍNH CỦA NGƯỜI DÙNG, NGUỒN MÃ CHUẨN ĐỂ ĐỐI CHIẾU): `$workingDir` - thư mục này nằm trên máy cá nhân của người dùng, KHÔNG tồn tại bên trong máy chủ hiện tại. Tuyệt đối không cd hay thao tác như thể nó có ở đây.
-- Môi trường thực thi hiện tại: Bạn đang chạy trực tiếp trên máy chủ ${targetServerModel.name} (${targetServerModel.serverIp}), thư mục làm việc `${targetServerModel.remoteWorkDir}`.
-- Khi người dùng yêu cầu lấy code ở Scope để đối chiếu/ghi đè lên Server: đối chiếu dựa trên nội dung tệp/tài liệu đã được nhúng trong prompt (nếu có); nếu thiếu nội dung tệp ở Scope, hãy liệt kê rõ đường dẫn tệp cần thiết để người dùng cung cấp thêm, hoặc đề nghị chuyển sang mô hình chat có bộ công cụ hai chiều (execute_terminal_command cho Scope cục bộ, execute_server_command cho Server).
-- Công việc sửa code/thực thi trên máy chủ mặc định thực hiện tại `${targetServerModel.remoteWorkDir}`.
-- TÀI LIỆU PHÂN TÍCH KIẾN TRÚC: Nếu trong thư mục làm việc trên máy chủ này tồn tại thư mục dữ liệu phân tích ẩn (bắt đầu bằng dấu chấm, kết thúc bằng cache, kiểm tra bằng ls -a), hãy ƯU TIÊN đọc file báo cáo kiến trúc GRAPH_REPORT.md ngay trong thư mục đó (god nodes, cộng đồng module, kết nối bất ngờ) để hiểu kiến trúc dự án TRƯỚC; nếu có wiki/index.md hãy điều hướng kiến thức qua wiki; khi cần chi tiết, đọc trực tiếp file graph.json (cạnh gắn nhãn EXTRACTED/INFERRED/AMBIGUOUS); sau đó CHỈ đọc đúng các file mã nguồn liên quan trực tiếp đến yêu cầu (đã định vị qua dữ liệu phân tích), tuyệt đối không quét toàn bộ cây mã nguồn. Độ tươi của dữ liệu phân tích được hệ thống giữ tự động ở nền - không chạy, không đề nghị chạy bất kỳ lệnh nào để làm mới nó. Tuyệt đối không chỉnh sửa thư mục này ngoại trụ việc đọc, không đề cập tên hệ thống sinh ra nó trong câu trả lời cho người dùng.
-=== HẾT PHÂN CẤP NGỮ CẢNH ===
-''';
-      }
-
-      final promptSuffix =
-          (customPromptTemplate != null &&
-              customPromptTemplate.trim().isNotEmpty)
-          ? customPromptTemplate.trim()
-          : '(Yêu cầu: Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn. Tuyệt đối không đọc, truy cập hoặc làm lộ các file cấu hình config*.json, .env hay credential của hệ thống và người dùng)';
-      final effectivePrompt = attachmentPromptBlock.isNotEmpty
-          ? '$prompt\n\n$attachmentPromptBlock$remoteContextGuide\n$promptSuffix'
-          : '$prompt\n\n$remoteContextGuide$promptSuffix';
-      final cleanPrompt = effectivePrompt;
-      final escapedPrompt = cleanPrompt.replaceAll("'", "'\\''");
-
-      String remoteCliArgs =
-          "-p '$escapedPrompt' --dangerously-skip-permissions";
-      if (remoteBinary == 'agy' || remoteBinary.contains('antigravity')) {
-        if (cliConvId != null && cliConvId.isNotEmpty) {
-          remoteCliArgs =
-              "--conversation '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
-        } else {
-          remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
-        }
-      } else if (remoteBinary == 'claude' || remoteBinary.contains('claude')) {
-        if (cliConvId != null && cliConvId.isNotEmpty) {
-          remoteCliArgs =
-              "--session-id '$cliConvId' -p '$escapedPrompt' --dangerously-skip-permissions";
-        } else {
-          remoteCliArgs = "-p '$escapedPrompt' --dangerously-skip-permissions";
-        }
-      }
-
-      final cmd =
-          '''
-export PATH="\$HOME/.local/bin:\$HOME/bin:\$HOME/.nvm/versions/node/\$(ls \$HOME/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"
-if command -v $remoteBinary >/dev/null 2>&1; then
-  $remoteBinary $remoteCliArgs 2>&1
-elif [ -f "\$HOME/.local/bin/$remoteBinary" ]; then
-  "\$HOME/.local/bin/$remoteBinary" $remoteCliArgs 2>&1
-elif [ -f "/usr/local/bin/$remoteBinary" ]; then
-  "/usr/local/bin/$remoteBinary" $remoteCliArgs 2>&1
-else
-  echo "LỖI: Máy chủ ${targetServerModel.name} (${targetServerModel.serverIp}) chưa được cài đặt '$remoteBinary'."
-  echo ""
-  echo "Thông tin chế độ server:"
-  echo "- Chế độ đã chọn: Chế độ 2 (CLI Agent: $remoteBinary)"
-  echo "- Hướng dẫn cài đặt $remoteBinary trên máy chủ VPS: ssh vào VPS và cài đặt $remoteBinary vào ~/.local/bin hoặc /usr/local/bin."
-  echo "- Hoặc nếu máy chủ chạy dịch vụ systemd (ai-agent.service), hãy chuyển cấu hình máy chủ sang 'Chế độ 1: Dịch vụ AI Agent (Systemd)'."
-fi
-''';
-      final remoteWorkDir = (targetServerModel.remoteWorkDir.isNotEmpty)
-          ? targetServerModel.remoteWorkDir
-          : null;
-      final result = await _executeCommand(
-        cmd,
-        workingDir: remoteWorkDir,
-        timeoutSeconds: 600,
-        server: targetServerModel,
-      );
-      final convMatch = RegExp(
-        r'"conversation_id":\s*"([^"]+)"',
-      ).firstMatch(result);
-      if (convMatch != null) {
-        final foundConv = convMatch.group(1);
-        if (foundConv != null && foundConv.isNotEmpty) {
-          await _dbService.setCliConversationId(sessionId, foundConv);
-        }
-      }
-      final cleanRes = stripSystemMessages(result);
-      onToken(cleanRes);
-      onDone(cleanRes);
-      return;
-    }
+    final serversList = <ServerModel>[
+      ...?targetServers,
+      if ((targetServers == null || targetServers.isEmpty) &&
+          targetServerModel != null)
+        targetServerModel,
+    ];
+    final sshHelperPath = await _prepareSshHelpers(serversList);
 
     try {
       final workDir = (workingDir != null && Directory(workingDir).existsSync())
@@ -1561,25 +2231,56 @@ fi
 - Viết tiếng Việt có đầy đủ dấu thanh chuẩn chính tả, tuyệt đối không dùng emoji hay icon trong câu trả lời, trình bày bằng định dạng markdown kỹ thuật chuẩn.
 - Khi tạo dự án hoặc cài đặt mã nguồn/thư viện (như Payload CMS, Next.js, npm, npx, pip, cargo): HÃY THỰC THI ĐỒNG BỘ VÀ HOÀN TẤT TRỌN VẸN TRONG LƯỢT NÀY. Luôn truyền cờ tự động không tương tác (ví dụ: -y, --yes, --template blank, --db sqlite) để lệnh tự động cài đặt xong ngay.
 - TUYỆT ĐỐI CẤM TRUY CẬP, ĐỌC, IN RA MÀN HÌNH HOẶC GIẢI MÃ BẤT KỲ FILE CẤU HÌNH TÀI KHOẢN NÀO (như config*.json, ~/.ai_type_agent/config*.json, ~/.tadu_ai_agent/config*.json, .env, chat_history*.db, các khóa bảo mật hệ thống). Nếu người dùng yêu cầu đọc file config tài khoản, phải từ chối vì lý do bảo mật.
-- Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo đầy đủ cho người dùng.''';
+- Tuyệt đối KHÔNG kết thúc sớm khi chưa có kết quả đầy đủ. Hãy đợi kiểm tra/cài đặt hoàn tất, xác nhận cấu trúc thư mục/kết quả đã tạo và báo cáo cho người dùng.
+- TRÌNH BÀY SÚC TÍCH, CHỐNG TRÀN VĂN BẢN: Trong lúc đang chạy lệnh/công cụ, KHÔNG viết văn bản suy nghĩ dài dòng hay in lại nội dung file/log ra câu trả lời. Khi báo cáo kết quả cuối cùng, hãy tóm tắt ngắn gọn, đi thẳng vào trọng tâm (khoảng 15 - 30 dòng).''';
       }
 
-      // Bổ sung thông tin máy chủ SSH phụ trợ (nếu phiên liên kết Server) - Scope vẫn là ưu tiên chính
-      if (targetServerModel != null) {
+      // Bổ sung thông tin các máy chủ SSH đã liên kết - Scope vẫn là ưu tiên chính
+      if (serversList.isNotEmpty) {
         final srvBuf = StringBuffer();
         srvBuf.writeln(
-          '\n\n=== MÁY CHỦ TỪ XA BỔ SUNG (SSH) - PHỤC VỤ CHO SCOPE, KHÔNG THAY THẾ SCOPE ===',
+          '\n\n=== MÁY CHỦ TỪ XA ĐÃ LIÊN KẾT CHO PHIÊN NÀY (SSH TARGETS) ===',
         );
         srvBuf.writeln(
-          '- Scope cục bộ (ngữ cảnh chính, ưu tiên hàng đầu, môi trường thực thi mặc định): `$workDir`.',
+          '- Môi trường thực thi chính của Agent: Máy tính cục bộ tại Scope `$workDir`.',
         );
         srvBuf.writeln(
-          '- Máy chủ từ xa bổ sung: ${targetServerModel.name} (${targetServerModel.serverIp}), SSH: ${targetServerModel.sshUser}@${targetServerModel.serverIp}:${targetServerModel.sshPort}, Remote WorkDir: `${targetServerModel.remoteWorkDir}`.',
+          '- Phiên làm việc này được người dùng liên kết với các máy chủ sau để điều khiển qua SSH:',
+        );
+        for (final s in serversList) {
+          final idName = sanitizeServerIdentifier(
+            s.name.isNotEmpty ? s.name : s.serverIp,
+          );
+          srvBuf.writeln('\n* MÁY CHỦ [${s.name}] (${s.serverIp})');
+          srvBuf.writeln(
+            '  + Tài khoản: ${s.sshUser}@${s.serverIp}:${s.sshPort}',
+          );
+          srvBuf.writeln(
+            '  + Thư mục làm việc trên Server (Remote WorkDir): `${s.remoteWorkDir}`',
+          );
+          srvBuf.writeln('  + LỆNH ĐIỀU KHIỂN TỪ XA: `ssh_$idName "<command>"`');
+          srvBuf.writeln(
+            '    (Lệnh này đã được cấu hình sẵn thông tin đăng nhập tự động. Khi gọi `ssh_$idName "<command>"`, lệnh sẽ tự động được gửi qua SSH đến máy chủ và thực thi tại `${s.remoteWorkDir}`).',
+          );
+          srvBuf.writeln('  + LỆNH SAO CHÉP TỆP HAI CHIỀU:');
+          srvBuf.writeln(
+            '    - Từ Scope lên Server: `scp_$idName <đường_dẫn_local> <đường_dẫn_remote>`',
+          );
+          srvBuf.writeln(
+            '    - Từ Server về Scope: `scp_$idName :<đường_dẫn_remote> <đường_dẫn_local>`',
+          );
+        }
+        srvBuf.writeln('\n- HƯỚNG DẪN ĐIỀU KHIỂN VÀ TRIỂN KHAI:');
+        srvBuf.writeln(
+          '  1. Bạn chạy lệnh `ssh_<tên_server> "<lệnh>"` hoặc `scp_<tên_server> ...` trực tiếp trong công cụ terminal/bash của bạn.',
         );
         srvBuf.writeln(
-          '- Bạn đang chạy cục bộ tại Scope nên không có công cụ SSH riêng của ứng dụng; khi cần đối chiếu hoặc ghi đè code từ Scope lên Server, hãy dùng lệnh ssh/scp/rsync từ shell (chỉ khả dụng khi máy này có khóa SSH hoặc sshpass), hoặc đề nghị người dùng chuyển sang mô hình chat có bộ công cụ hai chiều (execute_terminal_command cho Scope, execute_server_command cho Server).',
+          '  2. Máy chủ từ xa KHÔNG cần cài đặt agy, claude hay bất kỳ AI CLI nào. Mọi thao tác được thực hiện trực tiếp thông qua giao thức SSH tiêu chuẩn.',
         );
-        srvBuf.writeln('=== HẾT THÔNG TIN MÁY CHỦ BỔ SUNG ===');
+        srvBuf.writeln(
+          '  3. Luôn đối chiếu kỹ mã nguồn tại Scope cục bộ trước khi đồng bộ hoặc ghi đè lên Server từ xa.',
+        );
+        srvBuf.writeln('=== HẾT DANH SÁCH MÁY CHỦ LIÊN KẾT ===\n');
         promptSuffix = '$promptSuffix${srvBuf.toString()}';
       }
 
@@ -1670,6 +2371,8 @@ fi
       final home = Platform.environment['HOME'] ?? '';
       final currentPath = env['PATH'] ?? '';
       final extraPaths = <String>[
+        if (sshHelperPath != null && sshHelperPath.isNotEmpty) sshHelperPath,
+        '$home/.ai_type_agent/ssh_helpers',
         '$home/.local/bin',
         '$home/bin',
         '/usr/local/bin',
@@ -1813,6 +2516,10 @@ fi
         }
       });
 
+      final stepCmdByIndex = <int, String>{};
+      final activeEmittedSteps = <int>{};
+      final claudeEmittedToolIds = <String>{};
+
       process.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((
         line,
       ) {
@@ -1845,7 +2552,7 @@ fi
             if (json.containsKey('event')) {
               final event = json['event'];
               if (event == 'step_update') {
-                final step = json['step_update'] as Map<String, dynamic>?;
+                final step = asJsonMap(json['step_update']);
                 final stepType = step?['step_type']?.toString();
                 final textDelta =
                     step?['text_delta']?.toString() ??
@@ -1853,57 +2560,84 @@ fi
                     step?['text']?.toString();
                 final errorMsg = step?['error']?.toString();
 
-                if (textDelta != null && textDelta.isNotEmpty) {
+                if (stepType == 'thought' || stepType == 'thinking') {
+                  onStatus('AI đang suy nghĩ và lập kế hoạch...');
+                } else if (textDelta != null && textDelta.isNotEmpty) {
                   fullOutput.write(textDelta);
                   onToken(textDelta);
                 } else if (errorMsg != null && errorMsg.isNotEmpty) {
                   fullOutput.write('\n[Lỗi]: $errorMsg\n');
                   onToken('\n[Lỗi]: $errorMsg\n');
                 } else if (stepType == 'tool' || stepType == 'tool_call') {
-                  final state = step?['state']?.toString();
-                  final toolInfo = step?['tool_info'] as Map<String, dynamic>?;
-                  final toolParams =
-                      toolInfo?['parameters'] as Map<String, dynamic>? ??
-                      step?['tool_args'] as Map<String, dynamic>? ??
-                      step?['parameters'] as Map<String, dynamic>? ??
-                      step?['args'] as Map<String, dynamic>?;
+                  final state = step?['state']?.toString().toUpperCase();
+                  final stepIdx = step?['step_index'] is int
+                      ? step!['step_index'] as int
+                      : int.tryParse(step?['step_index']?.toString() ?? '');
+                  final toolInfo = asJsonMap(step?['tool_info']);
+                  final toolParams = extractCliToolParams(step);
                   final toolName =
                       step?['tool_name']?.toString() ??
                       toolInfo?['name']?.toString() ??
                       'công cụ';
 
-                  String cmdDesc = '';
-                  if (toolParams != null) {
-                    if (toolParams['CommandLine'] != null) {
-                      cmdDesc = toolParams['CommandLine'].toString();
-                    } else if (toolParams['TargetFile'] != null) {
-                      cmdDesc =
-                          '${toolParams['Instruction'] ?? 'Sửa file'}: ${toolParams['TargetFile']}';
-                    } else if (toolParams['AbsolutePath'] != null) {
-                      cmdDesc = 'Đọc file: ${toolParams['AbsolutePath']}';
-                    } else if (toolParams['Query'] != null) {
-                      cmdDesc =
-                          'Tìm "${toolParams['Query']}" trong ${toolParams['SearchPath'] ?? ''}';
-                    } else if (toolParams['DirectoryPath'] != null) {
-                      cmdDesc = 'Xem thư mục: ${toolParams['DirectoryPath']}';
-                    } else if (toolParams['toolAction'] != null) {
-                      cmdDesc = toolParams['toolAction'].toString();
-                    } else if (toolParams['command'] != null) {
-                      cmdDesc = toolParams['command'].toString();
-                    }
+                  var cmdDesc = describeCliToolCall(
+                    toolName: toolName,
+                    toolParams: toolParams,
+                    workingDir: workDir,
+                  );
+                  if (cmdDesc != toolName &&
+                      cmdDesc.isNotEmpty &&
+                      stepIdx != null) {
+                    stepCmdByIndex[stepIdx] = cmdDesc;
+                  } else if ((cmdDesc.isEmpty || cmdDesc == toolName) &&
+                      stepIdx != null &&
+                      stepCmdByIndex.containsKey(stepIdx)) {
+                    cmdDesc = stepCmdByIndex[stepIdx]!;
                   }
                   if (cmdDesc.isEmpty) {
                     cmdDesc = toolName;
                   }
 
-                  if (state == 'ACTIVE') {
-                    onStatus('Đang thực thi $toolName: $cmdDesc...');
+                  if (state == 'ACTIVE' || state == 'RUNNING') {
+                    if (fullOutput.isNotEmpty) {
+                      fullOutput.clear();
+                      onToken('__CLEAR_INTERMEDIATE_THOUGHTS__');
+                    }
+                    final statusLabel = cmdDesc == toolName
+                        ? 'Đang thực thi $toolName...'
+                        : 'Đang thực thi $toolName: $cmdDesc...';
+                    onStatus(statusLabel);
+                    if (stepIdx == null || activeEmittedSteps.add(stepIdx)) {
+                      onTool(
+                        ToolExecutionItem(
+                          tool: toolName,
+                          command: cmdDesc,
+                          output: 'Đang thực thi...',
+                        ),
+                      );
+                    }
                   } else {
-                    final output =
+                    final rawOut =
                         toolInfo?['output']?.toString() ??
                         step?['output']?.toString() ??
                         step?['tool_result']?.toString() ??
                         '';
+                    final toolErr =
+                        toolInfo?['error']?.toString() ??
+                        step?['error_message']?.toString() ??
+                        '';
+                    final plainCacheDir = StealthVault.cacheDirName.replaceAll(
+                      r'\.',
+                      '.',
+                    );
+                    final isInternalCache =
+                        plainCacheDir.isNotEmpty &&
+                        cmdDesc.contains('ngữ cảnh kiến trúc dự án');
+                    final output = rawOut.isNotEmpty
+                        ? rawOut
+                        : (toolErr.isNotEmpty && !isInternalCache
+                              ? 'Lỗi: $toolErr'
+                              : '');
                     onTool(
                       ToolExecutionItem(
                         tool: toolName,
@@ -1920,8 +2654,10 @@ fi
                 final resp = res?['response']?.toString();
                 final status = res?['status']?.toString();
                 final errorMsg = res?['error']?.toString();
-                if (resp != null && resp.isNotEmpty && fullOutput.isEmpty) {
+                if (resp != null && resp.isNotEmpty) {
+                  fullOutput.clear();
                   fullOutput.write(resp);
+                  onToken('__CLEAR_INTERMEDIATE_THOUGHTS__');
                   onToken(resp);
                 } else if (status == 'ERROR' &&
                     errorMsg != null &&
@@ -1970,7 +2706,7 @@ fi
                   onToken('\n[Lỗi Claude]: $err\n');
                 }
               } else if (type == 'assistant') {
-                final msg = json['message'] as Map<String, dynamic>?;
+                final msg = asJsonMap(json['message']);
                 final contents = msg?['content'] as List<dynamic>?;
                 if (contents != null) {
                   for (final c in contents) {
@@ -1979,6 +2715,29 @@ fi
                       if (t != null && fullOutput.isEmpty) {
                         fullOutput.write(t);
                         onToken(t);
+                      }
+                    } else if (c is Map && c['type'] == 'tool_use') {
+                      final tId = c['id']?.toString() ?? '';
+                      final tName = c['name']?.toString() ?? 'tool';
+                      final tParams = asJsonMap(c['input']);
+                      final desc = describeCliToolCall(
+                        toolName: tName,
+                        toolParams: tParams,
+                        workingDir: workDir,
+                      );
+                      onStatus(
+                        desc == tName
+                            ? 'Đang thực thi $tName...'
+                            : 'Đang thực thi $tName: $desc...',
+                      );
+                      if (tId.isEmpty || claudeEmittedToolIds.add(tId)) {
+                        onTool(
+                          ToolExecutionItem(
+                            tool: tName,
+                            command: desc,
+                            output: '',
+                          ),
+                        );
                       }
                     }
                   }

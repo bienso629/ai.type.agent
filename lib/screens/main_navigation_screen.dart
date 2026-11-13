@@ -45,6 +45,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     const SettingsScreen(), // 4: settings
   ];
 
+  late final List<Widget> _desktopScreens = [
+    ChatScreen(
+      onNavigateToServers: () {
+        setState(() {
+          _activeTabKey = 'servers';
+        });
+      },
+    ), // 0: chat
+    const ServersScreen(), // 1: servers
+    const ServerSetupScreen(), // 2: setup
+    const SizedBox.shrink(), // 3: terminal is embedded directly in ChatScreen on desktop
+    const SettingsScreen(), // 4: settings
+  ];
+
   int get _stackIndex {
     switch (_activeTabKey) {
       case 'chat':
@@ -344,7 +358,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           Expanded(
             child: IndexedStack(
               index: _stackIndex,
-              children: _screens,
+              children: _desktopScreens,
             ),
           ),
         ],

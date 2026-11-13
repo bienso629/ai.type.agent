@@ -1,0 +1,330 @@
+name: Build Installers (Ubuntu & Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Tự động tạo GitHub Release với các file cài đặt'
+        required: false
+        type: boolean
+        default: true
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ===========================================================================
+  # 1. BUILD BẢN CÀI ĐẶT UBUNTU / LINUX (.deb + .tar.gz)
+  # ===========================================================================
+  build-ubuntu:
+    name: Build Ubuntu (.deb & tar.gz)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libcups2-dev libsqlite3-dev dpkg-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Read App Version
+        id: app_version
+        run: |
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d '+' -f1)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building AI Type Agent version: $VERSION"
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Flutter Linux Release
+        run: |
+          flutter build linux --release 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E 'error|Error|failed' build.log | head -30 | while read -r line; do
+              echo "::error::$line"
+            done
+            exit "$code"
+          fi
+
+      - name: Build DEB Package and Portable Tarball
+        run: |
+          VERSION="${{ steps.app_version.outputs.VERSION }}"
+          BUNDLE="build/linux/x64/release/bundle"
+          DEBROOT="build/deb_root"
+          DIST="dist-ubuntu"
+
+          rm -rf "$DEBROOT" "$DIST"
+          mkdir -p "$DEBROOT/DEBIAN" \
+            "$DEBROOT/opt/ai-type-agent" \
+            "$DEBROOT/usr/bin" \
+            "$DEBROOT/usr/share/applications" \
+            "$DEBROOT/usr/share/icons/hicolor/512x512/apps" \
+            "$DIST"
+
+          # 1. Copy bundle binaries
+          cp -r "$BUNDLE/." "$DEBROOT/opt/ai-type-agent/"
+          chmod +x "$DEBROOT/opt/ai-type-agent/ai-type-agent"
+
+          # 2. Tạo symlink trong /usr/bin để chạy được lệnh 'ai-type-agent' từ terminal
+          ln -sf "/opt/ai-type-agent/ai-type-agent" "$DEBROOT/usr/bin/ai-type-agent"
+
+          # 3. Copy Icon
+          if [ -f "assets/app_icon.png" ]; then
+            cp "assets/app_icon.png" "$DEBROOT/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png"
+          elif [ -f "assets/logo.png" ]; then
+            cp "assets/logo.png" "$DEBROOT/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png"
+          fi
+
+          # 4. Tạo Desktop entry shortcut cho Ubuntu App Menu
+          cat > "$DEBROOT/usr/share/applications/ai-type-agent.desktop" << 'EOF'
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=AI Type Agent
+          GenericName=AI Coding Assistant
+          Comment=AI coding assistant with interactive terminal and server management
+          Exec=/opt/ai-type-agent/ai-type-agent %u
+          Icon=ai-type-agent
+          Terminal=false
+          Categories=Development;Utility;IDE;
+          StartupNotify=true
+          StartupWMClass=ai-type-agent
+          EOF
+
+          # 5. Tạo file DEBIAN/control
+          INSTALLED_SIZE=$(du -sk "$DEBROOT" | cut -f1)
+          cat > "$DEBROOT/DEBIAN/control" << EOF
+          Package: ai-type-agent
+          Version: $VERSION
+          Section: devel
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libcups2, libsqlite3-0, liblzma5
+          Installed-Size: $INSTALLED_SIZE
+          Maintainer: Tadu Cloud Team <support@tadu.vn>
+          Homepage: https://tadu.vn
+          Description: AI Type Agent - Tro ly lap trinh va Quan tri ha tang AI
+           Ung dung Desktop danh cho Ubuntu/Debian Linux tich hop Pseudo-Terminal (PTY),
+           quan tri may chu SSH va tuong tac voi AI Agent lap trinh thong minh.
+          EOF
+
+          # 6. Post-install script để cập nhật desktop database & icon cache
+          cat > "$DEBROOT/DEBIAN/postinst" << 'EOF'
+          #!/bin/sh
+          set -e
+          if [ "$1" = "configure" ]; then
+            if command -v update-desktop-database >/dev/null 2>&1; then
+              update-desktop-database -q /usr/share/applications 2>/dev/null || true
+            fi
+            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+              gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+            fi
+          fi
+          exit 0
+          EOF
+          chmod 755 "$DEBROOT/DEBIAN/postinst"
+
+          # 7. Post-remove script
+          cat > "$DEBROOT/DEBIAN/postrm" << 'EOF'
+          #!/bin/sh
+          set -e
+          if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+            if command -v update-desktop-database >/dev/null 2>&1; then
+              update-desktop-database -q /usr/share/applications 2>/dev/null || true
+            fi
+            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+              gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+            fi
+          fi
+          exit 0
+          EOF
+          chmod 755 "$DEBROOT/DEBIAN/postrm"
+
+          # 8. Đóng gói file .deb
+          dpkg-deb --root-owner-group --build "$DEBROOT" "$DIST/ai-type-agent_${VERSION}_linux_amd64.deb"
+
+          # 9. Đóng gói file Portable .tar.gz
+          tar -czf "$DIST/ai-type-agent_${VERSION}_linux_x64.tar.gz" -C "$BUNDLE" .
+
+          echo "=== HOÀN TẤT ĐÓNG GÓI BẢN UBUNTU ==="
+          ls -lh "$DIST"
+
+      - name: Upload Ubuntu Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-type-agent-ubuntu
+          path: dist-ubuntu/*
+          retention-days: 14
+
+  # ===========================================================================
+  # 2. BUILD BẢN CÀI ĐẶT WINDOWS (.exe Setup Installer + .zip Portable)
+  # ===========================================================================
+  build-windows:
+    name: Build Windows (Setup .exe & Portable .zip)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Read App Version
+        id: app_version
+        shell: pwsh
+        run: |
+          $verLine = Get-Content pubspec.yaml | Select-String '^version:\s*([^\+]+)'
+          $version = $verLine.Matches.Groups[1].Value.Trim()
+          "VERSION=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building AI Type Agent version: $version"
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Flutter Windows Release
+        shell: pwsh
+        run: |
+          flutter build windows --release 2>&1 | Tee-Object -FilePath build.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $errLines = Get-Content build.log | Select-String -Pattern 'error|Error|failed' | Select-Object -First 30
+            foreach ($l in $errLines) {
+              Write-Host "::error::$($l.Line.Trim())"
+            }
+            exit $code
+          }
+
+      - name: Package Portable Windows ZIP
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.app_version.outputs.VERSION }}"
+          New-Item -ItemType Directory -Path dist-win -Force | Out-Null
+          Compress-Archive -Path 'build\windows\x64\runner\Release\*' -DestinationPath "dist-win\ai-type-agent_${ver}_windows_x64.zip" -Force
+
+      - name: Build Windows Setup Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.app_version.outputs.VERSION }}"
+          choco install innosetup --no-progress -y
+          $iscc = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe",
+            "C:\ProgramData\chocolatey\bin\iscc.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $iscc) {
+            Write-Host "::error::Khong tim thay trinh bien dich Inno Setup (ISCC.exe)"
+            exit 1
+          }
+
+          Write-Host "Bien dich Setup Installer bang: $iscc voi Version: $ver"
+          & "$iscc" "/DMyAppVersion=$ver" "scripts\installer_windows.iss" 2>&1 | Tee-Object -FilePath iscc.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content iscc.log | Select-String -Pattern 'Error|error' | ForEach-Object {
+              Write-Host "::error::$($_.Line.Trim())"
+            }
+            exit $LASTEXITCODE
+          }
+
+          Write-Host "=== HOAN TAT DONG GOI BAN WINDOWS ==="
+          Get-ChildItem -Path dist-win | Select-Object Name, Length
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-type-agent-windows
+          path: dist-win/*
+          retention-days: 14
+
+  # ===========================================================================
+  # 3. TỰ ĐỘNG PUBLISH GITHUB RELEASE
+  # ===========================================================================
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-ubuntu, build-windows]
+    if: |
+      always() &&
+      needs.build-ubuntu.result == 'success' &&
+      needs.build-windows.result == 'success' &&
+      (github.event.inputs.create_release == 'true' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Read App Version
+        id: app_version
+        run: |
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d '+' -f1)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release Directory
+        run: mkdir -p release-assets
+
+      - name: Download Ubuntu Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-type-agent-ubuntu
+          path: release-assets
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-type-agent-windows
+          path: release-assets
+
+      - name: Display Release Files
+        run: |
+          echo "Danh sach file san pham san sang phat hanh:"
+          ls -lh release-assets/
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.app_version.outputs.VERSION }}-b${{ github.run_number }}
+          name: AI Type Agent v${{ steps.app_version.outputs.VERSION }} (Build ${{ github.run_number }})
+          body: |
+            ## Bản cài đặt AI Type Agent v${{ steps.app_version.outputs.VERSION }}
+            
+            Tự động biên dịch bởi GitHub Actions cho hệ điều hành Ubuntu/Debian Linux và Microsoft Windows x64.
+            
+            ### Gói cài đặt Ubuntu / Debian Linux:
+            - **File cài đặt (.deb):** `ai-type-agent_${{ steps.app_version.outputs.VERSION }}_linux_amd64.deb`
+              - Cài đặt bằng lệnh: `sudo dpkg -i ai-type-agent_${{ steps.app_version.outputs.VERSION }}_linux_amd64.deb` hoặc `sudo apt install ./ai-type-agent_${{ steps.app_version.outputs.VERSION }}_linux_amd64.deb`
+            - **Bản Portable (.tar.gz):** `ai-type-agent_${{ steps.app_version.outputs.VERSION }}_linux_x64.tar.gz`
+              - Giải nén và chạy trực tiếp không cần cài đặt.
+            
+            ### Gói cài đặt Windows x64:
+            - **File cài đặt Setup (.exe):** `ai-type-agent_${{ steps.app_version.outputs.VERSION }}_windows_x64_setup.exe`
+              - Trình cài đặt đồ họa tích hợp Inno Setup, tự động tạo biểu tượng trên Desktop và Start Menu.
+            - **Bản Portable (.zip):** `ai-type-agent_${{ steps.app_version.outputs.VERSION }}_windows_x64.zip`
+              - Giải nén và chạy ngay file `tadu_cloud_ai_agent_mobile.exe`.
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

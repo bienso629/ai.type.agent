@@ -79,6 +79,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _highlightTimer;
   Timer? _stickyScrollThrottleTimer;
   ChatMessageModel? _stickyUserQuestion;
+  final Set<String> _expandedMessageKeys = {};
+  bool _showAllTools = false;
 
   static final MarkdownStyleSheet _sharedMarkdownStyle = MarkdownStyleSheet(
     p: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.55),
@@ -1457,11 +1459,16 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: Row(
-                    children: [
-                      // Left Column (50%): Chat Center Feed View & Input Bar
-                      Expanded(
-                        child: Column(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool isRightPanelOpen = _showTerminalPanel || (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty);
+                      final double rightWidth = isRightPanelOpen ? (constraints.maxWidth * 0.5) : 0.0;
+
+                      return Row(
+                        children: [
+                          // Left Column (50% or 100% when right is closed): Chat Center Feed View & Input Bar
+                          Expanded(
+                            child: Column(
                           children: [
                             // Message Stream & Sticky Question Header
                             Expanded(
@@ -1518,63 +1525,71 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
 
                       // Vertical Divider and Right Column (Terminal Screen or Doc Viewer Panel)
-                      if (_showTerminalPanel || (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty))
+                      if (isRightPanelOpen)
                         const VerticalDivider(
                           width: 1,
                           thickness: 1,
                           color: AppColors.borderDark,
                         ),
 
-                      // Giữ TerminalScreen luôn sống (Offstage + TickerMode) để khi đóng/mở chỉ đơn giản là ẩn/hiện, không bị huỷ hay khởi động lại các tiến trình đang chạy
-                      if (_showTerminalPanel || (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty))
-                        Expanded(
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Offstage(
-                                offstage: !_showTerminalPanel,
-                                child: TickerMode(
-                                  enabled: _showTerminalPanel,
-                                  child: TerminalScreen(
-                                    key: _terminalPanelKey,
-                                    onHidePanel: () {
-                                      setState(() {
-                                        _showTerminalPanel = false;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (chat.currentSessionDocFiles.isNotEmpty)
-                              Positioned.fill(
-                                child: Offstage(
-                                  offstage: !_showDocViewerPanel || _showTerminalPanel,
-                                  child: TickerMode(
-                                    enabled: _showDocViewerPanel && !_showTerminalPanel,
-                                    child: _ScopeDocViewerPanel(
-                                      chat: chat,
-                                      selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
-                                      onSelectDoc: (path) {
-                                        setState(() {
-                                          _selectedViewerDocPath = path;
-                                        });
-                                      },
-                                      onClose: () {
-                                        setState(() {
-                                          _showDocViewerPanel = false;
-                                        });
-                                      },
+                      // Giữ TerminalScreen luôn sống trong widget tree (width = 0 khi ẩn) để Offstage + TickerMode bảo toàn 100% tiến trình PTY và tab terminal
+                      SizedBox(
+                        width: rightWidth,
+                        child: Offstage(
+                          offstage: !isRightPanelOpen,
+                          child: TickerMode(
+                            enabled: isRightPanelOpen,
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Offstage(
+                                    offstage: !_showTerminalPanel,
+                                    child: TickerMode(
+                                      enabled: _showTerminalPanel,
+                                      child: TerminalScreen(
+                                        key: _terminalPanelKey,
+                                        onHidePanel: () {
+                                          setState(() {
+                                            _showTerminalPanel = false;
+                                          });
+                                        },
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                                if (chat.currentSessionDocFiles.isNotEmpty)
+                                  Positioned.fill(
+                                    child: Offstage(
+                                      offstage: !_showDocViewerPanel || _showTerminalPanel,
+                                      child: TickerMode(
+                                        enabled: _showDocViewerPanel && !_showTerminalPanel,
+                                        child: _ScopeDocViewerPanel(
+                                          chat: chat,
+                                          selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
+                                          onSelectDoc: (path) {
+                                            setState(() {
+                                              _selectedViewerDocPath = path;
+                                            });
+                                          },
+                                          onClose: () {
+                                            setState(() {
+                                              _showDocViewerPanel = false;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],
-                  ),
-                ),
+                  );
+                },
+              ),
+            ),
 
                 // Nút icon Terminal nằm xoay ngang sát mép màn hình bên phải khi Terminal đang ẩn
                 if (!_showTerminalPanel)
@@ -2053,26 +2068,37 @@ class _ChatScreenState extends State<ChatScreen> {
 
                         // 1. Tool Executions (Terminal actions & commands) rendered first
                         if (msg.toolExecutions.isNotEmpty) ...[
-                          ...msg.toolExecutions.map((tool) => _buildToolCard(tool)),
+                          if (msg.toolExecutions.length > 4 && !_showAllTools)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () => setState(() => _showAllTools = true),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF161B22),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: const Color(0xFF30363D)),
+                                  ),
+                                  child: Text(
+                                    'Đã ẩn ${msg.toolExecutions.length - 3} bước thực thi trước đó (Nhấn để xem tất cả ${msg.toolExecutions.length} bước)',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.accentCyan, fontFamily: 'monospace'),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ...(msg.toolExecutions.length > 4 && !_showAllTools
+                                  ? msg.toolExecutions.sublist(msg.toolExecutions.length - 3)
+                                  : msg.toolExecutions)
+                              .map((tool) => _buildToolCard(tool)),
                           if (msg.content.isNotEmpty || (msg.content.isEmpty && msg.isStreaming))
                             const SizedBox(height: 10),
                         ],
 
                         // 2. Reply Answer Content rendered below tool executions
                         if (msg.cleanContent.isNotEmpty)
-                          MarkdownBody(
-                            data: msg.cleanContent,
-                            selectable: false,
-                          onTapLink: (text, href, title) {
-                            if (href != null && href.trim().isNotEmpty) {
-                              _openExternalUrl(context, href);
-                            }
-                          },
-                          builders: {
-                            'code': CodeElementBuilder(context),
-                          },
-                          styleSheet: _sharedMarkdownStyle,
-                        ),
+                          _buildOptimizedMessageContent(msg, keyStr),
 
                       if (msg.isStreaming) ...[
                         const SizedBox(height: 6),
@@ -2193,6 +2219,97 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildOptimizedMessageContent(ChatMessageModel msg, String keyStr) {
+    final raw = msg.cleanContent;
+    final isExpanded = _expandedMessageKeys.contains(keyStr);
+    const int maxStreamingChars = 3500;
+    const int maxStaticChars = 6000;
+
+    // Khi đang stream text dài: chỉ render phần đuôi mới nhất bằng Text nhẹ để tránh parse lại Markdown AST hàng chục nghìn ký tự trên mỗi frame
+    if (msg.isStreaming && raw.length > maxStreamingChars) {
+      final tail = raw.substring(raw.length - maxStreamingChars);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              'Đang thu gọn ${raw.length - maxStreamingChars} ký tự phía trên trong lúc Agent đang viết để chống giật lag...',
+              style: const TextStyle(fontSize: 11, color: AppColors.accentCyan),
+            ),
+          ),
+          Text(
+            tail,
+            style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.5),
+          ),
+        ],
+      );
+    }
+
+    final bool isTooLong = !isExpanded && raw.length > maxStaticChars;
+    final String displayData = isTooLong
+        ? '${raw.substring(0, maxStaticChars)}\n\n... *(Nội dung phản hồi dài ${raw.length} ký tự — đã thu gọn bớt để giao diện mượt mà)*'
+        : raw;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MarkdownBody(
+          data: displayData,
+          selectable: false,
+          onTapLink: (text, href, title) {
+            if (href != null && href.trim().isNotEmpty) {
+              _openExternalUrl(context, href);
+            }
+          },
+          builders: {
+            'code': CodeElementBuilder(context),
+          },
+          styleSheet: _sharedMarkdownStyle,
+        ),
+        if (raw.length > maxStaticChars)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: () {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedMessageKeys.remove(keyStr);
+                  } else {
+                    _expandedMessageKeys.add(keyStr);
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  isExpanded
+                      ? 'Thu gọn bớt nội dung'
+                      : 'Xem toàn bộ nội dung (${raw.length} ký tự)',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.accentCyan,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildToolCard(ToolExecutionItem tool) {
     IconData icon = Icons.terminal_rounded;
     Color iconColor = AppColors.primaryLight;
@@ -2251,60 +2368,54 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    tool.command,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textWhite,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Command body / Output
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SelectableText(
-                  tool.command,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                    color: AppColors.accentCyan,
-                    height: 1.4,
-                  ),
-                ),
-                if (tool.output.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF090D13),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF21262D)),
-                    ),
-                    child: SelectableText(
-                      tool.output.trim(),
+                  child: Tooltip(
+                    message: tool.command,
+                    waitDuration: const Duration(milliseconds: 300),
+                    child: Text(
+                      tool.command,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontFamily: 'monospace',
-                        fontSize: 10.5,
-                        color: AppColors.textMuted,
-                        height: 1.35,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textWhite,
                       ),
                     ),
                   ),
-                ],
+                ),
               ],
             ),
           ),
+          // Command body / Output (Giới hạn chiều cao & độ dài để không gây đơ UI)
+          if (tool.output.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 140),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF090D13),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFF21262D)),
+                ),
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: Text(
+                    tool.output.trim().length > 1500
+                        ? '${tool.output.trim().substring(0, 1500)}\n... [Đã thu gọn bớt log dài]'
+                        : tool.output.trim(),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 10.5,
+                      color: AppColors.textMuted,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

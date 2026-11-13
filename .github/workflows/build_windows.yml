@@ -40,15 +40,26 @@ jobs:
             exit $code
           }
 
+      - name: Read App Version
+        id: app_version
+        shell: pwsh
+        run: |
+          $verLine = Get-Content pubspec.yaml | Select-String '^version:\s*([^\+]+)'
+          $version = $verLine.Matches.Groups[1].Value.Trim()
+          "VERSION=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building AI Type Agent version: $version"
+
       - name: Package Portable ZIP
         shell: pwsh
         run: |
+          $ver = "${{ steps.app_version.outputs.VERSION }}"
           New-Item -ItemType Directory -Path dist-win -Force | Out-Null
-          Compress-Archive -Path 'build\windows\x64\runner\Release\*' -DestinationPath 'dist-win\ai-type-agent_1.4.5_windows_x64.zip' -Force
+          Compress-Archive -Path 'build\windows\x64\runner\Release\*' -DestinationPath "dist-win\ai-type-agent_${ver}_windows_x64.zip" -Force
 
       - name: Build Setup Installer (Inno Setup)
         shell: pwsh
         run: |
+          $ver = "${{ steps.app_version.outputs.VERSION }}"
           choco install innosetup --no-progress -y
           $iscc = @(
             "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
@@ -56,7 +67,7 @@ jobs:
             "C:\ProgramData\chocolatey\bin\iscc.exe"
           ) | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $iscc) { Write-Host "::error::Không tìm thấy ISCC.exe"; exit 1 }
-          & "$iscc" "scripts\installer_windows.iss" 2>&1 | Tee-Object -FilePath iscc.log
+          & "$iscc" "/DMyAppVersion=$ver" "scripts\installer_windows.iss" 2>&1 | Tee-Object -FilePath iscc.log
           if ($LASTEXITCODE -ne 0) {
             Get-Content iscc.log | Select-String -Pattern 'Error|error' | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
             exit $LASTEXITCODE

@@ -47,46 +47,63 @@ jobs:
             exit "$code"
           fi
 
+      - name: Read App Version
+        id: app_version
+        run: |
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d '+' -f1)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building AI Type Agent version: $VERSION"
+
       - name: Package Portable tar.gz
         run: |
+          VERSION="${{ steps.app_version.outputs.VERSION }}"
           mkdir -p dist-linux
-          tar -czf "dist-linux/ai-type-agent_1.4.0_linux_x64.tar.gz" -C build/linux/x64/release/bundle .
+          tar -czf "dist-linux/ai-type-agent_${VERSION}_linux_x64.tar.gz" -C build/linux/x64/release/bundle .
 
       - name: Build DEB Package
         run: |
+          VERSION="${{ steps.app_version.outputs.VERSION }}"
           BUNDLE=build/linux/x64/release/bundle
           DEBROOT=debroot
           rm -rf "$DEBROOT"
           mkdir -p "$DEBROOT/DEBIAN" \
             "$DEBROOT/opt/ai-type-agent" \
+            "$DEBROOT/usr/bin" \
             "$DEBROOT/usr/share/applications" \
             "$DEBROOT/usr/share/icons/hicolor/512x512/apps"
 
           cp -r "$BUNDLE/." "$DEBROOT/opt/ai-type-agent/"
+          chmod +x "$DEBROOT/opt/ai-type-agent/ai-type-agent"
+          ln -sf "/opt/ai-type-agent/ai-type-agent" "$DEBROOT/usr/bin/ai-type-agent"
 
           cat > "$DEBROOT/usr/share/applications/ai-type-agent.desktop" <<EOF
           [Desktop Entry]
+          Version=1.0
           Type=Application
           Name=AI Type Agent
           Comment=AI coding assistant with local terminal and server management
-          Exec=/opt/ai-type-agent/ai-type-agent
-          Icon=/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png
+          Exec=/opt/ai-type-agent/ai-type-agent %u
+          Icon=ai-type-agent
           Terminal=false
           Categories=Development;Utility;
           StartupWMClass=ai-type-agent
           EOF
 
-          cp assets/app_icon.png "$DEBROOT/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png"
+          if [ -f "assets/app_icon.png" ]; then
+            cp assets/app_icon.png "$DEBROOT/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png"
+          elif [ -f "assets/logo.png" ]; then
+            cp assets/logo.png "$DEBROOT/usr/share/icons/hicolor/512x512/apps/ai-type-agent.png"
+          fi
 
           cat > "$DEBROOT/DEBIAN/control" <<EOF
           Package: ai-type-agent
-          Version: 1.4.0
+          Version: $VERSION
           Section: devel
           Priority: optional
           Architecture: amd64
           Depends: libgtk-3-0, libcups2, libsqlite3-0, liblzma5
-          Maintainer: YenAI <bienso629@users.noreply.github.com>
-          Homepage: https://github.com/bienso629/ai.type.agent
+          Maintainer: Tadu Cloud Team <support@tadu.vn>
+          Homepage: https://tadu.vn
           Description: AI Type Agent - AI coding assistant
            AI coding assistant with local terminal (PTY), SSH server
            management and multi-session support. Built with Flutter.
@@ -105,7 +122,7 @@ jobs:
           EOF
           chmod 755 "$DEBROOT/DEBIAN/postinst"
 
-          dpkg-deb --root-owner-group --build "$DEBROOT" "dist-linux/ai-type-agent_1.4.0_linux_amd64.deb"
+          dpkg-deb --root-owner-group --build "$DEBROOT" "dist-linux/ai-type-agent_${VERSION}_linux_amd64.deb"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

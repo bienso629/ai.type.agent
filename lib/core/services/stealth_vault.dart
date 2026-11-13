@@ -2,7 +2,6 @@
 // ban release Flutter nhung toan bo chuoi Dart vao binary AOT, neu de
 // nguyen van se bi lo qua lenh strings tren file thuc thi. Chi giai ma tai
 // cho, khong bao gio xuat hien nguyen van trong binary.
-import 'dart:convert';
 
 class StealthVault {
   StealthVault._();

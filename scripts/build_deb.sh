@@ -65,7 +65,7 @@ Version: $VERSION
 Section: devel
 Priority: optional
 Architecture: $ARCH
-Depends: libgtk-3-0
+Depends: libgtk-3-0, libcups2, libsqlite3-0, liblzma5
 Installed-Size: $INSTALLED_SIZE
 Maintainer: AI Type Agent <support@tadu.vn>
 Description: AI Type Agent - Trợ lý lập trình và Quản trị máy chủ Agentic AI
@@ -99,7 +99,7 @@ chmod 755 "$DEB_BUILD_DIR/DEBIAN/postrm"
 
 echo "4. Dong goi tap tin .deb..."
 DEB_OUTPUT="$DIST_DIR/${PKG_NAME}_${VERSION}_${ARCH}.deb"
-dpkg-deb --build "$DEB_BUILD_DIR" "$DEB_OUTPUT"
+dpkg-deb --root-owner-group --build "$DEB_BUILD_DIR" "$DEB_OUTPUT"
 
 # Tao them goi .tar.gz dong goi san (Portable tarball)
 echo "5. Tao ban dong goi nen .tar.gz (Portable)..."

@@ -1,143 +1,19 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
-import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_pty_desktop/flutter_pty.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
-import '../../core/services/native_ssh_service.dart';
-import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
+import '../../providers/terminal_provider.dart';
 
-enum TerminalSplitDirection {
-  none,
-  horizontal,
-  vertical,
-}
-
-class TerminalPaneItem {
-  final String id;
-  String title;
-  bool isRemoteSsh;
-  ServerModel? server;
-  late final Terminal terminal;
-  late final TerminalController controller;
-  late final ScrollController scrollController;
-  late final FocusNode focusNode;
-  Pty? pty;
-  Process? fallbackProcess;
-  SSHClient? sshClient;
-  SSHSession? sshSession;
-  bool isConnected = false;
-  bool isConnecting = false;
-
-  String? workingDirectory;
-
-  /// Lenh se tu dong chay ngay sau khi PTY khoi tao xong
-  /// (vi du: tac vu tu dong o nen hoac hanh vi nhanh tu giao dien bam la chay
-  String? initialCommand;
-
-  // Split state specifically for this window/pane
-  TerminalSplitDirection splitDirection = TerminalSplitDirection.none;
-  TerminalPaneItem? childPane;
-
-  TerminalPaneItem({
-    required this.id,
-    required this.title,
-    this.isRemoteSsh = false,
-    this.server,
-    this.workingDirectory,
-    this.initialCommand,
-  }) {
-    focusNode = FocusNode();
-    terminal = Terminal(
-      maxLines: 10000,
-    );
-    controller = TerminalController();
-    scrollController = ScrollController();
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'isRemoteSsh': isRemoteSsh,
-      'server': server?.toJson(),
-      'workingDirectory': workingDirectory,
-      'splitDirection': splitDirection.name,
-      'childPane': childPane?.toJson(),
-    };
-  }
-
-  static TerminalPaneItem fromJson(Map<String, dynamic> json) {
-    ServerModel? srv;
-    if (json['server'] != null) {
-      try {
-        srv = ServerModel.fromJson(Map<String, dynamic>.from(json['server']));
-      } catch (_) {}
-    }
-
-    final item = TerminalPaneItem(
-      id: json['id'] ?? 'pane_${DateTime.now().millisecondsSinceEpoch}',
-      title: json['title'] ?? (json['isRemoteSsh'] == true ? (srv?.name ?? 'SSH Server') : 'Local Machine'),
-      isRemoteSsh: json['isRemoteSsh'] == true,
-      server: srv,
-      workingDirectory: json['workingDirectory'] as String?,
-    );
-
-    final splitName = json['splitDirection'] as String?;
-    if (splitName != null) {
-      item.splitDirection = TerminalSplitDirection.values.firstWhere(
-        (e) => e.name == splitName,
-        orElse: () => TerminalSplitDirection.none,
-      );
-    }
-
-    if (json['childPane'] != null) {
-      try {
-        item.childPane = TerminalPaneItem.fromJson(Map<String, dynamic>.from(json['childPane']));
-      } catch (_) {}
-    }
-
-    return item;
-  }
-
-  void cleanup() {
-    try {
-      pty?.kill();
-      pty = null;
-    } catch (_) {}
-    try {
-      fallbackProcess?.kill();
-      fallbackProcess = null;
-    } catch (_) {}
-    try {
-      sshSession?.close();
-      sshSession = null;
-    } catch (_) {}
-    try {
-      sshClient?.close();
-      sshClient = null;
-    } catch (_) {}
-
-    childPane?.cleanup();
-  }
-
-  void dispose() {
-    controller.dispose();
-    scrollController.dispose();
-    focusNode.dispose();
-    cleanup();
-    childPane?.dispose();
-  }
-}
+export '../../models/terminal_pane_model.dart';
+export '../../providers/terminal_provider.dart';
 
 class TerminalScreen extends StatefulWidget {
   final VoidCallback? onHidePanel;
@@ -148,13 +24,11 @@ class TerminalScreen extends StatefulWidget {
   State<TerminalScreen> createState() => TerminalScreenState();
 }
 
-class TerminalScreenState extends State<TerminalScreen> {
-  final List<TerminalPaneItem> _panes = [];
-  int _activePaneIndex = 0;
-  String? _activeSubPaneId;
-  bool _showVirtualKeyboard = false;
-  final StorageService _storage = StorageService();
+class TerminalScreenState extends State<TerminalScreen> with AutomaticKeepAliveClientMixin {
   final ScrollController _tabScrollController = ScrollController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   // Bảng màu terminal đồng bộ màu nền ứng dụng (AppColors.bgDark)
   static final _terminalTheme = TerminalTheme(
@@ -183,454 +57,37 @@ class TerminalScreenState extends State<TerminalScreen> {
     searchHitForeground: Colors.black,
   );
 
-  @override
-  void initState() {
-    super.initState();
-    _loadSavedTerminalSessions();
-  }
-
-  /// Mo tab terminal moi (goi tu ben ngoai qua GlobalKey khi can chay nhanh
-  /// trong man hinh chat) va tu dong chay mot lenh ngay sau khi shell san sang.
+  /// Mở tab terminal mới và tự động chạy một lệnh ngay sau khi shell sẵn sàng.
   void openPaneWithCommand(String command, String? workingDirectory) {
-    if (_panes.length >= 6) {
-      // Het cho tab: dung tab active va chay lenh trong do
-      final pane = _activePane;
-      if (pane != null) {
-        pane.terminal.write('$command\n');
-        try {
-          pane.pty?.write(utf8.encode('$command\n'));
-          pane.sshSession?.stdin.add(utf8.encode('$command\n'));
-        } catch (_) {}
-      }
-      return;
-    }
-    final id = 'pane_${DateTime.now().millisecondsSinceEpoch}';
-    final newPane = TerminalPaneItem(
-      id: id,
-      title: 'Local Machine',
-      isRemoteSsh: false,
-      workingDirectory: workingDirectory,
-      initialCommand: command,
-    );
-    setState(() {
-      _panes.add(newPane);
-      _activePaneIndex = _panes.length - 1;
-      _activeSubPaneId = null;
-    });
-    _connectPane(newPane);
-    _saveTerminalSessions();
-  }
-
-  Future<void> _loadSavedTerminalSessions() async {
-    try {
-      final savedData = await _storage.getTerminalSessions();
-      if (savedData != null && savedData.isNotEmpty) {
-        final decoded = json.decode(savedData);
-        if (decoded is Map<String, dynamic> && decoded['panes'] is List) {
-          final rawPanes = decoded['panes'] as List;
-          final loadedPanes = <TerminalPaneItem>[];
-          for (final raw in rawPanes) {
-            if (raw is Map<String, dynamic>) {
-              loadedPanes.add(TerminalPaneItem.fromJson(raw));
-            }
-          }
-
-          if (loadedPanes.isNotEmpty) {
-            if (!mounted) return;
-            setState(() {
-              _panes.clear();
-              _panes.addAll(loadedPanes);
-              _activePaneIndex = (decoded['activePaneIndex'] is int &&
-                      decoded['activePaneIndex'] >= 0 &&
-                      decoded['activePaneIndex'] < _panes.length)
-                  ? decoded['activePaneIndex'] as int
-                  : 0;
-              _activeSubPaneId = decoded['activeSubPaneId'] as String?;
-            });
-
-            // Kết nối các pane và child pane
-            for (final pane in _panes) {
-              _connectPane(pane);
-              if (pane.childPane != null) {
-                _connectPane(pane.childPane!);
-              }
-            }
-            return;
-          }
-        }
-      }
-    } catch (_) {}
-
-    // Fallback nếu không có cấu hình lưu trước, lấy thư mục gần nhất nếu có
-    String? initialDir;
-    try {
-      final recents = await _storage.getRecentScopes();
-      if (recents.isNotEmpty && Directory(recents.first).existsSync()) {
-        initialDir = recents.first;
-      }
-    } catch (_) {}
-
-    final firstPane = TerminalPaneItem(
-      id: 'pane_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'Local Machine',
-      isRemoteSsh: false,
-      workingDirectory: initialDir,
-    );
     if (!mounted) return;
-    setState(() {
-      _panes.clear();
-      _panes.add(firstPane);
-      _activePaneIndex = 0;
-      _activeSubPaneId = null;
-    });
-    _connectPane(firstPane);
-  }
-
-  Future<void> _saveTerminalSessions() async {
-    try {
-      final data = {
-        'activePaneIndex': _activePaneIndex,
-        'activeSubPaneId': _activeSubPaneId,
-        'panes': _panes.map((p) => p.toJson()).toList(),
-      };
-      await _storage.setTerminalSessions(json.encode(data));
-    } catch (_) {}
+    context.read<TerminalProvider>().openPaneWithCommand(command, workingDirectory);
   }
 
   @override
   void dispose() {
     _tabScrollController.dispose();
-    for (final p in _panes) {
-      p.dispose();
-    }
-    _panes.clear();
     super.dispose();
   }
 
-  TerminalPaneItem? get _activeRootPane {
-    if (_panes.isEmpty) return null;
-    if (_activePaneIndex >= 0 && _activePaneIndex < _panes.length) {
-      return _panes[_activePaneIndex];
-    }
-    return _panes.first;
-  }
-
-  TerminalPaneItem? get _activePane {
-    final root = _activeRootPane;
-    if (root == null) return null;
-    if (_activeSubPaneId != null && root.childPane != null && root.childPane!.id == _activeSubPaneId) {
-      return root.childPane;
-    }
-    return root;
-  }
-
-  Future<void> _connectPane(TerminalPaneItem pane) async {
-    pane.cleanup();
-    if (mounted) {
-      setState(() {
-        pane.isConnecting = true;
-        pane.isConnected = false;
-      });
-    }
-
-    if (pane.isRemoteSsh) {
-      await _connectSshPane(pane);
-    } else {
-      // iOS khong cho phep tao shell cuc bo (PTY). Chi ho tro SSH toi may chu tu xa.
-      if (Platform.isIOS) {
-        if (mounted) {
-          setState(() {
-            pane.isConnecting = false;
-            pane.isConnected = false;
-          });
-        }
-        pane.terminal.write('\x1b[33mMay iOS khong ho tro shell cuc bo. Hay mo ket noi SSH toi may chu tu xa de dung terminal.\x1b[0m\r\n');
-        return;
-      }
-      await _connectLocalPane(pane);
-    }
-  }
-
-  Future<void> _connectLocalPane(TerminalPaneItem pane) async {
-    // Chan ngay tu dau tren iOS: khong bao gio tao PTY cuc bo.
-    if (Platform.isIOS) return;
-    try {
-      final isWin = Platform.isWindows;
-      final shell = Platform.environment['SHELL'] ??
-          (isWin ? 'cmd.exe' : (File('/bin/bash').existsSync() ? '/bin/bash' : '/bin/sh'));
-      final defaultHome = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? (isWin ? 'C:\\' : '/');
-
-      // Ưu tiên: pane.workingDirectory -> recent scope -> defaultHome
-      String targetDir = defaultHome;
-      if (pane.workingDirectory != null && pane.workingDirectory!.trim().isNotEmpty && Directory(pane.workingDirectory!.trim()).existsSync()) {
-        targetDir = pane.workingDirectory!.trim();
-      } else {
-        try {
-          final recents = await _storage.getRecentScopes();
-          if (recents.isNotEmpty && Directory(recents.first).existsSync()) {
-            targetDir = recents.first;
-            pane.workingDirectory = targetDir;
-            _saveTerminalSessions();
-          }
-        } catch (_) {}
-      }
-
-      final initialCols = pane.terminal.viewWidth > 0 ? pane.terminal.viewWidth : 80;
-      final initialRows = pane.terminal.viewHeight > 0 ? pane.terminal.viewHeight : 24;
-
-      // Khởi tạo tiến trình Pseudo-Terminal (PTY) với cấu hình môi trường chuẩn Ubuntu Linux
-      pane.pty = Pty.start(
-        shell,
-        arguments: isWin ? [] : ['-l'],
-        workingDirectory: targetDir,
-        environment: {
-          ...Platform.environment,
-          'TERM': 'xterm-256color',
-          'COLORTERM': 'truecolor',
-          'LANG': Platform.environment['LANG'] ?? 'en_US.UTF-8',
-          'LC_ALL': Platform.environment['LC_ALL'] ?? 'en_US.UTF-8',
-          'VTE_VERSION': '6800',
-        },
-        columns: initialCols,
-        rows: initialRows,
-      );
-
-      if (mounted) {
-        setState(() {
-          pane.isConnected = true;
-          pane.isConnecting = false;
-        });
-      }
-
-      // Tu dong chay lenh khoi tao (neu co) sau khi shell hoat dong on dinh.
-      // Cho de nho de bash nap xong profile, tranh lenh bi chan vo prompt.
-      if (pane.initialCommand != null && pane.initialCommand!.trim().isNotEmpty) {
-        final cmd = pane.initialCommand!;
-        Future.delayed(const Duration(milliseconds: 450), () {
-          if (pane.pty == null) return;
-          try {
-            pane.terminal.write('$cmd\r');
-            pane.pty!.write(utf8.encode('$cmd\r'));
-          } catch (_) {}
-          pane.initialCommand = null;
-        });
-      }
-
-      pane.pty!.output.listen(
-        (data) {
-          final decoded = utf8.decode(data, allowMalformed: true);
-          pane.terminal.write(decoded);
-
-          // Phát hiện OSC 7 escape sequence: OSC 7 ; file://hostname/path ST / BEL
-          // Ví dụ: \x1b]7;file://localhost/home/yenai/Documents\x07 hoặc \x1b\x5c
-          final osc7Match = RegExp(r'\x1b\]7;file://(?:[^/]+)?(/.*?)(?:\x07|\x1b\\)').firstMatch(decoded);
-          if (osc7Match != null) {
-            var rawPath = osc7Match.group(1);
-            if (rawPath != null) {
-              try {
-                rawPath = Uri.decodeFull(rawPath);
-                if (Directory(rawPath).existsSync() && rawPath != pane.workingDirectory) {
-                  pane.workingDirectory = rawPath;
-                  _storage.addRecentScope(rawPath);
-                  _saveTerminalSessions();
-                  if (mounted) setState(() {});
-                }
-              } catch (_) {}
-            }
-          }
-        },
-        onDone: () {
-          if (mounted) setState(() => pane.isConnected = false);
-          pane.terminal.write('\r\n\x1b[33m[Tiến trình Terminal đã thoát]\x1b[0m\r\n');
-        },
-        onError: (err) {
-          if (mounted) setState(() => pane.isConnected = false);
-          pane.terminal.write('\r\n\x1b[31m[Lỗi Terminal]: $err\x1b[0m\r\n');
-        },
-      );
-
-      pane.terminal.onOutput = (data) {
-        if (pane.pty != null) {
-          try {
-            pane.pty!.write(utf8.encode(data));
-
-            // Kiểm tra lệnh cd trực tiếp khi người dùng gõ
-            if (data == '\r' || data == '\n') {
-              Future.delayed(const Duration(milliseconds: 300), () {
-                _syncCurrentWorkingDirectory(pane);
-              });
-            }
-          } catch (_) {}
-        }
-      };
-
-      pane.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
-        if (width > 0 && height > 0) {
-          try {
-            pane.pty?.resize(height, width);
-          } catch (_) {}
-        }
-      };
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          pane.isConnecting = false;
-          pane.isConnected = false;
-        });
-      }
-      pane.terminal.write('\r\n\x1b[31m[Lỗi mở Terminal cục bộ]: $e\x1b[0m\r\n');
-    }
-  }
-
-  void _syncCurrentWorkingDirectory(TerminalPaneItem pane) {
-    if (pane.isRemoteSsh) return;
-    try {
-      final pid = pane.pty?.pid;
-      if (pid != null && Platform.isLinux) {
-        final link = Link('/proc/$pid/cwd');
-        if (link.existsSync()) {
-          final target = link.targetSync();
-          if (target.isNotEmpty && Directory(target).existsSync() && target != pane.workingDirectory) {
-            pane.workingDirectory = target;
-            _storage.addRecentScope(target);
-            _saveTerminalSessions();
-            if (mounted) setState(() {});
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _connectSshPane(TerminalPaneItem pane) async {
-    final serverProvider = context.read<ServerProvider>();
-    final server = pane.server ?? (serverProvider.selectedServer?.serverIp != '127.0.0.1' ? serverProvider.selectedServer : null) ?? (serverProvider.servers.isNotEmpty ? serverProvider.servers.first : null);
-
-    pane.server = server;
-    if (server != null) {
-      pane.title = server.name;
-    }
-
-    try {
-      final cols = pane.terminal.viewWidth > 0 ? pane.terminal.viewWidth : 80;
-      final rows = pane.terminal.viewHeight > 0 ? pane.terminal.viewHeight : 24;
-
-      pane.sshClient = await NativeSshService().getClient(server: server);
-      pane.sshSession = await pane.sshClient!.shell(
-        pty: SSHPtyConfig(
-          width: cols,
-          height: rows,
-        ),
-      );
-
-      if (mounted) {
-        setState(() {
-          pane.isConnected = true;
-          pane.isConnecting = false;
-        });
-      }
-
-      // Nếu có workingDirectory từ trước trên SSH server, tự động chuyển vào thư mục đó
-      if (pane.workingDirectory != null && pane.workingDirectory!.trim().isNotEmpty) {
-        final dir = pane.workingDirectory!.trim();
-        pane.sshSession?.stdin.add(utf8.encode('cd "$dir" 2>/dev/null || true\n'));
-      }
-
-      pane.sshSession!.stdout.listen(
-        (data) {
-          final decoded = utf8.decode(data, allowMalformed: true);
-          pane.terminal.write(decoded);
-
-          // Nhận diện OSC 7 qua SSH
-          final osc7Match = RegExp(r'\x1b\]7;file://(?:[^/]+)?(/.*?)(?:\x07|\x1b\\)').firstMatch(decoded);
-          if (osc7Match != null) {
-            var rawPath = osc7Match.group(1);
-            if (rawPath != null) {
-              try {
-                rawPath = Uri.decodeFull(rawPath);
-                if (rawPath.isNotEmpty && rawPath != pane.workingDirectory) {
-                  pane.workingDirectory = rawPath;
-                  _saveTerminalSessions();
-                  if (mounted) setState(() {});
-                }
-              } catch (_) {}
-            }
-          }
-        },
-        onDone: () {
-          if (mounted) setState(() => pane.isConnected = false);
-          pane.terminal.write('\r\n\x1b[33m[Phiên SSH Terminal đã đóng]\x1b[0m\r\n');
-        },
-        onError: (err) {
-          if (mounted) setState(() => pane.isConnected = false);
-          pane.terminal.write('\r\n\x1b[31m[Lỗi SSH]: $err\x1b[0m\r\n');
-        },
-      );
-
-      pane.sshSession!.stderr.listen((data) {
-        final decoded = utf8.decode(data, allowMalformed: true);
-        pane.terminal.write(decoded);
-      });
-
-      pane.terminal.onOutput = (data) {
-        pane.sshSession?.stdin.add(utf8.encode(data));
-      };
-
-      pane.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
-        if (width > 0 && height > 0) {
-          try {
-            pane.sshSession?.resizeTerminal(width, height, pixelWidth, pixelHeight);
-          } catch (_) {}
-        }
-      };
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          pane.isConnecting = false;
-          pane.isConnected = false;
-        });
-      }
-      pane.terminal.write('\r\n\x1b[31m[Lỗi kết nối SSH Terminal]: $e\x1b[0m\r\n');
-    }
-  }
-
   void _addWindow({bool isSsh = false, ServerModel? srv}) {
-    if (_panes.length >= 6) return;
-    final id = 'pane_${DateTime.now().millisecondsSinceEpoch}';
-    final newPane = TerminalPaneItem(
-      id: id,
-      title: isSsh ? (srv?.name ?? 'SSH Server') : 'Local Machine',
-      isRemoteSsh: isSsh,
-      server: srv,
+    context.read<TerminalProvider>().addWindow(
+      isSsh: isSsh,
+      srv: srv,
     );
-    setState(() {
-      _panes.add(newPane);
-      _activePaneIndex = _panes.length - 1;
-      _activeSubPaneId = null;
-    });
-    _connectPane(newPane);
-    _saveTerminalSessions();
   }
 
   void _removeWindow(int index) {
-    if (_panes.length <= 1) return;
-    final removed = _panes.removeAt(index);
-    removed.dispose();
-    setState(() {
-      if (_activePaneIndex >= _panes.length) {
-        _activePaneIndex = _panes.length - 1;
-      }
-      _activeSubPaneId = null;
-    });
-    _saveTerminalSessions();
+    context.read<TerminalProvider>().removeWindow(index);
   }
 
   void _confirmCloseWindow(int index) {
-    if (index < 0 || index >= _panes.length) return;
-    if (_panes.length <= 1) {
+    final panes = context.read<TerminalProvider>().panes;
+    if (index < 0 || index >= panes.length) return;
+    if (panes.length <= 1) {
       AppToast.warning(context, 'Không thể đóng tab terminal duy nhất');
       return;
     }
-    final pane = _panes[index];
+    final pane = panes[index];
     showDialog(
       context: context,
       builder: (ctx) => TaduDialog(
@@ -640,11 +97,11 @@ class TerminalScreenState extends State<TerminalScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
             SizedBox(width: 8),
-            Text('Xác Nhận Đóng Terminal'),
+            Text('Xác Nhận Đóng Tab'),
           ],
         ),
         content: Text(
-          'Bạn có chắc chắn muốn đóng tab terminal "Tab ${index + 1}: ${pane.title}" không? Các tiến trình đang chạy trong tab này sẽ bị dừng.',
+          'Bạn có chắc chắn muốn đóng tab terminal "${pane.title}" không? Tất cả các tiến trình đang chạy trong tab này sẽ kết thúc.',
           style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textBody),
         ),
         actions: [
@@ -680,62 +137,17 @@ class TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _splitActiveWindow(TerminalSplitDirection direction, int windowIndex, TerminalPaneItem targetPane) {
-    if (windowIndex < 0 || windowIndex >= _panes.length) return;
-    final windowPane = _panes[windowIndex];
-
-    if (direction == TerminalSplitDirection.none) {
-      // Huỷ split của window này
-      if (windowPane.childPane != null) {
-        windowPane.childPane!.dispose();
-        windowPane.childPane = null;
-      }
-      setState(() {
-        windowPane.splitDirection = TerminalSplitDirection.none;
-        _activePaneIndex = windowIndex;
-        _activeSubPaneId = null;
-      });
-      _saveTerminalSessions();
-      return;
-    }
-
-    // Split window này
-    if (windowPane.childPane == null) {
-      final id = 'subpane_${DateTime.now().millisecondsSinceEpoch}';
-      final newSubPane = TerminalPaneItem(
-        id: id,
-        title: targetPane.isRemoteSsh ? (targetPane.server?.name ?? 'SSH Server') : 'Local Machine',
-        isRemoteSsh: targetPane.isRemoteSsh,
-        server: targetPane.server,
-      );
-      windowPane.childPane = newSubPane;
-      _connectPane(newSubPane);
-    }
-
-    setState(() {
-      windowPane.splitDirection = direction;
-      _activePaneIndex = windowIndex;
-      _activeSubPaneId = windowPane.childPane?.id;
-    });
-    _saveTerminalSessions();
+    context.read<TerminalProvider>().splitActiveWindow(direction, windowIndex, targetPane);
   }
 
   void _closeChildPane(int windowIndex) {
-    if (windowIndex < 0 || windowIndex >= _panes.length) return;
-    final windowPane = _panes[windowIndex];
-    if (windowPane.childPane != null) {
-      windowPane.childPane!.dispose();
-      windowPane.childPane = null;
-      setState(() {
-        windowPane.splitDirection = TerminalSplitDirection.none;
-        _activeSubPaneId = null;
-      });
-      _saveTerminalSessions();
-    }
+    context.read<TerminalProvider>().closeChildPane(windowIndex);
   }
 
   void _confirmCloseChildPane(int windowIndex) {
-    if (windowIndex < 0 || windowIndex >= _panes.length) return;
-    final windowPane = _panes[windowIndex];
+    final panes = context.read<TerminalProvider>().panes;
+    if (windowIndex < 0 || windowIndex >= panes.length) return;
+    final windowPane = panes[windowIndex];
     if (windowPane.childPane == null) return;
     final childTitle = windowPane.childPane!.title;
 
@@ -788,18 +200,16 @@ class TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _showRenameTabDialog(int index) {
-    if (index < 0 || index >= _panes.length) return;
-    final windowPane = _panes[index];
+    final panes = context.read<TerminalProvider>().panes;
+    if (index < 0 || index >= panes.length) return;
+    final windowPane = panes[index];
     final titleCtrl = TextEditingController(text: windowPane.title);
 
     void doSubmit(BuildContext ctx) {
       final newTitle = titleCtrl.text.trim();
       Navigator.pop(ctx);
       if (newTitle.isNotEmpty && newTitle != windowPane.title) {
-        setState(() {
-          windowPane.title = newTitle;
-        });
-        _saveTerminalSessions();
+        context.read<TerminalProvider>().renamePane(index, newTitle);
         if (mounted) {
           AppToast.success(context, 'Đã đổi tên Tab ${index + 1} thành "$newTitle"!');
         }
@@ -881,32 +291,6 @@ class TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
-  void _sendCmdToActive(String cmd) {
-    final pane = _activePane;
-    if (pane != null && pane.isConnected) {
-      if (pane.isRemoteSsh && pane.sshSession != null) {
-        pane.sshSession!.stdin.add(utf8.encode('$cmd\n'));
-      } else if (pane.pty != null) {
-        try {
-          pane.pty!.write(utf8.encode('$cmd\n'));
-        } catch (_) {}
-      }
-    }
-  }
-
-  void _sendKeyToActive(String code) {
-    final pane = _activePane;
-    if (pane != null && pane.isConnected) {
-      if (pane.isRemoteSsh && pane.sshSession != null) {
-        pane.sshSession!.stdin.add(utf8.encode(code));
-      } else if (pane.pty != null) {
-        try {
-          pane.pty!.write(utf8.encode(code));
-        } catch (_) {}
-      }
-    }
-  }
-
   Future<void> _showContextMenu(
     BuildContext context,
     Offset position,
@@ -915,11 +299,15 @@ class TerminalScreenState extends State<TerminalScreen> {
     ServerProvider serverProvider, {
     bool isChild = false,
   }) async {
-    final windowPane = _panes[windowIndex];
-    setState(() {
-      _activePaneIndex = windowIndex;
-      _activeSubPaneId = isChild ? pane.id : null;
-    });
+    final terminalProvider = context.read<TerminalProvider>();
+    final panes = terminalProvider.panes;
+    if (windowIndex < 0 || windowIndex >= panes.length) return;
+    final windowPane = panes[windowIndex];
+
+    terminalProvider.setActivePaneIndex(windowIndex);
+    if (isChild) {
+      terminalProvider.setActiveSubPaneId(pane.id);
+    }
     pane.focusNode.requestFocus();
 
     final isCurrentlySplit = windowPane.splitDirection != TerminalSplitDirection.none && windowPane.childPane != null;
@@ -1047,7 +435,7 @@ class TerminalScreenState extends State<TerminalScreen> {
               ],
             ),
           ),
-        ] else if (_panes.length > 1) ...[
+        ] else if (panes.length > 1) ...[
           const PopupMenuDivider(height: 10),
           const PopupMenuItem<String>(
             value: 'close_window',
@@ -1075,7 +463,7 @@ class TerminalScreenState extends State<TerminalScreen> {
     } else if (result == 'split_vertical') {
       _splitActiveWindow(TerminalSplitDirection.vertical, windowIndex, pane);
     } else if (result == 'restart_pane') {
-      _connectPane(pane);
+      terminalProvider.connectPane(pane);
     } else if (result == 'clear_pane') {
       pane.terminal.eraseDisplay();
       pane.terminal.setCursor(0, 0);
@@ -1096,23 +484,20 @@ class TerminalScreenState extends State<TerminalScreen> {
         initialDirectory: initial,
       );
       if (selected != null && selected.isNotEmpty && mounted) {
-        pane.workingDirectory = selected;
-        await _storage.addRecentScope(selected);
-        await _saveTerminalSessions();
-        if (pane.isConnected) {
-          _sendCmdToActive('cd "$selected"');
-        } else {
-          _connectPane(pane);
-        }
-        setState(() {});
+        await context.read<TerminalProvider>().setDirectoryForPane(pane, selected);
       }
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+    final terminalProvider = context.watch<TerminalProvider>();
     final serverProvider = context.watch<ServerProvider>();
-    final activePane = _activePane;
+    final panes = terminalProvider.panes;
+    final activePaneIndex = terminalProvider.activePaneIndex;
+    final activePane = terminalProvider.activePane;
+    final showVirtualKeyboard = terminalProvider.showVirtualKeyboard;
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
@@ -1142,10 +527,10 @@ class TerminalScreenState extends State<TerminalScreen> {
                       controller: _tabScrollController,
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
-                      itemCount: _panes.length,
+                      itemCount: panes.length,
                       itemBuilder: (ctx, index) {
-                        final window = _panes[index];
-                        final isWinActive = _activePaneIndex == index;
+                        final window = panes[index];
+                        final isWinActive = activePaneIndex == index;
                         final isSplit = window.splitDirection != TerminalSplitDirection.none && window.childPane != null;
 
                         return Container(
@@ -1163,10 +548,7 @@ class TerminalScreenState extends State<TerminalScreen> {
                                 topRight: Radius.circular(6),
                               ),
                               onTap: () {
-                                setState(() {
-                                  _activePaneIndex = index;
-                                  _activeSubPaneId = null;
-                                });
+                                terminalProvider.setActivePaneIndex(index);
                                 window.focusNode.requestFocus();
                               },
                               onDoubleTap: () => _showRenameTabDialog(index),
@@ -1217,7 +599,7 @@ class TerminalScreenState extends State<TerminalScreen> {
                                         ),
                                       ),
                                     ],
-                                    if (_panes.length > 1) ...[
+                                    if (panes.length > 1) ...[
                                       const SizedBox(width: 6),
                                       InkWell(
                                         onTap: () => _confirmCloseWindow(index),
@@ -1240,7 +622,7 @@ class TerminalScreenState extends State<TerminalScreen> {
                 ),
 
                 // Nút tạo Tab Cửa Sổ Mới (Đồng bộ height 34px, sát bottom = 0)
-                if (_panes.length < 6)
+                if (panes.length < 6)
                   Container(
                     margin: const EdgeInsets.only(top: 4, bottom: 0),
                     height: 34,
@@ -1311,15 +693,15 @@ class TerminalScreenState extends State<TerminalScreen> {
                     height: 34,
                     width: 34,
                     decoration: BoxDecoration(
-                      color: AppColors.cardBg,
+                      color: AppColors.sidebarBg.withValues(alpha: 0.4),
                       borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(6),
                         topRight: Radius.circular(6),
                       ),
                       border: const Border(
-                        top: BorderSide(color: Color(0x660D9488), width: 0.8),
-                        left: BorderSide(color: Color(0x660D9488), width: 0.8),
-                        right: BorderSide(color: Color(0x660D9488), width: 0.8),
+                        top: BorderSide(color: AppColors.borderDark, width: 0.8),
+                        left: BorderSide(color: AppColors.borderDark, width: 0.8),
+                        right: BorderSide(color: AppColors.borderDark, width: 0.8),
                       ),
                     ),
                     child: IconButton(
@@ -1335,10 +717,8 @@ class TerminalScreenState extends State<TerminalScreen> {
             ),
           ),
 
-
-
           // 3. Virtual Key Bar (Optional)
-          if (_showVirtualKeyboard)
+          if (showVirtualKeyboard)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               color: AppColors.cardBg,
@@ -1370,7 +750,7 @@ class TerminalScreenState extends State<TerminalScreen> {
             child: Container(
               color: AppColors.bgDark,
               padding: EdgeInsets.zero,
-              child: _buildSplitWorkspace(serverProvider),
+              child: _buildSplitWorkspace(terminalProvider, serverProvider),
             ),
           ),
 
@@ -1411,18 +791,14 @@ class TerminalScreenState extends State<TerminalScreen> {
                 // 1. Phím ảo
                 IconButton(
                   icon: Icon(
-                    _showVirtualKeyboard ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
-                    color: _showVirtualKeyboard ? AppColors.accentCyan : AppColors.textDim,
+                    showVirtualKeyboard ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
+                    color: showVirtualKeyboard ? AppColors.accentCyan : AppColors.textDim,
                     size: 16,
                   ),
-                  tooltip: _showVirtualKeyboard ? 'Ẩn phím ảo' : 'Hiện phím ảo',
+                  tooltip: showVirtualKeyboard ? 'Ẩn phím ảo' : 'Hiện phím ảo',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  onPressed: () {
-                    setState(() {
-                      _showVirtualKeyboard = !_showVirtualKeyboard;
-                    });
-                  },
+                  onPressed: () => terminalProvider.toggleVirtualKeyboard(),
                 ),
 
                 const SizedBox(width: 4),
@@ -1443,7 +819,7 @@ class TerminalScreenState extends State<TerminalScreen> {
                   tooltip: 'Khởi động lại Terminal đang chọn',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  onPressed: activePane != null ? () => _connectPane(activePane) : null,
+                  onPressed: activePane != null ? () => terminalProvider.connectPane(activePane) : null,
                 ),
 
                 const SizedBox(width: 4),
@@ -1455,8 +831,8 @@ class TerminalScreenState extends State<TerminalScreen> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   onPressed: () {
-                    _activePane?.terminal.eraseDisplay();
-                    _activePane?.terminal.setCursor(0, 0);
+                    activePane?.terminal.eraseDisplay();
+                    activePane?.terminal.setCursor(0, 0);
                   },
                 ),
               ],
@@ -1467,17 +843,21 @@ class TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
-  Widget _buildSplitWorkspace(ServerProvider serverProvider) {
-    if (_panes.isEmpty) {
+  Widget _buildSplitWorkspace(TerminalProvider terminalProvider, ServerProvider serverProvider) {
+    final panes = terminalProvider.panes;
+    if (panes.isEmpty) {
       return const Center(child: Text('Không có Terminal nào', style: TextStyle(color: AppColors.textMuted)));
     }
 
-    final activeIndex = (_activePaneIndex >= 0 && _activePaneIndex < _panes.length) ? _activePaneIndex : 0;
-    final activeWindow = _panes[activeIndex];
+    final activeIndex = (terminalProvider.activePaneIndex >= 0 && terminalProvider.activePaneIndex < panes.length)
+        ? terminalProvider.activePaneIndex
+        : 0;
+    final activeWindow = panes[activeIndex];
 
     // Nếu active window không split
     if (activeWindow.splitDirection == TerminalSplitDirection.none || activeWindow.childPane == null) {
       return _buildPaneCard(
+        terminalProvider,
         activeWindow,
         activeIndex,
         serverProvider,
@@ -1487,8 +867,8 @@ class TerminalScreenState extends State<TerminalScreen> {
     }
 
     // Nếu active window được split
-    final mainCard = _buildPaneCard(activeWindow, activeIndex, serverProvider, isChild: false);
-    final childCard = _buildPaneCard(activeWindow.childPane!, activeIndex, serverProvider, isChild: true);
+    final mainCard = _buildPaneCard(terminalProvider, activeWindow, activeIndex, serverProvider, isChild: false);
+    final childCard = _buildPaneCard(terminalProvider, activeWindow.childPane!, activeIndex, serverProvider, isChild: true);
 
     if (activeWindow.splitDirection == TerminalSplitDirection.horizontal) {
       return Row(
@@ -1512,22 +892,24 @@ class TerminalScreenState extends State<TerminalScreen> {
   }
 
   Widget _buildPaneCard(
+    TerminalProvider terminalProvider,
     TerminalPaneItem pane,
     int windowIndex,
     ServerProvider serverProvider, {
     bool isChild = false,
     bool isOnlyOne = false,
   }) {
-    final isThisPaneActive = isChild ? (_activeSubPaneId == pane.id) : (_activeSubPaneId == null);
+    final activeSubPaneId = terminalProvider.activeSubPaneId;
+    final isThisPaneActive = isChild ? (activeSubPaneId == pane.id) : (activeSubPaneId == null);
 
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) {
-        if (_activePaneIndex != windowIndex || (isChild ? _activeSubPaneId != pane.id : _activeSubPaneId != null)) {
-          setState(() {
-            _activePaneIndex = windowIndex;
-            _activeSubPaneId = isChild ? pane.id : null;
-          });
+        if (terminalProvider.activePaneIndex != windowIndex || (isChild ? activeSubPaneId != pane.id : activeSubPaneId != null)) {
+          terminalProvider.setActivePaneIndex(windowIndex);
+          if (isChild) {
+            terminalProvider.setActiveSubPaneId(pane.id);
+          }
         }
         if (!pane.focusNode.hasFocus) {
           pane.focusNode.requestFocus();
@@ -1536,11 +918,11 @@ class TerminalScreenState extends State<TerminalScreen> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          if (_activePaneIndex != windowIndex || (isChild ? _activeSubPaneId != pane.id : _activeSubPaneId != null)) {
-            setState(() {
-              _activePaneIndex = windowIndex;
-              _activeSubPaneId = isChild ? pane.id : null;
-            });
+          if (terminalProvider.activePaneIndex != windowIndex || (isChild ? activeSubPaneId != pane.id : activeSubPaneId != null)) {
+            terminalProvider.setActivePaneIndex(windowIndex);
+            if (isChild) {
+              terminalProvider.setActiveSubPaneId(pane.id);
+            }
           }
           pane.focusNode.requestFocus();
         },
@@ -1593,21 +975,22 @@ class TerminalScreenState extends State<TerminalScreen> {
                             side: const BorderSide(color: AppColors.borderDark),
                           ),
                           onSelected: (val) {
-                            setState(() {
-                              _activePaneIndex = windowIndex;
-                              _activeSubPaneId = isChild ? pane.id : null;
-                              if (val == 'local') {
-                                pane.isRemoteSsh = false;
-                                pane.server = null;
-                                pane.title = 'Local Machine';
-                              } else {
-                                final srv = serverProvider.servers.firstWhere((s) => s.id == val, orElse: () => serverProvider.servers.first);
-                                pane.isRemoteSsh = true;
-                                pane.server = srv;
-                                pane.title = srv.name;
-                              }
-                            });
-                            _connectPane(pane);
+                            terminalProvider.setActivePaneIndex(windowIndex);
+                            if (isChild) {
+                              terminalProvider.setActiveSubPaneId(pane.id);
+                            }
+                            if (val == 'local') {
+                              pane.isRemoteSsh = false;
+                              pane.server = null;
+                              pane.title = 'Local Machine';
+                            } else {
+                              final srv = serverProvider.servers.firstWhere((s) => s.id == val, orElse: () => serverProvider.servers.first);
+                              pane.isRemoteSsh = true;
+                              pane.server = srv;
+                              pane.title = srv.name;
+                            }
+                            terminalProvider.connectPane(pane);
+                            terminalProvider.saveTerminalSessions();
                           },
                           itemBuilder: (ctx) {
                             final items = <PopupMenuEntry<String>>[];
@@ -1763,7 +1146,7 @@ class TerminalScreenState extends State<TerminalScreen> {
                           tooltip: 'Khởi động lại terminal này',
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                          onPressed: () => _connectPane(pane),
+                          onPressed: () => terminalProvider.connectPane(pane),
                         ),
                         if (isChild)
                           IconButton(
@@ -1773,7 +1156,7 @@ class TerminalScreenState extends State<TerminalScreen> {
                             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                             onPressed: () => _confirmCloseChildPane(windowIndex),
                           )
-                        else if (!isOnlyOne && _panes.length > 1)
+                        else if (!isOnlyOne && terminalProvider.panes.length > 1)
                           IconButton(
                             icon: const Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
                             tooltip: 'Đóng Tab cửa sổ này',
@@ -1804,11 +1187,11 @@ class TerminalScreenState extends State<TerminalScreen> {
                     alwaysShowCursor: isThisPaneActive,
                     hardwareKeyboardOnly: Platform.isWindows || Platform.isLinux || Platform.isMacOS,
                     onTapUp: (_, _) {
-                      if (_activePaneIndex != windowIndex || (isChild ? _activeSubPaneId != pane.id : _activeSubPaneId != null)) {
-                        setState(() {
-                          _activePaneIndex = windowIndex;
-                          _activeSubPaneId = isChild ? pane.id : null;
-                        });
+                      if (terminalProvider.activePaneIndex != windowIndex || (isChild ? activeSubPaneId != pane.id : activeSubPaneId != null)) {
+                        terminalProvider.setActivePaneIndex(windowIndex);
+                        if (isChild) {
+                          terminalProvider.setActiveSubPaneId(pane.id);
+                        }
                       }
                       pane.focusNode.requestFocus();
                     },
@@ -1830,7 +1213,6 @@ class TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
-
   Widget _buildKeyBtn(String label, String code, {bool isHighlight = false}) {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
@@ -1841,7 +1223,7 @@ class TerminalScreenState extends State<TerminalScreen> {
           borderRadius: BorderRadius.circular(4),
           onTap: () {
             HapticFeedback.lightImpact();
-            _sendKeyToActive(code);
+            context.read<TerminalProvider>().sendKeyToActive(code);
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -1866,4 +1248,3 @@ class TerminalScreenState extends State<TerminalScreen> {
     );
   }
 }
-

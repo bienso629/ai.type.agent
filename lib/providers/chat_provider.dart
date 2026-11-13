@@ -535,10 +535,14 @@ class ChatProvider extends ChangeNotifier {
           ? targetServers
           : (_currentSession?.targetServers ?? const []),
       onToken: (token) {
-        assistantMsg.content += token;
+        if (token == '__CLEAR_INTERMEDIATE_THOUGHTS__') {
+          assistantMsg.content = '';
+        } else {
+          assistantMsg.content += token;
+        }
         assistantMsg.statusMessage = null;
         if (tokenThrottleTimer == null || !tokenThrottleTimer!.isActive) {
-          tokenThrottleTimer = Timer(const Duration(milliseconds: 50), () {
+          tokenThrottleTimer = Timer(const Duration(milliseconds: 120), () {
             notifyListeners();
           });
         }
@@ -551,15 +555,54 @@ class ChatProvider extends ChangeNotifier {
       },
       onTool: (tool) {
         tokenThrottleTimer?.cancel();
-        assistantMsg.toolExecutions.add(tool);
-        assistantMsg.statusMessage = 'Đã chạy lệnh: ${tool.command}';
+        // Tránh trùng lặp thẻ tool (ACTIVE -> FINISHED) và giới hạn độ dài output hiển thị trên UI
+        final cappedOutput = tool.output.length > 4000
+            ? '${tool.output.substring(0, 4000)}\n... [Đã rút gọn ${tool.output.length - 4000} ký tự để chống lag UI]'
+            : tool.output;
+        final cappedTool = ToolExecutionItem(
+          tool: tool.tool,
+          command: tool.command,
+          output: cappedOutput,
+        );
+        var existingIdx = assistantMsg.toolExecutions.lastIndexWhere(
+          (t) => t.tool == tool.tool && t.command == tool.command && t.output == 'Đang thực thi...',
+        );
+        if (existingIdx == -1 && tool.output != 'Đang thực thi...') {
+          existingIdx = assistantMsg.toolExecutions.lastIndexWhere(
+            (t) => t.tool == tool.tool && t.command == tool.tool && t.output == 'Đang thực thi...',
+          );
+        }
+        if (existingIdx != -1) {
+          assistantMsg.toolExecutions[existingIdx] = cappedTool;
+        } else {
+          assistantMsg.toolExecutions.add(cappedTool);
+        }
+        // Giữ tối đa 30 tool card gần nhất trên UI để tránh phình cây Widget
+        if (assistantMsg.toolExecutions.length > 30) {
+          assistantMsg.toolExecutions.removeRange(0, assistantMsg.toolExecutions.length - 30);
+        }
+        if (tool.output != 'Đang thực thi...') {
+          final doneStatus = 'Đã thực hiện: ${tool.command}';
+          _sessionStatuses[sessionId] = doneStatus;
+          assistantMsg.statusMessage = doneStatus;
+        }
         notifyListeners();
       },
       onDone: (fullReply) {
         tokenThrottleTimer?.cancel();
+        for (var i = 0; i < assistantMsg.toolExecutions.length; i++) {
+          final item = assistantMsg.toolExecutions[i];
+          if (item.output == 'Đang thực thi...') {
+            assistantMsg.toolExecutions[i] = ToolExecutionItem(
+              tool: item.tool,
+              command: item.command,
+              output: '',
+            );
+          }
+        }
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
-        if (fullReply.isNotEmpty && assistantMsg.content.isEmpty) {
+        if (fullReply.isNotEmpty) {
           assistantMsg.content = fullReply;
         }
         _sessionGenerating[sessionId] = false;
@@ -579,6 +622,16 @@ class ChatProvider extends ChangeNotifier {
       },
       onError: (err) {
         tokenThrottleTimer?.cancel();
+        for (var i = 0; i < assistantMsg.toolExecutions.length; i++) {
+          final item = assistantMsg.toolExecutions[i];
+          if (item.output == 'Đang thực thi...') {
+            assistantMsg.toolExecutions[i] = ToolExecutionItem(
+              tool: item.tool,
+              command: item.command,
+              output: '',
+            );
+          }
+        }
         assistantMsg.isStreaming = false;
         assistantMsg.statusMessage = null;
         if (assistantMsg.content.isEmpty) {

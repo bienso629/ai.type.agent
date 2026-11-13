@@ -16,6 +16,7 @@ import 'providers/gateway_provider.dart';
 import 'providers/logs_provider.dart';
 import 'providers/metrics_provider.dart';
 import 'providers/server_provider.dart';
+import 'providers/terminal_provider.dart';
 import 'screens/main_navigation_screen.dart';
 
 void main() async {
@@ -78,6 +79,7 @@ class AiTypeAgentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MetricsProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => LogsProvider()),
+        ChangeNotifierProvider(create: (_) => TerminalProvider()..init()),
       ],
       child: MaterialApp(
         navigatorKey: SystemNotificationService.navigatorKey,

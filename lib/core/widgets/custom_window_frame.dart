@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
+import '../../providers/terminal_provider.dart';
 import '../theme/app_theme.dart';
 
 class CustomWindowFrame extends StatefulWidget {
@@ -58,6 +60,13 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> with WindowListen
   @override
   void onWindowUnmaximize() {
     if (mounted) setState(() => _isMaximized = false);
+  }
+
+  @override
+  void onWindowClose() async {
+    try {
+      await context.read<TerminalProvider>().saveTerminalSessions();
+    } catch (_) {}
   }
 
   @override
@@ -160,7 +169,12 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> with WindowListen
                           icon: Icons.close_rounded,
                           tooltip: 'Đóng',
                           isClose: true,
-                          onPressed: () => windowManager.close(),
+                          onPressed: () async {
+                            try {
+                              await context.read<TerminalProvider>().saveTerminalSessions();
+                            } catch (_) {}
+                            await windowManager.close();
+                          },
                         ),
                       ],
                     ),
