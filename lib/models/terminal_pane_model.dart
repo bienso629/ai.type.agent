@@ -20,6 +20,7 @@ class TerminalPaneItem {
   late final TerminalController controller;
   late final ScrollController scrollController;
   late final FocusNode focusNode;
+  final GlobalKey terminalViewKey = GlobalKey();
   Pty? pty;
   Process? fallbackProcess;
   SSHClient? sshClient;

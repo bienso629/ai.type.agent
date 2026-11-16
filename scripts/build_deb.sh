@@ -73,11 +73,28 @@ Description: AI Type Agent - Trợ lý lập trình và Quản trị máy chủ 
  quản trị hạ tầng và tương tác trực tiếp với các Agent lập trình thông minh.
 CONTROL_EOF
 
-# Tao file postinst cap nhat database icon/desktop
+# Tao file postinst cap nhat database icon/desktop va dong bo ban cai dat cu trong ~/.local (neu co)
 cat <<POSTINST_EOF > "$DEB_BUILD_DIR/DEBIAN/postinst"
 #!/bin/sh
 set -e
 if [ "\$1" = "configure" ]; then
+    if [ -n "\$SUDO_USER" ] && [ "\$SUDO_USER" != "root" ]; then
+        USER_HOME="\$(getent passwd "\$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "/home/\$SUDO_USER")"
+        if [ -d "\$USER_HOME/.local/share/ai-type-agent" ]; then
+            rm -rf "\$USER_HOME/.local/share/ai-type-agent/ai-type-agent" "\$USER_HOME/.local/share/ai-type-agent/data" "\$USER_HOME/.local/share/ai-type-agent/lib" 2>/dev/null || true
+            cp -r /opt/ai-type-agent/. "\$USER_HOME/.local/share/ai-type-agent/" 2>/dev/null || true
+            chmod +x "\$USER_HOME/.local/share/ai-type-agent/ai-type-agent" 2>/dev/null || true
+            chown -R "\$SUDO_USER:\$SUDO_USER" "\$USER_HOME/.local/share/ai-type-agent" 2>/dev/null || true
+        fi
+        if [ -e "\$USER_HOME/.local/bin/ai-type-agent" ] || [ -L "\$USER_HOME/.local/bin/ai-type-agent" ]; then
+            ln -sf /opt/ai-type-agent/ai-type-agent "\$USER_HOME/.local/bin/ai-type-agent" 2>/dev/null || true
+            chown -h "\$SUDO_USER:\$SUDO_USER" "\$USER_HOME/.local/bin/ai-type-agent" 2>/dev/null || true
+        fi
+        if [ -f "\$USER_HOME/.local/share/applications/ai-type-agent.desktop" ]; then
+            rm -f "\$USER_HOME/.local/share/applications/ai-type-agent.desktop" 2>/dev/null || true
+            update-desktop-database -q "\$USER_HOME/.local/share/applications" 2>/dev/null || true
+        fi
+    fi
     update-desktop-database -q /usr/share/applications 2>/dev/null || true
     gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
 fi

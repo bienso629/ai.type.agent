@@ -852,25 +852,51 @@ class TerminalScreenState extends State<TerminalScreen> with AutomaticKeepAliveC
     final activeIndex = (terminalProvider.activePaneIndex >= 0 && terminalProvider.activePaneIndex < panes.length)
         ? terminalProvider.activePaneIndex
         : 0;
-    final activeWindow = panes[activeIndex];
 
-    // Nếu active window không split
-    if (activeWindow.splitDirection == TerminalSplitDirection.none || activeWindow.childPane == null) {
+    return IndexedStack(
+      index: activeIndex,
+      sizing: StackFit.expand,
+      children: [
+        for (int i = 0; i < panes.length; i++)
+          KeyedSubtree(
+            key: ValueKey(panes[i].id),
+            child: TickerMode(
+              enabled: i == activeIndex,
+              child: _buildWindowLayout(
+                terminalProvider,
+                panes[i],
+                i,
+                serverProvider,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildWindowLayout(
+    TerminalProvider terminalProvider,
+    TerminalPaneItem window,
+    int windowIndex,
+    ServerProvider serverProvider,
+  ) {
+    // Nếu window không split
+    if (window.splitDirection == TerminalSplitDirection.none || window.childPane == null) {
       return _buildPaneCard(
         terminalProvider,
-        activeWindow,
-        activeIndex,
+        window,
+        windowIndex,
         serverProvider,
         isChild: false,
         isOnlyOne: true,
       );
     }
 
-    // Nếu active window được split
-    final mainCard = _buildPaneCard(terminalProvider, activeWindow, activeIndex, serverProvider, isChild: false);
-    final childCard = _buildPaneCard(terminalProvider, activeWindow.childPane!, activeIndex, serverProvider, isChild: true);
+    // Nếu window được split
+    final mainCard = _buildPaneCard(terminalProvider, window, windowIndex, serverProvider, isChild: false);
+    final childCard = _buildPaneCard(terminalProvider, window.childPane!, windowIndex, serverProvider, isChild: true);
 
-    if (activeWindow.splitDirection == TerminalSplitDirection.horizontal) {
+    if (window.splitDirection == TerminalSplitDirection.horizontal) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -899,8 +925,12 @@ class TerminalScreenState extends State<TerminalScreen> with AutomaticKeepAliveC
     bool isChild = false,
     bool isOnlyOne = false,
   }) {
+    final activeIndex = (terminalProvider.activePaneIndex >= 0 && terminalProvider.activePaneIndex < terminalProvider.panes.length)
+        ? terminalProvider.activePaneIndex
+        : 0;
+    final isWindowActive = activeIndex == windowIndex;
     final activeSubPaneId = terminalProvider.activeSubPaneId;
-    final isThisPaneActive = isChild ? (activeSubPaneId == pane.id) : (activeSubPaneId == null);
+    final isThisPaneActive = isWindowActive && (isChild ? (activeSubPaneId == pane.id) : (activeSubPaneId == null));
 
     return Listener(
       behavior: HitTestBehavior.translucent,
@@ -1173,6 +1203,7 @@ class TerminalScreenState extends State<TerminalScreen> with AutomaticKeepAliveC
               // Terminal View (Chuẩn cấu hình hiển thị và con trỏ Ubuntu Terminal)
               Expanded(
                 child: Scrollbar(
+                  key: pane.terminalViewKey,
                   controller: pane.scrollController,
                   thumbVisibility: true,
                   trackVisibility: false,

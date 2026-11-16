@@ -11,8 +11,12 @@ import 'encryption_service.dart';
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
-  DatabaseService._internal();
+  DatabaseService._internal({String? customDbPath}) : _customDbPath = customDbPath;
 
+  /// Khởi tạo instance riêng trỏ tới file SQLite chỉ định (phục vụ kiểm thử tự động).
+  factory DatabaseService.forTest(String dbPath) => DatabaseService._internal(customDbPath: dbPath);
+
+  final String? _customDbPath;
   Database? _db;
   final EncryptionService _enc = EncryptionService();
   String? _resolvedPath;
@@ -36,7 +40,7 @@ class DatabaseService {
       databaseFactory = databaseFactoryFfi;
     }
 
-    _resolvedPath = await _resolveDbPath();
+    _resolvedPath = _customDbPath ?? await _resolveDbPath();
     _db = await openDatabase(
       _resolvedPath!,
       version: 1,
@@ -63,8 +67,10 @@ class DatabaseService {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         ''');
+        await _ensureWorkScheduleTables(db);
       },
     );
+    await _ensureWorkScheduleTables(_db!);
     try {
       await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN working_dir TEXT;');
     } catch (_) {}
@@ -80,6 +86,47 @@ class DatabaseService {
     try {
       await _db!.execute('ALTER TABLE chat_sessions ADD COLUMN target_servers TEXT;');
     } catch (_) {}
+  }
+
+  Future<void> _ensureWorkScheduleTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS work_schedules (
+        session_id TEXT PRIMARY KEY,
+        project_name TEXT,
+        summary TEXT,
+        doc_files_json TEXT,
+        generated_at TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS work_schedule_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        task_code TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        priority TEXT DEFAULT 'medium',
+        phase TEXT,
+        source_doc TEXT,
+        done INTEGER DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_work_schedule_tasks_session
+      ON work_schedule_tasks(session_id, sort_order)
+    ''');
+  }
+
+  Future<void> close() async {
+    if (_db != null && _db!.isOpen) {
+      await _db!.close();
+    }
+    _db = null;
   }
 
   Future<String> _resolveDbPath() async {
@@ -388,6 +435,8 @@ class DatabaseService {
     try {
       final db = await _getDb();
       await db.delete('chat_messages', where: 'session_id = ?', whereArgs: [id]);
+      await db.delete('work_schedule_tasks', where: 'session_id = ?', whereArgs: [id]);
+      await db.delete('work_schedules', where: 'session_id = ?', whereArgs: [id]);
       await db.delete('chat_sessions', where: 'id = ?', whereArgs: [id]);
       return true;
     } catch (_) {
@@ -399,6 +448,8 @@ class DatabaseService {
     try {
       final db = await _getDb();
       await db.delete('chat_messages');
+      await db.delete('work_schedule_tasks');
+      await db.delete('work_schedules');
       await db.delete('chat_sessions');
       return true;
     } catch (_) {
@@ -594,6 +645,246 @@ class DatabaseService {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lưu trữ Lịch làm việc (Work Schedules & Tasks) trực tiếp trong SQLite của App
+  // (~/.ai_type_agent/chat_history.db) để không bị mất khi cài đặt / cập nhật lại App
+  // ---------------------------------------------------------------------------
+  Future<Map<String, dynamic>?> getWorkSchedule(String sessionId) async {
+    try {
+      final db = await _getDb();
+      final headerRows = await db.query(
+        'work_schedules',
+        where: 'session_id = ?',
+        whereArgs: [sessionId],
+        limit: 1,
+      );
+      final taskRows = await db.query(
+        'work_schedule_tasks',
+        where: 'session_id = ?',
+        whereArgs: [sessionId],
+        orderBy: 'sort_order ASC, id ASC',
+      );
+
+      if (headerRows.isEmpty && taskRows.isEmpty) {
+        final migrated = await _migrateLegacyWorkScheduleFileIfAny(sessionId);
+        return migrated;
+      }
+
+      String projectName = '';
+      String summary = '';
+      String? generatedAt;
+      List<String> docFiles = const [];
+
+      if (headerRows.isNotEmpty) {
+        final h = headerRows.first;
+        final rawProj = h['project_name']?.toString() ?? '';
+        final rawSum = h['summary']?.toString() ?? '';
+        final rawDocs = h['doc_files_json']?.toString() ?? '';
+        projectName = rawProj.isNotEmpty ? _enc.decryptValue(rawProj) : '';
+        summary = rawSum.isNotEmpty ? _enc.decryptValue(rawSum) : '';
+        generatedAt = h['generated_at']?.toString();
+        if (rawDocs.isNotEmpty) {
+          try {
+            final decDocs = _enc.decryptValue(rawDocs);
+            final parsed = jsonDecode(decDocs);
+            if (parsed is List) {
+              docFiles = parsed.map((e) => e.toString()).toList();
+            }
+          } catch (_) {}
+        }
+      }
+
+      final tasks = <Map<String, dynamic>>[];
+      for (final row in taskRows) {
+        final rawTitle = row['title']?.toString() ?? '';
+        final rawDesc = row['description']?.toString() ?? '';
+        final rawPhase = row['phase']?.toString() ?? '';
+        final rawSource = row['source_doc']?.toString() ?? '';
+        tasks.add({
+          'id': row['task_code']?.toString() ?? 'T${tasks.length + 1}',
+          'title': rawTitle.isNotEmpty ? _enc.decryptValue(rawTitle) : '',
+          'description': rawDesc.isNotEmpty ? _enc.decryptValue(rawDesc) : '',
+          'start_date': row['start_date']?.toString() ?? '',
+          'end_date': row['end_date']?.toString() ?? '',
+          'priority': row['priority']?.toString() ?? 'medium',
+          'phase': rawPhase.isNotEmpty ? _enc.decryptValue(rawPhase) : '',
+          'source_doc': rawSource.isNotEmpty ? _enc.decryptValue(rawSource) : '',
+          'done': row['done'] == 1 || row['done'] == true,
+        });
+      }
+
+      return {
+        'project_name': projectName,
+        'summary': summary,
+        'generated_at': generatedAt,
+        'doc_files': docFiles,
+        'tasks': tasks,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> saveWorkSchedule({
+    required String sessionId,
+    required String projectName,
+    required String summary,
+    required List<String> docFiles,
+    DateTime? generatedAt,
+    required List<Map<String, dynamic>> tasks,
+  }) async {
+    try {
+      final db = await _getDb();
+      final nowIso = DateTime.now().toIso8601String();
+      final encProject = projectName.isNotEmpty ? _enc.encryptValue(projectName) : '';
+      final encSummary = summary.isNotEmpty ? _enc.encryptValue(summary) : '';
+      final encDocs = docFiles.isNotEmpty ? _enc.encryptValue(jsonEncode(docFiles)) : '';
+      final genIso = generatedAt?.toIso8601String();
+
+      await db.transaction((txn) async {
+        await txn.insert(
+          'work_schedules',
+          {
+            'session_id': sessionId,
+            'project_name': encProject,
+            'summary': encSummary,
+            'doc_files_json': encDocs,
+            'generated_at': genIso,
+            'updated_at': nowIso,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        await txn.delete(
+          'work_schedule_tasks',
+          where: 'session_id = ?',
+          whereArgs: [sessionId],
+        );
+
+        for (var i = 0; i < tasks.length; i++) {
+          final t = tasks[i];
+          final title = t['title']?.toString() ?? '';
+          final desc = t['description']?.toString() ?? '';
+          final phase = t['phase']?.toString() ?? '';
+          final srcDoc = t['source_doc']?.toString() ?? '';
+          await txn.insert('work_schedule_tasks', {
+            'session_id': sessionId,
+            'task_code': t['id']?.toString() ?? 'T${i + 1}',
+            'title': title.isNotEmpty ? _enc.encryptValue(title) : '',
+            'description': desc.isNotEmpty ? _enc.encryptValue(desc) : '',
+            'start_date': t['start_date']?.toString() ?? '',
+            'end_date': t['end_date']?.toString() ?? '',
+            'priority': t['priority']?.toString() ?? 'medium',
+            'phase': phase.isNotEmpty ? _enc.encryptValue(phase) : '',
+            'source_doc': srcDoc.isNotEmpty ? _enc.encryptValue(srcDoc) : '',
+            'done': (t['done'] == true || t['done'] == 1) ? 1 : 0,
+            'sort_order': i,
+            'updated_at': nowIso,
+          });
+        }
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteWorkSchedule(String sessionId) async {
+    try {
+      final db = await _getDb();
+      await db.transaction((txn) async {
+        await txn.delete('work_schedule_tasks', where: 'session_id = ?', whereArgs: [sessionId]);
+        await txn.delete('work_schedules', where: 'session_id = ?', whereArgs: [sessionId]);
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<int> getPendingWorkScheduleCount(String sessionId) async {
+    try {
+      final db = await _getDb();
+      final rows = await db.rawQuery(
+        'SELECT COUNT(*) as cnt FROM work_schedule_tasks WHERE session_id = ? AND done = 0',
+        [sessionId],
+      );
+      if (rows.isEmpty) return 0;
+      return int.tryParse(rows.first['cnt']?.toString() ?? '0') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<bool> markWorkScheduleTasksDone(
+    String sessionId,
+    List<String> taskCodes, {
+    bool done = true,
+  }) async {
+    if (taskCodes.isEmpty) return false;
+    try {
+      final db = await _getDb();
+      final placeholders = List.filled(taskCodes.length, '?').join(',');
+      await db.rawUpdate(
+        'UPDATE work_schedule_tasks SET done = ?, updated_at = ? '
+        'WHERE session_id = ? AND task_code IN ($placeholders)',
+        [done ? 1 : 0, DateTime.now().toIso8601String(), sessionId, ...taskCodes],
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Tự động di chuyển dữ liệu lịch làm việc từ file JSON cũ (nếu còn tồn tại) sang SQLite một lần duy nhất.
+  Future<Map<String, dynamic>?> _migrateLegacyWorkScheduleFileIfAny(String sessionId) async {
+    if (_customDbPath != null) return null;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final safeId = sessionId.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '_');
+      final legacyFile = File(p.join(dir.path, 'work_schedules', '$safeId.json'));
+      if (!legacyFile.existsSync()) return null;
+
+      final decoded = jsonDecode(legacyFile.readAsStringSync());
+      if (decoded is! Map<String, dynamic>) return null;
+
+      final proj = decoded['project_name']?.toString() ?? '';
+      final sum = decoded['summary']?.toString() ?? '';
+      final genAt = DateTime.tryParse(decoded['generated_at']?.toString() ?? '');
+      final docs = (decoded['doc_files'] is List)
+          ? (decoded['doc_files'] as List).map((e) => e.toString()).toList()
+          : <String>[];
+      final tasks = (decoded['tasks'] is List)
+          ? (decoded['tasks'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      await saveWorkSchedule(
+        sessionId: sessionId,
+        projectName: proj,
+        summary: sum,
+        docFiles: docs,
+        generatedAt: genAt,
+        tasks: tasks,
+      );
+      try {
+        legacyFile.deleteSync();
+      } catch (_) {}
+
+      return {
+        'project_name': proj,
+        'summary': sum,
+        'generated_at': genAt?.toIso8601String(),
+        'doc_files': docs,
+        'tasks': tasks,
+      };
+    } catch (_) {
+      return null;
     }
   }
 }

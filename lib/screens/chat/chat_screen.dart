@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/clipboard_service.dart';
+import '../../core/services/database_service.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/services/storage_service.dart';
@@ -34,8 +35,13 @@ import '../terminal/terminal_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final VoidCallback? onNavigateToServers;
+  final bool embedTerminalPanel;
 
-  const ChatScreen({super.key, this.onNavigateToServers});
+  const ChatScreen({
+    super.key,
+    this.onNavigateToServers,
+    this.embedTerminalPanel = true,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -55,6 +61,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Terminal split side panel visibility
   bool _showTerminalPanel = true;
+  double _lastTerminalPanelWidth = 520.0;
+  double _lastTerminalPanelHeight = 600.0;
 
   /// Dieu khien TerminalScreen trong panel chat: mo tab moi tai Scope
   /// "chay ngay" se mo tab terminal moi va thi hanh lenh tai Scope hoi thoai.
@@ -63,6 +71,10 @@ class _ChatScreenState extends State<ChatScreen> {
   // Doc viewer split side panel visibility
   bool _showDocViewerPanel = false;
   String? _selectedViewerDocPath;
+
+  // Công việc từ Lịch làm việc đang được chọn giải quyết trong khung chat
+  List<ScheduleTask> _activeScheduleTasks = [];
+  int _pendingScheduleTaskCount = 0;
 
   // Inline slash autocomplete state
   List<String> _inlineDirSuggestions = [];
@@ -886,6 +898,122 @@ class _ChatScreenState extends State<ChatScreen> {
     _safeScrollToBottom();
   }
 
+  Future<void> _refreshPendingScheduleTaskCount([String? sessionId]) async {
+    final sid = sessionId ?? context.read<ChatProvider>().currentSession?.id;
+    if (sid == null || sid.isEmpty) return;
+    final count = await DatabaseService().getPendingWorkScheduleCount(sid);
+    if (mounted && context.read<ChatProvider>().currentSession?.id == sid) {
+      setState(() {
+        _pendingScheduleTaskCount = count;
+      });
+    }
+  }
+
+  Future<void> _openWorkScheduleDialog(ChatProvider chat, ServerProvider serverProvider) async {
+    final session = chat.currentSession;
+    if (session == null) return;
+    final recentMsgs = chat.messages.length > 6
+        ? chat.messages.sublist(chat.messages.length - 6)
+        : chat.messages;
+    await WorkScheduleDialog.show(
+      context,
+      sessionId: session.id,
+      sessionTitle: session.title,
+      workingDir: chat.currentSessionScope,
+      docFiles: List<String>.from(chat.currentSessionDocFiles),
+      recentMessages: List<ChatMessageModel>.from(recentMsgs),
+      model: serverProvider.currentAiModel,
+      onDispatchToPrompt: (tasks, {required sendImmediately}) {
+        _applyScheduleTasksToProjectPrompt(
+          tasks,
+          chat,
+          serverProvider,
+          sendImmediately: sendImmediately,
+        );
+      },
+    );
+    await _refreshPendingScheduleTaskCount(session.id);
+  }
+
+  Future<void> _openQuickTaskPicker(ChatProvider chat, ServerProvider serverProvider) async {
+    final session = chat.currentSession;
+    if (session == null) return;
+    await ProjectTaskPickerDialog.show(
+      context,
+      sessionId: session.id,
+      sessionTitle: session.title,
+      onOpenFullSchedule: () => _openWorkScheduleDialog(chat, serverProvider),
+      onDispatch: (tasks, {required sendImmediately}) {
+        _applyScheduleTasksToProjectPrompt(
+          tasks,
+          chat,
+          serverProvider,
+          sendImmediately: sendImmediately,
+        );
+      },
+    );
+    await _refreshPendingScheduleTaskCount(session.id);
+  }
+
+  void _applyScheduleTasksToProjectPrompt(
+    List<ScheduleTask> tasks,
+    ChatProvider chat,
+    ServerProvider serverProvider, {
+    required bool sendImmediately,
+  }) {
+    if (tasks.isEmpty) return;
+    final builtPrompt = ScheduleTask.buildProjectPrompt(
+      tasks,
+      sessionDocFiles: chat.currentSessionDocFiles,
+    );
+    final currentDraft = _textController.text.trim();
+    final combined = currentDraft.isEmpty ? builtPrompt : '$currentDraft\n\n$builtPrompt';
+
+    setState(() {
+      _activeScheduleTasks = List<ScheduleTask>.from(tasks);
+      _textController.text = combined;
+      _textController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _textController.text.length),
+      );
+    });
+
+    if (sendImmediately) {
+      _handleSend(chat, serverProvider);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _inputFocusNode.requestFocus();
+      });
+      AppToast.info(
+        context,
+        tasks.length == 1
+            ? 'Đã đưa công việc ${tasks.first.id} vào khung Prompt của dự án'
+            : 'Đã đưa ${tasks.length} công việc vào khung Prompt của dự án',
+      );
+    }
+  }
+
+  Future<void> _markActiveTasksCompleted(ChatProvider chat) async {
+    final session = chat.currentSession;
+    if (session == null || _activeScheduleTasks.isEmpty) return;
+    final codes = _activeScheduleTasks.map((t) => t.id).toList();
+    final ok = await DatabaseService().markWorkScheduleTasksDone(session.id, codes, done: true);
+    if (!mounted) return;
+    if (ok) {
+      setState(() {
+        _activeScheduleTasks = [];
+      });
+      await _refreshPendingScheduleTaskCount(session.id);
+      if (mounted) {
+        AppToast.success(
+          context,
+          codes.length == 1
+              ? 'Đã đánh dấu hoàn thành công việc ${codes.first} trong Lịch làm việc'
+              : 'Đã đánh dấu hoàn thành ${codes.length} công việc (${codes.join(', ')})',
+        );
+      }
+    }
+  }
+
   void _triggerScopePicker() async {
     final chat = context.read<ChatProvider>();
     showDialog(
@@ -1157,9 +1285,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _promptHistoryIndex = -1;
       _draftPrompt = '';
       _stickyUserQuestion = null;
+      _activeScheduleTasks = [];
+      _pendingScheduleTaskCount = 0;
       _wasGenerating = chat.isGenerating;
       _safeScrollToBottom(instant: true);
       if (chat.currentSession != null) {
+        final sid = chat.currentSession!.id;
+        _refreshPendingScheduleTaskCount(sid);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             serverProvider.selectServerByTarget(chat.currentSession!.targetServer);
@@ -1395,19 +1527,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ),
+                ],
+                if (chat.currentSession != null) ...[
                   const SizedBox(width: 8),
                   InkWell(
-                    onTap: () {
-                      final session = chat.currentSession;
-                      if (session == null) return;
-                      WorkScheduleDialog.show(
-                        context,
-                        sessionId: session.id,
-                        workingDir: chat.currentSessionScope,
-                        docFiles: List<String>.from(chat.currentSessionDocFiles),
-                        model: serverProvider.currentAiModel,
-                      );
-                    },
+                    onTap: () => _openWorkScheduleDialog(chat, serverProvider),
                     borderRadius: BorderRadius.circular(4),
                     child: Container(
                       height: 36,
@@ -1461,8 +1585,27 @@ class _ChatScreenState extends State<ChatScreen> {
                 Positioned.fill(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final bool isRightPanelOpen = _showTerminalPanel || (_showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty);
-                      final double rightWidth = isRightPanelOpen ? (constraints.maxWidth * 0.5) : 0.0;
+                      if (constraints.maxWidth >= 300) {
+                        _lastTerminalPanelWidth = constraints.maxWidth * 0.5;
+                      }
+                      if (constraints.maxHeight >= 200) {
+                        _lastTerminalPanelHeight = constraints.maxHeight;
+                      }
+
+                      final bool hasDocViewer = _showDocViewerPanel && chat.currentSessionDocFiles.isNotEmpty;
+                      final bool isRightPanelOpen = widget.embedTerminalPanel
+                          ? (_showTerminalPanel || hasDocViewer)
+                          : hasDocViewer;
+                      final double panelWidth = (isRightPanelOpen && constraints.maxWidth >= 300)
+                          ? (constraints.maxWidth * 0.5)
+                          : _lastTerminalPanelWidth;
+                      final double panelHeight = constraints.maxHeight >= 200
+                          ? constraints.maxHeight
+                          : _lastTerminalPanelHeight;
+                      final double occupiedWidth = isRightPanelOpen
+                          ? (panelWidth <= constraints.maxWidth * 0.5 ? panelWidth : constraints.maxWidth * 0.5)
+                          : 0.0;
+                      final double occupiedHeight = isRightPanelOpen ? constraints.maxHeight : 0.0;
 
                       return Row(
                         children: [
@@ -1532,55 +1675,68 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: AppColors.borderDark,
                         ),
 
-                      // Giữ TerminalScreen luôn sống trong widget tree (width = 0 khi ẩn) để Offstage + TickerMode bảo toàn 100% tiến trình PTY và tab terminal
-                      SizedBox(
-                        width: rightWidth,
-                        child: Offstage(
-                          offstage: !isRightPanelOpen,
-                          child: TickerMode(
-                            enabled: isRightPanelOpen,
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: Offstage(
-                                    offstage: !_showTerminalPanel,
-                                    child: TickerMode(
-                                      enabled: _showTerminalPanel,
-                                      child: TerminalScreen(
-                                        key: _terminalPanelKey,
-                                        onHidePanel: () {
-                                          setState(() {
-                                            _showTerminalPanel = false;
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (chat.currentSessionDocFiles.isNotEmpty)
-                                  Positioned.fill(
-                                    child: Offstage(
-                                      offstage: !_showDocViewerPanel || _showTerminalPanel,
-                                      child: TickerMode(
-                                        enabled: _showDocViewerPanel && !_showTerminalPanel,
-                                        child: _ScopeDocViewerPanel(
-                                          chat: chat,
-                                          selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
-                                          onSelectDoc: (path) {
-                                            setState(() {
-                                              _selectedViewerDocPath = path;
-                                            });
-                                          },
-                                          onClose: () {
-                                            setState(() {
-                                              _showDocViewerPanel = false;
-                                            });
-                                          },
+                      // Đặt Offstage bao ngoài vùng chứa có kích thước cố định (panelWidth x panelHeight)
+                      // để khi ẩn Terminal, Row nhường 100% chiều rộng cho khung Chat nhưng RenderTerminal
+                      // không bao giờ bị ép về width = 0 (tránh reflow vỡ chữ hoặc gửi SIGWINCH cols=1 làm mới các tab).
+                      Offstage(
+                        offstage: !isRightPanelOpen,
+                        child: TickerMode(
+                          enabled: isRightPanelOpen,
+                          child: ClipRect(
+                            child: SizedBox(
+                              width: occupiedWidth,
+                              height: occupiedHeight,
+                              child: OverflowBox(
+                                alignment: Alignment.topLeft,
+                                minWidth: panelWidth,
+                                maxWidth: panelWidth,
+                                minHeight: panelHeight,
+                                maxHeight: panelHeight,
+                                child: Stack(
+                                  children: [
+                                    if (widget.embedTerminalPanel)
+                                      Positioned.fill(
+                                        child: Offstage(
+                                          offstage: !_showTerminalPanel,
+                                          child: TickerMode(
+                                            enabled: _showTerminalPanel,
+                                            child: TerminalScreen(
+                                              key: _terminalPanelKey,
+                                              onHidePanel: () {
+                                                setState(() {
+                                                  _showTerminalPanel = false;
+                                                });
+                                              },
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                              ],
+                                    if (chat.currentSessionDocFiles.isNotEmpty)
+                                      Positioned.fill(
+                                        child: Offstage(
+                                          offstage: !_showDocViewerPanel || (widget.embedTerminalPanel && _showTerminalPanel),
+                                          child: TickerMode(
+                                            enabled: _showDocViewerPanel && !(widget.embedTerminalPanel && _showTerminalPanel),
+                                            child: _ScopeDocViewerPanel(
+                                              chat: chat,
+                                              selectedDocPath: _selectedViewerDocPath ?? chat.currentSessionDocFiles.first,
+                                              onSelectDoc: (path) {
+                                                setState(() {
+                                                  _selectedViewerDocPath = path;
+                                                });
+                                              },
+                                              onClose: () {
+                                                setState(() {
+                                                  _showDocViewerPanel = false;
+                                                });
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -1592,7 +1748,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
 
                 // Nút icon Terminal nằm xoay ngang sát mép màn hình bên phải khi Terminal đang ẩn
-                if (!_showTerminalPanel)
+                if (widget.embedTerminalPanel && !_showTerminalPanel)
                   Positioned(
                     right: 0,
                     top: 140,
@@ -2562,6 +2718,70 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ],
+            if (_activeScheduleTasks.isNotEmpty) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.55)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.assignment_turned_in_outlined, size: 15, color: AppColors.accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _activeScheduleTasks.length == 1
+                            ? 'Đang giải quyết công việc [${_activeScheduleTasks.first.id}]: ${_activeScheduleTasks.first.title}'
+                            : 'Đang giải quyết ${_activeScheduleTasks.length} công việc: ${_activeScheduleTasks.map((t) => '${t.id}. ${t.title}').join(' | ')}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textWhite,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: () => _markActiveTasksCompleted(chat),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(3),
+                          border: Border.all(color: AppColors.accent, width: 0.8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_rounded, size: 12, color: AppColors.accent),
+                            SizedBox(width: 4),
+                            Text(
+                              'Đánh dấu Hoàn thành',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppColors.accent),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    InkWell(
+                      onTap: () => setState(() => _activeScheduleTasks = []),
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.close_rounded, size: 14, color: AppColors.textMuted),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (_attachedFiles.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -2921,8 +3141,40 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           onPressed: _pickFiles,
                         ),
+                        if (chat.currentSession != null) ...[
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 32),
+                              fixedSize: const Size.fromHeight(32),
+                              side: BorderSide(
+                                color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.borderDark,
+                              ),
+                              backgroundColor: _pendingScheduleTaskCount > 0
+                                  ? AppColors.accent.withValues(alpha: 0.1)
+                                  : null,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            ),
+                            icon: Icon(
+                              Icons.checklist_rtl_rounded,
+                              size: 14,
+                              color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.primaryLight,
+                            ),
+                            label: Text(
+                              _pendingScheduleTaskCount > 0
+                                  ? 'Công việc ($_pendingScheduleTaskCount)'
+                                  : 'Công việc',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.textBody,
+                                fontWeight: _pendingScheduleTaskCount > 0 ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                            onPressed: () => _openQuickTaskPicker(chat, serverProvider),
+                          ),
+                        ],
                         const SizedBox(width: 8),
-                        // Model Selector Button,
                         // Model Selector Button
                         OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
@@ -2965,8 +3217,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (chat.isGenerating)
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(64, 32),
+                      fixedSize: const Size.fromHeight(32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       backgroundColor: AppColors.danger,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                     ),
                     icon: const Icon(Icons.stop_rounded, size: 14),
                     label: const Text('Dừng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -2975,8 +3231,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 else
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(64, 32),
+                      fixedSize: const Size.fromHeight(32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                     ),
                     icon: const Icon(Icons.send_rounded, size: 14),
                     label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -3848,34 +4108,6 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
     }
   }
 
-  Future<void> _replaceWithNewFile(String docPath) async {
-    final file = File(docPath);
-    final initialDir = file.existsSync() && file.parent.existsSync() ? file.parent.path : null;
-    final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Chọn file mới ghi đè cho ${p.basename(docPath)}',
-      initialDirectory: initialDir,
-      type: FileType.custom,
-      allowedExtensions: ['docx', 'doc', 'pdf', 'txt', 'md', 'json', 'yaml', 'yml', 'sql', 'html', 'xml', 'csv'],
-    );
-
-    if (result != null && result.files.single.path != null) {
-      final newFilePath = result.files.single.path!;
-      final newFile = File(newFilePath);
-      if (newFile.existsSync()) {
-        final bytes = await newFile.readAsBytes();
-        await file.writeAsBytes(bytes, flush: true);
-        await widget.chat.setScopeForCurrentSession(
-          widget.chat.currentSessionScope,
-          docFiles: widget.chat.currentSessionDocFiles,
-        );
-        _loadFileContent(docPath);
-        if (mounted) {
-          AppToast.success(context, 'Đã thay thế nội dung từ file mới thành công');
-        }
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final docs = widget.chat.currentSessionDocFiles;
@@ -3978,16 +4210,6 @@ LƯU Ý: Chỉ xuất đúng nội dung tài liệu cuối cùng để ghi đè 
                 ),
 
                 const SizedBox(width: 8),
-                // Nút thay thế file
-                if (_loadedDocPath != null)
-                  Tooltip(
-                    message: 'Chọn file mới ghi đè',
-                    child: IconButton(
-                      icon: const Icon(Icons.file_upload_outlined, size: 16, color: AppColors.textMuted),
-                      hoverColor: AppColors.accentCyan.withValues(alpha: 0.15),
-                      onPressed: () => _replaceWithNewFile(_loadedDocPath!),
-                    ),
-                  ),
 
                 // Nút đóng sidebar tài liệu
                 Tooltip(

@@ -2,7 +2,7 @@
 
 #define MyAppName "AI Type Agent"
 #ifndef MyAppVersion
-#define MyAppVersion "1.4.5"
+#define MyAppVersion "1.5.3"
 #endif
 #define MyAppPublisher "Tadu Cloud Team"
 #define MyAppURL "https://tadu.vn"

@@ -126,11 +126,30 @@ jobs:
            quan tri may chu SSH va tuong tac voi AI Agent lap trinh thong minh.
           EOF
 
-          # 6. Post-install script để cập nhật desktop database & icon cache
+          # 6. Post-install script để cập nhật desktop database, icon cache và gỡ bỏ bản cũ che khuất trong ~/.local
           cat > "$DEBROOT/DEBIAN/postinst" << 'EOF'
           #!/bin/sh
           set -e
           if [ "$1" = "configure" ]; then
+            if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+              USER_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "/home/$SUDO_USER")"
+              if [ -d "$USER_HOME/.local/share/ai-type-agent" ]; then
+                rm -rf "$USER_HOME/.local/share/ai-type-agent/ai-type-agent" "$USER_HOME/.local/share/ai-type-agent/data" "$USER_HOME/.local/share/ai-type-agent/lib" 2>/dev/null || true
+                cp -r /opt/ai-type-agent/. "$USER_HOME/.local/share/ai-type-agent/" 2>/dev/null || true
+                chmod +x "$USER_HOME/.local/share/ai-type-agent/ai-type-agent" 2>/dev/null || true
+                chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.local/share/ai-type-agent" 2>/dev/null || true
+              fi
+              if [ -e "$USER_HOME/.local/bin/ai-type-agent" ] || [ -L "$USER_HOME/.local/bin/ai-type-agent" ]; then
+                ln -sf /opt/ai-type-agent/ai-type-agent "$USER_HOME/.local/bin/ai-type-agent" 2>/dev/null || true
+                chown -h "$SUDO_USER:$SUDO_USER" "$USER_HOME/.local/bin/ai-type-agent" 2>/dev/null || true
+              fi
+              if [ -f "$USER_HOME/.local/share/applications/ai-type-agent.desktop" ]; then
+                rm -f "$USER_HOME/.local/share/applications/ai-type-agent.desktop" 2>/dev/null || true
+                if command -v update-desktop-database >/dev/null 2>&1; then
+                  update-desktop-database -q "$USER_HOME/.local/share/applications" 2>/dev/null || true
+                fi
+              fi
+            fi
             if command -v update-desktop-database >/dev/null 2>&1; then
               update-desktop-database -q /usr/share/applications 2>/dev/null || true
             fi

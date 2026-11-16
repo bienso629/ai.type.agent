@@ -33,6 +33,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   late final List<Widget> _screens = [
     ChatScreen(
+      embedTerminalPanel: false,
       onNavigateToServers: () {
         setState(() {
           _activeTabKey = 'servers';
@@ -47,6 +48,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   late final List<Widget> _desktopScreens = [
     ChatScreen(
+      embedTerminalPanel: true,
       onNavigateToServers: () {
         setState(() {
           _activeTabKey = 'servers';
@@ -345,7 +347,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                               onPressed: () => setState(() => _activeTabKey = 'settings'),
                             ),
                             const Spacer(),
-                            const Text('v1.4.3', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
+                            const Text('v1.5.3', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
                           ],
                         ),
                 ),

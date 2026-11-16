@@ -438,16 +438,20 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           targetServerModel = resolvedServers.first;
         }
 
-        // Save user message to database
-        final userMsg = ChatMessageModel(
-          sessionId: sessionId,
-          role: 'user',
-          content: message,
-          model: targetModel,
-          attachments: attachments,
-          createdAt: DateTime.now(),
-        );
-        await _dbService.insertMessage(userMsg);
+        final bool isEphemeralSchedule = sessionId.startsWith('schedule_');
+
+        // Save user message to database (skip ephemeral schedule generation requests)
+        if (!isEphemeralSchedule) {
+          final userMsg = ChatMessageModel(
+            sessionId: sessionId,
+            role: 'user',
+            content: message,
+            model: targetModel,
+            attachments: attachments,
+            createdAt: DateTime.now(),
+          );
+          await _dbService.insertMessage(userMsg);
+        }
 
         // If user selected a CLI agent (e.g. antigravity-cli, claude-cli, gemini-cli)
         if (_isCliModel(targetModel)) {
@@ -509,15 +513,17 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               final emptyNotice =
                   'Agent $targetModel đã dừng tiến trình mà chưa xuất bản báo cáo kết quả. '
                   'Nếu công việc chưa hoàn tất, hãy nhắn "tiếp tục" để agent chạy nốt.';
-              final assistantMsg = ChatMessageModel(
-                sessionId: sessionId,
-                role: 'assistant',
-                content: cleanReply.isNotEmpty ? cleanReply : emptyNotice,
-                model: targetModel,
-                toolExecutions: cliExecutedTools,
-                createdAt: DateTime.now(),
-              );
-              await _dbService.insertMessage(assistantMsg);
+              if (!isEphemeralSchedule) {
+                final assistantMsg = ChatMessageModel(
+                  sessionId: sessionId,
+                  role: 'assistant',
+                  content: cleanReply.isNotEmpty ? cleanReply : emptyNotice,
+                  model: targetModel,
+                  toolExecutions: cliExecutedTools,
+                  createdAt: DateTime.now(),
+                );
+                await _dbService.insertMessage(assistantMsg);
+              }
               onDone(cleanReply.isNotEmpty ? cleanReply : emptyNotice);
             },
             onError: onError,
@@ -528,12 +534,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
         // Build System Prompt
         final customPrompt = cfg['custom_prompt']?.toString();
-        String sysPrompt =
-            (customPrompt != null && customPrompt.trim().isNotEmpty)
-            ? customPrompt.trim()
-            : systemPromptBase;
+        String sysPrompt = isEphemeralSchedule
+            ? 'Bạn là trợ lý lập kế hoạch công việc dự án. Chỉ trả về đúng một object JSON hợp lệ theo yêu cầu của người dùng, không gọi công cụ, không viết giải thích ngoài JSON.'
+            : ((customPrompt != null && customPrompt.trim().isNotEmpty)
+                  ? customPrompt.trim()
+                  : systemPromptBase);
 
-        if (resolvedServers.isNotEmpty) {
+        if (!isEphemeralSchedule && resolvedServers.isNotEmpty) {
           // Sinh tên công cụ SSH duy nhất cho từng server để Agent gọi đúng máy.
           String serverToolName(ServerModel s) {
             final raw = s.name.isNotEmpty ? s.name : s.serverIp;
@@ -726,11 +733,13 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
           for (final s in resolvedServers) serverToolName(s): s,
         };
 
-        final tools = [
-          {
-            'type': 'function',
-            'function': {
-              'name': 'execute_terminal_command',
+        final tools = isEphemeralSchedule
+            ? <Map<String, dynamic>>[]
+            : [
+                {
+                  'type': 'function',
+                  'function': {
+                    'name': 'execute_terminal_command',
               'description':
                   'Thực thi lệnh terminal bash/shell trên máy tính cục bộ (Local OS) ngay tại thư mục Scope. Đây là công cụ ưu tiên hàng đầu.',
               'parameters': {
@@ -830,7 +839,7 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
             req.body = jsonEncode({
               'model': targetModel.replaceFirst(RegExp(r'^models/'), ''),
               'messages': messages,
-              'tools': tools,
+              if (tools.isNotEmpty) 'tools': tools,
               'stream': true,
             });
 
@@ -1258,15 +1267,17 @@ CÁC QUY TẮC BẮT BUỘC (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
               'Agent kết thúc lượt xử lý mà không sinh thêm nội dung hoặc lệnh mới. '
               'Nếu công việc chưa xong, hãy nhắn "tiếp tục" để agent chạy nốt.';
         }
-        final assistantMsg = ChatMessageModel(
-          sessionId: sessionId,
-          role: 'assistant',
-          content: finalReply.isNotEmpty ? finalReply : fallbackReply,
-          model: targetModel,
-          toolExecutions: allExecutedTools,
-          createdAt: DateTime.now(),
-        );
-        await _dbService.insertMessage(assistantMsg);
+        if (!isEphemeralSchedule) {
+          final assistantMsg = ChatMessageModel(
+            sessionId: sessionId,
+            role: 'assistant',
+            content: finalReply.isNotEmpty ? finalReply : fallbackReply,
+            model: targetModel,
+            toolExecutions: allExecutedTools,
+            createdAt: DateTime.now(),
+          );
+          await _dbService.insertMessage(assistantMsg);
+        }
 
         if (finalReply.isEmpty) {
           onDone(fallbackReply);
@@ -2161,8 +2172,12 @@ exec python3 "\$DIR/scp_runner.py" --host "${s.serverIp}" --port "${s.sshPort}" 
     final cfg = await _configService.loadConfig();
     final customPromptTemplate = cfg['custom_prompt']?.toString();
 
+    final bool isEphemeralSchedule = sessionId.startsWith('schedule_');
+
     // Check if we have an existing persistent CLI conversation ID for this session
-    String? cliConvId = await _dbService.getCliConversationId(sessionId);
+    String? cliConvId = isEphemeralSchedule
+        ? null
+        : await _dbService.getCliConversationId(sessionId);
 
     // Build attachments instruction text if attachments exist
     String attachmentPromptBlock = '';
@@ -2328,9 +2343,13 @@ exec python3 "\$DIR/scp_runner.py" --host "${s.serverIp}" --port "${s.sshPort}" 
         promptSuffix = '$promptSuffix\n$knowledgeGuide';
       }
 
-      final effectiveLocalPrompt = attachmentPromptBlock.isNotEmpty
-          ? '$prompt\n\n$attachmentPromptBlock\n$promptSuffix'
-          : '$prompt\n\n$promptSuffix';
+      final effectiveLocalPrompt = isEphemeralSchedule
+          ? (attachmentPromptBlock.isNotEmpty
+                ? '$prompt\n\n$attachmentPromptBlock'
+                : prompt)
+          : (attachmentPromptBlock.isNotEmpty
+                ? '$prompt\n\n$attachmentPromptBlock\n$promptSuffix'
+                : '$prompt\n\n$promptSuffix');
       final cleanPrompt = effectiveLocalPrompt;
 
       final m = cliName.toLowerCase();
@@ -2545,7 +2564,9 @@ exec python3 "\$DIR/scp_runner.py" --host "${s.serverIp}" --port "${s.sshPort}" 
                 emittedConvId.isNotEmpty &&
                 emittedConvId != cliConvId) {
               cliConvId = emittedConvId;
-              _dbService.setCliConversationId(sessionId, emittedConvId);
+              if (!isEphemeralSchedule) {
+                _dbService.setCliConversationId(sessionId, emittedConvId);
+              }
             }
 
             // 1. Antigravity CLI (agy) streaming protocol

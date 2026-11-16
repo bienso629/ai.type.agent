@@ -48,6 +48,21 @@ class TerminalProvider extends ChangeNotifier {
     await _loadSavedTerminalSessions();
   }
 
+  @visibleForTesting
+  void seedPanesForTest(
+    List<TerminalPaneItem> seededPanes, {
+    int activeIndex = 0,
+    String? activeSubPaneId,
+  }) {
+    _isInitialized = true;
+    _panes
+      ..clear()
+      ..addAll(seededPanes);
+    _activePaneIndex = activeIndex;
+    _activeSubPaneId = activeSubPaneId;
+    notifyListeners();
+  }
+
   Future<void> _loadSavedTerminalSessions() async {
     try {
       final savedData = await _storage.getTerminalSessions();
@@ -385,8 +400,10 @@ class TerminalProvider extends ChangeNotifier {
         } catch (_) {}
       }
 
-      final initialCols = pane.terminal.viewWidth > 0 ? pane.terminal.viewWidth : 80;
-      final initialRows = pane.terminal.viewHeight > 0 ? pane.terminal.viewHeight : 24;
+      final initialCols = pane.terminal.viewWidth >= 10 ? pane.terminal.viewWidth : 80;
+      final initialRows = pane.terminal.viewHeight >= 3 ? pane.terminal.viewHeight : 24;
+      int lastAppliedCols = initialCols;
+      int lastAppliedRows = initialRows;
 
       pane.pty = Pty.start(
         shell,
@@ -473,7 +490,9 @@ class TerminalProvider extends ChangeNotifier {
       };
 
       pane.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
-        if (width > 0 && height > 0) {
+        if (width >= 10 && height >= 3 && (width != lastAppliedCols || height != lastAppliedRows)) {
+          lastAppliedCols = width;
+          lastAppliedRows = height;
           try {
             pane.pty?.resize(height, width);
           } catch (_) {}
@@ -489,8 +508,10 @@ class TerminalProvider extends ChangeNotifier {
 
   Future<void> _connectSshPane(TerminalPaneItem pane) async {
     try {
-      final cols = pane.terminal.viewWidth > 0 ? pane.terminal.viewWidth : 80;
-      final rows = pane.terminal.viewHeight > 0 ? pane.terminal.viewHeight : 24;
+      final cols = pane.terminal.viewWidth >= 10 ? pane.terminal.viewWidth : 80;
+      final rows = pane.terminal.viewHeight >= 3 ? pane.terminal.viewHeight : 24;
+      int lastAppliedCols = cols;
+      int lastAppliedRows = rows;
 
       pane.sshClient = await NativeSshService().getClient(server: pane.server);
       pane.sshSession = await pane.sshClient!.shell(
@@ -551,7 +572,9 @@ class TerminalProvider extends ChangeNotifier {
       };
 
       pane.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
-        if (width > 0 && height > 0) {
+        if (width >= 10 && height >= 3 && (width != lastAppliedCols || height != lastAppliedRows)) {
+          lastAppliedCols = width;
+          lastAppliedRows = height;
           try {
             pane.sshSession?.resizeTerminal(width, height, pixelWidth, pixelHeight);
           } catch (_) {}

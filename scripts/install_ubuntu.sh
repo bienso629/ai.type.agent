@@ -13,10 +13,20 @@ PIXMAP_DIR="$HOME/.local/share/pixmaps"
 
 echo "=== DANG CAI DAT AI TYPE AGENT VAO MAY TINH (UBUNTU / LINUX) ==="
 
-if [ ! -d "$BUNDLE_DIR" ]; then
-    echo "Thu muc bundle chua ton tai. Dang tien hanh bien dich ban release..."
+SKIP_BUILD=false
+for arg in "$@"; do
+    if [ "$arg" = "--no-build" ] || [ "$arg" = "--skip-build" ]; then
+        SKIP_BUILD=true
+    fi
+done
+
+if [ "$SKIP_BUILD" = false ] || [ ! -d "$BUNDLE_DIR" ]; then
+    echo "Dang tien hanh bien dich ban release Flutter Linux moi nhat..."
     cd "$SOURCE_DIR"
-    flutter build linux --release
+    FLUTTER_BIN="$(which flutter 2>/dev/null || echo '/snap/bin/flutter')"
+    "$FLUTTER_BIN" build linux --release
+else
+    echo "Su dung ban release da bien dich san tai: $BUNDLE_DIR"
 fi
 
 echo "1. Tao cac thu muc he thong cho nguoi dung..."
@@ -26,8 +36,8 @@ mkdir -p "$DESKTOP_DIR"
 mkdir -p "$ICON_DIR"
 mkdir -p "$PIXMAP_DIR"
 
-echo "2. Sao chep bo bundle vao $INSTALL_DIR..."
-rm -rf "$INSTALL_DIR"/*
+echo "2. Sao chep bo bundle vao $INSTALL_DIR (giu nguyen du lieu nguoi dung)..."
+rm -rf "$INSTALL_DIR/ai-type-agent" "$INSTALL_DIR/data" "$INSTALL_DIR/lib"
 cp -r "$BUNDLE_DIR"/* "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/ai-type-agent"
 
