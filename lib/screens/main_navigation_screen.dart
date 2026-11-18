@@ -347,7 +347,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                               onPressed: () => setState(() => _activeTabKey = 'settings'),
                             ),
                             const Spacer(),
-                            const Text('v1.5.3', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
+                            const Text('v1.5.4', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
                           ],
                         ),
                 ),

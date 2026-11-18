@@ -624,4 +624,126 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'editing an existing task and adding a manual task in WorkScheduleDialog updates UI and persists to DatabaseService',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final fakeDb = _InMemoryDatabaseService();
+      await fakeDb.saveWorkSchedule(
+        sessionId: 'sess_edit_task',
+        projectName: 'VinTrans Taxi',
+        summary: 'Nghiệp vụ Đổ dầu',
+        docFiles: [docNewSpec.path],
+        generatedAt: DateTime(2026, 11, 16, 9, 0),
+        tasks: [
+          {
+            'id': 'T1',
+            'title': 'Phát triển luồng Đề xuất đổ dầu ban đầu',
+            'description': 'Mô tả cũ trước khi chỉnh sửa',
+            'start_date': '2026-11-16',
+            'end_date': '2026-11-16',
+            'priority': 'medium',
+            'phase': 'Nghiệp vụ Đổ dầu',
+            'source_doc': 'yeu_cau_moi_saomai.md',
+            'done': false,
+          },
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: WorkScheduleDialog(
+              sessionId: 'sess_edit_task',
+              workingDir: tempDir.path,
+              docFiles: [docNewSpec.path],
+              model: 'antigravity-cli',
+              databaseService: fakeDb,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Phát triển luồng Đề xuất đổ dầu ban đầu'), findsWidgets);
+      expect(find.text('Mô tả cũ trước khi chỉnh sửa'), findsOneWidget);
+
+      // Bấm nút Sửa trên thẻ công việc T1
+      await tester.tap(find.byKey(const ValueKey('edit_task_T1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Chỉnh sửa công việc T1'), findsOneWidget);
+      expect(tester.getSize(find.byKey(const ValueKey('save_edit_task_button'))).height, equals(32.0));
+      expect(tester.getSize(find.byKey(const ValueKey('cancel_edit_task_button'))).height, equals(32.0));
+
+      // Sửa tiêu đề, mô tả, hạng mục và đổi mức ưu tiên sang Cao
+      await tester.enterText(
+        find.byKey(const ValueKey('edit_task_title_input')),
+        'Phát triển luồng Đề xuất đổ dầu, Điều phối duyệt mở QR 1 lần',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('edit_task_description_input')),
+        'Thêm nút Đề xuất đổ dầu trên App Tài xế, tự động ẩn QR sau khi chụp đủ ảnh Taplo + Phiếu nhận dầu.',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('edit_task_phase_input')),
+        'Nghiệp vụ Đổ dầu & QR Cây dầu',
+      );
+      await tester.tap(find.byKey(const ValueKey('edit_task_priority_high')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('save_edit_task_button')));
+      await tester.pumpAndSettle();
+
+      // Kiểm tra giao diện đã cập nhật ngay lập tức
+      expect(find.textContaining('Phát triển luồng Đề xuất đổ dầu, Điều phối duyệt mở QR 1 lần'), findsWidgets);
+      expect(
+        find.text('Thêm nút Đề xuất đổ dầu trên App Tài xế, tự động ẩn QR sau khi chụp đủ ảnh Taplo + Phiếu nhận dầu.'),
+        findsOneWidget,
+      );
+      expect(find.text('Nghiệp vụ Đổ dầu & QR Cây dầu'), findsOneWidget);
+      expect(find.text('Ưu tiên: Cao'), findsOneWidget);
+
+      // Kiểm tra dữ liệu đã được lưu xuống DatabaseService (SQLite)
+      final savedAfterEdit = await fakeDb.getWorkSchedule('sess_edit_task');
+      expect(savedAfterEdit, isNotNull);
+      final savedTasks = (savedAfterEdit!['tasks'] as List).cast<Map<String, dynamic>>();
+      expect(savedTasks.length, equals(1));
+      expect(savedTasks.single['title'], equals('Phát triển luồng Đề xuất đổ dầu, Điều phối duyệt mở QR 1 lần'));
+      expect(
+        savedTasks.single['description'],
+        equals('Thêm nút Đề xuất đổ dầu trên App Tài xế, tự động ẩn QR sau khi chụp đủ ảnh Taplo + Phiếu nhận dầu.'),
+      );
+      expect(savedTasks.single['phase'], equals('Nghiệp vụ Đổ dầu & QR Cây dầu'));
+      expect(savedTasks.single['priority'], equals('high'));
+
+      // Kiểm tra thêm mới 1 đầu việc thủ công bằng nút Thêm việc
+      await tester.tap(find.byKey(const ValueKey('add_manual_task_button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('edit_task_title_input')),
+        'Kiểm thử nghiệm thu QR Cây dầu trên thiết bị thực tế',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('edit_task_description_input')),
+        'Test trọn vẹn luồng khoá mã QR sau 1 lần quét.',
+      );
+      await tester.tap(find.byKey(const ValueKey('save_edit_task_button')));
+      await tester.pumpAndSettle();
+
+      final savedAfterAdd = await fakeDb.getWorkSchedule('sess_edit_task');
+      final tasksAfterAdd = (savedAfterAdd!['tasks'] as List).cast<Map<String, dynamic>>();
+      expect(tasksAfterAdd.length, equals(2));
+      expect(tasksAfterAdd[1]['id'], equals('T2'));
+      expect(tasksAfterAdd[1]['title'], equals('Kiểm thử nghiệm thu QR Cây dầu trên thiết bị thực tế'));
+    },
+  );
 }

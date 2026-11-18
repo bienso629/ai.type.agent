@@ -14,13 +14,13 @@ import '../../../models/chat_message.dart';
 /// Một đầu việc trong lịch làm việc dự án.
 class ScheduleTask {
   String id;
-  final String title;
-  final String description;
-  final DateTime start;
-  final DateTime end;
-  final String priority; // high | medium | low
-  final String phase;
-  final String sourceDoc;
+  String title;
+  String description;
+  DateTime start;
+  DateTime end;
+  String priority; // high | medium | low
+  String phase;
+  String sourceDoc;
   bool done;
 
   ScheduleTask({
@@ -911,6 +911,53 @@ except Exception:
     _saveCache();
   }
 
+  Future<void> _editSingleTask(ScheduleTask task) async {
+    final updated = await ScheduleTaskEditDialog.show(
+      context,
+      initialTask: task,
+      docFiles: widget.docFiles,
+    );
+    if (updated == null || !mounted) return;
+    setState(() {
+      task.title = updated.title;
+      task.description = updated.description;
+      task.start = updated.start;
+      task.end = updated.end;
+      task.priority = updated.priority;
+      task.phase = updated.phase;
+      task.sourceDoc = updated.sourceDoc;
+      task.done = updated.done;
+      _tasks.sort((a, b) => a.start.compareTo(b.start));
+      _reindexTasks(_tasks);
+      if (!task.coversDay(_selectedDay)) {
+        _selectedDay = task.start;
+        _focusedMonth = DateTime(task.start.year, task.start.month);
+      }
+    });
+    await _saveCache();
+  }
+
+  Future<void> _addNewManualTask() async {
+    final created = await ScheduleTaskEditDialog.show(
+      context,
+      initialDate: _selectedDay,
+      nextTaskId: 'T${_tasks.length + 1}',
+      docFiles: widget.docFiles,
+    );
+    if (created == null || !mounted) return;
+    setState(() {
+      _tasks.add(created);
+      _tasks.sort((a, b) => a.start.compareTo(b.start));
+      _reindexTasks(_tasks);
+      _generatedAt ??= DateTime.now();
+      if (!created.coversDay(_selectedDay)) {
+        _selectedDay = created.start;
+        _focusedMonth = DateTime(created.start.year, created.start.month);
+      }
+    });
+    await _saveCache();
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers UI
   // ---------------------------------------------------------------------------
@@ -1692,7 +1739,32 @@ except Exception:
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                     ),
                   ),
-                  if (widget.onDispatchToPrompt != null && pendingOnDay.length > 1)
+                  InkWell(
+                    key: const ValueKey('add_manual_task_button'),
+                    onTap: _addNewManualTask,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.borderLight, width: 0.8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_rounded, size: 13, color: AppColors.accentCyan),
+                          SizedBox(width: 3),
+                          Text(
+                            'Thêm việc',
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.accentCyan),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (widget.onDispatchToPrompt != null && pendingOnDay.length > 1) ...[
+                    const SizedBox(width: 6),
                     InkWell(
                       onTap: () {
                         final cb = widget.onDispatchToPrompt!;
@@ -1713,6 +1785,7 @@ except Exception:
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
               const SizedBox(height: 2),
@@ -1796,12 +1869,45 @@ except Exception:
                   ),
                 ),
               ),
+              const SizedBox(width: 6),
               InkWell(
+                key: ValueKey('edit_task_${t.id}'),
+                onTap: () => _editSingleTask(t),
+                borderRadius: BorderRadius.circular(4),
+                child: Tooltip(
+                  message: 'Chỉnh sửa công việc',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.45), width: 0.8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.edit_outlined, size: 12, color: AppColors.primaryLight),
+                        SizedBox(width: 3),
+                        Text(
+                          'Sửa',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              InkWell(
+                key: ValueKey('delete_task_${t.id}'),
                 onTap: () => _deleteSingleTask(t),
                 borderRadius: BorderRadius.circular(4),
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Icon(Icons.delete_outline_rounded, size: 15, color: AppColors.textDim),
+                child: const Tooltip(
+                  message: 'Xoá công việc',
+                  child: Padding(
+                    padding: EdgeInsets.all(2),
+                    child: Icon(Icons.delete_outline_rounded, size: 15, color: AppColors.textDim),
+                  ),
                 ),
               ),
             ],
@@ -1973,6 +2079,10 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
   bool _isLoading = true;
   bool _showOnlyPending = true;
   List<ScheduleTask> _allTasks = [];
+  String _projectName = '';
+  String _summary = '';
+  List<String> _docFiles = [];
+  DateTime? _generatedAt;
   final Set<String> _selectedTaskIds = <String>{};
 
   @override
@@ -1991,6 +2101,14 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
     try {
       final data = await _db.getWorkSchedule(widget.sessionId);
       final loaded = <ScheduleTask>[];
+      if (data != null) {
+        _projectName = data['project_name']?.toString() ?? '';
+        _summary = data['summary']?.toString() ?? '';
+        _generatedAt = DateTime.tryParse(data['generated_at']?.toString() ?? '');
+        if (data['doc_files'] is List) {
+          _docFiles = (data['doc_files'] as List).map((e) => e.toString()).toList();
+        }
+      }
       if (data != null && data['tasks'] is List) {
         final raw = data['tasks'] as List;
         for (var i = 0; i < raw.length; i++) {
@@ -2027,6 +2145,37 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
 
   List<ScheduleTask> get _selectedTasks =>
       _allTasks.where((t) => _selectedTaskIds.contains(t.id)).toList();
+
+  Future<void> _editTaskInPicker(ScheduleTask task) async {
+    final updated = await ScheduleTaskEditDialog.show(
+      context,
+      initialTask: task,
+      docFiles: _docFiles,
+    );
+    if (updated == null || !mounted) return;
+    setState(() {
+      task.title = updated.title;
+      task.description = updated.description;
+      task.start = updated.start;
+      task.end = updated.end;
+      task.priority = updated.priority;
+      task.phase = updated.phase;
+      task.sourceDoc = updated.sourceDoc;
+      task.done = updated.done;
+      _allTasks.sort((a, b) => a.start.compareTo(b.start));
+      for (var i = 0; i < _allTasks.length; i++) {
+        _allTasks[i].id = 'T${i + 1}';
+      }
+    });
+    await _db.saveWorkSchedule(
+      sessionId: widget.sessionId,
+      projectName: _projectName,
+      summary: _summary,
+      docFiles: _docFiles,
+      generatedAt: _generatedAt ?? DateTime.now(),
+      tasks: _allTasks.map((e) => e.toJson()).toList(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2309,6 +2458,26 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
                                         SizedBox(
                                           height: 32,
                                           child: OutlinedButton(
+                                            key: ValueKey('picker_edit_task_${t.id}'),
+                                            onPressed: () => _editTaskInPicker(t),
+                                            style: OutlinedButton.styleFrom(
+                                              minimumSize: const Size(0, 32),
+                                              fixedSize: const Size.fromHeight(32),
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                              side: const BorderSide(color: AppColors.borderDark),
+                                              shape: AppRadius.shape,
+                                            ),
+                                            child: const Text(
+                                              'Sửa',
+                                              style: TextStyle(fontSize: 11, color: AppColors.primaryLight),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        SizedBox(
+                                          height: 32,
+                                          child: OutlinedButton(
                                             onPressed: () {
                                               Navigator.of(context).pop();
                                               widget.onDispatch([t], sendImmediately: false);
@@ -2392,6 +2561,535 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
                       label: Text(
                         selected.isEmpty ? 'Giải quyết ngay' : 'Giải quyết ngay (${selected.length})',
                         style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(0, 32),
+                        fixedSize: const Size.fromHeight(32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        backgroundColor: AppColors.primary,
+                        disabledBackgroundColor: AppColors.cardBg,
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor: AppColors.textDim,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                        shape: AppRadius.shape,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Hộp thoại chỉnh sửa chi tiết hoặc thêm mới 1 đầu việc trong Lịch làm việc dự án.
+class ScheduleTaskEditDialog extends StatefulWidget {
+  final ScheduleTask? initialTask;
+  final DateTime? initialDate;
+  final String? nextTaskId;
+  final List<String> docFiles;
+
+  const ScheduleTaskEditDialog({
+    super.key,
+    this.initialTask,
+    this.initialDate,
+    this.nextTaskId,
+    this.docFiles = const [],
+  });
+
+  static Future<ScheduleTask?> show(
+    BuildContext context, {
+    ScheduleTask? initialTask,
+    DateTime? initialDate,
+    String? nextTaskId,
+    List<String> docFiles = const [],
+  }) {
+    return showDialog<ScheduleTask>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => ScheduleTaskEditDialog(
+        initialTask: initialTask,
+        initialDate: initialDate,
+        nextTaskId: nextTaskId,
+        docFiles: docFiles,
+      ),
+    );
+  }
+
+  @override
+  State<ScheduleTaskEditDialog> createState() => _ScheduleTaskEditDialogState();
+}
+
+class _ScheduleTaskEditDialogState extends State<ScheduleTaskEditDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _phaseController;
+  late final TextEditingController _sourceDocController;
+  late DateTime _startDate;
+  late DateTime _endDate;
+  late String _priority;
+  late bool _done;
+
+  bool get _isEditing => widget.initialTask != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.initialTask;
+    final now = DateTime.now();
+    final defaultDay = widget.initialDate ?? DateTime(now.year, now.month, now.day);
+    _titleController = TextEditingController(text: t?.title ?? '');
+    _descriptionController = TextEditingController(text: t?.description ?? '');
+    _phaseController = TextEditingController(text: t?.phase ?? '');
+    _sourceDocController = TextEditingController(text: t?.sourceDoc ?? '');
+    _startDate = t?.start ?? defaultDay;
+    _endDate = t?.end ?? defaultDay;
+    _priority = t?.priority ?? 'high';
+    _done = t?.done ?? false;
+    _titleController.addListener(_onFormChanged);
+  }
+
+  void _onFormChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _titleController.removeListener(_onFormChanged);
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _phaseController.dispose();
+    _sourceDocController.dispose();
+    super.dispose();
+  }
+
+  String _fmtDdMmYyyy(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  Future<void> _pickDate({required bool isStart}) async {
+    final initial = isStart ? _startDate : _endDate;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+    );
+    if (picked == null || !mounted) return;
+    final normalized = DateTime(picked.year, picked.month, picked.day);
+    setState(() {
+      if (isStart) {
+        _startDate = normalized;
+        if (_endDate.isBefore(_startDate)) {
+          _endDate = _startDate;
+        }
+      } else {
+        _endDate = normalized;
+        if (_endDate.isBefore(_startDate)) {
+          _startDate = _endDate;
+        }
+      }
+    });
+  }
+
+  void _handleSave() {
+    final cleanTitle = _titleController.text.trim();
+    if (cleanTitle.isEmpty) return;
+    final result = ScheduleTask(
+      id: widget.initialTask?.id ?? widget.nextTaskId ?? 'T1',
+      title: cleanTitle,
+      description: _descriptionController.text.trim(),
+      start: _startDate,
+      end: _endDate.isBefore(_startDate) ? _startDate : _endDate,
+      priority: _priority,
+      phase: _phaseController.text.trim(),
+      sourceDoc: _sourceDocController.text.trim(),
+      done: _done,
+    );
+    Navigator.of(context).pop(result);
+  }
+
+  InputDecoration _inputDeco(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(fontSize: 12, color: AppColors.textDim),
+      filled: true,
+      fillColor: AppColors.inputBg,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(5),
+        borderSide: const BorderSide(color: AppColors.borderDark),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(5),
+        borderSide: const BorderSide(color: AppColors.borderDark),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(5),
+        borderSide: const BorderSide(color: AppColors.primaryLight, width: 1.2),
+      ),
+    );
+  }
+
+  Widget _buildPriorityOption(String value, String label, Color color) {
+    final selected = _priority == value;
+    return Expanded(
+      child: SizedBox(
+        height: 32,
+        child: OutlinedButton(
+          key: ValueKey('edit_task_priority_$value'),
+          onPressed: () => setState(() => _priority = value),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 32),
+            fixedSize: const Size.fromHeight(32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            backgroundColor: selected ? color.withValues(alpha: 0.16) : AppColors.inputBg,
+            side: BorderSide(
+              color: selected ? color : AppColors.borderDark,
+              width: selected ? 1.2 : 0.8,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+            shape: AppRadius.shape,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+              color: selected ? color : AppColors.textBody,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSave = _titleController.text.trim().isNotEmpty;
+    final days = _endDate.difference(_startDate).inDays + 1;
+    final docBasenames = widget.docFiles
+        .map((f) => p.basename(f))
+        .where((b) => b.trim().isNotEmpty)
+        .toSet()
+        .toList();
+
+    return Dialog(
+      backgroundColor: AppColors.bgDark,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: AppColors.borderDark),
+      ),
+      child: SizedBox(
+        width: 620,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      _isEditing ? Icons.edit_note_rounded : Icons.add_task_rounded,
+                      size: 18,
+                      color: AppColors.primaryLight,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _isEditing
+                          ? 'Chỉnh sửa công việc ${widget.initialTask!.id}'
+                          : 'Thêm công việc mới (${widget.nextTaskId ?? 'T1'})',
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.borderDark),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tiêu đề công việc *',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      key: const ValueKey('edit_task_title_input'),
+                      controller: _titleController,
+                      minLines: 1,
+                      maxLines: 2,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textWhite, fontWeight: FontWeight.w600),
+                      decoration: _inputDeco('Nhập tiêu đề công việc...'),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Mô tả chi tiết công việc',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      key: const ValueKey('edit_task_description_input'),
+                      controller: _descriptionController,
+                      minLines: 4,
+                      maxLines: 7,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textBody, height: 1.4),
+                      decoration: _inputDeco('Mô tả các yêu cầu kỹ thuật, luồng xử lý, nghiệm thu...'),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Hạng mục / Giai đoạn',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                              ),
+                              const SizedBox(height: 6),
+                              SizedBox(
+                                height: 34,
+                                child: TextField(
+                                  key: const ValueKey('edit_task_phase_input'),
+                                  controller: _phaseController,
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                                  decoration: _inputDeco('VD: Hạng mục 1, Backend, UI...'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Mức độ ưu tiên',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  _buildPriorityOption('high', 'Cao', AppColors.danger),
+                                  const SizedBox(width: 6),
+                                  _buildPriorityOption('medium', 'Trung bình', AppColors.warning),
+                                  const SizedBox(width: 6),
+                                  _buildPriorityOption('low', 'Thấp', AppColors.textMuted),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Ngày bắt đầu',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                              ),
+                              const SizedBox(height: 6),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 32,
+                                child: OutlinedButton.icon(
+                                  key: const ValueKey('edit_task_start_date_btn'),
+                                  onPressed: () => _pickDate(isStart: true),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 32),
+                                    fixedSize: const Size.fromHeight(32),
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    backgroundColor: AppColors.inputBg,
+                                    side: const BorderSide(color: AppColors.borderDark),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    shape: AppRadius.shape,
+                                  ),
+                                  icon: const Icon(Icons.calendar_today_rounded, size: 13, color: AppColors.accentCyan),
+                                  label: Text(
+                                    _fmtDdMmYyyy(_startDate),
+                                    style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Ngày kết thúc ($days ngày)',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                              ),
+                              const SizedBox(height: 6),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 32,
+                                child: OutlinedButton.icon(
+                                  key: const ValueKey('edit_task_end_date_btn'),
+                                  onPressed: () => _pickDate(isStart: false),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 32),
+                                    fixedSize: const Size.fromHeight(32),
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    backgroundColor: AppColors.inputBg,
+                                    side: const BorderSide(color: AppColors.borderDark),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    shape: AppRadius.shape,
+                                  ),
+                                  icon: const Icon(Icons.event_available_rounded, size: 13, color: AppColors.accentCyan),
+                                  label: Text(
+                                    _fmtDdMmYyyy(_endDate),
+                                    style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Tài liệu tham chiếu',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textWhite),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 34,
+                      child: TextField(
+                        key: const ValueKey('edit_task_source_doc_input'),
+                        controller: _sourceDocController,
+                        style: const TextStyle(fontSize: 12, color: AppColors.textWhite),
+                        decoration: _inputDeco('Tên file tài liệu liên quan (nếu có)...'),
+                      ),
+                    ),
+                    if (docBasenames.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: docBasenames.map((docName) {
+                          final isCurrent = _sourceDocController.text.trim() == docName;
+                          return InkWell(
+                            onTap: () => setState(() => _sourceDocController.text = docName),
+                            borderRadius: BorderRadius.circular(4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isCurrent ? AppColors.primary.withValues(alpha: 0.16) : AppColors.cardBg,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: isCurrent ? AppColors.primaryLight : AppColors.borderDark,
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text(
+                                docName,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: isCurrent ? AppColors.primaryLight : AppColors.textMuted,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    InkWell(
+                      key: const ValueKey('edit_task_done_checkbox'),
+                      onTap: () => setState(() => _done = !_done),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: Checkbox(
+                                value: _done,
+                                activeColor: AppColors.accent,
+                                side: const BorderSide(color: AppColors.borderLight),
+                                onChanged: (v) => setState(() => _done = v ?? false),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Đánh dấu đã hoàn thành công việc này',
+                              style: TextStyle(fontSize: 12, color: AppColors.textBody),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.borderDark),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: AppColors.sidebarBg,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  SizedBox(
+                    height: 32,
+                    child: OutlinedButton(
+                      key: const ValueKey('cancel_edit_task_button'),
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 32),
+                        fixedSize: const Size.fromHeight(32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                        side: const BorderSide(color: AppColors.borderDark),
+                        shape: AppRadius.shape,
+                      ),
+                      child: const Text('Huỷ', style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 32,
+                    child: ElevatedButton.icon(
+                      key: const ValueKey('save_edit_task_button'),
+                      onPressed: canSave ? _handleSave : null,
+                      icon: const Icon(Icons.save_outlined, size: 14),
+                      label: const Text(
+                        'Lưu công việc',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size(0, 32),
