@@ -416,6 +416,8 @@ class TerminalProvider extends ChangeNotifier {
       int lastAppliedCols = initialCols;
       int lastAppliedRows = initialRows;
 
+      final clientId = await _storage.getClientDeviceId();
+      final clientName = await _storage.getClientDeviceName();
       final basePath = baseUri.path.endsWith('/')
           ? baseUri.path.substring(0, baseUri.path.length - 1)
           : baseUri.path;
@@ -424,6 +426,9 @@ class TerminalProvider extends ChangeNotifier {
         path: '$basePath${ApiConstants.wsTerminal}',
         queryParameters: {
           if (token.isNotEmpty) 'token': token,
+          'client_id': clientId,
+          'client_name': clientName,
+          'client_os': Platform.operatingSystem,
           if (pane.workingDirectory != null && pane.workingDirectory!.trim().isNotEmpty)
             'cwd': pane.workingDirectory!.trim(),
           'cols': '$initialCols',

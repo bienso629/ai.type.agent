@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 
@@ -27,9 +28,12 @@ class StorageService {
   static const String _keyPrimaryHostPort = 'primary_host_port';
   static const String _keyPrimaryHostToken = 'primary_host_token';
   static const String _keyPrimaryHostName = 'primary_host_name';
+  static const String _keyPrimarySecondaryWorkspacesRoot = 'primary_secondary_workspaces_root';
   static const String _keyPrimaryTunnelMode = 'primary_tunnel_mode';
   static const String _keyPrimaryTunnelNamedToken = 'primary_tunnel_named_token';
   static const String _keyPrimaryTunnelCustomUrl = 'primary_tunnel_custom_url';
+  static const String _keyClientDeviceId = 'remote_client_device_id';
+  static const String _keyRevokedClientIds = 'primary_revoked_client_ids';
   static const String _keyActiveServerId = 'active_server_id';
   static const String _keyDefaultModel = 'default_ai_model';
   static const String _keyBiometricEnabled = 'biometric_enabled';
@@ -136,6 +140,78 @@ class StorageService {
     } else {
       await _prefs.setString(_keyPrimaryHostName, clean);
     }
+  }
+
+  /// Thư mục gốc mặc định trên máy App Chính chứa các thư mục làm việc riêng cho từng thiết bị App Phụ.
+  static String defaultSecondaryWorkspacesRoot() {
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    if (home.trim().isNotEmpty) {
+      return p.join(home.trim(), 'AI_Type_Workspaces');
+    }
+    return p.join(Directory.current.path, 'AI_Type_Workspaces');
+  }
+
+  /// Đọc đường dẫn thư mục gốc chứa workspace cho các App Phụ đã cấu hình trên App Chính.
+  Future<String> getSecondaryWorkspacesRoot() async {
+    await init();
+    final saved = _prefs.getString(_keyPrimarySecondaryWorkspacesRoot)?.trim() ?? '';
+    if (saved.isNotEmpty) return saved;
+    return defaultSecondaryWorkspacesRoot();
+  }
+
+  /// Lưu đường dẫn thư mục gốc chứa workspace cho các App Phụ trên App Chính.
+  Future<void> setSecondaryWorkspacesRoot(String path) async {
+    await init();
+    final clean = path.trim();
+    if (clean.isEmpty) {
+      await _prefs.remove(_keyPrimarySecondaryWorkspacesRoot);
+    } else {
+      await _prefs.setString(_keyPrimarySecondaryWorkspacesRoot, clean);
+    }
+  }
+
+  /// Định danh duy nhất và ổn định của thiết bị hiện tại khi đóng vai trò App Phụ.
+  Future<String> getClientDeviceId() async {
+    await init();
+    var id = _prefs.getString(_keyClientDeviceId)?.trim() ?? '';
+    if (id.isEmpty) {
+      id = 'dev_${generateSecureToken(bytes: 8)}';
+      await _prefs.setString(_keyClientDeviceId, id);
+    }
+    return id;
+  }
+
+  Future<void> setClientDeviceId(String id) async {
+    await init();
+    final clean = id.trim();
+    if (clean.isEmpty) return;
+    await _prefs.setString(_keyClientDeviceId, clean);
+  }
+
+  /// Tên hiển thị thân thiện của thiết bị App Phụ gửi lên App Chính.
+  Future<String> getClientDeviceName() async {
+    await init();
+    final saved = _prefs.getString(_keyPrimaryHostName)?.trim() ?? '';
+    if (saved.isNotEmpty) return saved;
+    try {
+      final host = Platform.localHostname.trim();
+      if (host.isNotEmpty && host.toLowerCase() != 'localhost') return host;
+    } catch (_) {}
+    if (Platform.isAndroid) return 'Điện thoại Android';
+    if (Platform.isIOS) return 'iPhone / iPad';
+    return 'AI Type (${Platform.operatingSystem.toUpperCase()})';
+  }
+
+  /// Danh sách client_id của các App Phụ đã bị App Chính ngắt kết nối/thu hồi quyền truy cập.
+  Future<List<String>> getRevokedClientIds() async {
+    await init();
+    return List<String>.from(_prefs.getStringList(_keyRevokedClientIds) ?? const <String>[]);
+  }
+
+  Future<void> setRevokedClientIds(List<String> ids) async {
+    await init();
+    final clean = ids.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    await _prefs.setStringList(_keyRevokedClientIds, clean);
   }
 
   // Primary Internet Tunnel Settings (Truy cập từ bất kỳ đâu qua Internet)

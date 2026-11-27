@@ -23,6 +23,18 @@ class GatewayProvider extends ChangeNotifier {
   final RemoteTunnelService _tunnelService = RemoteTunnelService.instance;
 
   StreamSubscription<RemoteTunnelSnapshot>? _tunnelSub;
+  StreamSubscription<List<ConnectedSecondaryClient>>? _clientsSub;
+  StreamSubscription<String>? _revokedSub;
+  Timer? _secondaryHeartbeatTimer;
+  Set<String> _lastPersistedRevoked = {};
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) {
+      super.notifyListeners();
+    }
+  }
 
   AppRole _role = AppRole.primary;
 
@@ -31,6 +43,7 @@ class GatewayProvider extends ChangeNotifier {
   int _primaryHostPort = ApiConstants.defaultPrimaryHostPort;
   String _primaryHostToken = '';
   String _primaryHostName = '';
+  String _secondaryWorkspacesRoot = '';
   List<String> _lanIps = [];
   List<String> _vpnIps = [];
   String _hostErrorMessage = '';
@@ -55,6 +68,7 @@ class GatewayProvider extends ChangeNotifier {
   String _remoteHostName = '';
   String _remoteHostOs = '';
   String _remoteAppVersion = '';
+  String _remoteClientWorkspaceDir = '';
 
   // Tự tìm máy tính App Chính gần đây & Ghép nối 1 chạm (App Phụ)
   List<DiscoveredPrimaryHost> _discoveredHosts = [];
@@ -73,12 +87,15 @@ class GatewayProvider extends ChangeNotifier {
   int get primaryHostPort => _primaryHostPort;
   String get primaryHostToken => _primaryHostToken;
   String get primaryHostName => _primaryHostName;
+  String get secondaryWorkspacesRoot => _secondaryWorkspacesRoot;
   List<String> get lanIps => _lanIps;
   List<String> get vpnIps => _vpnIps;
   List<String> get localIps => [..._lanIps, ..._vpnIps];
   bool get isHostRunning => _hostServer.isRunning;
   int get hostBoundPort => _hostServer.boundPort;
   String get hostErrorMessage => _hostErrorMessage;
+  List<ConnectedSecondaryClient> get connectedClients => _hostServer.connectedClients;
+  int get onlineClientsCount => _hostServer.onlineClientCount;
 
   RemoteTunnelMode get tunnelMode => _tunnelMode;
   RemoteTunnelState get tunnelState => _tunnelState;
@@ -103,6 +120,7 @@ class GatewayProvider extends ChangeNotifier {
   String get remoteHostName => _remoteHostName;
   String get remoteHostOs => _remoteHostOs;
   String get remoteAppVersion => _remoteAppVersion;
+  String get remoteClientWorkspaceDir => _remoteClientWorkspaceDir;
 
   List<DiscoveredPrimaryHost> get discoveredHosts => _discoveredHosts;
   bool get isDiscoveringHosts => _isDiscoveringHosts;
@@ -174,13 +192,82 @@ class GatewayProvider extends ChangeNotifier {
       _syncFromTunnelSnapshot(snap);
       notifyListeners();
     });
+    _clientsSub = _hostServer.onConnectedClientsChanged.listen((_) {
+      final currentRevoked = _hostServer.revokedClientIds;
+      if (currentRevoked.length != _lastPersistedRevoked.length ||
+          !currentRevoked.containsAll(_lastPersistedRevoked)) {
+        _lastPersistedRevoked = Set<String>.from(currentRevoked);
+        unawaited(_storage.setRevokedClientIds(_lastPersistedRevoked.toList()));
+      }
+      notifyListeners();
+    });
+    _revokedSub = ApiService.onDeviceRevoked.listen((msg) {
+      if (_role == AppRole.secondary) {
+        _stopSecondaryHeartbeat();
+        _status = GatewayStatus.error;
+        _pingMs = 0;
+        _errorMessage = msg;
+        notifyListeners();
+      }
+    });
     init();
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _stopSecondaryHeartbeat();
     _tunnelSub?.cancel();
+    _clientsSub?.cancel();
+    _revokedSub?.cancel();
     super.dispose();
+  }
+
+  void _startSecondaryHeartbeat() {
+    _stopSecondaryHeartbeat();
+    if (_disposed || _role != AppRole.secondary || _status != GatewayStatus.connected) return;
+    _secondaryHeartbeatTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      unawaited(_sendSecondaryHeartbeat());
+    });
+  }
+
+  void _stopSecondaryHeartbeat() {
+    _secondaryHeartbeatTimer?.cancel();
+    _secondaryHeartbeatTimer = null;
+  }
+
+  Future<void> _sendSecondaryHeartbeat() async {
+    if (_disposed ||
+        _role != AppRole.secondary ||
+        _status != GatewayStatus.connected ||
+        _gatewayUrl.trim().isEmpty) {
+      _stopSecondaryHeartbeat();
+      return;
+    }
+    final info = await _api.getRemoteHostInfo();
+    if (_disposed || _role != AppRole.secondary) return;
+    if (info != null && (info['code'] == 'DEVICE_REVOKED' || info['error'] == 'DEVICE_REVOKED')) {
+      _stopSecondaryHeartbeat();
+      _status = GatewayStatus.error;
+      _pingMs = 0;
+      _errorMessage = info['message']?.toString() ??
+          'Thiết bị này đã bị ngắt kết nối từ App Chính. Hãy ghép nối lại hoặc bật cho phép lại trên máy tính.';
+      notifyListeners();
+    }
+  }
+
+  /// Ngắt kết nối ngay lập tức một thiết bị App Phụ cụ thể từ App Chính.
+  Future<void> disconnectSecondaryClient(String clientId, {bool revoke = true}) async {
+    await _hostServer.disconnectClient(clientId, revoke: revoke);
+    await _storage.setRevokedClientIds(_hostServer.revokedClientIds.toList());
+    notifyListeners();
+  }
+
+  /// Cho phép một thiết bị App Phụ trước đó bị ngắt kết nối được truy cập lại.
+  Future<void> restoreSecondaryClient(String clientId) async {
+    _hostServer.restoreClient(clientId);
+    await _storage.setRevokedClientIds(_hostServer.revokedClientIds.toList());
+    notifyListeners();
   }
 
   Future<void> init() async {
@@ -189,11 +276,15 @@ class GatewayProvider extends ChangeNotifier {
     _primaryHostPort = await _storage.getPrimaryHostPort();
     _primaryHostToken = await _storage.getPrimaryHostToken();
     _primaryHostName = await _storage.getPrimaryHostName();
+    _secondaryWorkspacesRoot = await _storage.getSecondaryWorkspacesRoot();
     _tunnelMode = RemoteTunnelService.parseMode(await _storage.getPrimaryTunnelMode());
     _tunnelNamedToken = await _storage.getPrimaryTunnelNamedToken();
     _tunnelCustomUrl = await _storage.getPrimaryTunnelCustomUrl();
     _gatewayUrl = await _storage.getGatewayUrl();
     _secretToken = await _storage.getSecretToken();
+    final revokedIds = await _storage.getRevokedClientIds();
+    _lastPersistedRevoked = revokedIds.toSet();
+    _hostServer.loadRevokedClientIds(revokedIds);
 
     final endpoints = await PrimaryHostServerService.getNetworkEndpoints();
     _lanIps = endpoints.lanIps;
@@ -211,6 +302,7 @@ class GatewayProvider extends ChangeNotifier {
     notifyListeners();
 
     if (_role == AppRole.primary) {
+      _stopSecondaryHeartbeat();
       if (_primaryHostEnabled) {
         final started = await _startPrimaryHost();
         if (started && _tunnelMode != RemoteTunnelMode.off) {
@@ -246,6 +338,7 @@ class GatewayProvider extends ChangeNotifier {
       token: _primaryHostToken,
       deviceName: _primaryHostName,
       publicUrl: _publicTunnelUrl,
+      secondaryWorkspacesRoot: _secondaryWorkspacesRoot,
     );
     if (!ok) {
       _hostErrorMessage = _hostServer.lastError ?? 'Không thể khởi chạy máy chủ điều khiển từ xa.';
@@ -293,21 +386,15 @@ class GatewayProvider extends ChangeNotifier {
 
     final client = http.Client();
     try {
-      String localName = 'Thiết bị App Phụ';
-      try {
-        final h = Platform.localHostname.trim();
-        if (h.isNotEmpty && h.toLowerCase() != 'localhost') {
-          localName = h;
-        } else {
-          localName = Platform.isAndroid ? 'Điện thoại Android' : Platform.operatingSystem.toUpperCase();
-        }
-      } catch (_) {}
+      final clientId = await _storage.getClientDeviceId();
+      final localName = await _storage.getClientDeviceName();
 
       final reqRes = await client
           .post(
             Uri.parse('${host.lanUrl}${ApiConstants.epPairRequest}'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
+              'client_id': clientId,
               'device_name': localName,
               'os': Platform.operatingSystem,
             }),
@@ -524,9 +611,11 @@ class GatewayProvider extends ChangeNotifier {
     _hostErrorMessage = '';
 
     if (newRole == AppRole.primary) {
+      _stopSecondaryHeartbeat();
       _remoteHostName = '';
       _remoteHostOs = '';
       _remoteAppVersion = '';
+      _remoteClientWorkspaceDir = '';
       _status = GatewayStatus.connected;
       if (_primaryHostEnabled) {
         final started = await _startPrimaryHost();
@@ -565,8 +654,13 @@ class GatewayProvider extends ChangeNotifier {
     }
   }
 
-  /// Cập nhật cổng lắng nghe và tên thiết bị cho App Chính.
-  Future<bool> updatePrimaryHostSettings({int? port, String? deviceName, String? token}) async {
+  /// Cập nhật cổng lắng nghe, tên thiết bị và thư mục gốc chứa workspace cho các App Phụ.
+  Future<bool> updatePrimaryHostSettings({
+    int? port,
+    String? deviceName,
+    String? token,
+    String? secondaryWorkspacesRoot,
+  }) async {
     final portChanged = port != null && port != _primaryHostPort;
     if (port != null && port >= 1024 && port <= 65535) {
       _primaryHostPort = port;
@@ -579,6 +673,16 @@ class GatewayProvider extends ChangeNotifier {
     if (token != null && token.trim().isNotEmpty) {
       _primaryHostToken = token.trim();
       await _storage.setPrimaryHostToken(_primaryHostToken);
+    }
+    if (secondaryWorkspacesRoot != null) {
+      final cleanRoot = secondaryWorkspacesRoot.trim();
+      _secondaryWorkspacesRoot = cleanRoot.isNotEmpty
+          ? cleanRoot
+          : StorageService.defaultSecondaryWorkspacesRoot();
+      await _storage.setSecondaryWorkspacesRoot(_secondaryWorkspacesRoot);
+      if (_hostServer.isRunning) {
+        _hostServer.updateRuntimeMetadata(secondaryWorkspacesRoot: _secondaryWorkspacesRoot);
+      }
     }
     if (_role == AppRole.primary && _primaryHostEnabled) {
       final ok = await _startPrimaryHost();
@@ -593,6 +697,8 @@ class GatewayProvider extends ChangeNotifier {
 
   Future<String> regeneratePrimaryToken() async {
     _primaryHostToken = await _storage.regeneratePrimaryHostToken();
+    _hostServer.clearRevokedClients();
+    await _storage.setRevokedClientIds(const []);
     if (_hostServer.isRunning) {
       _hostServer.updateRuntimeMetadata(token: _primaryHostToken);
     }
@@ -674,12 +780,19 @@ class GatewayProvider extends ChangeNotifier {
 
   /// Ngắt kết nối App Phụ khỏi App Chính hiện tại và xóa thông tin ghép nối đã lưu.
   Future<void> disconnectFromPrimary({bool clearSavedCredentials = true}) async {
+    _stopSecondaryHeartbeat();
     cancelOneTapPairing();
+    if (_role == AppRole.secondary && _gatewayUrl.trim().isNotEmpty) {
+      try {
+        await _api.notifyRemoteDisconnect().timeout(const Duration(milliseconds: 1500));
+      } catch (_) {}
+    }
     _status = GatewayStatus.disconnected;
     _pingMs = 0;
     _remoteHostName = '';
     _remoteHostOs = '';
     _remoteAppVersion = '';
+    _remoteClientWorkspaceDir = '';
     _errorMessage = '';
     if (clearSavedCredentials) {
       _gatewayUrl = '';
@@ -692,6 +805,7 @@ class GatewayProvider extends ChangeNotifier {
 
   Future<bool> testConnection() async {
     if (_role == AppRole.primary) {
+      _stopSecondaryHeartbeat();
       _status = GatewayStatus.connected;
       _errorMessage = '';
       _pingMs = 0;
@@ -700,6 +814,7 @@ class GatewayProvider extends ChangeNotifier {
     }
 
     if (_gatewayUrl.trim().isEmpty) {
+      _stopSecondaryHeartbeat();
       _status = GatewayStatus.disconnected;
       _errorMessage = 'Chưa nhập địa chỉ App Chính.';
       notifyListeners();
@@ -715,12 +830,24 @@ class GatewayProvider extends ChangeNotifier {
       final info = await _api.getRemoteHostInfo();
       stopwatch.stop();
 
+      if (info != null && (info['code'] == 'DEVICE_REVOKED' || info['error'] == 'DEVICE_REVOKED')) {
+        _stopSecondaryHeartbeat();
+        _status = GatewayStatus.error;
+        _pingMs = 0;
+        _errorMessage = info['message']?.toString() ??
+            'Thiết bị này đã bị ngắt kết nối từ App Chính. Hãy ghép nối lại hoặc bật cho phép lại trên máy tính.';
+        notifyListeners();
+        return false;
+      }
+
       if (info != null && info['ok'] == true) {
         _status = GatewayStatus.connected;
         _pingMs = stopwatch.elapsedMilliseconds;
         _remoteHostName = info['device_name']?.toString() ?? _gatewayUrl;
         _remoteHostOs = info['os']?.toString() ?? '';
         _remoteAppVersion = info['app_version']?.toString() ?? '';
+        _remoteClientWorkspaceDir = info['client_workspace_dir']?.toString() ?? '';
+        _startSecondaryHeartbeat();
         notifyListeners();
         return true;
       }
@@ -732,10 +859,12 @@ class GatewayProvider extends ChangeNotifier {
         _status = GatewayStatus.connected;
         _pingMs = stopwatch.elapsedMilliseconds;
         _remoteHostName = _gatewayUrl;
+        _startSecondaryHeartbeat();
         notifyListeners();
         return true;
       }
 
+      _stopSecondaryHeartbeat();
       _status = GatewayStatus.error;
       final parsedHost = Uri.tryParse(_gatewayUrl)?.host ?? '';
       if (PrimaryHostServerService.isTailscaleOrCgnatIp(parsedHost)) {
@@ -749,6 +878,7 @@ class GatewayProvider extends ChangeNotifier {
       return false;
     } catch (e) {
       stopwatch.stop();
+      _stopSecondaryHeartbeat();
       _status = GatewayStatus.error;
       _errorMessage = 'Lỗi kết nối App Chính: $e';
       notifyListeners();

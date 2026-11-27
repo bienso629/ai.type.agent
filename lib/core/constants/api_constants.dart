@@ -5,6 +5,7 @@ class ApiConstants {
 
   // Remote Primary <-> Secondary Control Endpoints
   static const String epRemoteInfo = '/api/remote/info';
+  static const String epRemoteDisconnect = '/api/remote/disconnect';
   static const String epModels = '/api/models';
   static const String epPairRequest = '/api/pair/request';
   static const String epPairStatus = '/api/pair/status';
@@ -20,6 +21,7 @@ class ApiConstants {
   static const String epChatHistory = '/api/chat/history';
   static const String epChatClear = '/api/chat/clear';
   static const String epChat = '/api/chat';
+  static const String epChatLive = '/api/chat/live';
   static const String epChatStop = '/api/chat/stop';
 
   static const String epWorkSchedules = '/api/work-schedules';

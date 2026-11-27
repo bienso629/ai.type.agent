@@ -26,6 +26,9 @@ class ChatProvider extends ChangeNotifier {
   final Map<String, Timer> _remoteTokenThrottleTimers = {};
   final Map<String, String> _sessionStatuses = {};
   final Map<String, StreamSubscription> _sessionStreams = {};
+  final Set<String> _interruptedRemoteSessions = {};
+  final Set<String> _recoveringRemoteSessions = {};
+  final Map<String, Timer> _localOnPrimaryPollTimers = {};
   final Map<String, bool> _sessionHasMore = {};
   final Map<String, int> _sessionOldestId = {};
 
@@ -58,6 +61,7 @@ class ChatProvider extends ChangeNotifier {
   bool isSessionGenerating(String? sessionId) =>
       sessionId != null &&
       (_sessionGenerating[sessionId] == true ||
+          _interruptedRemoteSessions.contains(sessionId) ||
           _remoteGeneratingSessions.contains(sessionId) ||
           _hostServer.isRemoteSessionGenerating(sessionId));
 
@@ -74,6 +78,7 @@ class ChatProvider extends ChangeNotifier {
 
   bool get anySessionGenerating =>
       _sessionGenerating.values.any((v) => v == true) ||
+      _interruptedRemoteSessions.isNotEmpty ||
       _remoteGeneratingSessions.isNotEmpty ||
       _hostServer.activeChatCount > 0;
 
@@ -373,8 +378,14 @@ class ChatProvider extends ChangeNotifier {
     for (final t in _remoteTokenThrottleTimers.values) {
       t.cancel();
     }
+    for (final t in _localOnPrimaryPollTimers.values) {
+      t.cancel();
+    }
     _sessionStreams.clear();
     _remoteTokenThrottleTimers.clear();
+    _localOnPrimaryPollTimers.clear();
+    _interruptedRemoteSessions.clear();
+    _recoveringRemoteSessions.clear();
     _sessionMessages.clear();
     _sessionGenerating.clear();
     _localGeneratingSessions.clear();
@@ -550,6 +561,9 @@ class ChatProvider extends ChangeNotifier {
       if (isDifferentSession) {
         notifyListeners();
       }
+      if (!_sessionStreams.containsKey(sId) && !isSessionRemoteGenerating(sId)) {
+        unawaited(_recoverRemoteSession(sId, reloadHistoryIfIdle: _interruptedRemoteSessions.contains(sId)));
+      }
       return;
     }
 
@@ -578,6 +592,11 @@ class ChatProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+
+    // Nếu đang ở chế độ App Phụ và phiên này đang chạy dở trên App Chính -> tự bám nối lại luồng live
+    if (!_sessionStreams.containsKey(sId) && !isSessionRemoteGenerating(sId)) {
+      unawaited(_recoverRemoteSession(sId, reloadHistoryIfIdle: false));
+    }
   }
 
   Future<void> loadMoreMessages() async {
@@ -691,11 +710,16 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> deleteSession(String sessionId) async {
+    final wasGenerating = isSessionGenerating(sessionId);
     _sessionStreams[sessionId]?.cancel();
     _sessionStreams.remove(sessionId);
     _remoteTokenThrottleTimers.remove(sessionId)?.cancel();
+    _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
+    _interruptedRemoteSessions.remove(sessionId);
     if (isSessionRemoteGenerating(sessionId)) {
       unawaited(_hostServer.stopActiveChat(sessionId, reason: 'Cuộc hội thoại đã bị xóa trên App Chính.'));
+    } else if (wasGenerating) {
+      unawaited(_api.stopRemoteChat(sessionId));
     }
     _sessionMessages.remove(sessionId);
     _sessionGenerating.remove(sessionId);
@@ -729,11 +753,16 @@ class ChatProvider extends ChangeNotifier {
     for (final t in _remoteTokenThrottleTimers.values) {
       t.cancel();
     }
+    for (final t in _localOnPrimaryPollTimers.values) {
+      t.cancel();
+    }
     for (final sId in _remoteGeneratingSessions.toList()) {
       unawaited(_hostServer.stopActiveChat(sId, reason: 'Tất cả cuộc hội thoại đã bị xóa trên App Chính.'));
     }
     _sessionStreams.clear();
     _remoteTokenThrottleTimers.clear();
+    _localOnPrimaryPollTimers.clear();
+    _interruptedRemoteSessions.clear();
     _sessionMessages.clear();
     _sessionGenerating.clear();
     _localGeneratingSessions.clear();
@@ -758,11 +787,16 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> resetSessionHistory(String sessionId) async {
     // 1. Cancel running stream if any
+    final wasGenerating = isSessionGenerating(sessionId);
     _sessionStreams[sessionId]?.cancel();
     _sessionStreams.remove(sessionId);
     _remoteTokenThrottleTimers.remove(sessionId)?.cancel();
+    _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
+    _interruptedRemoteSessions.remove(sessionId);
     if (isSessionRemoteGenerating(sessionId)) {
       unawaited(_hostServer.stopActiveChat(sessionId, reason: 'Lịch sử hội thoại đã được đặt lại trên App Chính.'));
+    } else if (wasGenerating) {
+      unawaited(_api.stopRemoteChat(sessionId));
     }
     _sessionGenerating[sessionId] = false;
     _localGeneratingSessions.remove(sessionId);
@@ -802,6 +836,8 @@ class ChatProvider extends ChangeNotifier {
     _sessionStreams[targetId]?.cancel();
     _sessionStreams.remove(targetId);
     _remoteTokenThrottleTimers.remove(targetId)?.cancel();
+    _localOnPrimaryPollTimers.remove(targetId)?.cancel();
+    _interruptedRemoteSessions.remove(targetId);
     if (isSessionRemoteGenerating(targetId)) {
       unawaited(_hostServer.stopActiveChat(targetId, reason: 'Đã dừng phản hồi từ App Chính.'));
     }
@@ -1043,11 +1079,305 @@ $solution
         }
         _sessionGenerating[sessionId] = false;
         _localGeneratingSessions.remove(sessionId);
+        _interruptedRemoteSessions.remove(sessionId);
         _sessionStatuses.remove(sessionId);
         _sessionStreams.remove(sessionId);
         notifyListeners();
       },
+      onDisconnected: (reason) {
+        tokenThrottleTimer?.cancel();
+        _handleRemoteStreamInterrupted(sessionId, assistantMsg, reason);
+      },
     );
+  }
+
+  void _handleRemoteStreamInterrupted(String sessionId, ChatMessageModel? assistantMsg, String reason) {
+    if (_disposed) return;
+    _sessionStreams.remove(sessionId);
+    _interruptedRemoteSessions.add(sessionId);
+    _sessionGenerating[sessionId] = true;
+    _localGeneratingSessions.add(sessionId);
+    const reconnectingStatus = 'Kết nối tạm gián đoạn — Agent vẫn đang chạy trên App Chính...';
+    _sessionStatuses[sessionId] = reconnectingStatus;
+    if (assistantMsg != null) {
+      assistantMsg.isStreaming = true;
+      assistantMsg.statusMessage = reconnectingStatus;
+    }
+    notifyListeners();
+
+    // Thử bám nối lại nhanh nếu mạng chỉ chớp ngắn; nếu app đang bị ẩn ở nền thì onAppResumed() sẽ tự đồng bộ lại.
+    Future<void>.delayed(const Duration(milliseconds: 800), () {
+      if (!_disposed && _interruptedRemoteSessions.contains(sessionId)) {
+        unawaited(_recoverRemoteSession(sessionId, reloadHistoryIfIdle: true));
+      }
+    });
+  }
+
+  /// Gọi khi App Phụ quay lại tiền cảnh (`AppLifecycleState.resumed`).
+  /// Tự động bám nối lại luồng Agent đang chạy trên App Chính hoặc tải lại câu trả lời đã hoàn tất trong lúc ẩn app.
+  Future<void> onAppResumed() async {
+    if (_disposed) return;
+    if (await _api.isNativeMode()) return;
+
+    final toRecover = <String>{..._interruptedRemoteSessions};
+    final activeId = _currentSession?.id;
+    if (activeId != null && !_sessionStreams.containsKey(activeId)) {
+      toRecover.add(activeId);
+    }
+
+    for (final sId in toRecover) {
+      await _recoverRemoteSession(
+        sId,
+        reloadHistoryIfIdle: _interruptedRemoteSessions.contains(sId) || sId == activeId,
+      );
+    }
+    unawaited(loadSessions(silent: true));
+  }
+
+  /// Kiểm tra hộp hội thoại trên App Chính có đang chạy dở không; nếu có thì nối lại luồng SSE live,
+  /// nếu đã hoàn tất thì tự tải lại lịch sử để hiển thị đủ câu trả lời.
+  Future<void> _recoverRemoteSession(
+    String sessionId, {
+    bool reloadHistoryIfIdle = true,
+  }) async {
+    if (_disposed || _recoveringRemoteSessions.contains(sessionId)) return;
+    if (_sessionStreams.containsKey(sessionId)) return;
+    if (await _api.isNativeMode()) return;
+
+    _recoveringRemoteSessions.add(sessionId);
+    try {
+      ChatMessageModel? liveAssistantMsg;
+      Timer? tokenThrottleTimer;
+
+      ChatMessageModel ensureLiveAssistantMsg({String? userMessage, String? model}) {
+        if (liveAssistantMsg != null) return liveAssistantMsg!;
+        final msgs = _sessionMessages.putIfAbsent(sessionId, () => []);
+        if (msgs.isNotEmpty && msgs.last.role == 'assistant' && msgs.last.isStreaming) {
+          liveAssistantMsg = msgs.last;
+          return liveAssistantMsg!;
+        }
+        final trimmedUser = (userMessage ?? '').trim();
+        if (trimmedUser.isNotEmpty) {
+          final alreadyHasUser =
+              msgs.isNotEmpty && msgs.last.role == 'user' && msgs.last.content.trim() == trimmedUser;
+          if (!alreadyHasUser) {
+            msgs.add(
+              ChatMessageModel(
+                sessionId: sessionId,
+                role: 'user',
+                content: trimmedUser,
+                model: model ?? 'glm-5.3',
+              ),
+            );
+          }
+        }
+        liveAssistantMsg = ChatMessageModel(
+          sessionId: sessionId,
+          role: 'assistant',
+          content: '',
+          model: model ?? 'glm-5.3',
+          isStreaming: true,
+          statusMessage: 'Đang đồng bộ tiến độ từ App Chính...',
+        );
+        msgs.add(liveAssistantMsg!);
+        return liveAssistantMsg!;
+      }
+
+      final res = await _api.attachLiveChatStream(
+        sessionId: sessionId,
+        onSnapshot: (snap) {
+          if (_disposed) return;
+          final msg = ensureLiveAssistantMsg(
+            userMessage: snap['user_message']?.toString(),
+            model: snap['model']?.toString(),
+          );
+          final content = snap['content']?.toString() ?? '';
+          final status = snap['status']?.toString() ?? 'Đang tiếp tục từ App Chính...';
+          msg.content = content;
+          msg.isStreaming = true;
+          msg.statusMessage = content.isEmpty ? status : null;
+          if (snap['tools'] is List) {
+            msg.toolExecutions
+              ..clear()
+              ..addAll(
+                (snap['tools'] as List)
+                    .whereType<Map>()
+                    .map((e) => ToolExecutionItem.fromJson(Map<String, dynamic>.from(e))),
+              );
+          }
+          _sessionGenerating[sessionId] = true;
+          _localGeneratingSessions.add(sessionId);
+          _sessionStatuses[sessionId] = status;
+          notifyListeners();
+        },
+        onToken: (token) {
+          if (_disposed) return;
+          final msg = ensureLiveAssistantMsg();
+          if (token == '__CLEAR_INTERMEDIATE_THOUGHTS__') {
+            msg.content = '';
+          } else {
+            msg.content += token;
+          }
+          msg.statusMessage = null;
+          if (tokenThrottleTimer == null || !tokenThrottleTimer!.isActive) {
+            tokenThrottleTimer = Timer(const Duration(milliseconds: 120), () {
+              notifyListeners();
+            });
+          }
+        },
+        onStatus: (status) {
+          if (_disposed) return;
+          tokenThrottleTimer?.cancel();
+          final msg = ensureLiveAssistantMsg();
+          _sessionStatuses[sessionId] = status;
+          msg.statusMessage = status;
+          notifyListeners();
+        },
+        onTool: (tool) {
+          if (_disposed) return;
+          tokenThrottleTimer?.cancel();
+          final msg = ensureLiveAssistantMsg();
+          final cappedOutput = tool.output.length > 4000
+              ? '${tool.output.substring(0, 4000)}\n... [Đã rút gọn ${tool.output.length - 4000} ký tự để chống lag UI]'
+              : tool.output;
+          final cappedTool = ToolExecutionItem(
+            tool: tool.tool,
+            command: tool.command,
+            output: cappedOutput,
+          );
+          var existingIdx = msg.toolExecutions.lastIndexWhere(
+            (t) => t.tool == tool.tool && t.command == tool.command && t.output == 'Đang thực thi...',
+          );
+          if (existingIdx == -1 && tool.output != 'Đang thực thi...') {
+            existingIdx = msg.toolExecutions.lastIndexWhere(
+              (t) => t.tool == tool.tool && t.command == tool.tool && t.output == 'Đang thực thi...',
+            );
+          }
+          if (existingIdx != -1) {
+            msg.toolExecutions[existingIdx] = cappedTool;
+          } else {
+            msg.toolExecutions.add(cappedTool);
+          }
+          if (msg.toolExecutions.length > 30) {
+            msg.toolExecutions.removeRange(0, msg.toolExecutions.length - 30);
+          }
+          if (tool.output != 'Đang thực thi...') {
+            final doneStatus = 'Đã thực hiện: ${tool.command}';
+            _sessionStatuses[sessionId] = doneStatus;
+            msg.statusMessage = doneStatus;
+          }
+          notifyListeners();
+        },
+        onDone: (fullReply) {
+          tokenThrottleTimer?.cancel();
+          final msg = liveAssistantMsg;
+          if (msg != null) {
+            for (var i = 0; i < msg.toolExecutions.length; i++) {
+              final item = msg.toolExecutions[i];
+              if (item.output == 'Đang thực thi...') {
+                msg.toolExecutions[i] = ToolExecutionItem(
+                  tool: item.tool,
+                  command: item.command,
+                  output: '',
+                );
+              }
+            }
+            msg.isStreaming = false;
+            msg.statusMessage = null;
+            if (fullReply.isNotEmpty) {
+              msg.content = fullReply;
+            }
+          }
+          _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
+          _interruptedRemoteSessions.remove(sessionId);
+          _sessionGenerating[sessionId] = false;
+          _localGeneratingSessions.remove(sessionId);
+          _sessionStatuses.remove(sessionId);
+          _sessionStreams.remove(sessionId);
+          notifyListeners();
+          unawaited(loadSessions(silent: true));
+          unawaited(_reloadSessionHistorySilent(sessionId));
+
+          final sessionTitle = _currentSession?.title ?? 'AI Type Agent';
+          final snippet = (fullReply.isNotEmpty ? fullReply : (msg?.content ?? '')).trim();
+          final preview = snippet.length > 80 ? '${snippet.substring(0, 80)}...' : snippet;
+          SystemNotificationService.notifyReplyFinished(
+            title: sessionTitle,
+            message: preview.isNotEmpty ? preview : 'Bot đã hoàn tất câu trả lời!',
+          );
+        },
+        onError: (err) {
+          tokenThrottleTimer?.cancel();
+          final msg = liveAssistantMsg;
+          if (msg != null) {
+            msg.isStreaming = false;
+            msg.statusMessage = null;
+            if (msg.content.isEmpty) {
+              msg.content = err.toString();
+            }
+          }
+          _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
+          _interruptedRemoteSessions.remove(sessionId);
+          _sessionGenerating[sessionId] = false;
+          _localGeneratingSessions.remove(sessionId);
+          _sessionStatuses.remove(sessionId);
+          _sessionStreams.remove(sessionId);
+          notifyListeners();
+        },
+        onDisconnected: (reason) {
+          tokenThrottleTimer?.cancel();
+          _handleRemoteStreamInterrupted(sessionId, liveAssistantMsg, reason);
+        },
+      );
+
+      if (_disposed) {
+        await res.subscription?.cancel();
+        return;
+      }
+
+      if (res.active && !res.isLocalOnPrimary && res.subscription != null) {
+        _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
+        _interruptedRemoteSessions.remove(sessionId);
+        _sessionStreams[sessionId] = res.subscription!;
+        _sessionGenerating[sessionId] = true;
+        _localGeneratingSessions.add(sessionId);
+        notifyListeners();
+      } else if (res.active && res.isLocalOnPrimary) {
+        _interruptedRemoteSessions.add(sessionId);
+        _sessionGenerating[sessionId] = true;
+        _sessionStatuses[sessionId] = res.localStatus ?? 'App Chính đang xử lý câu hỏi...';
+        notifyListeners();
+        _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
+        _localOnPrimaryPollTimers[sessionId] = Timer(const Duration(seconds: 2), () {
+          if (!_disposed && _interruptedRemoteSessions.contains(sessionId)) {
+            unawaited(_recoverRemoteSession(sessionId, reloadHistoryIfIdle: true));
+          }
+        });
+      } else {
+        _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
+        final wasPending =
+            _interruptedRemoteSessions.remove(sessionId) || _sessionGenerating[sessionId] == true;
+        _sessionGenerating[sessionId] = false;
+        _localGeneratingSessions.remove(sessionId);
+        _sessionStatuses.remove(sessionId);
+        _sessionStreams.remove(sessionId);
+        if (wasPending || reloadHistoryIfIdle) {
+          await _reloadSessionHistorySilent(sessionId);
+          if (wasPending) {
+            unawaited(loadSessions(silent: true));
+          }
+        }
+        notifyListeners();
+      }
+    } catch (_) {
+      // Mạng vẫn đang ngủ / tạm mất -> giữ nguyên cờ interrupted để onAppResumed() tự nối lại khi có mạng.
+      if (!_disposed && _interruptedRemoteSessions.contains(sessionId)) {
+        _sessionStatuses[sessionId] = 'Đang chờ kết nối lại với App Chính...';
+        notifyListeners();
+      }
+    } finally {
+      _recoveringRemoteSessions.remove(sessionId);
+    }
   }
 
   @override
@@ -1060,6 +1390,10 @@ $solution
       t.cancel();
     }
     _remoteTokenThrottleTimers.clear();
+    for (final t in _localOnPrimaryPollTimers.values) {
+      t.cancel();
+    }
+    _localOnPrimaryPollTimers.clear();
     for (final sub in _sessionStreams.values) {
       sub.cancel();
     }

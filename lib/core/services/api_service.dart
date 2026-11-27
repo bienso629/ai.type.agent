@@ -41,12 +41,40 @@ class ApiService {
     return true;
   }
 
+  static final StreamController<String> _deviceRevokedController =
+      StreamController<String>.broadcast();
+
+  /// Phát sự kiện khi App Chính từ chối thiết bị App Phụ này (`HTTP 401 DEVICE_REVOKED`).
+  static Stream<String> get onDeviceRevoked => _deviceRevokedController.stream;
+
+  void _checkRevokedPayload(int statusCode, String rawBody) {
+    if (statusCode != 401) return;
+    try {
+      final decoded = jsonDecode(rawBody);
+      if (decoded is Map &&
+          (decoded['code']?.toString() == 'DEVICE_REVOKED' ||
+              decoded['error']?.toString() == 'DEVICE_REVOKED')) {
+        final msg = decoded['message']?.toString().trim();
+        if (!_deviceRevokedController.isClosed) {
+          _deviceRevokedController.add(
+            (msg != null && msg.isNotEmpty) ? msg : 'Thiết bị này đã bị ngắt kết nối từ App Chính.',
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<Map<String, String>> _getHeaders({bool isJson = true}) async {
     final token = await _storage.getSecretToken();
     final userEmail = await _storage.getUserEmail();
+    final clientId = await _storage.getClientDeviceId();
+    final clientName = await _storage.getClientDeviceName();
     final headers = <String, String>{
       if (isJson) 'Content-Type': 'application/json; charset=utf-8',
       'Accept': 'application/json',
+      'X-Client-Id': clientId,
+      'X-Client-Name': Uri.encodeComponent(clientName),
+      'X-Client-OS': Platform.operatingSystem,
     };
     if (token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
@@ -85,9 +113,34 @@ class ApiService {
       if (res.statusCode == 200) {
         final data = jsonDecode(utf8.decode(res.bodyBytes));
         if (data is Map<String, dynamic>) return data;
+      } else {
+        final bodyText = utf8.decode(res.bodyBytes);
+        _checkRevokedPayload(res.statusCode, bodyText);
+        if (res.statusCode == 401) {
+          try {
+            final data = jsonDecode(bodyText);
+            if (data is Map<String, dynamic>) return data;
+          } catch (_) {}
+        }
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Thông báo cho App Chính biết App Phụ chủ động ngắt kết nối (để xóa ngay khỏi danh sách online).
+  Future<void> notifyRemoteDisconnect() async {
+    if (await _isNativeMode()) return;
+    try {
+      final baseUrl = await _getBaseUrl();
+      if (baseUrl.isEmpty) return;
+      await _client
+          .post(
+            Uri.parse('$baseUrl${ApiConstants.epRemoteDisconnect}'),
+            headers: await _getHeaders(),
+            body: jsonEncode({}),
+          )
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {}
   }
 
   Future<List<LocalCliAgent>> getRemoteCliAgents() async {
@@ -884,6 +937,8 @@ class ApiService {
     required void Function(ToolExecutionItem tool) onTool,
     required void Function(String fullReply) onDone,
     required void Function(dynamic error) onError,
+    void Function(String reason)? onDisconnected,
+    bool stopRemoteOnCancel = false,
   }) {
     final controller = StreamController<String>();
 
@@ -911,14 +966,15 @@ class ApiService {
 
       http.Client? streamClient;
       StreamSubscription<String>? innerSub;
-      // Cờ hủy từ UI (stopGenerating): phải đóng kết nối thật sự, không chỉ
-      // hủy subscription bề mặt.
+      // Cờ hủy từ UI: đóng kết nối HTTP phía client; chỉ gửi lệnh dừng tiến trình trên App Chính khi stopRemoteOnCancel == true.
       bool streamCancelled = false;
       controller.onCancel = () {
         streamCancelled = true;
         innerSub?.cancel();
         streamClient?.close();
-        unawaited(stopRemoteChat(sessionId));
+        if (stopRemoteOnCancel) {
+          unawaited(stopRemoteChat(sessionId));
+        }
       };
       try {
         final baseUrl = await _getBaseUrl();
@@ -958,9 +1014,10 @@ class ApiService {
           String errDetail = 'Server returned error: ${streamedResponse.statusCode}';
           try {
             final rawBody = await streamedResponse.stream.bytesToString();
+            _checkRevokedPayload(streamedResponse.statusCode, rawBody);
             final decoded = jsonDecode(rawBody);
             if (decoded is Map) {
-              final msg = (decoded['error'] ?? decoded['message'])?.toString().trim();
+              final msg = (decoded['message'] ?? decoded['error'])?.toString().trim();
               if (msg != null && msg.isNotEmpty) {
                 errDetail = msg;
               }
@@ -973,17 +1030,40 @@ class ApiService {
 
         var accumulatedReply = '';
         bool finished = false;
+        bool receivedTerminalEvent = false;
+        late Timer sseWatchdog;
+
         void completeOnce(String reply) {
           if (finished) return;
           finished = true;
+          sseWatchdog.cancel();
           onDone(reply);
         }
 
-        // Watchdog chống đứt kết nối ngầm: quá 90 giây không nhận thêm dữ liệu
-        // SSE nào (dù chưa done) thì coi như luồng đã chết -> hoàn tất kèm cảnh
-        // báo, hủy subscription và đóng client thay vì treo vô hạn.
+        void failOnce(dynamic err) {
+          if (finished) return;
+          finished = true;
+          sseWatchdog.cancel();
+          onError(err);
+        }
+
+        void disconnectOnce(String reason) {
+          if (finished || streamCancelled) return;
+          finished = true;
+          sseWatchdog.cancel();
+          innerSub?.cancel();
+          streamClient?.close();
+          if (onDisconnected != null) {
+            onDisconnected(reason);
+          } else {
+            onError(reason);
+          }
+        }
+
+        // Watchdog chống đứt kết nối ngầm: quá 90 giây không nhận thêm dữ liệu SSE nào.
+        // Nếu có `onDisconnected` (chế độ App Phụ bền bỉ), báo đứt kết nối tạm thời để tự bám nối lại với App Chính.
         int lastSseActivityMs = DateTime.now().millisecondsSinceEpoch;
-        final sseWatchdog = Timer.periodic(const Duration(seconds: 5), (t) {
+        sseWatchdog = Timer.periodic(const Duration(seconds: 5), (t) {
           if (finished || streamCancelled) {
             t.cancel();
             return;
@@ -991,13 +1071,17 @@ class ApiService {
           final elapsed = DateTime.now().millisecondsSinceEpoch - lastSseActivityMs;
           if (elapsed >= 90000) {
             t.cancel();
-            final partial = accumulatedReply.trim();
-            completeOnce(partial.isEmpty
-                ? 'Máy chủ AI không gửi thêm dữ liệu nào trong 90 giây (kết nối có thể đã đứt ngầm). Hãy thử gửi lại yêu cầu.'
-                : '$partial\n\n> **Cảnh báo:** Kết nối tới máy chủ AI bị gián đoạn (quá 90 giây không có dữ liệu). '
-                    'Phần trả lời trên có thể chưa đầy đủ — hãy nhắn "tiếp tục" để chạy nốt.');
-            innerSub?.cancel();
-            streamClient?.close();
+            if (onDisconnected != null) {
+              disconnectOnce('Kết nối SSE tới App Chính bị gián đoạn tạm thời.');
+            } else {
+              final partial = accumulatedReply.trim();
+              completeOnce(partial.isEmpty
+                  ? 'Máy chủ AI không gửi thêm dữ liệu nào trong 90 giây (kết nối có thể đã đứt ngầm). Hãy thử gửi lại yêu cầu.'
+                  : '$partial\n\n> **Cảnh báo:** Kết nối tới máy chủ AI bị gián đoạn (quá 90 giây không có dữ liệu). '
+                      'Phần trả lời trên có thể chưa đầy đủ — hãy nhắn "tiếp tục" để chạy nốt.');
+              innerSub?.cancel();
+              streamClient?.close();
+            }
           }
         });
 
@@ -1012,8 +1096,6 @@ class ApiService {
             if (trimmed.startsWith('data:')) {
               final jsonStr = trimmed.substring(5).trim();
               if (jsonStr.isEmpty || jsonStr == '[DONE]') {
-                // [DONE] chi la ket thuc mot luot stream - KHONG bao xong som,
-                // phai doi su kien 'done' that su hoac stream dong hoan toan
                 return;
               }
               try {
@@ -1022,7 +1104,11 @@ class ApiService {
 
                 if (type == 'token' || type == 'content') {
                   final delta = data['delta']?.toString() ?? data['content']?.toString() ?? '';
-                  accumulatedReply += delta;
+                  if (delta == '__CLEAR_INTERMEDIATE_THOUGHTS__') {
+                    accumulatedReply = '';
+                  } else {
+                    accumulatedReply += delta;
+                  }
                   onToken(delta);
                 } else if (type == 'status') {
                   final msg = data['message']?.toString() ?? '';
@@ -1032,25 +1118,31 @@ class ApiService {
                   final item = ToolExecutionItem.fromJson(toolData);
                   onTool(item);
                 } else if (type == 'done') {
+                  receivedTerminalEvent = true;
                   final finalReply = data['reply']?.toString() ?? accumulatedReply;
                   completeOnce(finalReply);
                 } else if (type == 'error') {
-                  onError(data['message'] ?? data['error'] ?? 'AI Error');
+                  receivedTerminalEvent = true;
+                  failOnce(data['message'] ?? data['error'] ?? 'AI Error');
                 }
               } catch (_) {}
             }
           },
           onError: (e) {
-            sseWatchdog.cancel();
-            streamClient?.close();
             if (streamCancelled || finished) return;
-            onError(e);
+            disconnectOnce(e.toString());
           },
           onDone: () {
             sseWatchdog.cancel();
-            if (streamCancelled) return;
-            completeOnce(accumulatedReply);
             streamClient?.close();
+            if (streamCancelled || finished) return;
+            if (receivedTerminalEvent) {
+              completeOnce(accumulatedReply);
+            } else if (onDisconnected != null) {
+              disconnectOnce('Kết nối SSE đã ngắt giữa chừng trước khi Agent hoàn tất.');
+            } else {
+              completeOnce(accumulatedReply);
+            }
           },
           cancelOnError: true,
         );
@@ -1063,6 +1155,196 @@ class ApiService {
     }();
 
     return controller.stream.listen((_) {});
+  }
+
+  /// Kiểm tra trạng thái chạy live của hộp hội thoại trên App Chính (`GET /api/chat/live`)
+  /// và bám nối lại luồng SSE nếu Agent vẫn đang xử lý dở (nhận `snapshot` rồi tiếp tục nhận token live).
+  Future<({
+    bool active,
+    bool isLocalOnPrimary,
+    String? localStatus,
+    StreamSubscription<String>? subscription,
+  })> attachLiveChatStream({
+    required String sessionId,
+    required void Function(Map<String, dynamic> snapshot) onSnapshot,
+    required void Function(String token) onToken,
+    required void Function(String status) onStatus,
+    required void Function(ToolExecutionItem tool) onTool,
+    required void Function(String fullReply) onDone,
+    required void Function(dynamic error) onError,
+    void Function(String reason)? onDisconnected,
+  }) async {
+    if (await _isNativeMode()) {
+      return (active: false, isLocalOnPrimary: false, localStatus: null, subscription: null);
+    }
+
+    final baseUrl = await _getBaseUrl();
+    final streamClient = http.Client();
+    try {
+      final uri = Uri.parse('$baseUrl${ApiConstants.epChatLive}?session_id=${Uri.encodeQueryComponent(sessionId)}');
+      final request = http.Request('GET', uri);
+      request.headers.addAll(await _getHeaders());
+
+      final streamedResponse = await streamClient.send(request).timeout(const Duration(seconds: 10));
+      if (streamedResponse.statusCode != 200) {
+        final rawBody = await streamedResponse.stream.bytesToString();
+        _checkRevokedPayload(streamedResponse.statusCode, rawBody);
+        streamClient.close();
+        if (streamedResponse.statusCode == 401) {
+          String errDetail = 'Thiết bị này đã bị ngắt kết nối khỏi App Chính.';
+          try {
+            final decoded = jsonDecode(rawBody);
+            if (decoded is Map) {
+              final m = (decoded['message'] ?? decoded['error'])?.toString().trim();
+              if (m != null && m.isNotEmpty) errDetail = m;
+            }
+          } catch (_) {}
+          onError(errDetail);
+          return (active: false, isLocalOnPrimary: false, localStatus: null, subscription: null);
+        }
+        throw Exception('HTTP ${streamedResponse.statusCode}');
+      }
+
+      final contentType = (streamedResponse.headers['content-type'] ?? '').toLowerCase();
+      if (!contentType.contains('text/event-stream')) {
+        final rawBody = await streamedResponse.stream.bytesToString();
+        streamClient.close();
+        final decoded = jsonDecode(rawBody);
+        if (decoded is Map && decoded['active'] == true) {
+          return (
+            active: true,
+            isLocalOnPrimary: decoded['local'] == true,
+            localStatus: decoded['status']?.toString(),
+            subscription: null,
+          );
+        }
+        return (active: false, isLocalOnPrimary: false, localStatus: null, subscription: null);
+      }
+
+      final controller = StreamController<String>();
+      StreamSubscription<String>? innerSub;
+      bool streamCancelled = false;
+      bool finished = false;
+      bool receivedTerminalEvent = false;
+      var accumulatedReply = '';
+      late Timer sseWatchdog;
+
+      // Hủy subscription attach chỉ đóng socket đọc phía client, TUYỆT ĐỐI KHÔNG gửi lệnh stop Agent trên App Chính.
+      controller.onCancel = () {
+        streamCancelled = true;
+        sseWatchdog.cancel();
+        innerSub?.cancel();
+        streamClient.close();
+      };
+
+      void completeOnce(String reply) {
+        if (finished) return;
+        finished = true;
+        sseWatchdog.cancel();
+        onDone(reply);
+      }
+
+      void failOnce(dynamic err) {
+        if (finished) return;
+        finished = true;
+        sseWatchdog.cancel();
+        onError(err);
+      }
+
+      void disconnectOnce(String reason) {
+        if (finished || streamCancelled) return;
+        finished = true;
+        sseWatchdog.cancel();
+        innerSub?.cancel();
+        streamClient.close();
+        if (onDisconnected != null) {
+          onDisconnected(reason);
+        } else {
+          onError(reason);
+        }
+      }
+
+      int lastSseActivityMs = DateTime.now().millisecondsSinceEpoch;
+      sseWatchdog = Timer.periodic(const Duration(seconds: 5), (t) {
+        if (finished || streamCancelled) {
+          t.cancel();
+          return;
+        }
+        final elapsed = DateTime.now().millisecondsSinceEpoch - lastSseActivityMs;
+        if (elapsed >= 90000) {
+          t.cancel();
+          disconnectOnce('Kết nối SSE đồng bộ trực tiếp bị gián đoạn tạm thời.');
+        }
+      });
+
+      innerSub = streamedResponse.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen(
+        (line) {
+          lastSseActivityMs = DateTime.now().millisecondsSinceEpoch;
+          if (streamCancelled) return;
+          final trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            final jsonStr = trimmed.substring(5).trim();
+            if (jsonStr.isEmpty || jsonStr == '[DONE]') return;
+            try {
+              final Map<String, dynamic> data = jsonDecode(jsonStr);
+              final type = data['type']?.toString();
+              if (type == 'snapshot') {
+                accumulatedReply = data['content']?.toString() ?? '';
+                onSnapshot(data);
+              } else if (type == 'token' || type == 'content') {
+                final delta = data['delta']?.toString() ?? data['content']?.toString() ?? '';
+                if (delta == '__CLEAR_INTERMEDIATE_THOUGHTS__') {
+                  accumulatedReply = '';
+                } else {
+                  accumulatedReply += delta;
+                }
+                onToken(delta);
+              } else if (type == 'status') {
+                onStatus(data['message']?.toString() ?? '');
+              } else if (type == 'tool' || type == 'tool_call') {
+                final toolData = data['tool'] is Map ? data['tool'] as Map<String, dynamic> : data;
+                onTool(ToolExecutionItem.fromJson(toolData));
+              } else if (type == 'done') {
+                receivedTerminalEvent = true;
+                final finalReply = data['reply']?.toString() ?? accumulatedReply;
+                completeOnce(finalReply);
+              } else if (type == 'error') {
+                receivedTerminalEvent = true;
+                failOnce(data['message'] ?? data['error'] ?? 'AI Error');
+              }
+            } catch (_) {}
+          }
+        },
+        onError: (e) {
+          if (streamCancelled || finished) return;
+          disconnectOnce(e.toString());
+        },
+        onDone: () {
+          sseWatchdog.cancel();
+          streamClient.close();
+          if (streamCancelled || finished) return;
+          if (receivedTerminalEvent) {
+            completeOnce(accumulatedReply);
+          } else {
+            disconnectOnce('Kết nối SSE đồng bộ trực tiếp đã đóng giữa chừng.');
+          }
+        },
+        cancelOnError: true,
+      );
+
+      return (
+        active: true,
+        isLocalOnPrimary: false,
+        localStatus: null,
+        subscription: controller.stream.listen((_) {}),
+      );
+    } catch (_) {
+      streamClient.close();
+      rethrow;
+    }
   }
 
   // 10. File System Browser APIs (Local Filesystem, SSH Remote, hoặc App Chính từ xa)

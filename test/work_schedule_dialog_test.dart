@@ -77,6 +77,8 @@ class _FakeScheduleApiService implements ApiService {
     required void Function(ToolExecutionItem tool) onTool,
     required void Function(String fullReply) onDone,
     required void Function(dynamic error) onError,
+    void Function(String reason)? onDisconnected,
+    bool stopRemoteOnCancel = false,
   }) {
     streamCalls++;
     capturedMessages.add(message);

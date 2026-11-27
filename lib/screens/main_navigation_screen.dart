@@ -24,7 +24,7 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
   String _activeTabKey = 'chat';
   bool _isSidebarCollapsed = false;
@@ -33,6 +33,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ServerProvider>().loadServers();
       context.read<ChatProvider>().loadSessions();
@@ -41,7 +42,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(context.read<ChatProvider>().onAppResumed());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pairingReqSub?.cancel();
     super.dispose();
   }
@@ -530,6 +539,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                   );
                                 }
                                 if (gw.isHostRunning) {
+                                  final countSuffix = gw.onlineClientsCount > 0
+                                      ? ' • ${gw.onlineClientsCount} máy'
+                                      : '';
                                   return Container(
                                     margin: const EdgeInsets.only(right: 6),
                                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -539,7 +551,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                       borderRadius: BorderRadius.circular(3),
                                     ),
                                     child: Text(
-                                      gw.isInternetTunnelRunning ? 'Internet' : 'Host :${gw.hostBoundPort}',
+                                      '${gw.isInternetTunnelRunning ? 'Internet' : 'Host :${gw.hostBoundPort}'}$countSuffix',
                                       style: TextStyle(
                                         fontSize: 9.5,
                                         fontWeight: FontWeight.bold,

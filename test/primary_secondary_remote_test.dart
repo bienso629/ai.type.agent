@@ -642,6 +642,452 @@ void main() {
       await stopSub.cancel();
       primaryChat.dispose();
     });
+
+    test('theo dõi nhiều thiết bị App Phụ, ngắt kết nối từng máy không ảnh hưởng máy khác và cho phép lại', () async {
+      final client = http.Client();
+      final revokedEvents = <String>[];
+      final revokedSub = ApiService.onDeviceRevoked.listen(revokedEvents.add);
+      try {
+        Map<String, String> headersFor(String id, String name, String os) => {
+              'Authorization': 'Bearer $pairingToken',
+              'Content-Type': 'application/json',
+              'X-Client-Id': id,
+              'X-Client-Name': Uri.encodeComponent(name),
+              'X-Client-OS': os,
+            };
+
+        // 1. Hai thiết bị App Phụ riêng biệt kết nối bằng cùng một Pairing Token
+        final resA = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_xiaomi_a', 'Điện thoại Xiaomi', 'android'),
+        );
+        expect(resA.statusCode, 200);
+
+        final resB = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_macbook_b', 'MacBook Phụ', 'macos'),
+        );
+        expect(resB.statusCode, 200);
+        final decodedB = jsonDecode(utf8.decode(resB.bodyBytes)) as Map<String, dynamic>;
+        expect(decodedB['online_clients_count'], 2);
+
+        expect(primaryHost.onlineClientCount, 2);
+        expect(primaryHost.connectedClients.length, 2);
+        final snapA = primaryHost.connectedClients.firstWhere((c) => c.clientId == 'dev_xiaomi_a');
+        final snapB = primaryHost.connectedClients.firstWhere((c) => c.clientId == 'dev_macbook_b');
+        expect(snapA.deviceName, 'Điện thoại Xiaomi');
+        expect(snapA.os, 'android');
+        expect(snapA.isOnline, isTrue);
+        expect(snapB.deviceName, 'MacBook Phụ');
+        expect(snapB.os, 'macos');
+        expect(snapB.isOnline, isTrue);
+
+        // 2. Thiết bị A bắt đầu một phiên chat đang chạy -> activeChats == 1
+        await StorageService().setClientDeviceId('dev_xiaomi_a');
+        final api = ApiService();
+        final created = await api.createChatSession(title: 'Phiên test kick client A');
+        final sid = created.id;
+
+        final hold = Completer<void>();
+        fakeAi.holdBeforeDone = hold;
+        final streamDone = Completer<String>();
+        final chatSub = api.streamChatMessage(
+          sessionId: sid,
+          message: 'Đang chạy từ máy A',
+          model: 'antigravity-cli',
+          onToken: (_) {},
+          onStatus: (_) {},
+          onTool: (_) {},
+          onDone: (r) {
+            if (!streamDone.isCompleted) streamDone.complete('DONE:$r');
+          },
+          onError: (e) {
+            if (!streamDone.isCompleted) streamDone.complete('ERR:$e');
+          },
+        );
+
+        for (var i = 0; i < 40 && !primaryHost.isRemoteSessionGenerating(sid); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        expect(primaryHost.isRemoteSessionGenerating(sid), isTrue);
+        expect(
+          primaryHost.connectedClients.firstWhere((c) => c.clientId == 'dev_xiaomi_a').activeChats,
+          1,
+        );
+
+        // 3. App Chính ngắt kết nối riêng thiết bị A -> hủy luồng chat của A, chặn A bằng 401 DEVICE_REVOKED, nhưng máy B vẫn chạy bình thường
+        await primaryHost.disconnectClient('dev_xiaomi_a', revoke: true);
+        final endState = await streamDone.future.timeout(const Duration(seconds: 5));
+        expect(endState, contains('ngắt kết nối'));
+        expect(primaryHost.isRemoteSessionGenerating(sid), isFalse);
+        expect(primaryHost.onlineClientCount, 1);
+        expect(primaryHost.revokedClientIds, contains('dev_xiaomi_a'));
+        expect(
+          primaryHost.connectedClients.firstWhere((c) => c.clientId == 'dev_xiaomi_a').isRevoked,
+          isTrue,
+        );
+
+        if (!hold.isCompleted) hold.complete();
+        fakeAi.holdBeforeDone = null;
+        await chatSub.cancel();
+
+        // Thiết bị A gọi lại -> bị chặn 401 DEVICE_REVOKED và ApiService phát sự kiện onDeviceRevoked
+        final blockedA = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_xiaomi_a', 'Điện thoại Xiaomi', 'android'),
+        );
+        expect(blockedA.statusCode, 401);
+        final blockedBody = jsonDecode(utf8.decode(blockedA.bodyBytes)) as Map<String, dynamic>;
+        expect(blockedBody['code'], 'DEVICE_REVOKED');
+
+        final apiRevokedInfo = await api.getRemoteHostInfo();
+        expect(apiRevokedInfo?['code'], 'DEVICE_REVOKED');
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(revokedEvents, isNotEmpty);
+
+        // Thiết bị B vẫn truy cập hoàn toàn bình thường
+        final stillOkB = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_macbook_b', 'MacBook Phụ', 'macos'),
+        );
+        expect(stillOkB.statusCode, 200);
+        expect(primaryHost.onlineClientCount, 1);
+
+        // 4. App Chính bấm "Cho phép lại" cho thiết bị A -> chưa tính online cho tới khi A kết nối lại
+        primaryHost.restoreClient('dev_xiaomi_a');
+        expect(primaryHost.revokedClientIds, isNot(contains('dev_xiaomi_a')));
+        expect(primaryHost.onlineClientCount, 1);
+
+        final reconnectedA = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_xiaomi_a', 'Điện thoại Xiaomi', 'android'),
+        );
+        expect(reconnectedA.statusCode, 200);
+        expect(primaryHost.onlineClientCount, 2);
+
+        // 5. Thiết bị B tự ngắt kết nối chủ động (POST /api/remote/disconnect) -> giảm ngay số online mà không bị chặn
+        final discB = await client.post(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteDisconnect}'),
+          headers: headersFor('dev_macbook_b', 'MacBook Phụ', 'macos'),
+        );
+        expect(discB.statusCode, 200);
+        expect(primaryHost.onlineClientCount, 1);
+        expect(primaryHost.revokedClientIds, isNot(contains('dev_macbook_b')));
+
+        final rejoinB = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_macbook_b', 'MacBook Phụ', 'macos'),
+        );
+        expect(rejoinB.statusCode, 200);
+        expect(primaryHost.onlineClientCount, 2);
+
+        // 6. Thiết bị bị thu hồi nếu ghép nối 1 chạm và được PC duyệt -> tự động gỡ chặn
+        await primaryHost.disconnectClient('dev_xiaomi_a', revoke: true);
+        expect(primaryHost.revokedClientIds, contains('dev_xiaomi_a'));
+        final pairReq = await client.post(
+          Uri.parse('$baseUrl${ApiConstants.epPairRequest}'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'client_id': 'dev_xiaomi_a',
+            'device_name': 'Điện thoại Xiaomi',
+            'os': 'android',
+          }),
+        );
+        expect(pairReq.statusCode, 200);
+        final reqId = (jsonDecode(utf8.decode(pairReq.bodyBytes)) as Map)['request_id'] as String;
+        primaryHost.approvePairingRequest(reqId);
+        expect(primaryHost.revokedClientIds, isNot(contains('dev_xiaomi_a')));
+
+        final afterApproveA = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_xiaomi_a', 'Điện thoại Xiaomi', 'android'),
+        );
+        expect(afterApproveA.statusCode, 200);
+      } finally {
+        await revokedSub.cancel();
+        client.close();
+      }
+    });
+
+    test('ẩn app phụ / đứt socket giữa chừng không hủy Agent trên App Chính, quay lại tự nối tiếp luồng live hoặc tải kết quả đã xong', () async {
+      final api = ApiService();
+      final created = await api.createChatSession(title: 'Phiên chạy bền nền');
+      final sid = created.id;
+
+      // === KỊCH BẢN 1: Ẩn app (đứt socket SSE) giữa chừng, quay lại KHI Agent vẫn đang chạy -> bám nối lại live qua /api/chat/live ===
+      final hold1 = Completer<void>();
+      fakeAi.holdBeforeDone = hold1;
+
+      final firstTokenSeen = Completer<void>();
+      final firstSub = api.streamChatMessage(
+        sessionId: sid,
+        message: 'Tác vụ chạy lâu 1',
+        model: 'antigravity-cli',
+        onToken: (tok) {
+          if (tok.isNotEmpty && !firstTokenSeen.isCompleted) {
+            firstTokenSeen.complete();
+          }
+        },
+        onStatus: (_) {},
+        onTool: (_) {},
+        onDone: (_) {},
+        onError: (_) {},
+        onDisconnected: (_) {},
+      );
+
+      await firstTokenSeen.future.timeout(const Duration(seconds: 5));
+      expect(primaryHost.isRemoteSessionGenerating(sid), isTrue);
+
+      // Mô phỏng hệ điều hành đóng băng app phụ / đóng socket TCP (không bấm Stop)
+      await firstSub.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      // Agent trên App Chính PHẢI VẪN ĐANG CHẠY, tuyệt đối không bị cancel!
+      expect(primaryHost.isRemoteSessionGenerating(sid), isTrue);
+      expect(primaryHost.activeChatCount, 1);
+
+      // Mở lại App Phụ (ChatProvider mới hoặc quay lại tiền cảnh) -> tự bám nối lại luồng live đang chạy
+      final secondaryChat = ChatProvider(
+        apiService: api,
+        hostServer: PrimaryHostServerService.forTest(databaseService: primaryDb),
+        autoInit: false,
+      );
+      await secondaryChat.loadSessions(silent: true);
+      final targetSess = secondaryChat.sessions.firstWhere((s) => s.id == sid);
+      await secondaryChat.selectSession(targetSess);
+
+      for (var i = 0; i < 40 && !secondaryChat.isSessionGenerating(sid); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(secondaryChat.isSessionGenerating(sid), isTrue);
+      expect(
+        secondaryChat.messages.any((m) => m.role == 'assistant' && m.isStreaming && m.content.contains('Kết quả từ ')),
+        isTrue,
+      );
+
+      // Mở khóa để Agent trên App Chính chạy xong -> App Phụ đang bám live nhận đủ câu trả lời
+      hold1.complete();
+      for (var i = 0; i < 60 && secondaryChat.isSessionGenerating(sid); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(secondaryChat.isSessionGenerating(sid), isFalse);
+      expect(primaryHost.isRemoteSessionGenerating(sid), isFalse);
+      expect(
+        secondaryChat.messages.any(
+          (m) => m.role == 'assistant' && m.content == 'Kết quả từ App Chính: Tác vụ chạy lâu 1' && !m.isStreaming,
+        ),
+        isTrue,
+      );
+
+      // === KỊCH BẢN 2: Ẩn app lâu, Agent chạy XONG hoàn toàn trong lúc đứt socket -> onAppResumed() tải đủ câu trả lời từ SQLite ===
+      final hold2 = Completer<void>();
+      fakeAi.holdBeforeDone = hold2;
+
+      final tok2Seen = Completer<void>();
+      final sub2 = api.streamChatMessage(
+        sessionId: sid,
+        message: 'Tác vụ hoàn tất trong lúc ẩn app',
+        model: 'antigravity-cli',
+        onToken: (tok) {
+          if (tok.isNotEmpty && !tok2Seen.isCompleted) tok2Seen.complete();
+        },
+        onStatus: (_) {},
+        onTool: (_) {},
+        onDone: (_) {},
+        onError: (_) {},
+        onDisconnected: (_) {},
+      );
+      await tok2Seen.future.timeout(const Duration(seconds: 5));
+      await sub2.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(primaryHost.isRemoteSessionGenerating(sid), isTrue);
+
+      // Hoàn tất Agent trong lúc App Phụ hoàn toàn không mở kết nối SSE
+      hold2.complete();
+      for (var i = 0; i < 50 && primaryHost.isRemoteSessionGenerating(sid); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(primaryHost.isRemoteSessionGenerating(sid), isFalse);
+
+      // Khi người dùng mở lại App Phụ -> onAppResumed() kiểm tra /api/chat/live (active: false) và tải câu trả lời mới nhất
+      await secondaryChat.onAppResumed();
+      expect(
+        secondaryChat.messages.any(
+          (m) => m.role == 'assistant' && m.content == 'Kết quả từ App Chính: Tác vụ hoàn tất trong lúc ẩn app',
+        ),
+        isTrue,
+      );
+
+      // === KỊCH BẢN 3: Bấm Dừng (/api/chat/stop) vẫn phải dừng được Agent ngay cả sau khi socket ban đầu đã đóng ===
+      final hold3 = Completer<void>();
+      fakeAi.holdBeforeDone = hold3;
+      final tok3Seen = Completer<void>();
+      final sub3 = api.streamChatMessage(
+        sessionId: sid,
+        message: 'Tác vụ cần bấm dừng tường minh',
+        model: 'antigravity-cli',
+        onToken: (tok) {
+          if (tok.isNotEmpty && !tok3Seen.isCompleted) tok3Seen.complete();
+        },
+        onStatus: (_) {},
+        onTool: (_) {},
+        onDone: (_) {},
+        onError: (_) {},
+        onDisconnected: (_) {},
+      );
+      await tok3Seen.future.timeout(const Duration(seconds: 5));
+      await sub3.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(primaryHost.isRemoteSessionGenerating(sid), isTrue);
+
+      await api.stopRemoteChat(sid);
+      expect(primaryHost.isRemoteSessionGenerating(sid), isFalse);
+      if (!hold3.isCompleted) hold3.complete();
+      fakeAi.holdBeforeDone = null;
+      secondaryChat.dispose();
+    });
+
+    test('tự động tạo thư mục làm việc riêng cho từng App Phụ trong thư mục gốc đã cấu hình và cô lập phạm vi truy cập', () async {
+      final workspacesRoot = p.join(tempDir.path, 'secondary_workspaces');
+      primaryHost.updateRuntimeMetadata(secondaryWorkspacesRoot: workspacesRoot);
+      expect(primaryHost.secondaryWorkspacesRoot, p.normalize(workspacesRoot));
+
+      final client = http.Client();
+      try {
+        Map<String, String> headersFor(String id, String name, String os) => {
+              'Authorization': 'Bearer $pairingToken',
+              'Content-Type': 'application/json',
+              'X-Client-Id': id,
+              'X-Client-Name': Uri.encodeComponent(name),
+              'X-Client-OS': os,
+            };
+
+        // 1. Hai App Phụ khác nhau kết nối -> mỗi máy được cấp 1 thư mục con riêng trong workspacesRoot
+        final info1Res = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_phone_1111', 'Điện thoại Xiaomi', 'android'),
+        );
+        expect(info1Res.statusCode, 200);
+        final info1 = jsonDecode(utf8.decode(info1Res.bodyBytes)) as Map<String, dynamic>;
+        final ws1 = info1['client_workspace_dir']?.toString() ?? '';
+        expect(ws1, isNotEmpty);
+        expect(PrimaryHostServerService.isPathWithinRoot(ws1, workspacesRoot), isTrue);
+        expect(Directory(ws1).existsSync(), isTrue);
+
+        final info2Res = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_ipad_2222', 'iPad Công Việc', 'ios'),
+        );
+        expect(info2Res.statusCode, 200);
+        final info2 = jsonDecode(utf8.decode(info2Res.bodyBytes)) as Map<String, dynamic>;
+        final ws2 = info2['client_workspace_dir']?.toString() ?? '';
+        expect(ws2, isNotEmpty);
+        expect(PrimaryHostServerService.isPathWithinRoot(ws2, workspacesRoot), isTrue);
+        expect(Directory(ws2).existsSync(), isTrue);
+        expect(ws1, isNot(equals(ws2)));
+
+        // ConnectedSecondaryClient phản ánh đúng đường dẫn thư mục làm việc của từng máy
+        final snap1 = primaryHost.connectedClients.firstWhere((c) => c.clientId == 'dev_phone_1111');
+        final snap2 = primaryHost.connectedClients.firstWhere((c) => c.clientId == 'dev_ipad_2222');
+        expect(snap1.workspaceDir, ws1);
+        expect(snap2.workspaceDir, ws2);
+
+        // Đổi tên hiển thị của cùng clientId -> vẫn tái sử dụng đúng thư mục cũ, không sinh thư mục thừa
+        final info1RenamedRes = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+          headers: headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'),
+        );
+        final info1Renamed = jsonDecode(utf8.decode(info1RenamedRes.bodyBytes)) as Map<String, dynamic>;
+        expect(info1Renamed['client_workspace_dir'], ws1);
+
+        // 2. Tạo session từ App Phụ 1 không truyền working_dir -> tự gắn mặc định là ws1
+        final createSessRes = await client.post(
+          Uri.parse('$baseUrl${ApiConstants.epChatSessions}'),
+          headers: headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'),
+          body: jsonEncode({'title': 'Dự án của Phone 1'}),
+        );
+        expect(createSessRes.statusCode, 200);
+        final sessJson = jsonDecode(utf8.decode(createSessRes.bodyBytes)) as Map<String, dynamic>;
+        final sid = sessJson['id'] as String;
+        expect(sessJson['working_dir'], ws1);
+
+        // Cho phép chọn thư mục con bên trong ws1, nhưng cố trỏ sang ws2 sẽ bị ép về ws1
+        final sub1 = Directory(p.join(ws1, 'my_project'))..createSync(recursive: true);
+        final okSubScope = await client.post(
+          Uri.parse('$baseUrl${ApiConstants.epChatSessions}/$sid/scope'),
+          headers: headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'),
+          body: jsonEncode({'working_dir': sub1.path}),
+        );
+        expect((jsonDecode(utf8.decode(okSubScope.bodyBytes)) as Map)['working_dir'], sub1.path);
+
+        final escapeScope = await client.post(
+          Uri.parse('$baseUrl${ApiConstants.epChatSessions}/$sid/scope'),
+          headers: headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'),
+          body: jsonEncode({'working_dir': ws2}),
+        );
+        expect((jsonDecode(utf8.decode(escapeScope.bodyBytes)) as Map)['working_dir'], ws1);
+
+        // Chạy POST /api/chat từ App Phụ 1 cố truyền working_dir: ws2 -> AI chỉ nhận đúng ws1
+        final chatReq = http.Request('POST', Uri.parse('$baseUrl${ApiConstants.epChat}'))
+          ..headers.addAll(headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'))
+          ..body = jsonEncode({
+            'session_id': sid,
+            'message': 'Kiểm tra thư mục làm việc',
+            'working_dir': ws2,
+          });
+        final chatStreamRes = await client.send(chatReq);
+        expect(chatStreamRes.statusCode, 200);
+        await chatStreamRes.stream.drain<void>();
+        expect(fakeAi.lastReceivedWorkingDir, ws1);
+
+        // 3. Duyệt thư mục, upload & download bị cô lập hoàn toàn theo từng App Phụ
+        final list1Res = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epFsListDirs}?prefix=${Uri.encodeQueryComponent(ws2)}'),
+          headers: headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'),
+        );
+        final list1 = ((jsonDecode(utf8.decode(list1Res.bodyBytes)) as Map)['directories'] as List).cast<String>();
+        expect(list1, contains(ws1));
+        expect(list1, contains(sub1.path));
+        expect(list1, isNot(contains(ws2)));
+
+        final upload1Res = await client.post(
+          Uri.parse('$baseUrl${ApiConstants.epFsUpload}'),
+          headers: headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'),
+          body: jsonEncode({
+            'file_name': 'secret_phone1.txt',
+            'content_base64': base64Encode(utf8.encode('private phone1 data')),
+            'target_dir': ws2, // Cố ghi sang thư mục của máy 2 -> bị chặn về ws1
+          }),
+        );
+        expect(upload1Res.statusCode, 200);
+        final uploadedPath1 = (jsonDecode(utf8.decode(upload1Res.bodyBytes)) as Map)['remote_path'] as String;
+        expect(PrimaryHostServerService.isPathWithinRoot(uploadedPath1, ws1), isTrue);
+        expect(File(uploadedPath1).existsSync(), isTrue);
+
+        // Máy 1 tải được tệp của mình (200), máy 2 tải tệp của máy 1 bị chặn (403 Forbidden)
+        final dlOwn = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epFsDownload}?path=${Uri.encodeQueryComponent(uploadedPath1)}'),
+          headers: headersFor('dev_phone_1111', 'Xiaomi Đổi Tên', 'android'),
+        );
+        expect(dlOwn.statusCode, 200);
+        expect(utf8.decode(dlOwn.bodyBytes), 'private phone1 data');
+
+        final dlCross = await client.get(
+          Uri.parse('$baseUrl${ApiConstants.epFsDownload}?path=${Uri.encodeQueryComponent(uploadedPath1)}'),
+          headers: headersFor('dev_ipad_2222', 'iPad Công Việc', 'ios'),
+        );
+        expect(dlCross.statusCode, 403);
+
+        // 4. Đổi thư mục gốc lúc runtime -> cập nhật workspace mới cho các máy đang kết nối
+        final newRoot = p.join(tempDir.path, 'moved_workspaces_root');
+        primaryHost.updateRuntimeMetadata(secondaryWorkspacesRoot: newRoot);
+        final movedSnap1 = primaryHost.connectedClients.firstWhere((c) => c.clientId == 'dev_phone_1111');
+        expect(PrimaryHostServerService.isPathWithinRoot(movedSnap1.workspaceDir, newRoot), isTrue);
+        expect(Directory(movedSnap1.workspaceDir).existsSync(), isTrue);
+      } finally {
+        client.close();
+      }
+    });
   });
 
   group('SettingsScreen Role Control UI (Mobile & Desktop)', () {
@@ -752,10 +1198,139 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(gatewayProvider.role, AppRole.primary);
 
-      // Xả hết animation/toast ngắn hạn trước khi kết thúc test
-      await tester.pump(const Duration(seconds: 4));
+      // Xả hết animation/toast và timer timeout ngắn hạn trước khi kết thúc test
+      await tester.pump(const Duration(seconds: 12));
 
       // Đảm bảo không có ngoại lệ RenderFlex overflow
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('hiển thị danh sách thiết bị App Phụ đang kết nối và ngắt/cho phép từng máy trên mobile', (tester) async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      SharedPreferences.setMockInitialValues({});
+      await StorageService().init();
+      await StorageService().setAppRole(AppRole.primary);
+      await StorageService().setPrimaryHostEnabled(false);
+
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final host = PrimaryHostServerService.instance;
+      const testToken = 'ui_connected_clients_token_123';
+      final uiRootDir = Directory.systemTemp.createTempSync('agent_coder_ui_ws_root_');
+      await StorageService().setSecondaryWorkspacesRoot(uiRootDir.path);
+      await host.stop();
+      host.clearRevokedClients();
+
+      final started = await tester.runAsync(() => host.start(
+            port: 0,
+            token: testToken,
+            deviceName: 'Primary UI Test',
+            secondaryWorkspacesRoot: uiRootDir.path,
+            bindAddress: InternetAddress.loopbackIPv4,
+          ));
+      expect(started, isTrue);
+
+      final gw = GatewayProvider();
+      final serverProvider = ServerProvider();
+      final chatProvider = ChatProvider();
+      final terminalProvider = TerminalProvider();
+      addTearDown(() async {
+        gw.dispose();
+        serverProvider.dispose();
+        chatProvider.dispose();
+        terminalProvider.dispose();
+        host.clearRevokedClients();
+        await host.stop();
+        if (uiRootDir.existsSync()) {
+          uiRootDir.deleteSync(recursive: true);
+        }
+        HttpOverrides.global = previousOverrides;
+      });
+
+      // Giả lập 2 thiết bị App Phụ kết nối vào PrimaryHostServerService.instance
+      await tester.runAsync(() async {
+        final httpClient = http.Client();
+        try {
+          final base = 'http://127.0.0.1:${host.boundPort}';
+          await httpClient.get(
+            Uri.parse('$base${ApiConstants.epRemoteInfo}'),
+            headers: {
+              'Authorization': 'Bearer $testToken',
+              'X-Client-Id': 'dev_ui_phone',
+              'X-Client-Name': Uri.encodeComponent('Xiaomi 10T Pro'),
+              'X-Client-OS': 'android',
+            },
+          );
+          await httpClient.get(
+            Uri.parse('$base${ApiConstants.epRemoteInfo}'),
+            headers: {
+              'Authorization': 'Bearer $testToken',
+              'X-Client-Id': 'dev_ui_tablet',
+              'X-Client-Name': Uri.encodeComponent('iPad Mini'),
+              'X-Client-OS': 'ios',
+            },
+          );
+        } finally {
+          httpClient.close();
+        }
+      });
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<GatewayProvider>.value(value: gw),
+            ChangeNotifierProvider<ServerProvider>.value(value: serverProvider),
+            ChangeNotifierProvider<ChatProvider>.value(value: chatProvider),
+            ChangeNotifierProvider<TerminalProvider>.value(value: terminalProvider),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.dark(),
+            home: const SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 250)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.byKey(const Key('secondary_workspaces_root_input')), findsOneWidget);
+      expect(find.byKey(const Key('pick_secondary_workspaces_root_button')), findsOneWidget);
+      expect(find.byKey(const Key('save_secondary_workspaces_root_button')), findsOneWidget);
+      expect(find.byKey(const Key('connected_secondary_clients_panel')), findsOneWidget);
+      expect(find.byKey(const Key('client_workspace_dev_ui_phone')), findsOneWidget);
+      expect(find.byKey(const Key('client_workspace_dev_ui_tablet')), findsOneWidget);
+      expect(find.text('2 đang online'), findsOneWidget);
+      expect(find.text('Xiaomi 10T Pro'), findsOneWidget);
+      expect(find.text('iPad Mini'), findsOneWidget);
+
+      // Cuộn tới nút Ngắt kết nối của riêng Xiaomi 10T Pro rồi bấm
+      final disconnectPhoneBtn = find.byKey(const Key('disconnect_client_dev_ui_phone'));
+      await tester.ensureVisible(disconnectPhoneBtn);
+      await tester.pump();
+      await tester.tap(disconnectPhoneBtn);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 120)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+
+      expect(find.text('1 đang online'), findsOneWidget);
+      expect(find.text('Đã ngắt quyền'), findsOneWidget);
+      expect(find.byKey(const Key('restore_client_dev_ui_phone')), findsOneWidget);
+      expect(host.revokedClientIds, contains('dev_ui_phone'));
+
+      // Bấm Cho phép lại -> gỡ chặn thiết bị
+      final restorePhoneBtn = find.byKey(const Key('restore_client_dev_ui_phone'));
+      await tester.ensureVisible(restorePhoneBtn);
+      await tester.pump();
+      await tester.tap(restorePhoneBtn);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 120)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+
+      expect(host.revokedClientIds, isNot(contains('dev_ui_phone')));
+      await tester.pump(const Duration(seconds: 12));
       expect(tester.takeException(), isNull);
     });
   });

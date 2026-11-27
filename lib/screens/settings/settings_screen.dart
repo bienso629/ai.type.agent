@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -36,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Điều khiển từ xa: App Chính (Host) / App Phụ (Remote) & Đường hầm Internet toàn cầu
   final TextEditingController _hostNameCtrl = TextEditingController();
   final TextEditingController _hostPortCtrl = TextEditingController(text: '8765');
+  final TextEditingController _hostWorkspacesRootCtrl = TextEditingController();
   final TextEditingController _tunnelNamedTokenCtrl = TextEditingController();
   final TextEditingController _tunnelCustomUrlCtrl = TextEditingController();
   final TextEditingController _remoteUrlCtrl = TextEditingController();
@@ -81,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _newGoogleKeyCtrl.dispose();
     _hostNameCtrl.dispose();
     _hostPortCtrl.dispose();
+    _hostWorkspacesRootCtrl.dispose();
     _tunnelNamedTokenCtrl.dispose();
     _tunnelCustomUrlCtrl.dispose();
     _remoteUrlCtrl.dispose();
@@ -97,6 +100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _remoteControllersSeeded = true;
     _hostNameCtrl.text = gateway.primaryHostName;
     _hostPortCtrl.text = gateway.primaryHostPort.toString();
+    _hostWorkspacesRootCtrl.text = gateway.secondaryWorkspacesRoot;
     _tunnelNamedTokenCtrl.text = gateway.tunnelNamedToken;
     _tunnelCustomUrlCtrl.text = gateway.tunnelCustomUrl;
     _remoteUrlCtrl.text = gateway.gatewayUrl;
@@ -147,13 +151,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await gateway.updatePrimaryHostSettings(
       port: parsedPort,
       deviceName: _hostNameCtrl.text.trim(),
+      secondaryWorkspacesRoot: _hostWorkspacesRootCtrl.text.trim(),
     );
     if (!mounted) return;
+    _hostWorkspacesRootCtrl.text = gateway.secondaryWorkspacesRoot;
     if (ok) {
       AppToast.success(context, 'Đã cập nhật cấu hình máy chủ App Chính (cổng $parsedPort).');
     } else {
       AppToast.error(context, gateway.hostErrorMessage.isNotEmpty ? gateway.hostErrorMessage : 'Không thể mở cổng $parsedPort.');
     }
+  }
+
+  Future<void> _pickSecondaryWorkspacesRoot() async {
+    try {
+      final selected = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Chọn thư mục gốc chứa workspace cho các App Phụ',
+        initialDirectory: _hostWorkspacesRootCtrl.text.trim().isNotEmpty
+            ? _hostWorkspacesRootCtrl.text.trim()
+            : null,
+      );
+      if (selected == null || selected.trim().isEmpty || !mounted) return;
+      final clean = selected.trim();
+      setState(() {
+        _hostWorkspacesRootCtrl.text = clean;
+      });
+      final gateway = context.read<GatewayProvider>();
+      await gateway.updatePrimaryHostSettings(secondaryWorkspacesRoot: clean);
+      if (!mounted) return;
+      AppToast.success(context, 'Đã đặt thư mục chứa workspace App Phụ: $clean');
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.error(context, 'Không thể mở trình chọn thư mục: $e');
+    }
+  }
+
+  Future<void> _openWorkspaceFolder(String dirPath) async {
+    final clean = dirPath.trim();
+    if (clean.isEmpty) return;
+    try {
+      final d = Directory(clean);
+      if (!d.existsSync()) {
+        d.createSync(recursive: true);
+      }
+      if (Platform.isLinux) {
+        await Process.start('xdg-open', [clean], mode: ProcessStartMode.detached);
+      } else if (Platform.isMacOS) {
+        await Process.start('open', [clean], mode: ProcessStartMode.detached);
+      } else if (Platform.isWindows) {
+        await Process.start('explorer', [clean], mode: ProcessStartMode.detached);
+      }
+    } catch (_) {}
   }
 
   Future<void> _disconnectSecondaryFromPrimary() async {
@@ -1327,6 +1374,357 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  IconData _clientOsIcon(String os) {
+    switch (os.trim().toLowerCase()) {
+      case 'android':
+        return Icons.phone_android_rounded;
+      case 'ios':
+        return Icons.phone_iphone_rounded;
+      case 'windows':
+      case 'linux':
+      case 'macos':
+        return Icons.laptop_rounded;
+      default:
+        return Icons.devices_other_rounded;
+    }
+  }
+
+  String _formatClientLastSeen(DateTime lastSeenAt) {
+    final diff = DateTime.now().difference(lastSeenAt);
+    if (diff.inSeconds < 15) return 'Vừa hoạt động';
+    if (diff.inSeconds < 60) return '${diff.inSeconds} giây trước';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} phút trước';
+    return '${diff.inHours} giờ trước';
+  }
+
+  Widget _buildClientBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.7),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
+      ),
+    );
+  }
+
+  Widget _buildConnectedClientsPanel({
+    required GatewayProvider gateway,
+    required bool isCompactMobile,
+  }) {
+    final clients = gateway.connectedClients;
+    final onlineCount = gateway.onlineClientsCount;
+    final countColor = onlineCount > 0 ? AppColors.accent : AppColors.textMuted;
+
+    return Container(
+      key: const ValueKey('connected_secondary_clients_panel'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.inputBg,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppColors.borderDark),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.devices_rounded, size: 15, color: AppColors.accentCyan),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Thiết bị App Phụ đang kết nối',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                ),
+              ),
+              Container(
+                key: const ValueKey('connected_clients_count_badge'),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: countColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: countColor.withValues(alpha: 0.45), width: 0.8),
+                ),
+                child: Text(
+                  '$onlineCount đang online',
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: countColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (clients.isEmpty)
+            const Text(
+              'Chưa có thiết bị App Phụ nào kết nối tới máy tính này. Khi điện thoại hoặc máy tính khác ghép nối, danh sách thiết bị và nút ngắt kết nối từng máy sẽ hiển thị tại đây.',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+            )
+          else
+            ...clients.map((client) {
+              final stateColor = client.isRevoked
+                  ? AppColors.danger
+                  : (client.isOnline ? AppColors.accent : AppColors.textMuted);
+              final stateLabel = client.isRevoked
+                  ? 'Đã ngắt quyền'
+                  : (client.isOnline ? 'Đang online' : 'Ngoại tuyến');
+              final osLabel = client.os.isNotEmpty && client.os != 'unknown'
+                  ? client.os.toUpperCase()
+                  : 'APP PHỤ';
+              final metaText = '$osLabel • ${client.ip} • ${_formatClientLastSeen(client.lastSeenAt)}';
+
+              final statusWrap = Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  _buildClientBadge(stateLabel, stateColor),
+                  if (!client.isRevoked && client.activeChats > 0)
+                    _buildClientBadge('${client.activeChats} Chat', AppColors.accentCyan),
+                  if (!client.isRevoked && client.activeTerminals > 0)
+                    _buildClientBadge('${client.activeTerminals} Terminal', AppColors.primaryLight),
+                ],
+              );
+
+              final actionBtn = client.isRevoked
+                  ? SizedBox(
+                      height: 28,
+                      child: OutlinedButton.icon(
+                        key: ValueKey('restore_client_${client.clientId}'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 28),
+                          fixedSize: const Size.fromHeight(28),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: AppColors.accent, width: 0.9),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                        ),
+                        icon: const Icon(Icons.refresh_rounded, size: 13, color: AppColors.accent),
+                        label: const Text(
+                          'Cho phép lại',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.accent),
+                        ),
+                        onPressed: () async {
+                          await gateway.restoreSecondaryClient(client.clientId);
+                          if (!mounted) return;
+                          AppToast.success(context, 'Đã cho phép thiết bị "${client.deviceName}" kết nối lại.');
+                        },
+                      ),
+                    )
+                  : SizedBox(
+                      height: 28,
+                      child: OutlinedButton.icon(
+                        key: ValueKey('disconnect_client_${client.clientId}'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 28),
+                          fixedSize: const Size.fromHeight(28),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: AppColors.danger, width: 0.9),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                        ),
+                        icon: const Icon(Icons.link_off_rounded, size: 13, color: AppColors.danger),
+                        label: const Text(
+                          'Ngắt kết nối',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.danger),
+                        ),
+                        onPressed: () async {
+                          await gateway.disconnectSecondaryClient(client.clientId, revoke: true);
+                          if (!mounted) return;
+                          AppToast.info(context, 'Đã ngắt kết nối thiết bị "${client.deviceName}".');
+                        },
+                      ),
+                    );
+
+              return Container(
+                key: ValueKey('connected_client_row_${client.clientId}'),
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: client.isRevoked
+                        ? AppColors.danger.withValues(alpha: 0.35)
+                        : (client.isOnline
+                            ? AppColors.accent.withValues(alpha: 0.35)
+                            : AppColors.borderDark),
+                  ),
+                ),
+                child: isCompactMobile
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(_clientOsIcon(client.os), size: 17, color: stateColor),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      client.deviceName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textWhite,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      metaText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 10.5,
+                                        fontFamily: 'monospace',
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (client.workspaceDir.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                const Icon(Icons.folder_outlined, size: 13, color: AppColors.accentCyan),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    client.workspaceDir,
+                                    key: ValueKey('client_workspace_${client.clientId}'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontFamily: 'monospace',
+                                      color: AppColors.accentCyan,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Sao chép đường dẫn thư mục',
+                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(Icons.copy_rounded, size: 13, color: AppColors.textMuted),
+                                  onPressed: () async {
+                                    await Clipboard.setData(ClipboardData(text: client.workspaceDir));
+                                    if (!mounted) return;
+                                    AppToast.info(context, 'Đã sao chép thư mục làm việc của "${client.deviceName}".');
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(child: statusWrap),
+                              const SizedBox(width: 8),
+                              actionBtn,
+                            ],
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Icon(_clientOsIcon(client.os), size: 18, color: stateColor),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        client.deviceName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textWhite,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    statusWrap,
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  metaText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontFamily: 'monospace',
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                                if (client.workspaceDir.isNotEmpty) ...[
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.folder_outlined, size: 13, color: AppColors.accentCyan),
+                                      const SizedBox(width: 5),
+                                      Expanded(
+                                        child: Text(
+                                          client.workspaceDir,
+                                          key: ValueKey('client_workspace_${client.clientId}'),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontFamily: 'monospace',
+                                            color: AppColors.accentCyan,
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Sao chép đường dẫn thư mục',
+                                        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                        padding: EdgeInsets.zero,
+                                        icon: const Icon(Icons.copy_rounded, size: 13, color: AppColors.textMuted),
+                                        onPressed: () async {
+                                          await Clipboard.setData(ClipboardData(text: client.workspaceDir));
+                                          if (!mounted) return;
+                                          AppToast.info(context, 'Đã sao chép thư mục làm việc của "${client.deviceName}".');
+                                        },
+                                      ),
+                                      if (!Platform.isAndroid && !Platform.isIOS)
+                                        IconButton(
+                                          tooltip: 'Mở thư mục trên máy tính',
+                                          constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                          padding: EdgeInsets.zero,
+                                          icon: const Icon(Icons.folder_open_rounded, size: 13, color: AppColors.accentCyan),
+                                          onPressed: () => _openWorkspaceFolder(client.workspaceDir),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          actionBtn,
+                        ],
+                      ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRoleControlCard({
     required GatewayProvider gateway,
     required bool isCompactMobile,
@@ -1375,8 +1773,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Text(
                   isPrimary
                       ? (gateway.isInternetTunnelRunning
-                          ? 'Internet HTTPS'
-                          : (gateway.isHostRunning ? 'Host :${gateway.hostBoundPort}' : 'Cục bộ'))
+                          ? (gateway.onlineClientsCount > 0
+                              ? 'Internet • ${gateway.onlineClientsCount} máy'
+                              : 'Internet HTTPS')
+                          : (gateway.isHostRunning
+                              ? (gateway.onlineClientsCount > 0
+                                  ? 'Host :${gateway.hostBoundPort} • ${gateway.onlineClientsCount} máy'
+                                  : 'Host :${gateway.hostBoundPort}')
+                              : 'Cục bộ'))
                       : (gateway.isConnected
                           ? '${gateway.isSecondaryOverInternet ? 'Internet' : 'LAN'} (${gateway.pingMs} ms)'
                           : 'Chưa kết nối'),
@@ -1614,6 +2018,124 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             const SizedBox(height: 12),
+            // THƯ MỤC GỐC CHỨA CÁC THƯ MỤC LÀM VIỆC RIÊNG CHO TỪNG APP PHỤ
+            if (isCompactMobile) ...[
+              _buildLabeledField(
+                label: 'Thư mục gốc chứa thư mục làm việc cho các App Phụ',
+                child: TextField(
+                  key: const ValueKey('secondary_workspaces_root_input'),
+                  controller: _hostWorkspacesRootCtrl,
+                  maxLines: 1,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    hintText: 'VD: /home/user/AI_Type_Workspaces',
+                    prefixIcon: Icon(Icons.folder_shared_outlined, size: 16),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                    prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('pick_secondary_workspaces_root_button'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 32),
+                        fixedSize: const Size.fromHeight(32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: const BorderSide(color: AppColors.borderLight),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                      ),
+                      icon: const Icon(Icons.folder_open_rounded, size: 14, color: AppColors.accentCyan),
+                      label: const Text(
+                        'Chọn thư mục',
+                        style: TextStyle(fontSize: 11.5, color: AppColors.textBody),
+                      ),
+                      onPressed: _pickSecondaryWorkspacesRoot,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    key: const ValueKey('save_secondary_workspaces_root_button'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size(0, 32),
+                      fixedSize: const Size.fromHeight(32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                    ),
+                    onPressed: _applyPrimaryHostSettings,
+                    child: const Text('Lưu', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ] else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: _buildLabeledField(
+                      label: 'Thư mục gốc chứa thư mục làm việc cho các App Phụ',
+                      child: TextField(
+                        key: const ValueKey('secondary_workspaces_root_input'),
+                        controller: _hostWorkspacesRootCtrl,
+                        maxLines: 1,
+                        textAlignVertical: TextAlignVertical.center,
+                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        decoration: const InputDecoration(
+                          hintText: 'VD: /home/user/AI_Type_Workspaces',
+                          prefixIcon: Icon(Icons.folder_shared_outlined, size: 16),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                          constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey('pick_secondary_workspaces_root_button'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 34),
+                      fixedSize: const Size.fromHeight(34),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      side: const BorderSide(color: AppColors.borderLight),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    ),
+                    icon: const Icon(Icons.folder_open_rounded, size: 15, color: AppColors.accentCyan),
+                    label: const Text(
+                      'Chọn thư mục',
+                      style: TextStyle(fontSize: 12, color: AppColors.textBody),
+                    ),
+                    onPressed: _pickSecondaryWorkspacesRoot,
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    key: const ValueKey('save_secondary_workspaces_root_button'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size(0, 34),
+                      fixedSize: const Size.fromHeight(34),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                    ),
+                    onPressed: _applyPrimaryHostSettings,
+                    child: const Text('Lưu', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 4),
+            const Text(
+              'Mỗi thiết bị App Phụ khi kết nối sẽ tự động được cấp một thư mục con riêng bên trong thư mục này để chạy Agent, tải tệp và mở Terminal.',
+              style: TextStyle(fontSize: 10.5, color: AppColors.textMuted, height: 1.35),
+            ),
+            const SizedBox(height: 12),
             // PANEL TRUY CẬP INTERNET TOÀN CẦU (MỌI NƠI — 4G/5G / KHÁC MẠNG)
             _buildInternetTunnelPanel(
               gateway: gateway,
@@ -1843,6 +2365,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
+            if (gateway.isHostRunning || gateway.connectedClients.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildConnectedClientsPanel(
+                gateway: gateway,
+                isCompactMobile: isCompactMobile,
+              ),
+            ],
           ] else ...[
             // Chế độ APP PHỤ: Thẻ trạng thái + Nút Ngắt kết nối rõ ràng
             Container(
@@ -1895,6 +2424,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   fontSize: 11,
                                   fontFamily: 'monospace',
                                   color: AppColors.accentCyan,
+                                ),
+                              ),
+                            ],
+                            if (gateway.isConnected && gateway.remoteClientWorkspaceDir.isNotEmpty) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                'Thư mục làm việc: ${gateway.remoteClientWorkspaceDir}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontFamily: 'monospace',
+                                  color: AppColors.textBody,
                                 ),
                               ),
                             ],
