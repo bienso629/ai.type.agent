@@ -1,8 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/primary_host_server_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_logo.dart';
+import '../../core/widgets/app_toast.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/gateway_provider.dart';
 import '../../providers/server_provider.dart';
 import 'chat/chat_screen.dart';
 import 'chat/widgets/session_list_sidebar.dart';
@@ -10,6 +15,7 @@ import 'servers/servers_screen.dart';
 import 'server_setup/server_setup_screen.dart';
 import 'terminal/terminal_screen.dart';
 import 'settings/settings_screen.dart';
+import 'aitype_admin/aitype_admin_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -19,8 +25,10 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
   String _activeTabKey = 'chat';
   bool _isSidebarCollapsed = false;
+  StreamSubscription<PendingPairingRequest>? _pairingReqSub;
 
   @override
   void initState() {
@@ -29,21 +37,126 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       context.read<ServerProvider>().loadServers();
       context.read<ChatProvider>().loadSessions();
     });
+    _pairingReqSub = PrimaryHostServerService.instance.onPairingRequest.listen(_showIncomingPairingDialog);
+  }
+
+  @override
+  void dispose() {
+    _pairingReqSub?.cancel();
+    super.dispose();
+  }
+
+  void _showIncomingPairingDialog(PendingPairingRequest req) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dlgCtx) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardBg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+            side: const BorderSide(color: AppColors.primaryLight, width: 1.2),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.phonelink_setup_rounded, color: AppColors.primaryLight, size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Yêu cầu điều khiển từ App Phụ',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Thiết bị "${req.clientDeviceName}" (${req.clientOs.toUpperCase()} • ${req.clientIp}) đang muốn kết nối để điều khiển máy tính này.',
+                style: const TextStyle(fontSize: 12.5, color: AppColors.textBody, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.inputBg,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.borderLight),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'MÃ ĐỐI CHIẾU TRÊN ĐIỆN THOẠI',
+                      style: TextStyle(fontSize: 10, color: AppColors.textMuted, letterSpacing: 0.6),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      req.pin,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 4,
+                        color: AppColors.accentCyan,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                PrimaryHostServerService.instance.rejectPairingRequest(req.id);
+                Navigator.of(dlgCtx).pop();
+                if (mounted) {
+                  AppToast.info(context, 'Đã từ chối kết nối từ ${req.clientDeviceName}.');
+                }
+              },
+              child: const Text('Từ chối', style: TextStyle(color: AppColors.danger)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              icon: const Icon(Icons.check_rounded, size: 16),
+              label: const Text('Chấp nhận kết nối'),
+              onPressed: () {
+                PrimaryHostServerService.instance.approvePairingRequest(req.id);
+                Navigator.of(dlgCtx).pop();
+                if (mounted) {
+                  AppToast.success(context, 'Đã cho phép "${req.clientDeviceName}" điều khiển máy tính này!');
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _openMobileDrawer() {
+    _mobileScaffoldKey.currentState?.openDrawer();
   }
 
   late final List<Widget> _screens = [
     ChatScreen(
       embedTerminalPanel: false,
+      onOpenSessionsDrawer: _openMobileDrawer,
       onNavigateToServers: () {
         setState(() {
           _activeTabKey = 'servers';
         });
       },
     ), // 0: chat
-    const ServersScreen(), // 1: servers
-    const ServerSetupScreen(), // 2: setup
-    const TerminalScreen(), // 3: terminal
-    const SettingsScreen(), // 4: settings
+    ServersScreen(onOpenDrawer: _openMobileDrawer), // 1: servers
+    ServerSetupScreen(onOpenDrawer: _openMobileDrawer), // 2: setup
+    TerminalScreen(onOpenDrawer: _openMobileDrawer), // 3: terminal
+    SettingsScreen(onOpenDrawer: _openMobileDrawer), // 4: settings
+    AiTypeAdminScreen(onOpenDrawer: _openMobileDrawer), // 5: admin
   ];
 
   late final List<Widget> _desktopScreens = [
@@ -59,6 +172,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     const ServerSetupScreen(), // 2: setup
     const SizedBox.shrink(), // 3: terminal is embedded directly in ChatScreen on desktop
     const SettingsScreen(), // 4: settings
+    const AiTypeAdminScreen(), // 5: admin
   ];
 
   int get _stackIndex {
@@ -73,6 +187,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         return 3;
       case 'settings':
         return 4;
+      case 'admin':
+        return 5;
       default:
         return 0;
     }
@@ -114,6 +230,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         'shortLabel': 'Terminal',
       },
       {
+        'key': 'admin',
+        'title': 'Quản trị AI.Type',
+        'subtitle': 'Thanh toán SMS, License Keys & Thành viên type.vn',
+        'icon': Icons.admin_panel_settings_outlined,
+        'mobileIcon': Icons.admin_panel_settings_rounded,
+        'shortLabel': 'Quản trị',
+      },
+      {
         'key': 'settings',
         'title': 'Cấu hình',
         'subtitle': 'Cấu hình AI Model, API Key & Hệ thống',
@@ -137,6 +261,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       },
     );
   }
+
+  static ButtonStyle _sidebarIconStyle(double size) => IconButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: Size(size, size),
+        fixedSize: Size(size, size),
+        maximumSize: Size(size, size),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.standard,
+      );
 
   // =========================================================================
   // DESKTOP LAYOUT (ANIMATED COLLAPSIBLE SIDEBAR: 250px <-> 68px)
@@ -231,8 +364,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                             IconButton(
                               icon: const Icon(Icons.menu_open_rounded, size: 18, color: AppColors.textMuted),
                               tooltip: 'Thu gọn menu (Sidebar)',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              style: _sidebarIconStyle(28),
+                              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                               onPressed: () {
                                 setState(() {
                                   _isSidebarCollapsed = true;
@@ -279,8 +412,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 color: _activeTabKey == 'chat' ? AppColors.primaryLight : AppColors.textDim,
                               ),
                               tooltip: 'Hội thoại AI',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              style: _sidebarIconStyle(32),
+                              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
                               onPressed: () => setState(() => _activeTabKey = 'chat'),
                             ),
                             const SizedBox(height: 4),
@@ -291,9 +424,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 color: _activeTabKey == 'servers' ? AppColors.primaryLight : AppColors.textDim,
                               ),
                               tooltip: 'Máy chủ & SSH',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              style: _sidebarIconStyle(32),
+                              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
                               onPressed: () => setState(() => _activeTabKey = 'servers'),
+                            ),
+                            const SizedBox(height: 4),
+                            IconButton(
+                              icon: Icon(
+                                _activeTabKey == 'admin'
+                                    ? Icons.admin_panel_settings_rounded
+                                    : Icons.admin_panel_settings_outlined,
+                                size: 18,
+                                color: _activeTabKey == 'admin' ? AppColors.primaryLight : AppColors.textDim,
+                              ),
+                              tooltip: 'Quản trị AI.Type',
+                              style: _sidebarIconStyle(32),
+                              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                              onPressed: () => setState(() => _activeTabKey = 'admin'),
                             ),
                             const SizedBox(height: 4),
                             IconButton(
@@ -303,8 +450,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 color: _activeTabKey == 'settings' ? AppColors.primaryLight : AppColors.textDim,
                               ),
                               tooltip: 'Cấu hình',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              style: _sidebarIconStyle(32),
+                              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
                               onPressed: () => setState(() => _activeTabKey = 'settings'),
                             ),
                           ],
@@ -318,8 +465,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 color: _activeTabKey == 'chat' ? AppColors.primaryLight : AppColors.textDim,
                               ),
                               tooltip: 'Hội thoại AI',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              style: _sidebarIconStyle(28),
+                              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                               onPressed: () => setState(() => _activeTabKey = 'chat'),
                             ),
                             const SizedBox(width: 2),
@@ -330,9 +477,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 color: _activeTabKey == 'servers' ? AppColors.primaryLight : AppColors.textDim,
                               ),
                               tooltip: 'Máy chủ & SSH',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              style: _sidebarIconStyle(28),
+                              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                               onPressed: () => setState(() => _activeTabKey = 'servers'),
+                            ),
+                            const SizedBox(width: 2),
+                            IconButton(
+                              icon: Icon(
+                                _activeTabKey == 'admin'
+                                    ? Icons.admin_panel_settings_rounded
+                                    : Icons.admin_panel_settings_outlined,
+                                size: 16,
+                                color: _activeTabKey == 'admin' ? AppColors.primaryLight : AppColors.textDim,
+                              ),
+                              tooltip: 'Quản trị AI.Type',
+                              style: _sidebarIconStyle(28),
+                              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                              onPressed: () => setState(() => _activeTabKey = 'admin'),
                             ),
                             const SizedBox(width: 2),
                             IconButton(
@@ -342,12 +503,55 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 color: _activeTabKey == 'settings' ? AppColors.primaryLight : AppColors.textDim,
                               ),
                               tooltip: 'Cấu hình hệ thống',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              style: _sidebarIconStyle(28),
+                              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                               onPressed: () => setState(() => _activeTabKey = 'settings'),
                             ),
                             const Spacer(),
-                            const Text('v1.5.4', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
+                            Builder(
+                              builder: (ctx) {
+                                final gw = ctx.watch<GatewayProvider>();
+                                if (gw.isSecondary) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: (gw.isConnected ? AppColors.accentCyan : AppColors.warning).withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      gw.isConnected ? 'App Phụ' : 'Phụ (Offline)',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: gw.isConnected ? AppColors.accentCyan : AppColors.warning,
+                                      ),
+                                    ),
+                                  );
+                                }
+                                if (gw.isHostRunning) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: (gw.isInternetTunnelRunning ? AppColors.accentCyan : AppColors.accent)
+                                          .withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      gw.isInternetTunnelRunning ? 'Internet' : 'Host :${gw.hostBoundPort}',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: gw.isInternetTunnelRunning ? AppColors.accentCyan : AppColors.accent,
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
+                            const Text('v1.5.10', style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
                           ],
                         ),
                 ),
@@ -373,38 +577,206 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // =========================================================================
   Widget _buildMobileLayout() {
     final serverProvider = context.watch<ServerProvider>();
+    final gateway = context.watch<GatewayProvider>();
     final isLocal = serverProvider.selectedServer == null ||
         serverProvider.selectedServer!.serverIp == '127.0.0.1' ||
         serverProvider.selectedServer!.serverIp == 'localhost';
     final visibleTabs = _getVisibleTabs(isLocal);
-    final curIdx = visibleTabs.indexWhere((t) => t['key'] == _activeTabKey);
-    final safeIdx = curIdx >= 0 ? curIdx : 0;
+    final navIconSize = visibleTabs.length > 5 ? 26.0 : 28.0;
+    final navIconGap = visibleTabs.length > 5 ? 2.0 : 4.0;
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _stackIndex,
-        children: _screens,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppColors.bgDark,
+        systemNavigationBarIconBrightness: Brightness.light,
       ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.borderDark, width: 0.8)),
-        ),
-        child: NavigationBar(
-          selectedIndex: safeIdx,
+      child: Scaffold(
+        key: _mobileScaffoldKey,
+        backgroundColor: AppColors.bgDark,
+        drawer: Drawer(
+          width: 296,
           backgroundColor: AppColors.sidebarBg,
-          indicatorColor: AppColors.primary.withValues(alpha: 0.25),
-          onDestinationSelected: (idx) {
-            setState(() {
-              _activeTabKey = visibleTabs[idx]['key'] as String;
-            });
-          },
-          destinations: visibleTabs.map((t) {
-            return NavigationDestination(
-              icon: Icon(t['icon'] as IconData),
-              selectedIcon: Icon(t['mobileIcon'] as IconData, color: AppColors.primaryLight),
-              label: t['shortLabel'] as String,
-            );
-          }).toList(),
+          child: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: SessionListSidebar(
+                    isCollapsed: false,
+                    onSessionSelected: () {
+                      Navigator.of(context).pop();
+                      if (_activeTabKey != 'chat') {
+                        setState(() => _activeTabKey = 'chat');
+                      }
+                    },
+                  ),
+                ),
+                // Footer Navigation (Trợ lý AI, Máy chủ, Terminal, Quản trị, Cấu hình)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
+                  ),
+                  child: Row(
+                    children: [
+                      ...visibleTabs.map((t) {
+                        final tabKey = t['key'] as String;
+                        final isSelected = _activeTabKey == tabKey;
+                        final iconData = isSelected
+                            ? (t['mobileIcon'] as IconData)
+                            : (t['icon'] as IconData);
+                        return Padding(
+                          padding: EdgeInsets.only(right: navIconGap),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primary.withValues(alpha: 0.18)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                iconData,
+                                size: 17,
+                                color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+                              ),
+                              tooltip: t['shortLabel'] as String,
+                              style: _sidebarIconStyle(navIconSize),
+                              constraints: BoxConstraints.tightFor(
+                                width: navIconSize,
+                                height: navIconSize,
+                              ),
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                if (_activeTabKey != tabKey) {
+                                  setState(() => _activeTabKey = tabKey);
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      }),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (gateway.isSecondary)
+                                Flexible(
+                                  child: Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: (gateway.isConnected ? AppColors.accentCyan : AppColors.warning)
+                                          .withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      gateway.isConnected ? 'App Phụ' : 'Phụ (Offline)',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: gateway.isConnected ? AppColors.accentCyan : AppColors.warning,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else if (gateway.isHostRunning)
+                                Flexible(
+                                  child: Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: (gateway.isInternetTunnelRunning ? AppColors.accentCyan : AppColors.accent)
+                                          .withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      gateway.isInternetTunnelRunning ? 'Internet' : 'Host :${gateway.hostBoundPort}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: gateway.isInternetTunnelRunning ? AppColors.accentCyan : AppColors.accent,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              const Text(
+                                'v1.5.10',
+                                style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        body: SafeArea(
+          top: true,
+          bottom: true,
+          child: Column(
+            children: [
+              if (gateway.isSecondary)
+                InkWell(
+                  onTap: () => setState(() => _activeTabKey = 'settings'),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: (gateway.isConnected ? AppColors.primary : AppColors.warning).withValues(alpha: 0.16),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: (gateway.isConnected ? AppColors.primaryLight : AppColors.warning).withValues(alpha: 0.4),
+                          width: 0.8,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          gateway.isConnected ? Icons.phonelink_rounded : Icons.link_off_rounded,
+                          size: 13,
+                          color: gateway.isConnected ? AppColors.accentCyan : AppColors.warning,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            gateway.isConnected
+                                ? 'App Phụ (${gateway.isSecondaryOverInternet ? 'Internet' : 'LAN'}) đang điều khiển: ${gateway.remoteHostName} (${gateway.pingMs} ms)'
+                                : 'App Phụ chưa kết nối App Chính • Chạm để cấu hình',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: gateway.isConnected ? AppColors.accentCyan : AppColors.warning,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: IndexedStack(
+                  index: _stackIndex,
+                  children: _screens,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

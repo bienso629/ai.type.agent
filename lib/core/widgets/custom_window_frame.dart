@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../providers/terminal_provider.dart';
+import '../services/primary_host_server_service.dart';
+import '../services/remote_tunnel_service.dart';
 import '../theme/app_theme.dart';
 
 class CustomWindowFrame extends StatefulWidget {
@@ -66,6 +68,12 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> with WindowListen
   void onWindowClose() async {
     try {
       await context.read<TerminalProvider>().saveTerminalSessions();
+    } catch (_) {}
+    try {
+      await RemoteTunnelService.instance.stop(resetModeToOff: false);
+    } catch (_) {}
+    try {
+      await PrimaryHostServerService.instance.stop();
     } catch (_) {}
   }
 

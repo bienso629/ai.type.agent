@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/services/api_service.dart';
 import '../core/services/cli_scanner_service.dart';
 import '../core/services/native_ai_service.dart';
+import '../core/services/primary_host_server_service.dart';
 import '../core/services/storage_service.dart';
 import '../models/server_model.dart';
 
@@ -56,11 +58,39 @@ class ServerProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  StreamSubscription<String>? _remoteMutationSub;
+
   ServerProvider() {
     loadServers();
     loadGlobalConfig();
     fetchModels();
     scanCliAgents();
+    _remoteMutationSub = PrimaryHostServerService.instance.onRemoteMutation.listen((topic) {
+      if (topic == 'servers') {
+        loadServers(silent: true);
+      } else if (topic == 'config') {
+        loadGlobalConfig();
+      }
+    });
+  }
+
+  /// Tải lại toàn bộ máy chủ, cấu hình AI, models và CLI agents (khi đổi App Chính / App Phụ).
+  Future<void> reloadAll() async {
+    _installedCliAgents = [];
+    _remoteModels = [];
+    await Future.wait([
+      loadServers(),
+      loadGlobalConfig(),
+      scanCliAgents(forceRefresh: true),
+    ]);
+    // Nạp danh sách model từ nhà cung cấp chạy nền để không chặn chuyển đổi vai trò
+    unawaited(fetchModels(forceRefresh: true));
+  }
+
+  @override
+  void dispose() {
+    _remoteMutationSub?.cancel();
+    super.dispose();
   }
 
   bool _isCli(String name) {
@@ -84,7 +114,11 @@ class ServerProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _installedCliAgents = await _cliScanner.scanInstalledAgents();
+      if (await _api.isNativeMode()) {
+        _installedCliAgents = await _cliScanner.scanInstalledAgents();
+      } else {
+        _installedCliAgents = await _api.getRemoteCliAgents();
+      }
     } catch (_) {} finally {
       _isScanningCliAgents = false;
       notifyListeners();

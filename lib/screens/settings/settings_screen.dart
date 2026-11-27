@@ -1,15 +1,26 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/native_ai_service.dart';
+import '../../core/services/primary_host_server_service.dart';
+import '../../core/services/remote_tunnel_service.dart';
+import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/pairing_qr_widget.dart';
+import '../../providers/chat_provider.dart';
+import '../../providers/gateway_provider.dart';
 import '../../providers/server_provider.dart';
+import '../../providers/terminal_provider.dart';
 import '../logs/logs_dialog.dart';
+import 'qr_scanner_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final VoidCallback? onOpenDrawer;
+
+  const SettingsScreen({super.key, this.onOpenDrawer});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -21,6 +32,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _baseUrlCtrl = TextEditingController(text: 'https://openrouter.ai/api/v1');
   final TextEditingController _apiKeyCtrl = TextEditingController();
   final TextEditingController _promptCtrl = TextEditingController();
+
+  // Điều khiển từ xa: App Chính (Host) / App Phụ (Remote) & Đường hầm Internet toàn cầu
+  final TextEditingController _hostNameCtrl = TextEditingController();
+  final TextEditingController _hostPortCtrl = TextEditingController(text: '8765');
+  final TextEditingController _tunnelNamedTokenCtrl = TextEditingController();
+  final TextEditingController _tunnelCustomUrlCtrl = TextEditingController();
+  final TextEditingController _remoteUrlCtrl = TextEditingController();
+  final TextEditingController _remoteTokenCtrl = TextEditingController();
+  final TextEditingController _pairingPasteCtrl = TextEditingController();
+  bool _obscureHostToken = true;
+  bool _obscureTunnelToken = true;
+  bool _obscureRemoteToken = true;
+  bool _showManualRemoteConnect = false;
+  String _manualConnectMode = 'paste'; // 'paste' | 'fields'
+  bool _remoteControllersSeeded = false;
+  bool _isApplyingRemote = false;
 
   String _selectedTab = 'proxy'; // 'proxy' | 'google_studio'
   final TextEditingController _googleStudioModelCtrl = TextEditingController(text: 'gemini-2.5-flash');
@@ -52,7 +79,279 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _promptCtrl.dispose();
     _googleStudioModelCtrl.dispose();
     _newGoogleKeyCtrl.dispose();
+    _hostNameCtrl.dispose();
+    _hostPortCtrl.dispose();
+    _tunnelNamedTokenCtrl.dispose();
+    _tunnelCustomUrlCtrl.dispose();
+    _remoteUrlCtrl.dispose();
+    _remoteTokenCtrl.dispose();
+    _pairingPasteCtrl.dispose();
     super.dispose();
+  }
+
+  void _syncRemoteControllersIfNeeded(GatewayProvider gateway) {
+    if (_remoteControllersSeeded) return;
+    if (gateway.primaryHostName.isEmpty && gateway.primaryHostToken.isEmpty && gateway.gatewayUrl.isEmpty) {
+      return;
+    }
+    _remoteControllersSeeded = true;
+    _hostNameCtrl.text = gateway.primaryHostName;
+    _hostPortCtrl.text = gateway.primaryHostPort.toString();
+    _tunnelNamedTokenCtrl.text = gateway.tunnelNamedToken;
+    _tunnelCustomUrlCtrl.text = gateway.tunnelCustomUrl;
+    _remoteUrlCtrl.text = gateway.gatewayUrl;
+    _remoteTokenCtrl.text = gateway.secretToken;
+  }
+
+  Future<void> _reloadAppProvidersAfterRoleChange() async {
+    if (!mounted) return;
+    final serverProvider = context.read<ServerProvider>();
+    final chatProvider = context.read<ChatProvider>();
+    final terminalProvider = context.read<TerminalProvider>();
+    await Future.wait([
+      serverProvider.reloadAll(),
+      chatProvider.reloadAll(),
+      terminalProvider.reconnectLocalPanes(),
+      _loadGlobalConfig(),
+    ]);
+  }
+
+  Future<void> _switchAppRole(AppRole targetRole) async {
+    final gateway = context.read<GatewayProvider>();
+    if (gateway.role == targetRole) return;
+    setState(() => _isApplyingRemote = true);
+    try {
+      await gateway.setAppRole(targetRole);
+      if (targetRole == AppRole.primary || gateway.gatewayUrl.trim().isNotEmpty) {
+        await _reloadAppProvidersAfterRoleChange();
+      }
+      if (!mounted) return;
+      AppToast.success(
+        context,
+        targetRole == AppRole.primary
+            ? 'Đã chuyển thiết bị sang chế độ App Chính (chạy cục bộ).'
+            : 'Đã chuyển thiết bị sang chế độ App Phụ (điều khiển App Chính từ xa).',
+      );
+    } finally {
+      if (mounted) setState(() => _isApplyingRemote = false);
+    }
+  }
+
+  Future<void> _applyPrimaryHostSettings() async {
+    final gateway = context.read<GatewayProvider>();
+    final parsedPort = int.tryParse(_hostPortCtrl.text.trim());
+    if (parsedPort == null || parsedPort < 1024 || parsedPort > 65535) {
+      AppToast.warning(context, 'Cổng lắng nghe phải nằm trong khoảng 1024 - 65535.');
+      return;
+    }
+    final ok = await gateway.updatePrimaryHostSettings(
+      port: parsedPort,
+      deviceName: _hostNameCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    if (ok) {
+      AppToast.success(context, 'Đã cập nhật cấu hình máy chủ App Chính (cổng $parsedPort).');
+    } else {
+      AppToast.error(context, gateway.hostErrorMessage.isNotEmpty ? gateway.hostErrorMessage : 'Không thể mở cổng $parsedPort.');
+    }
+  }
+
+  Future<void> _disconnectSecondaryFromPrimary() async {
+    final gateway = context.read<GatewayProvider>();
+    setState(() => _isApplyingRemote = true);
+    try {
+      await gateway.disconnectFromPrimary(clearSavedCredentials: true);
+      _remoteUrlCtrl.clear();
+      _remoteTokenCtrl.clear();
+      _pairingPasteCtrl.clear();
+      await _reloadAppProvidersAfterRoleChange();
+      if (!mounted) return;
+      setState(() => _showManualRemoteConnect = false);
+      AppToast.info(context, 'Đã ngắt kết nối khỏi App Chính.');
+    } finally {
+      if (mounted) setState(() => _isApplyingRemote = false);
+    }
+  }
+
+  Future<void> _refreshSecondaryConnection() async {
+    final gateway = context.read<GatewayProvider>();
+    setState(() => _isApplyingRemote = true);
+    try {
+      final ok = await gateway.testConnection();
+      if (ok) {
+        await _reloadAppProvidersAfterRoleChange();
+      }
+      if (!mounted) return;
+      if (ok) {
+        AppToast.success(
+          context,
+          'Kết nối App Chính ổn định (${gateway.remoteHostName} • ${gateway.pingMs} ms).',
+        );
+      } else {
+        AppToast.warning(
+          context,
+          gateway.errorMessage.isNotEmpty ? gateway.errorMessage : 'Không thể liên lạc tới App Chính.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isApplyingRemote = false);
+    }
+  }
+
+  Future<void> _connectSecondaryToPrimary() async {
+    final gateway = context.read<GatewayProvider>();
+    if (gateway.isWaitingPairingApproval) {
+      gateway.cancelOneTapPairing();
+    }
+
+    var rawUrl = '';
+    var rawToken = '';
+    var fallbackUrls = const <String>[];
+
+    if (_manualConnectMode == 'paste') {
+      final pasted = _pairingPasteCtrl.text.trim();
+      if (pasted.isEmpty) {
+        AppToast.warning(
+          context,
+          'Vui lòng dán chuỗi ghép nối lấy từ nút "Sao chép chuỗi ghép nối" trên App Chính.',
+        );
+        return;
+      }
+      final parsed = StorageService.parsePairingString(pasted);
+      if (parsed.url.isEmpty) {
+        AppToast.warning(
+          context,
+          'Chuỗi ghép nối không hợp lệ. Chuỗi đúng có dạng http://IP:8765#<mã> hoặc https://...#<mã>.',
+        );
+        return;
+      }
+      rawUrl = parsed.url;
+      rawToken = parsed.token;
+      fallbackUrls = parsed.fallbackUrls;
+      _remoteUrlCtrl.text = rawUrl;
+      if (rawToken.isNotEmpty) _remoteTokenCtrl.text = rawToken;
+    } else {
+      rawUrl = _remoteUrlCtrl.text.trim();
+      rawToken = _remoteTokenCtrl.text.trim();
+      if (rawUrl.contains('#')) {
+        final parsed = StorageService.parsePairingString(rawUrl);
+        if (parsed.url.isNotEmpty) {
+          rawUrl = parsed.url;
+          _remoteUrlCtrl.text = rawUrl;
+        }
+        if (rawToken.isEmpty && parsed.token.isNotEmpty) {
+          rawToken = parsed.token;
+          _remoteTokenCtrl.text = rawToken;
+        }
+        fallbackUrls = parsed.fallbackUrls;
+      }
+      if (rawUrl.isEmpty) {
+        AppToast.warning(
+          context,
+          'Vui lòng nhập Địa chỉ máy tính App Chính (ví dụ: http://192.168.1.10:8765).',
+        );
+        return;
+      }
+      if (rawToken.isEmpty) {
+        AppToast.warning(
+          context,
+          'Vui lòng nhập Mã ghép nối lấy từ mục 0 trên máy tính App Chính.',
+        );
+        return;
+      }
+    }
+
+    setState(() => _isApplyingRemote = true);
+    try {
+      final ok = await gateway.setGatewayConfig(rawUrl, rawToken, fallbackUrls: fallbackUrls);
+      if (ok) {
+        _remoteUrlCtrl.text = gateway.gatewayUrl;
+        _remoteTokenCtrl.text = gateway.secretToken;
+        _pairingPasteCtrl.clear();
+        await _reloadAppProvidersAfterRoleChange();
+        if (!mounted) return;
+        setState(() => _showManualRemoteConnect = false);
+        AppToast.success(
+          context,
+          'Đã kết nối và đồng bộ thành công với App Chính (${gateway.remoteHostName})!',
+        );
+      } else {
+        if (!mounted) return;
+        AppToast.error(
+          context,
+          gateway.errorMessage.isNotEmpty ? gateway.errorMessage : 'Kết nối tới App Chính thất bại.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isApplyingRemote = false);
+    }
+  }
+
+  Future<void> _scanQrAndConnect() async {
+    final gateway = context.read<GatewayProvider>();
+    if (gateway.isWaitingPairingApproval) {
+      gateway.cancelOneTapPairing();
+    }
+
+    final scanned = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+    if (!mounted || scanned == null || scanned.trim().isEmpty) return;
+
+    final parsed = StorageService.parsePairingString(scanned);
+    if (parsed.url.isEmpty) {
+      AppToast.warning(context, 'Mã QR không chứa địa chỉ ghép nối hợp lệ.');
+      return;
+    }
+
+    _remoteUrlCtrl.text = parsed.url;
+    _remoteTokenCtrl.text = parsed.token;
+    setState(() => _isApplyingRemote = true);
+    try {
+      final ok = await gateway.setGatewayConfig(
+        parsed.url,
+        parsed.token,
+        fallbackUrls: parsed.fallbackUrls,
+      );
+      if (ok) {
+        _remoteUrlCtrl.text = gateway.gatewayUrl;
+        _remoteTokenCtrl.text = gateway.secretToken;
+        await _reloadAppProvidersAfterRoleChange();
+        if (!mounted) return;
+        AppToast.success(
+          context,
+          'Quét QR và kết nối thành công với App Chính (${gateway.remoteHostName})!',
+        );
+      } else {
+        if (!mounted) return;
+        AppToast.error(
+          context,
+          gateway.errorMessage.isNotEmpty
+              ? gateway.errorMessage
+              : 'Đã quét QR nhưng chưa chạm được App Chính. Kiểm tra Wi-Fi/Tailscale hoặc Internet trên máy tính.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isApplyingRemote = false);
+    }
+  }
+
+  Future<void> _requestOneTapPair(DiscoveredPrimaryHost host) async {
+    final gateway = context.read<GatewayProvider>();
+    final ok = await gateway.requestOneTapPairing(host);
+    if (!mounted) return;
+    if (ok) {
+      _remoteUrlCtrl.text = gateway.gatewayUrl;
+      _remoteTokenCtrl.text = gateway.secretToken;
+      await _reloadAppProvidersAfterRoleChange();
+      if (!mounted) return;
+      AppToast.success(
+        context,
+        'Kết nối thành công với App Chính (${gateway.remoteHostName})!',
+      );
+    } else if (gateway.errorMessage.isNotEmpty) {
+      AppToast.warning(context, gateway.errorMessage);
+    }
   }
 
   Future<void> _loadGlobalConfig() async {
@@ -203,646 +502,2589 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final serverProvider = context.watch<ServerProvider>();
+    final gateway = context.watch<GatewayProvider>();
+    _syncRemoteControllersIfNeeded(gateway);
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
       body: Column(
         children: [
-          // Topbar Header (Height 66px)
-          Container(
-            height: 66,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: const BoxDecoration(
-              color: AppColors.bgDark,
-              border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
+          // Topbar Header
+          Builder(
+            builder: (context) {
+              final isCompactMobile = MediaQuery.sizeOf(context).width < 600;
+              return Container(
+                height: isCompactMobile ? 56 : 66,
+                padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 24),
+                decoration: const BoxDecoration(
+                  color: AppColors.bgDark,
+                  border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.tune_rounded, color: AppColors.primaryLight, size: 24),
-                    const SizedBox(width: 12),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Cấu Hình AI Agent & Hệ Thống',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                        ),
-                        Text(
-                          'Thiết lập mô hình AI Model, API Key và môi trường hoạt động (${serverProvider.currentAiModel})',
-                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                        ),
-                      ],
+                    Expanded(
+                      child: Row(
+                        children: [
+                          if (widget.onOpenDrawer != null) ...[
+                            IconButton(
+                              tooltip: 'Mở menu điều hướng',
+                              style: IconButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(34, 34),
+                                fixedSize: const Size(34, 34),
+                                maximumSize: const Size(34, 34),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.standard,
+                              ),
+                              constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                              onPressed: widget.onOpenDrawer,
+                              icon: const Icon(Icons.menu_rounded, size: 20, color: AppColors.textWhite),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          const Icon(Icons.tune_rounded, color: AppColors.primaryLight, size: 22),
+                          SizedBox(width: isCompactMobile ? 8 : 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Cấu Hình AI Agent & Hệ Thống',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                ),
+                                Text(
+                                  'Thiết lập mô hình AI Model, API Key và môi trường hoạt động (${serverProvider.currentAiModel})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 10 : 14, vertical: 0),
+                        minimumSize: const Size(0, 32),
+                        fixedSize: const Size.fromHeight(32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: const Icon(Icons.save_rounded, size: 16),
+                      label: Text(
+                        isCompactMobile ? 'Lưu' : 'Lưu Cấu Hình',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: _saveAISettings,
                     ),
                   ],
                 ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                    minimumSize: const Size(0, 32),
-                    fixedSize: const Size.fromHeight(32),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: const Icon(Icons.save_rounded, size: 16),
-                  label: const Text('Lưu Cấu Hình', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  onPressed: _saveAISettings,
-                ),
-              ],
-            ),
+              );
+            },
           ),
 
           // Scrollable Content
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // GROUP 1: AI MODEL & API CONFIGURATION
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompactMobile = constraints.maxWidth < 640;
+                final pagePadding = isCompactMobile ? 12.0 : 20.0;
+                final cardPadding = isCompactMobile ? 14.0 : 18.0;
+
+                final proxyPresets = <Map<String, String>>[
+                  {'label': 'OpenRouter (GLM-5.3)', 'url': 'https://openrouter.ai/api/v1', 'model': 'glm-5.3'},
+                  {'label': 'OpenAI (GPT-4o)', 'url': 'https://api.openai.com/v1', 'model': 'gpt-4o'},
+                  {'label': 'DeepSeek', 'url': 'https://api.deepseek.com/v1', 'model': 'deepseek-chat'},
+                  {'label': 'Local Ollama', 'url': 'http://127.0.0.1:11434/v1', 'model': 'llama3.2:latest'},
+                  {'label': 'Zhipu GLM', 'url': 'https://open.bigmodel.cn/api/paas/v4', 'model': 'glm-4-flash'},
+                ];
+
+                final googleModels = <String>[
+                  'gemini-2.5-flash',
+                  'gemini-2.5-pro',
+                  'gemini-2.5-flash-lite',
+                  'gemini-2.0-flash',
+                ];
+
+                final osLabel = Platform.isAndroid
+                    ? 'ANDROID (Mobile)'
+                    : Platform.isIOS
+                        ? 'iOS (Mobile)'
+                        : '${Platform.operatingSystem.toUpperCase()} (64-bit)';
+                final shellLabel = Platform.isAndroid
+                    ? '/system/bin/sh (SSH ưu tiên)'
+                    : (Platform.environment['SHELL'] ?? (Platform.isWindows ? 'cmd.exe' : '/bin/bash'));
+                final dataDirLabel = (Platform.isAndroid || Platform.isIOS)
+                    ? 'App Sandbox Storage'
+                    : (Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.');
+
+                final envBoxes = <Widget>[
+                  _buildInfoBox(
+                    'Hệ Điều Hành Local',
+                    osLabel,
+                    tooltip: '${Platform.operatingSystem.toUpperCase()} (${Platform.operatingSystemVersion})',
+                  ),
+                  _buildInfoBox(
+                    'Trình Thực Thi Shell',
+                    shellLabel,
+                  ),
+                  _buildInfoBox(
+                    'Chế Độ Hoạt Động',
+                    'Local & Quản trị Máy Chủ VPS',
+                    tooltip: 'Thực thi lệnh trên Local Shell và Máy chủ từ xa qua SSH',
+                  ),
+                  _buildInfoBox(
+                    'Thư Mục Dữ Liệu Local',
+                    dataDirLabel,
+                    tooltip: 'Đường dẫn lưu trữ dữ liệu cục bộ của ứng dụng',
+                  ),
+                  _buildInfoBox(
+                    'Bảo Mật Cơ Sở Dữ Liệu',
+                    'SQLite Encrypted Storage',
+                    tooltip: 'Cơ sở dữ liệu SQLite mã hóa AES an toàn',
+                  ),
+                  _buildInfoBox(
+                    'Phiên Bản Ứng Dụng',
+                    'AI Type Agent v1.5.10',
+                    tooltip: 'Phiên bản AI Type Agent Client',
+                  ),
+                ];
+
+                final providerSwitcher = Container(
+                  width: isCompactMobile ? double.infinity : null,
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: AppColors.inputBg,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppColors.borderDark),
+                  ),
+                  child: Row(
+                    mainAxisSize: isCompactMobile ? MainAxisSize.max : MainAxisSize.min,
+                    children: [
+                      if (isCompactMobile)
+                        Expanded(
+                          child: _buildTabButton(
+                            id: 'proxy',
+                            icon: Icons.hub_rounded,
+                            label: 'AI Model & Proxy',
+                            expand: true,
+                          ),
+                        )
+                      else
+                        _buildTabButton(
+                          id: 'proxy',
+                          icon: Icons.hub_rounded,
+                          label: 'AI Model & Proxy',
+                        ),
+                      const SizedBox(width: 4),
+                      if (isCompactMobile)
+                        Expanded(
+                          child: _buildTabButton(
+                            id: 'google_studio',
+                            icon: Icons.auto_awesome_rounded,
+                            label: 'Google Studio',
+                            badgeCount: _googleStudioKeys.length,
+                            expand: true,
+                          ),
+                        )
+                      else
+                        _buildTabButton(
+                          id: 'google_studio',
+                          icon: Icons.auto_awesome_rounded,
+                          label: 'API key Google Studio',
+                          badgeCount: _googleStudioKeys.length,
+                        ),
+                    ],
+                  ),
+                );
+
+                return SingleChildScrollView(
+                  padding: EdgeInsets.all(pagePadding),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // GROUP 0: VAI TRÒ ỨNG DỤNG (APP CHÍNH / APP PHỤ) & ĐIỀU KHIỂN TỪ XA
+                      _buildRoleControlCard(
+                        gateway: gateway,
+                        isCompactMobile: isCompactMobile,
+                        cardPadding: cardPadding,
+                      ),
+                      SizedBox(height: isCompactMobile ? 14 : 20),
+
+                      // GROUP 1: AI MODEL & API CONFIGURATION
+                      Container(
+                        padding: EdgeInsets.all(cardPadding),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.borderDark),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Row(
                               children: [
                                 Icon(Icons.memory_rounded, size: 18, color: AppColors.primaryLight),
                                 SizedBox(width: 8),
-                                Text(
-                                  '1. Cấu Hình AI Model & Proxy API',
-                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                color: AppColors.inputBg,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: AppColors.borderDark),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _buildTabButton(
-                                    id: 'proxy',
-                                    icon: Icons.hub_rounded,
-                                    label: 'AI Model & Proxy',
-                                  ),
-                                  const SizedBox(width: 4),
-                                  _buildTabButton(
-                                    id: 'google_studio',
-                                    icon: Icons.auto_awesome_rounded,
-                                    label: 'API key Google Studio',
-                                    badgeCount: _googleStudioKeys.length,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        if (_selectedTab == 'proxy') ...[
-                          const Text(
-                            'Chọn nhà cung cấp nhanh (Quick Presets):',
-                            style: TextStyle(fontSize: 11, color: AppColors.textDim),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _buildPresetChip('OpenRouter (GLM-5.3)', 'https://openrouter.ai/api/v1', 'glm-5.3'),
-                              _buildPresetChip('OpenAI (GPT-4o)', 'https://api.openai.com/v1', 'gpt-4o'),
-                              _buildPresetChip('DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat'),
-                              _buildPresetChip('Local Ollama', 'http://127.0.0.1:11434/v1', 'llama3.2:latest'),
-                              _buildPresetChip('Zhipu GLM', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash'),
-                            ],
-                          ),
-                          const Divider(height: 24),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Tên Model (AI Model Name)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                                    const SizedBox(height: 6),
-                                    SizedBox(
-                                      height: 32,
-                                      child: TextField(
-                                        controller: _modelCtrl,
-                                        maxLines: 1,
-                                        textAlignVertical: TextAlignVertical.center,
-                                        style: const TextStyle(fontSize: 12.5),
-                                        decoration: const InputDecoration(
-                                          hintText: 'glm-5.3 hoặc gpt-4o hoặc deepseek-chat',
-                                          hintStyle: TextStyle(fontSize: 11.5),
-                                          prefixIcon: Icon(Icons.smart_toy_outlined, size: 16),
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Địa Chỉ API (Base URL)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                                    const SizedBox(height: 6),
-                                    SizedBox(
-                                      height: 32,
-                                      child: TextField(
-                                        controller: _baseUrlCtrl,
-                                        maxLines: 1,
-                                        textAlignVertical: TextAlignVertical.center,
-                                        style: const TextStyle(fontSize: 12.5),
-                                        decoration: const InputDecoration(
-                                          hintText: 'https://openrouter.ai/api/v1',
-                                          hintStyle: TextStyle(fontSize: 11.5),
-                                          prefixIcon: Icon(Icons.link_rounded, size: 16),
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          const Text('API Key (Khoá xác thực bí mật)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            height: 32,
-                            child: TextField(
-                              controller: _apiKeyCtrl,
-                              obscureText: _obscureProxyKey,
-                              maxLines: 1,
-                              textAlignVertical: TextAlignVertical.center,
-                              style: const TextStyle(fontSize: 12.5),
-                              decoration: InputDecoration(
-                                hintText: 'sk-or-v1-... / sk-... (API Key)',
-                                hintStyle: const TextStyle(fontSize: 11.5),
-                                prefixIcon: const Icon(Icons.key_rounded, size: 16),
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                constraints: const BoxConstraints(minHeight: 32, maxHeight: 32),
-                                prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 32),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscureProxyKey ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                                    size: 16,
-                                    color: AppColors.textMuted,
-                                  ),
-                                  onPressed: () => setState(() => _obscureProxyKey = !_obscureProxyKey),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ] else ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.auto_awesome_rounded, size: 18, color: AppColors.accentCyan),
-                                SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'Cấu hình nhiều API Key của Google AI Studio miễn phí (aistudio.google.com). Hệ thống tự động xoay vòng (Round-Robin) giữa các Key và tự động đổi sang Key khác ngay lập tức nếu gặp giới hạn Rate Limit (429).',
-                                    style: TextStyle(fontSize: 11.5, color: AppColors.textWhite, height: 1.4),
+                                    '1. Cấu Hình AI Model & Proxy API',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            'Chọn nhanh Model Gemini (Google AI Studio):',
-                            style: TextStyle(fontSize: 11, color: AppColors.textDim),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _buildGoogleModelChip('gemini-2.5-flash'),
-                              _buildGoogleModelChip('gemini-2.5-pro'),
-                              _buildGoogleModelChip('gemini-2.5-flash-lite'),
-                              _buildGoogleModelChip('gemini-2.0-flash'),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Tên Model Gemini (Google AI Studio)', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                                    const SizedBox(height: 6),
-                                    SizedBox(
-                                      height: 32,
-                                      child: TextField(
-                                        controller: _googleStudioModelCtrl,
-                                        maxLines: 1,
-                                        textAlignVertical: TextAlignVertical.center,
-                                        style: const TextStyle(fontSize: 12.5),
-                                        decoration: const InputDecoration(
-                                          hintText: 'gemini-2.5-flash hoặc gemini-2.5-pro',
-                                          hintStyle: TextStyle(fontSize: 11.5),
-                                          prefixIcon: Icon(Icons.auto_awesome_outlined, size: 16),
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                            const SizedBox(height: 10),
+                            providerSwitcher,
+                            const SizedBox(height: 14),
+                            if (_selectedTab == 'proxy') ...[
+                              const Text(
+                                'Chọn nhà cung cấp nhanh (Quick Presets):',
+                                style: TextStyle(fontSize: 11, color: AppColors.textDim),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Địa Chỉ API Google AI Studio', style: TextStyle(fontSize: 11.5, color: AppColors.textDim)),
-                                    const SizedBox(height: 6),
-                                    SizedBox(
-                                      height: 32,
-                                      child: TextField(
-                                        readOnly: true,
-                                        controller: TextEditingController(text: 'https://generativelanguage.googleapis.com/v1beta/openai'),
-                                        maxLines: 1,
-                                        textAlignVertical: TextAlignVertical.center,
-                                        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-                                        decoration: const InputDecoration(
-                                          prefixIcon: Icon(Icons.cloud_done_rounded, size: 16, color: AppColors.accent),
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                          constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
-                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              const SizedBox(height: 8),
+                              _buildAlignedGrid(
+                                columns: isCompactMobile ? 2 : 3,
+                                spacing: 8,
+                                children: proxyPresets
+                                    .map((p) => _buildPresetTile(p['label']!, p['url']!, p['model']!))
+                                    .toList(),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Thêm API Key Google Studio (Có thể dán 1 hoặc nhiều key cách nhau bởi dấu phẩy / khoảng trắng / xuống dòng):',
-                            style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            height: 32,
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(
+                              const Divider(height: 22),
+                              if (isCompactMobile) ...[
+                                _buildLabeledField(
+                                  label: 'Tên Model (AI Model Name)',
                                   child: TextField(
-                                    controller: _newGoogleKeyCtrl,
-                                    onSubmitted: (_) => _addGoogleStudioKeysFromInput(),
+                                    controller: _modelCtrl,
                                     maxLines: 1,
                                     textAlignVertical: TextAlignVertical.center,
                                     style: const TextStyle(fontSize: 12.5),
                                     decoration: const InputDecoration(
-                                      hintText: 'AIzaSy... (1 hoặc nhiều API Key)',
+                                      hintText: 'glm-5.3 hoặc gpt-4o hoặc deepseek-chat',
                                       hintStyle: TextStyle(fontSize: 11.5),
-                                      prefixIcon: Icon(Icons.vpn_key_rounded, size: 16),
+                                      prefixIcon: Icon(Icons.smart_toy_outlined, size: 16),
                                       isDense: true,
                                       contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                      constraints: BoxConstraints(minHeight: 32, maxHeight: 32),
-                                      prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 32),
+                                      constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                      prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primaryLight,
-                                    foregroundColor: AppColors.bgDark,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                                    minimumSize: const Size(0, 32),
-                                    fixedSize: const Size.fromHeight(32),
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                const SizedBox(height: 12),
+                                _buildLabeledField(
+                                  label: 'Địa Chỉ API (Base URL)',
+                                  child: TextField(
+                                    controller: _baseUrlCtrl,
+                                    maxLines: 1,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: const TextStyle(fontSize: 12.5),
+                                    decoration: const InputDecoration(
+                                      hintText: 'https://openrouter.ai/api/v1',
+                                      hintStyle: TextStyle(fontSize: 11.5),
+                                      prefixIcon: Icon(Icons.link_rounded, size: 16),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                      constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                      prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                    ),
                                   ),
-                                  icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
-                                  label: const Text('Thêm Key', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  onPressed: _addGoogleStudioKeysFromInput,
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Danh sách API Key Google Studio đang hoạt động (${_googleStudioKeys.length} keys):',
-                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                              ),
-                              Row(
-                                children: [
-                                  if (_googleStudioKeys.isNotEmpty) ...[
-                                    TextButton.icon(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        minimumSize: Size.zero,
-                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ] else
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Expanded(
+                                      child: _buildLabeledField(
+                                        label: 'Tên Model (AI Model Name)',
+                                        child: TextField(
+                                          controller: _modelCtrl,
+                                          maxLines: 1,
+                                          textAlignVertical: TextAlignVertical.center,
+                                          style: const TextStyle(fontSize: 12.5),
+                                          decoration: const InputDecoration(
+                                            hintText: 'glm-5.3 hoặc gpt-4o hoặc deepseek-chat',
+                                            hintStyle: TextStyle(fontSize: 11.5),
+                                            prefixIcon: Icon(Icons.smart_toy_outlined, size: 16),
+                                            isDense: true,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                            constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                            prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                          ),
+                                        ),
                                       ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: _buildLabeledField(
+                                        label: 'Địa Chỉ API (Base URL)',
+                                        child: TextField(
+                                          controller: _baseUrlCtrl,
+                                          maxLines: 1,
+                                          textAlignVertical: TextAlignVertical.center,
+                                          style: const TextStyle(fontSize: 12.5),
+                                          decoration: const InputDecoration(
+                                            hintText: 'https://openrouter.ai/api/v1',
+                                            hintStyle: TextStyle(fontSize: 11.5),
+                                            prefixIcon: Icon(Icons.link_rounded, size: 16),
+                                            isDense: true,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                            constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                            prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              const SizedBox(height: 12),
+                              _buildLabeledField(
+                                label: 'API Key (Khoá xác thực bí mật)',
+                                child: TextField(
+                                  controller: _apiKeyCtrl,
+                                  obscureText: _obscureProxyKey,
+                                  maxLines: 1,
+                                  textAlignVertical: TextAlignVertical.center,
+                                  style: const TextStyle(fontSize: 12.5),
+                                  decoration: InputDecoration(
+                                    hintText: 'sk-or-v1-... / sk-... (API Key)',
+                                    hintStyle: const TextStyle(fontSize: 11.5),
+                                    prefixIcon: const Icon(Icons.key_rounded, size: 16),
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    constraints: const BoxConstraints(minHeight: 34, maxHeight: 34),
+                                    prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                    suffixIcon: IconButton(
                                       icon: Icon(
-                                        _obscureGoogleKeys ? Icons.visibility_rounded : Icons.visibility_off_rounded,
-                                        size: 14,
-                                        color: AppColors.accentCyan,
+                                        _obscureProxyKey ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                        size: 16,
+                                        color: AppColors.textMuted,
                                       ),
-                                      label: Text(
-                                        _obscureGoogleKeys ? 'Hiện Key' : 'Ẩn Key',
-                                        style: const TextStyle(fontSize: 11, color: AppColors.accentCyan),
+                                      onPressed: () => setState(() => _obscureProxyKey = !_obscureProxyKey),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ] else ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.auto_awesome_rounded, size: 18, color: AppColors.accentCyan),
+                                    SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Cấu hình nhiều API Key của Google AI Studio miễn phí (aistudio.google.com). Hệ thống tự động xoay vòng (Round-Robin) giữa các Key và tự động đổi sang Key khác ngay lập tức nếu gặp giới hạn Rate Limit (429).',
+                                        style: TextStyle(fontSize: 11.5, color: AppColors.textWhite, height: 1.4),
                                       ),
-                                      onPressed: () => setState(() => _obscureGoogleKeys = !_obscureGoogleKeys),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Chọn nhanh Model Gemini (Google AI Studio):',
+                                style: TextStyle(fontSize: 11, color: AppColors.textDim),
+                              ),
+                              const SizedBox(height: 8),
+                              _buildAlignedGrid(
+                                columns: isCompactMobile ? 2 : 4,
+                                spacing: 8,
+                                children: googleModels.map(_buildGoogleModelTile).toList(),
+                              ),
+                              const SizedBox(height: 14),
+                              if (isCompactMobile) ...[
+                                _buildLabeledField(
+                                  label: 'Tên Model Gemini (Google AI Studio)',
+                                  child: TextField(
+                                    controller: _googleStudioModelCtrl,
+                                    maxLines: 1,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: const TextStyle(fontSize: 12.5),
+                                    decoration: const InputDecoration(
+                                      hintText: 'gemini-2.5-flash hoặc gemini-2.5-pro',
+                                      hintStyle: TextStyle(fontSize: 11.5),
+                                      prefixIcon: Icon(Icons.auto_awesome_outlined, size: 16),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                      constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                      prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _buildLabeledField(
+                                  label: 'Địa Chỉ API Google AI Studio',
+                                  child: TextField(
+                                    readOnly: true,
+                                    controller: TextEditingController(text: 'https://generativelanguage.googleapis.com/v1beta/openai'),
+                                    maxLines: 1,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                                    decoration: const InputDecoration(
+                                      prefixIcon: Icon(Icons.cloud_done_rounded, size: 16, color: AppColors.accent),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                      constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                      prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                    ),
+                                  ),
+                                ),
+                              ] else
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Expanded(
+                                      child: _buildLabeledField(
+                                        label: 'Tên Model Gemini (Google AI Studio)',
+                                        child: TextField(
+                                          controller: _googleStudioModelCtrl,
+                                          maxLines: 1,
+                                          textAlignVertical: TextAlignVertical.center,
+                                          style: const TextStyle(fontSize: 12.5),
+                                          decoration: const InputDecoration(
+                                            hintText: 'gemini-2.5-flash hoặc gemini-2.5-pro',
+                                            hintStyle: TextStyle(fontSize: 11.5),
+                                            prefixIcon: Icon(Icons.auto_awesome_outlined, size: 16),
+                                            isDense: true,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                            constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                            prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: _buildLabeledField(
+                                        label: 'Địa Chỉ API Google AI Studio',
+                                        child: TextField(
+                                          readOnly: true,
+                                          controller: TextEditingController(text: 'https://generativelanguage.googleapis.com/v1beta/openai'),
+                                          maxLines: 1,
+                                          textAlignVertical: TextAlignVertical.center,
+                                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                                          decoration: const InputDecoration(
+                                            prefixIcon: Icon(Icons.cloud_done_rounded, size: 16, color: AppColors.accent),
+                                            isDense: true,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                            constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                            prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              const SizedBox(height: 14),
+                              const Text(
+                                'Thêm API Key Google Studio (Có thể dán 1 hoặc nhiều key cách nhau bởi dấu phẩy / khoảng trắng / xuống dòng):',
+                                style: TextStyle(fontSize: 11.5, color: AppColors.textDim),
+                              ),
+                              const SizedBox(height: 6),
+                              SizedBox(
+                                height: 34,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _newGoogleKeyCtrl,
+                                        onSubmitted: (_) => _addGoogleStudioKeysFromInput(),
+                                        maxLines: 1,
+                                        textAlignVertical: TextAlignVertical.center,
+                                        style: const TextStyle(fontSize: 12.5),
+                                        decoration: const InputDecoration(
+                                          hintText: 'AIzaSy... (1 hoặc nhiều API Key)',
+                                          hintStyle: TextStyle(fontSize: 11.5),
+                                          prefixIcon: Icon(Icons.vpn_key_rounded, size: 16),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                          constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(width: 8),
-                                    TextButton.icon(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        minimumSize: Size.zero,
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primaryLight,
+                                        foregroundColor: AppColors.bgDark,
+                                        padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 10 : 14, vertical: 0),
+                                        minimumSize: const Size(0, 34),
+                                        fixedSize: const Size.fromHeight(34),
                                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                       ),
-                                      icon: const Icon(Icons.delete_sweep_rounded, size: 14, color: Colors.redAccent),
-                                      label: const Text('Xoá tất cả', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
-                                      onPressed: () => setState(() => _googleStudioKeys.clear()),
+                                      icon: const Icon(Icons.add_circle_outline_rounded, size: 15),
+                                      label: Text(
+                                        isCompactMobile ? 'Thêm' : 'Thêm Key',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                      ),
+                                      onPressed: _addGoogleStudioKeysFromInput,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Danh sách API Key Google Studio (${_googleStudioKeys.length} keys):',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                    ),
+                                  ),
+                                  if (_googleStudioKeys.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        TextButton.icon(
+                                          style: TextButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                            minimumSize: Size.zero,
+                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          ),
+                                          icon: Icon(
+                                            _obscureGoogleKeys ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                            size: 14,
+                                            color: AppColors.accentCyan,
+                                          ),
+                                          label: Text(
+                                            _obscureGoogleKeys ? 'Hiện' : 'Ẩn',
+                                            style: const TextStyle(fontSize: 11, color: AppColors.accentCyan),
+                                          ),
+                                          onPressed: () => setState(() => _obscureGoogleKeys = !_obscureGoogleKeys),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        TextButton.icon(
+                                          style: TextButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                            minimumSize: Size.zero,
+                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          ),
+                                          icon: const Icon(Icons.delete_sweep_rounded, size: 14, color: Colors.redAccent),
+                                          label: const Text('Xoá hết', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                                          onPressed: () => setState(() => _googleStudioKeys.clear()),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ],
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          if (_googleStudioKeys.isEmpty)
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                              decoration: BoxDecoration(
-                                color: AppColors.inputBg,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: AppColors.borderDark),
-                              ),
-                              child: const Column(
-                                children: [
-                                  Icon(Icons.key_off_rounded, size: 24, color: AppColors.textMuted),
-                                  SizedBox(height: 6),
-                                  Text(
-                                    'Chưa có API Key Google Studio nào. Hãy thêm 1 hoặc nhiều key miễn phí vào ô bên trên rồi bấm Lưu Cấu Hình.',
-                                    style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                              const SizedBox(height: 8),
+                              if (_googleStudioKeys.isEmpty)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.inputBg,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.borderDark),
                                   ),
-                                ],
-                              ),
-                            )
-                          else
-                            Container(
-                              constraints: BoxConstraints(maxHeight: (_googleStudioKeys.length * 46).clamp(100.0, 420.0).toDouble()),
-                              decoration: BoxDecoration(
-                                color: AppColors.inputBg,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: AppColors.borderDark),
-                              ),
-                              child: ListView.separated(
-                                shrinkWrap: true,
-                                itemCount: _googleStudioKeys.length,
-                                separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.borderDark),
-                                itemBuilder: (ctx, idx) {
-                                  final k = _googleStudioKeys[idx];
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.primary.withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            'Key #${idx + 1}',
-                                            style: const TextStyle(
-                                              fontSize: 10.5,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppColors.accentCyan,
+                                  child: const Column(
+                                    children: [
+                                      Icon(Icons.key_off_rounded, size: 22, color: AppColors.textMuted),
+                                      SizedBox(height: 6),
+                                      Text(
+                                        'Chưa có API Key Google Studio nào. Hãy thêm 1 hoặc nhiều key miễn phí vào ô bên trên rồi bấm Lưu.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                Container(
+                                  constraints: BoxConstraints(maxHeight: (_googleStudioKeys.length * 46).clamp(100.0, 420.0).toDouble()),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.inputBg,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.borderDark),
+                                  ),
+                                  child: ListView.separated(
+                                    shrinkWrap: true,
+                                    itemCount: _googleStudioKeys.length,
+                                    separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.borderDark),
+                                    itemBuilder: (ctx, idx) {
+                                      final k = _googleStudioKeys[idx];
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primary.withValues(alpha: 0.2),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Key #${idx + 1}',
+                                                style: const TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppColors.accentCyan,
+                                                ),
+                                              ),
                                             ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Text(
-                                            _maskApiKey(k),
-                                            style: const TextStyle(
-                                              fontFamily: 'monospace',
-                                              fontSize: 12,
-                                              color: AppColors.textWhite,
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                _maskApiKey(k),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontFamily: 'monospace',
+                                                  fontSize: 12,
+                                                  color: AppColors.textWhite,
+                                                ),
+                                              ),
                                             ),
-                                          ),
+                                            IconButton(
+                                              icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
+                                              tooltip: 'Xoá API Key này',
+                                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                              padding: EdgeInsets.zero,
+                                              onPressed: () => _removeGoogleStudioKey(idx),
+                                            ),
+                                          ],
                                         ),
-                                        IconButton(
-                                          icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
-                                          tooltip: 'Xoá API Key này',
-                                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                          padding: EdgeInsets.zero,
-                                          onPressed: () => _removeGoogleStudioKey(idx),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                        ],
-                        const Divider(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Custom Prompt & Yêu Cầu Thực Thi AI Model / CLI Agent',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                            ),
-                            TextButton.icon(
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              icon: const Icon(Icons.restore_rounded, size: 14, color: AppColors.accentCyan),
-                              label: const Text('Mặc Định', style: TextStyle(fontSize: 11, color: AppColors.accentCyan)),
-                              onPressed: _resetCustomPrompt,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Toàn bộ yêu cầu chỉ thị và quy tắc thực thi (Scope làm việc {workDir}, quy chuẩn tiếng Việt, không chạy server nền, hoàn tất đồng bộ...). Có thể tùy chỉnh theo ý muốn.',
-                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _promptCtrl,
-                          maxLines: 8,
-                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace', height: 1.45, color: AppColors.textWhite),
-                          decoration: const InputDecoration(
-                            hintText: 'Nhập custom prompt & yêu cầu dành cho AI Model...',
-                            contentPadding: EdgeInsets.all(12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // GROUP 2: SYSTEM ENVIRONMENT & STORAGE INFO
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.borderDark),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.laptop_chromebook_rounded, size: 18, color: AppColors.accent),
-                            SizedBox(width: 8),
-                            Text(
-                              '2. Môi Trường Thực Thi & Cơ Sở Dữ Liệu',
-                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 24),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildInfoBox(
-                                'Hệ Điều Hành Local',
-                                '${Platform.operatingSystem.toUpperCase()} (Linux 64-bit)',
-                                tooltip: '${Platform.operatingSystem.toUpperCase()} (${Platform.operatingSystemVersion})',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildInfoBox(
-                                'Trình Thực Thi Shell',
-                                Platform.environment['SHELL'] ?? (Platform.isWindows ? 'cmd.exe' : '/bin/bash'),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildInfoBox(
-                                'Chế Độ Hoạt Động',
-                                'Local Machine & Quản trị Máy Chủ VPS',
-                                tooltip: 'Thực thi lệnh trên Local Shell và Máy chủ từ xa qua SSH',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildInfoBox(
-                                'Thư Mục Dữ Liệu Local',
-                                Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.',
-                                tooltip: 'Đường dẫn thư mục Home người dùng hiện tại',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildInfoBox(
-                                'Bảo Mật Cơ Sở Dữ Liệu',
-                                'SQLite Encrypted Storage (~/.ai_type_agent/)',
-                                tooltip: 'Cơ sở dữ liệu SQLite mã hóa AES an toàn',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildInfoBox(
-                                'Phiên Bản Ứng Dụng',
-                                'AI Type Desktop v1.3.0',
-                                tooltip: 'Phiên bản Flutter Desktop Native Client',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        const Divider(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Nhật Ký Hoạt Động & Lịch Sử Lệnh',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                      );
+                                    },
+                                  ),
                                 ),
-                                SizedBox(height: 2),
-                                Text(
-                                  'Theo dõi chi tiết logs thực thi của AI Agent và hệ thống (Local & Máy chủ từ xa)',
-                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            ],
+                            const Divider(height: 22),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Custom Prompt & Yêu Cầu Thực Thi AI Model / CLI Agent',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  icon: const Icon(Icons.restore_rounded, size: 14, color: AppColors.accentCyan),
+                                  label: const Text('Mặc Định', style: TextStyle(fontSize: 11, color: AppColors.accentCyan)),
+                                  onPressed: _resetCustomPrompt,
                                 ),
                               ],
                             ),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.inputBg,
-                                foregroundColor: AppColors.textWhite,
-                                side: const BorderSide(color: AppColors.borderDark),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Toàn bộ yêu cầu chỉ thị và quy tắc thực thi (Scope làm việc {workDir}, quy chuẩn tiếng Việt, không chạy server nền, hoàn tất đồng bộ...). Có thể tùy chỉnh theo ý muốn.',
+                              style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: _promptCtrl,
+                              maxLines: isCompactMobile ? 6 : 8,
+                              style: const TextStyle(fontSize: 12, fontFamily: 'monospace', height: 1.45, color: AppColors.textWhite),
+                              decoration: const InputDecoration(
+                                hintText: 'Nhập custom prompt & yêu cầu dành cho AI Model...',
+                                contentPadding: EdgeInsets.all(12),
                               ),
-                              icon: const Icon(Icons.receipt_long_rounded, size: 16, color: AppColors.accent),
-                              label: const Text('Mở Hộp Thoại Nhật Ký (Logs)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-                              onPressed: () => LogsDialog.show(context),
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                      SizedBox(height: isCompactMobile ? 14 : 20),
+
+                      // GROUP 2: SYSTEM ENVIRONMENT & STORAGE INFO
+                      Container(
+                        padding: EdgeInsets.all(cardPadding),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.borderDark),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.laptop_chromebook_rounded, size: 18, color: AppColors.accent),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '2. Môi Trường Thực Thi & Cơ Sở Dữ Liệu',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Divider(height: 20),
+                            _buildAlignedGrid(
+                              columns: isCompactMobile ? 2 : 3,
+                              spacing: 8,
+                              children: envBoxes,
+                            ),
+                            const Divider(height: 22),
+                            if (isCompactMobile) ...[
+                              const Text(
+                                'Nhật Ký Hoạt Động & Lịch Sử Lệnh',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Theo dõi chi tiết logs thực thi của AI Agent và hệ thống (Local & Máy chủ từ xa)',
+                                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 34,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.inputBg,
+                                    foregroundColor: AppColors.textWhite,
+                                    side: const BorderSide(color: AppColors.borderDark),
+                                    minimumSize: const Size(0, 34),
+                                    fixedSize: const Size.fromHeight(34),
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                  ),
+                                  icon: const Icon(Icons.receipt_long_rounded, size: 16, color: AppColors.accent),
+                                  label: const Text('Mở Hộp Thoại Nhật Ký (Logs)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                  onPressed: () => LogsDialog.show(context),
+                                ),
+                              ),
+                            ] else
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Nhật Ký Hoạt Động & Lịch Sử Lệnh',
+                                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                        ),
+                                        SizedBox(height: 2),
+                                        Text(
+                                          'Theo dõi chi tiết logs thực thi của AI Agent và hệ thống (Local & Máy chủ từ xa)',
+                                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.inputBg,
+                                      foregroundColor: AppColors.textWhite,
+                                      side: const BorderSide(color: AppColors.borderDark),
+                                      minimumSize: const Size(0, 32),
+                                      fixedSize: const Size.fromHeight(32),
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                                    ),
+                                    icon: const Icon(Icons.receipt_long_rounded, size: 16, color: AppColors.accent),
+                                    label: const Text('Mở Hộp Thoại Nhật Ký (Logs)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                    onPressed: () => LogsDialog.show(context),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRoleControlCard({
+    required GatewayProvider gateway,
+    required bool isCompactMobile,
+    required double cardPadding,
+  }) {
+    final isPrimary = gateway.isPrimary;
+    final statusColor = isPrimary
+        ? (gateway.isHostRunning ? AppColors.accent : AppColors.textMuted)
+        : (gateway.isConnected
+            ? AppColors.accent
+            : (gateway.status == GatewayStatus.error ? AppColors.danger : AppColors.warning));
+
+    return Container(
+      padding: EdgeInsets.all(cardPadding),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: (isPrimary && gateway.isHostRunning) || (!isPrimary && gateway.isConnected)
+              ? AppColors.primaryLight.withValues(alpha: 0.45)
+              : AppColors.borderDark,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.devices_other_rounded, size: 18, color: AppColors.accentCyan),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  '0. Vai Trò Thiết Bị (App Chính / App Phụ)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.5), width: 0.8),
+                ),
+                child: Text(
+                  isPrimary
+                      ? (gateway.isInternetTunnelRunning
+                          ? 'Internet HTTPS'
+                          : (gateway.isHostRunning ? 'Host :${gateway.hostBoundPort}' : 'Cục bộ'))
+                      : (gateway.isConnected
+                          ? '${gateway.isSecondaryOverInternet ? 'Internet' : 'LAN'} (${gateway.pingMs} ms)'
+                          : 'Chưa kết nối'),
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: statusColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Switcher chọn App Chính / App Phụ
+          Container(
+            width: isCompactMobile ? double.infinity : null,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: AppColors.inputBg,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: AppColors.borderDark),
+            ),
+            child: Row(
+              mainAxisSize: isCompactMobile ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                if (isCompactMobile)
+                  Expanded(
+                    child: _buildRoleSwitchBtn(
+                      key: const ValueKey('role_primary_button'),
+                      selected: isPrimary,
+                      icon: Icons.computer_rounded,
+                      label: 'App Chính (Host)',
+                      expand: true,
+                      onTap: _isApplyingRemote ? null : () => _switchAppRole(AppRole.primary),
+                    ),
+                  )
+                else
+                  _buildRoleSwitchBtn(
+                    key: const ValueKey('role_primary_button'),
+                    selected: isPrimary,
+                    icon: Icons.computer_rounded,
+                    label: 'App Chính (Host)',
+                    onTap: _isApplyingRemote ? null : () => _switchAppRole(AppRole.primary),
+                  ),
+                const SizedBox(width: 4),
+                if (isCompactMobile)
+                  Expanded(
+                    child: _buildRoleSwitchBtn(
+                      key: const ValueKey('role_secondary_button'),
+                      selected: !isPrimary,
+                      icon: Icons.phonelink_rounded,
+                      label: 'App Phụ (Remote)',
+                      expand: true,
+                      onTap: _isApplyingRemote ? null : () => _switchAppRole(AppRole.secondary),
+                    ),
+                  )
+                else
+                  _buildRoleSwitchBtn(
+                    key: const ValueKey('role_secondary_button'),
+                    selected: !isPrimary,
+                    icon: Icons.phonelink_rounded,
+                    label: 'App Phụ (Điều khiển từ xa)',
+                    onTap: _isApplyingRemote ? null : () => _switchAppRole(AppRole.secondary),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (isPrimary) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.inputBg,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.borderDark),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Cho phép App Phụ điều khiển từ xa',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          gateway.isHostRunning
+                              ? 'Đang lắng nghe trên cổng ${gateway.hostBoundPort} • Sẵn sàng nhận lệnh từ App Phụ'
+                              : 'Bật để điện thoại hoặc máy tính khác (App Phụ) kết nối và điều khiển máy này',
+                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Switch(
+                    key: const ValueKey('primary_host_toggle'),
+                    value: gateway.primaryHostEnabled,
+                    activeThumbColor: AppColors.accent,
+                    onChanged: (val) async {
+                      final ok = await gateway.setPrimaryHostEnabled(val);
+                      if (!mounted) return;
+                      if (val && ok) {
+                        AppToast.success(context, 'Đã bật dịch vụ điều khiển từ xa trên cổng ${gateway.hostBoundPort}.');
+                      } else if (val && !ok) {
+                        AppToast.error(context, gateway.hostErrorMessage);
+                      } else {
+                        AppToast.info(context, 'Đã tắt dịch vụ điều khiển từ xa.');
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            if (gateway.hostErrorMessage.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                gateway.hostErrorMessage,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.danger),
+              ),
+            ],
+            const SizedBox(height: 12),
+            if (isCompactMobile) ...[
+              _buildLabeledField(
+                label: 'Tên thiết bị App Chính',
+                child: TextField(
+                  controller: _hostNameCtrl,
+                  maxLines: 1,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: const TextStyle(fontSize: 12.5),
+                  decoration: const InputDecoration(
+                    hintText: 'VD: Workstation Ubuntu',
+                    prefixIcon: Icon(Icons.badge_outlined, size: 16),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                    prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: _buildLabeledField(
+                      label: 'Cổng lắng nghe (Port)',
+                      child: TextField(
+                        controller: _hostPortCtrl,
+                        keyboardType: TextInputType.number,
+                        maxLines: 1,
+                        textAlignVertical: TextAlignVertical.center,
+                        style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace'),
+                        decoration: const InputDecoration(
+                          hintText: '8765',
+                          prefixIcon: Icon(Icons.lan_outlined, size: 16),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                          constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size(0, 34),
+                      fixedSize: const Size.fromHeight(34),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                    ),
+                    onPressed: _applyPrimaryHostSettings,
+                    child: const Text('Áp dụng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ] else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: _buildLabeledField(
+                      label: 'Tên thiết bị App Chính',
+                      child: TextField(
+                        controller: _hostNameCtrl,
+                        maxLines: 1,
+                        textAlignVertical: TextAlignVertical.center,
+                        style: const TextStyle(fontSize: 12.5),
+                        decoration: const InputDecoration(
+                          hintText: 'VD: Workstation Ubuntu',
+                          prefixIcon: Icon(Icons.badge_outlined, size: 16),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                          constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 140,
+                    child: _buildLabeledField(
+                      label: 'Cổng (Port)',
+                      child: TextField(
+                        controller: _hostPortCtrl,
+                        keyboardType: TextInputType.number,
+                        maxLines: 1,
+                        textAlignVertical: TextAlignVertical.center,
+                        style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace'),
+                        decoration: const InputDecoration(
+                          hintText: '8765',
+                          prefixIcon: Icon(Icons.lan_outlined, size: 16),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                          constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size(0, 34),
+                      fixedSize: const Size.fromHeight(34),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                    ),
+                    onPressed: _applyPrimaryHostSettings,
+                    child: const Text('Áp dụng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 12),
+            // PANEL TRUY CẬP INTERNET TOÀN CẦU (MỌI NƠI — 4G/5G / KHÁC MẠNG)
+            _buildInternetTunnelPanel(
+              gateway: gateway,
+              isCompactMobile: isCompactMobile,
+            ),
+            const SizedBox(height: 12),
+            // Hiển thị Mã QR ghép nối nhanh + địa chỉ Internet / VPN / LAN cho App Phụ
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.inputBg,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.borderDark),
+              ),
+              child: Builder(
+                builder: (ctx) {
+                  final qrWidget = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      PairingQrWidget(
+                        key: const ValueKey('primary_pairing_qr'),
+                        data: gateway.primaryPairingString,
+                        size: isCompactMobile ? 168 : 148,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        gateway.isInternetTunnelRunning
+                            ? 'Mã QR Internet (Mọi nơi + LAN)'
+                            : 'Mã QR Mạng LAN',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: gateway.isInternetTunnelRunning ? AppColors.accent : AppColors.accentCyan,
+                        ),
+                      ),
+                    ],
+                  );
+
+                  final detailsColumn = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Quét mã QR trên điện thoại (App Phụ) để kết nối ngay:',
+                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => gateway.refreshLocalIps(),
+                            borderRadius: BorderRadius.circular(4),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.refresh_rounded, size: 13, color: AppColors.accentCyan),
+                                  SizedBox(width: 4),
+                                  Text('Làm mới IP', style: TextStyle(fontSize: 11, color: AppColors.accentCyan)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Trên điện thoại: mở Cấu hình -> App Phụ -> bấm "Quét mã QR trên máy tính" hoặc "Tìm máy tính gần đây".',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+                      ),
+                      const SizedBox(height: 8),
+                      if (gateway.isInternetTunnelRunning) ...[
+                        SelectableText(
+                          'Internet (Mọi nơi): ${gateway.publicTunnelUrl}',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                      if (gateway.vpnIps.isNotEmpty) ...[
+                        SelectableText(
+                          'VPN (Tailscale): ${gateway.vpnIps.map((ip) => 'http://$ip:${gateway.primaryHostPort}').join('  |  ')}',
+                          style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.primaryLight),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                      SelectableText(
+                        gateway.lanIps.isNotEmpty
+                            ? 'Mạng LAN: ${gateway.lanIps.map((ip) => 'http://$ip:${gateway.primaryHostPort}').join('  |  ')}'
+                            : 'Mạng LAN: http://127.0.0.1:${gateway.primaryHostPort}',
+                        style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.accentCyan),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Mã ghép nối: ${_obscureHostToken ? '••••••••••••••••••••' : gateway.primaryHostToken}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.textBody),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: _obscureHostToken ? 'Hiện mã' : 'Ẩn mã',
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            padding: EdgeInsets.zero,
+                            icon: Icon(
+                              _obscureHostToken ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                              size: 15,
+                              color: AppColors.textMuted,
+                            ),
+                            onPressed: () => setState(() => _obscureHostToken = !_obscureHostToken),
+                          ),
+                          IconButton(
+                            tooltip: 'Tạo mã ghép nối mới',
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(Icons.autorenew_rounded, size: 15, color: AppColors.warning),
+                            onPressed: () async {
+                              await gateway.regeneratePrimaryToken();
+                              if (!mounted) return;
+                              AppToast.info(context, 'Đã tạo mã ghép nối và mã QR mới.');
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          SizedBox(
+                            width: isCompactMobile ? double.infinity : null,
+                            height: 32,
+                            child: OutlinedButton.icon(
+                              key: const ValueKey('copy_pairing_string_button'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 32),
+                                fixedSize: const Size.fromHeight(32),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                side: BorderSide(
+                                  color: gateway.isInternetTunnelRunning ? AppColors.accent : AppColors.primaryLight,
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                              ),
+                              icon: Icon(
+                                gateway.isInternetTunnelRunning ? Icons.public_rounded : Icons.copy_rounded,
+                                size: 14,
+                                color: gateway.isInternetTunnelRunning ? AppColors.accent : AppColors.primaryLight,
+                              ),
+                              label: Text(
+                                gateway.isInternetTunnelRunning
+                                    ? 'Sao chép chuỗi ghép nối Internet (Mọi nơi)'
+                                    : 'Sao chép chuỗi ghép nối nhanh',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: gateway.isInternetTunnelRunning ? AppColors.accent : AppColors.primaryLight,
+                                ),
+                              ),
+                              onPressed: () async {
+                                await Clipboard.setData(ClipboardData(text: gateway.primaryPairingString));
+                                if (!mounted) return;
+                                AppToast.success(
+                                  context,
+                                  gateway.isInternetTunnelRunning
+                                      ? 'Đã sao chép chuỗi ghép nối Internet (dùng được ở mọi nơi)!'
+                                      : 'Đã sao chép chuỗi ghép nối nhanh vào bộ nhớ tạm!',
+                                );
+                              },
+                            ),
+                          ),
+                          if (gateway.isInternetTunnelRunning)
+                            SizedBox(
+                              width: isCompactMobile ? double.infinity : null,
+                              height: 32,
+                              child: OutlinedButton.icon(
+                                key: const ValueKey('copy_lan_pairing_button'),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 32),
+                                  fixedSize: const Size.fromHeight(32),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  side: const BorderSide(color: AppColors.borderLight),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                ),
+                                icon: const Icon(Icons.lan_outlined, size: 14, color: AppColors.textMuted),
+                                label: const Text(
+                                  'Sao chép LAN',
+                                  style: TextStyle(fontSize: 11.5, color: AppColors.textBody),
+                                ),
+                                onPressed: () async {
+                                  await Clipboard.setData(ClipboardData(text: gateway.primaryLanPairingString));
+                                  if (!mounted) return;
+                                  AppToast.info(context, 'Đã sao chép chuỗi ghép nối mạng LAN.');
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+
+                  if (isCompactMobile) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(child: qrWidget),
+                        const SizedBox(height: 12),
+                        detailsColumn,
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      qrWidget,
+                      const SizedBox(width: 16),
+                      Expanded(child: detailsColumn),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ] else ...[
+            // Chế độ APP PHỤ: Thẻ trạng thái + Nút Ngắt kết nối rõ ràng
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.09),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: statusColor.withValues(alpha: 0.45)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Icon(
+                          gateway.isConnected ? Icons.check_circle_rounded : Icons.phonelink_setup_rounded,
+                          size: 18,
+                          color: statusColor,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              gateway.isConnected
+                                  ? 'Đang kết nối App Chính: ${gateway.remoteHostName}'
+                                      '${gateway.remoteHostOs.isNotEmpty ? ' (${gateway.remoteHostOs.toUpperCase()})' : ''}'
+                                  : (gateway.errorMessage.isNotEmpty
+                                      ? gateway.errorMessage
+                                      : 'Chưa kết nối App Chính. Chọn 1 trong 3 cách bên dưới để điều khiển máy tính từ xa.'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textWhite,
+                                height: 1.35,
+                              ),
+                            ),
+                            if (gateway.isConnected && gateway.gatewayUrl.isNotEmpty) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                '${gateway.isSecondaryOverInternet ? 'Internet' : 'LAN'} • ${gateway.gatewayUrl} • ${gateway.pingMs} ms',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontFamily: 'monospace',
+                                  color: AppColors.accentCyan,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (gateway.isConnected) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 32,
+                            child: OutlinedButton.icon(
+                              key: const ValueKey('secondary_refresh_connection_button'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 32),
+                                fixedSize: const Size.fromHeight(32),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                side: const BorderSide(color: AppColors.borderLight),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              ),
+                              icon: _isApplyingRemote
+                                  ? const SizedBox(
+                                      width: 13,
+                                      height: 13,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textWhite),
+                                    )
+                                  : const Icon(Icons.refresh_rounded, size: 14, color: AppColors.textBody),
+                              label: const Text(
+                                'Kiểm tra lại',
+                                style: TextStyle(fontSize: 11.5, color: AppColors.textBody),
+                              ),
+                              onPressed: _isApplyingRemote ? null : _refreshSecondaryConnection,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: SizedBox(
+                            height: 32,
+                            child: OutlinedButton.icon(
+                              key: const ValueKey('secondary_disconnect_button'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 32),
+                                fixedSize: const Size.fromHeight(32),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                side: BorderSide(color: AppColors.danger.withValues(alpha: 0.7)),
+                                backgroundColor: AppColors.danger.withValues(alpha: 0.1),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              ),
+                              icon: const Icon(Icons.link_off_rounded, size: 14, color: AppColors.danger),
+                              label: const Text(
+                                'Ngắt kết nối',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.danger,
+                                ),
+                              ),
+                              onPressed: _isApplyingRemote ? null : _disconnectSecondaryFromPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (gateway.isConnected) ...[
+              const Text(
+                'Đổi sang máy tính App Chính khác:',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // 2 HÀNH ĐỘNG CHÍNH TRỰC QUAN: QUÉT MÃ QR & TÌM MÁY TÍNH GẦN ĐÂY
+            if (isCompactMobile) ...[
+              if (QrScannerScreen.isCameraScanSupported) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: ElevatedButton.icon(
+                    key: const ValueKey('secondary_scan_qr_button'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size(0, 40),
+                      fixedSize: const Size.fromHeight(40),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                    label: const Text(
+                      'Quét mã QR trên máy tính (Nhanh nhất)',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: _isApplyingRemote ? null : _scanQrAndConnect,
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+              SizedBox(
+                width: double.infinity,
+                height: 36,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('secondary_discover_hosts_button'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    fixedSize: const Size.fromHeight(36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    side: const BorderSide(color: AppColors.accentCyan),
+                  ),
+                  icon: gateway.isDiscoveringHosts
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
+                        )
+                      : const Icon(Icons.radar_rounded, size: 16, color: AppColors.accentCyan),
+                  label: Text(
+                    gateway.isDiscoveringHosts
+                        ? 'Đang tìm máy tính trong Wi-Fi...'
+                        : 'Tìm máy tính gần đây (1 chạm)',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accentCyan),
+                  ),
+                  onPressed: (gateway.isDiscoveringHosts || gateway.isWaitingPairingApproval)
+                      ? null
+                      : () => gateway.discoverNearbyPrimaryHosts(),
+                ),
+              ),
+            ] else
+              Row(
+                children: [
+                  if (QrScannerScreen.isCameraScanSupported) ...[
+                    Expanded(
+                      child: SizedBox(
+                        height: 38,
+                        child: ElevatedButton.icon(
+                          key: const ValueKey('secondary_scan_qr_button'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            minimumSize: const Size(0, 38),
+                            fixedSize: const Size.fromHeight(38),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.qr_code_scanner_rounded, size: 17),
+                          label: const Text(
+                            'Quét mã QR trên App Chính',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: _isApplyingRemote ? null : _scanQrAndConnect,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: SizedBox(
+                      height: 38,
+                      child: OutlinedButton.icon(
+                        key: const ValueKey('secondary_discover_hosts_button'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 38),
+                          fixedSize: const Size.fromHeight(38),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: AppColors.accentCyan),
+                        ),
+                        icon: gateway.isDiscoveringHosts
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
+                              )
+                            : const Icon(Icons.radar_rounded, size: 16, color: AppColors.accentCyan),
+                        label: Text(
+                          gateway.isDiscoveringHosts
+                              ? 'Đang tìm máy tính...'
+                              : 'Tìm máy tính App Chính gần đây (1 chạm)',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accentCyan),
+                        ),
+                        onPressed: (gateway.isDiscoveringHosts || gateway.isWaitingPairingApproval)
+                            ? null
+                            : () => gateway.discoverNearbyPrimaryHosts(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+            // TRẠNG THÁI CHỜ BẤM "CHẤP NHẬN" TRÊN MÁY TÍNH (GHÉP NỐI 1 CHẠM)
+            if (gateway.isWaitingPairingApproval) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.accentCyan.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.55)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Đang chờ bạn bấm "Chấp nhận kết nối" trên màn hình máy tính ${gateway.pairingTargetName}...',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (gateway.activePairingPin.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Text('Mã đối chiếu: ', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                          Text(
+                            gateway.activePairingPin,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 3,
+                              color: AppColors.accentCyan,
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => gateway.cancelOneTapPairing(),
+                            child: const Text('Hủy', style: TextStyle(color: AppColors.danger, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
+            // DANH SÁCH MÁY TÍNH APP CHÍNH TÌM THẤY TRONG MẠNG GẦN ĐÂY
+            if (gateway.discoveredHosts.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              ...gateway.discoveredHosts.map((host) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.inputBg,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.45)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.computer_rounded, size: 18, color: AppColors.primaryLight),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${host.deviceName} (${host.os.toUpperCase()})',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textWhite,
+                              ),
+                            ),
+                            Text(
+                              host.hasInternetAccess
+                                  ? '${host.preferredUrl} (Sẵn sàng mọi nơi)'
+                                  : host.lanUrl,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                color: AppColors.accentCyan,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          minimumSize: const Size(0, 30),
+                          fixedSize: const Size.fromHeight(30),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                        ),
+                        onPressed: (_isApplyingRemote || gateway.isWaitingPairingApproval)
+                            ? null
+                            : () => _requestOneTapPair(host),
+                        child: const Text('Kết nối', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ] else if (gateway.pairingStatusMessage.isNotEmpty && !gateway.isWaitingPairingApproval) ...[
+              const SizedBox(height: 8),
+              Text(
+                gateway.pairingStatusMessage,
+                style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+              ),
+            ],
+
+            const SizedBox(height: 10),
+            // MỤC GẬP GỌN: KẾT NỐI THỦ CÔNG (TÁCH RÕ 2 TAB: DÁN CHUỖI HOẶC NHẬP URL + MÃ)
+            InkWell(
+              key: const ValueKey('toggle_manual_connect_button'),
+              borderRadius: BorderRadius.circular(4),
+              onTap: () => setState(() => _showManualRemoteConnect = !_showManualRemoteConnect),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.inputBg,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: _showManualRemoteConnect ? AppColors.primaryLight.withValues(alpha: 0.5) : AppColors.borderDark,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.tune_rounded, size: 14, color: AppColors.textMuted),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Kết nối thủ công (chọn Dán chuỗi hoặc Nhập URL & Mã)',
+                        style: TextStyle(fontSize: 11.5, color: AppColors.textBody, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    Icon(
+                      _showManualRemoteConnect ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                      size: 18,
+                      color: AppColors.textMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            if (_showManualRemoteConnect) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.borderDark),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Chuyển đổi rành mạch giữa 2 cách nhập thủ công (không bày trùng lắp 3 ô cùng lúc)
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: AppColors.inputBg,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.borderDark),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              key: const ValueKey('manual_mode_paste_tab'),
+                              borderRadius: BorderRadius.circular(3),
+                              onTap: () => setState(() => _manualConnectMode = 'paste'),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: _manualConnectMode == 'paste'
+                                      ? AppColors.primary.withValues(alpha: 0.25)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(3),
+                                  border: Border.all(
+                                    color: _manualConnectMode == 'paste'
+                                        ? AppColors.primaryLight.withValues(alpha: 0.65)
+                                        : Colors.transparent,
+                                  ),
+                                ),
+                                child: Text(
+                                  '1. Dán chuỗi ghép nối',
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: _manualConnectMode == 'paste' ? FontWeight.bold : FontWeight.w500,
+                                    color: _manualConnectMode == 'paste' ? AppColors.primaryLight : AppColors.textMuted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: InkWell(
+                              key: const ValueKey('manual_mode_fields_tab'),
+                              borderRadius: BorderRadius.circular(3),
+                              onTap: () => setState(() => _manualConnectMode = 'fields'),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: _manualConnectMode == 'fields'
+                                      ? AppColors.primary.withValues(alpha: 0.25)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(3),
+                                  border: Border.all(
+                                    color: _manualConnectMode == 'fields'
+                                        ? AppColors.primaryLight.withValues(alpha: 0.65)
+                                        : Colors.transparent,
+                                  ),
+                                ),
+                                child: Text(
+                                  '2. Nhập URL & Mã',
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: _manualConnectMode == 'fields' ? FontWeight.bold : FontWeight.w500,
+                                    color: _manualConnectMode == 'fields' ? AppColors.primaryLight : AppColors.textMuted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (_manualConnectMode == 'paste') ...[
+                      const Text(
+                        'Trên máy tính App Chính: bấm nút "Sao chép chuỗi ghép nối" rồi dán vào ô dưới đây (đã bao gồm sẵn địa chỉ và mã bảo mật).',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              key: const ValueKey('secondary_pairing_paste_input'),
+                              controller: _pairingPasteCtrl,
+                              maxLines: 1,
+                              textAlignVertical: TextAlignVertical.center,
+                              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                hintText: 'http://192.168.1.x:8765#<mã> hoặc https://...#<mã>',
+                                hintStyle: TextStyle(fontSize: 11),
+                                prefixIcon: Icon(Icons.content_paste_rounded, size: 15),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 34),
+                              fixedSize: const Size.fromHeight(34),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                              side: const BorderSide(color: AppColors.borderLight),
+                            ),
+                            onPressed: () async {
+                              final data = await Clipboard.getData(Clipboard.kTextPlain);
+                              final clip = data?.text?.trim() ?? '';
+                              if (clip.isEmpty) return;
+                              setState(() {
+                                _pairingPasteCtrl.text = clip;
+                              });
+                            },
+                            child: const Text('Dán', style: TextStyle(fontSize: 11.5, color: AppColors.textWhite)),
+                          ),
+                        ],
+                      ),
+                      Builder(
+                        builder: (_) {
+                          final raw = _pairingPasteCtrl.text.trim();
+                          if (raw.isEmpty) return const SizedBox.shrink();
+                          final parsed = StorageService.parsePairingString(raw);
+                          if (parsed.url.isEmpty) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Đã nhận diện: ${parsed.url} • ${parsed.token.isNotEmpty ? 'Có mã ghép nối' : 'Chưa có mã (#token)'}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontFamily: 'monospace',
+                                color: parsed.token.isNotEmpty ? AppColors.accent : AppColors.warning,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ] else ...[
+                      const Text(
+                        'Xem trên máy tính App Chính (mục 0 -> Vai Trò Thiết Bị): sao chép dòng Mạng LAN/Internet và dòng Mã ghép nối.',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+                      ),
+                      const SizedBox(height: 8),
+                      if (isCompactMobile) ...[
+                        _buildLabeledField(
+                          label: '1. Địa chỉ máy tính App Chính (URL)',
+                          child: TextField(
+                            key: const ValueKey('secondary_url_input'),
+                            controller: _remoteUrlCtrl,
+                            maxLines: 1,
+                            textAlignVertical: TextAlignVertical.center,
+                            style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace'),
+                            decoration: const InputDecoration(
+                              hintText: 'http://192.168.1.x:8765 hoặc https://...',
+                              hintStyle: TextStyle(fontSize: 11.5),
+                              prefixIcon: Icon(Icons.link_rounded, size: 16),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                              prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _buildLabeledField(
+                          label: '2. Mã ghép nối (Token)',
+                          child: TextField(
+                            key: const ValueKey('secondary_token_input'),
+                            controller: _remoteTokenCtrl,
+                            obscureText: _obscureRemoteToken,
+                            maxLines: 1,
+                            textAlignVertical: TextAlignVertical.center,
+                            style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace'),
+                            decoration: InputDecoration(
+                              hintText: 'Dán Mã ghép nối từ App Chính...',
+                              hintStyle: const TextStyle(fontSize: 11.5),
+                              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 16),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                              constraints: const BoxConstraints(minHeight: 34, maxHeight: 34),
+                              prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscureRemoteToken ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                  size: 16,
+                                  color: AppColors.textMuted,
+                                ),
+                                onPressed: () => setState(() => _obscureRemoteToken = !_obscureRemoteToken),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ] else
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: _buildLabeledField(
+                                label: '1. Địa chỉ máy tính App Chính (URL)',
+                                child: TextField(
+                                  key: const ValueKey('secondary_url_input'),
+                                  controller: _remoteUrlCtrl,
+                                  maxLines: 1,
+                                  textAlignVertical: TextAlignVertical.center,
+                                  style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace'),
+                                  decoration: const InputDecoration(
+                                    hintText: 'http://192.168.1.x:8765 hoặc https://...',
+                                    hintStyle: TextStyle(fontSize: 11.5),
+                                    prefixIcon: Icon(Icons.link_rounded, size: 16),
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                                    prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _buildLabeledField(
+                                label: '2. Mã ghép nối (Token)',
+                                child: TextField(
+                                  key: const ValueKey('secondary_token_input'),
+                                  controller: _remoteTokenCtrl,
+                                  obscureText: _obscureRemoteToken,
+                                  maxLines: 1,
+                                  textAlignVertical: TextAlignVertical.center,
+                                  style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace'),
+                                  decoration: InputDecoration(
+                                    hintText: 'Dán Mã ghép nối từ App Chính...',
+                                    hintStyle: const TextStyle(fontSize: 11.5),
+                                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 16),
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    constraints: const BoxConstraints(minHeight: 34, maxHeight: 34),
+                                    prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscureRemoteToken ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                        size: 16,
+                                        color: AppColors.textMuted,
+                                      ),
+                                      onPressed: () => setState(() => _obscureRemoteToken = !_obscureRemoteToken),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 34,
+                      child: ElevatedButton.icon(
+                        key: const ValueKey('secondary_connect_button'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          minimumSize: const Size(0, 34),
+                          fixedSize: const Size.fromHeight(34),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                        ),
+                        icon: _isApplyingRemote
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.sync_rounded, size: 15),
+                        label: Text(
+                          _isApplyingRemote
+                              ? 'Đang kết nối...'
+                              : (_manualConnectMode == 'paste'
+                                  ? 'Kết nối bằng chuỗi đã dán'
+                                  : 'Kết nối tới App Chính'),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: _isApplyingRemote ? null : _connectSecondaryToPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInternetTunnelPanel({
+    required GatewayProvider gateway,
+    required bool isCompactMobile,
+  }) {
+    final mode = gateway.tunnelMode;
+    final state = gateway.tunnelState;
+    final Color badgeColor = switch (state) {
+      RemoteTunnelState.running => AppColors.accent,
+      RemoteTunnelState.starting || RemoteTunnelState.installing => AppColors.accentCyan,
+      RemoteTunnelState.error => AppColors.danger,
+      RemoteTunnelState.stopped => AppColors.textMuted,
+    };
+    final String badgeText = switch (state) {
+      RemoteTunnelState.running => 'Đang hoạt động',
+      RemoteTunnelState.starting => 'Đang kết nối...',
+      RemoteTunnelState.installing => 'Đang tải...',
+      RemoteTunnelState.error => 'Lỗi Tunnel',
+      RemoteTunnelState.stopped => mode == RemoteTunnelMode.off ? 'Tắt (Chỉ LAN)' : 'Chưa chạy',
+    };
+
+    Widget modeTile({
+      required Key key,
+      required RemoteTunnelMode targetMode,
+      required IconData icon,
+      required String label,
+    }) {
+      final selected = mode == targetMode;
+      return InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(4),
+        onTap: gateway.isInternetTunnelBusy
+            ? null
+            : () async {
+                final autoStart = targetMode == RemoteTunnelMode.cloudflareQuick ||
+                    targetMode == RemoteTunnelMode.off ||
+                    (targetMode == RemoteTunnelMode.customUrl && _tunnelCustomUrlCtrl.text.trim().isNotEmpty) ||
+                    (targetMode == RemoteTunnelMode.cloudflareNamed &&
+                        _tunnelNamedTokenCtrl.text.trim().isNotEmpty &&
+                        _tunnelCustomUrlCtrl.text.trim().isNotEmpty);
+                await gateway.setTunnelMode(targetMode, autoStart: autoStart);
+                if (!mounted) return;
+                if (targetMode == RemoteTunnelMode.off) {
+                  AppToast.info(context, 'Đã tắt đường hầm Internet (chỉ kết nối trong mạng LAN).');
+                }
+              },
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.primary.withValues(alpha: 0.22) : AppColors.bgDark,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: selected ? AppColors.primaryLight : AppColors.borderDark,
+              width: selected ? 1.2 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 13.5, color: selected ? AppColors.primaryLight : AppColors.textMuted),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                    color: selected ? AppColors.textWhite : AppColors.textMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.inputBg,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: gateway.isInternetTunnelRunning
+              ? AppColors.accent.withValues(alpha: 0.45)
+              : AppColors.borderDark,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.public_rounded,
+                size: 15,
+                color: gateway.isInternetTunnelRunning ? AppColors.accent : AppColors.accentCyan,
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Kết nối từ bất kỳ đâu qua Internet (4G/5G / Khác mạng)',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(3),
+                  border: Border.all(color: badgeColor.withValues(alpha: 0.45), width: 0.8),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildAlignedGrid(
+            columns: isCompactMobile ? 2 : 4,
+            spacing: 6,
+            children: [
+              modeTile(
+                key: const ValueKey('tunnel_mode_off'),
+                targetMode: RemoteTunnelMode.off,
+                icon: Icons.lan_outlined,
+                label: 'Chỉ LAN',
+              ),
+              modeTile(
+                key: const ValueKey('tunnel_mode_quick'),
+                targetMode: RemoteTunnelMode.cloudflareQuick,
+                icon: Icons.bolt_rounded,
+                label: 'Internet 1 chạm',
+              ),
+              modeTile(
+                key: const ValueKey('tunnel_mode_named'),
+                targetMode: RemoteTunnelMode.cloudflareNamed,
+                icon: Icons.dns_rounded,
+                label: 'Domain cố định',
+              ),
+              modeTile(
+                key: const ValueKey('tunnel_mode_custom'),
+                targetMode: RemoteTunnelMode.customUrl,
+                icon: Icons.vpn_lock_rounded,
+                label: 'URL / VPN riêng',
+              ),
+            ],
+          ),
+          if (mode == RemoteTunnelMode.cloudflareQuick) ...[
+            const SizedBox(height: 8),
+            if (!RemoteTunnelService.isDesktopTunnelSupported)
+              const Text(
+                'Đường hầm Cloudflare 1 chạm hỗ trợ khi App Chính chạy trên máy tính (Linux, Windows, macOS). Trên điện thoại, hãy chọn "URL / VPN riêng" (Tailscale).',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+              )
+            else ...[
+              const Text(
+                'Tự mở đường hầm HTTPS/WSS mã hóa qua Cloudflare (miễn phí, không cần tài khoản hay mở port router). Địa chỉ sẽ thay đổi nếu khởi động lại máy.',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+              ),
+              const SizedBox(height: 8),
+              if (!gateway.hasCloudflaredBinary && state != RemoteTunnelState.installing)
+                SizedBox(
+                  height: 32,
+                  child: ElevatedButton.icon(
+                    key: const ValueKey('install_cloudflared_button'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size(0, 32),
+                      fixedSize: const Size.fromHeight(32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    ),
+                    icon: const Icon(Icons.download_rounded, size: 14),
+                    label: const Text(
+                      'Tải cloudflared tự động (không cần sudo)',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () async {
+                      final ok = await gateway.installCloudflared();
+                      if (!mounted) return;
+                      if (ok) {
+                        AppToast.success(context, 'Đã cài đặt cloudflared và khởi chạy đường hầm Internet!');
+                      } else {
+                        AppToast.error(context, gateway.tunnelErrorMessage);
+                      }
+                    },
+                  ),
+                ),
+              if (state == RemoteTunnelState.installing) ...[
+                LinearProgressIndicator(
+                  value: gateway.cloudflaredDownloadProgress > 0 ? gateway.cloudflaredDownloadProgress : null,
+                  minHeight: 4,
+                  backgroundColor: AppColors.borderDark,
+                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                ),
+                const SizedBox(height: 6),
+              ],
+              if (gateway.tunnelStatusMessage.isNotEmpty)
+                Row(
+                  children: [
+                    if (gateway.isInternetTunnelBusy) ...[
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.8, color: AppColors.accentCyan),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Text(
+                        gateway.tunnelStatusMessage,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: gateway.isInternetTunnelRunning ? AppColors.accent : AppColors.accentCyan,
+                        ),
+                      ),
+                    ),
+                    if (!gateway.isInternetTunnelBusy)
+                      IconButton(
+                        tooltip: 'Khởi tạo lại đường hầm Internet',
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.refresh_rounded, size: 15, color: AppColors.accentCyan),
+                        onPressed: () => gateway.restartTunnel(),
+                      ),
+                  ],
+                ),
+            ],
+          ],
+          if (mode == RemoteTunnelMode.cloudflareNamed) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Dùng Cloudflare Zero Trust Tunnel để cố định tên miền mãi mãi (không đổi sau khi khởi động lại máy). Trỏ Public Hostname về http://127.0.0.1:<Port>.',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+            ),
+            const SizedBox(height: 8),
+            _buildLabeledField(
+              label: 'Tên miền cố định của App Chính (https://...)',
+              child: TextField(
+                key: const ValueKey('named_tunnel_url_input'),
+                controller: _tunnelCustomUrlCtrl,
+                maxLines: 1,
+                textAlignVertical: TextAlignVertical.center,
+                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                decoration: const InputDecoration(
+                  hintText: 'https://agent.tenmiencuaban.com',
+                  hintStyle: TextStyle(fontSize: 11.5),
+                  prefixIcon: Icon(Icons.public_rounded, size: 15),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                  constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                  prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildLabeledField(
+              label: 'Cloudflare Tunnel Token',
+              child: TextField(
+                key: const ValueKey('named_tunnel_token_input'),
+                controller: _tunnelNamedTokenCtrl,
+                obscureText: _obscureTunnelToken,
+                maxLines: 1,
+                textAlignVertical: TextAlignVertical.center,
+                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                decoration: InputDecoration(
+                  hintText: 'eyJhIjoi... (Token từ Cloudflare Zero Trust)',
+                  hintStyle: const TextStyle(fontSize: 11.5),
+                  prefixIcon: const Icon(Icons.vpn_key_outlined, size: 15),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                  constraints: const BoxConstraints(minHeight: 34, maxHeight: 34),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscureTunnelToken ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                      size: 15,
+                      color: AppColors.textMuted,
+                    ),
+                    onPressed: () => setState(() => _obscureTunnelToken = !_obscureTunnelToken),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: isCompactMobile ? double.infinity : null,
+              height: 32,
+              child: ElevatedButton.icon(
+                key: const ValueKey('apply_named_tunnel_button'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size(0, 32),
+                  fixedSize: const Size.fromHeight(32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                ),
+                icon: const Icon(Icons.cloud_done_rounded, size: 14),
+                label: const Text(
+                  'Lưu & Kết nối Domain cố định',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                ),
+                onPressed: gateway.isInternetTunnelBusy
+                    ? null
+                    : () async {
+                        final ok = await gateway.applyNamedTunnel(
+                          tunnelToken: _tunnelNamedTokenCtrl.text.trim(),
+                          publicUrl: _tunnelCustomUrlCtrl.text.trim(),
+                        );
+                        if (!mounted) return;
+                        if (ok) {
+                          AppToast.success(context, 'Đã kết nối Domain cố định: ${gateway.publicTunnelUrl}');
+                        } else {
+                          AppToast.error(
+                            context,
+                            gateway.tunnelErrorMessage.isNotEmpty
+                                ? gateway.tunnelErrorMessage
+                                : 'Không thể kết nối Named Tunnel.',
+                          );
+                        }
+                      },
+              ),
+            ),
+          ],
+          if (mode == RemoteTunnelMode.customUrl) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Dùng địa chỉ công khai riêng (VPS Reverse Proxy, Nginx, FRP, hoặc mạng VPN Mesh Tailscale/ZeroTier).',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: _buildLabeledField(
+                    label: 'Địa chỉ công khai / IP VPN Mesh',
+                    child: TextField(
+                      key: const ValueKey('custom_public_url_input'),
+                      controller: _tunnelCustomUrlCtrl,
+                      maxLines: 1,
+                      textAlignVertical: TextAlignVertical.center,
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                      decoration: const InputDecoration(
+                        hintText: 'https://agent.domain.com hoặc http://100.x.x.x:8765',
+                        hintStyle: TextStyle(fontSize: 11.5),
+                        prefixIcon: Icon(Icons.link_rounded, size: 15),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                        constraints: BoxConstraints(minHeight: 34, maxHeight: 34),
+                        prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  key: const ValueKey('apply_custom_url_button'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    minimumSize: const Size(0, 34),
+                    fixedSize: const Size.fromHeight(34),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                  ),
+                  onPressed: () async {
+                    final ok = await gateway.applyCustomPublicUrl(_tunnelCustomUrlCtrl.text.trim());
+                    if (!mounted) return;
+                    if (ok) {
+                      AppToast.success(context, 'Đã áp dụng địa chỉ truy cập từ xa: ${gateway.publicTunnelUrl}');
+                    } else {
+                      AppToast.warning(context, 'Vui lòng nhập địa chỉ URL hợp lệ.');
+                    }
+                  },
+                  child: const Text('Áp dụng', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            if (gateway.vpnIps.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: gateway.vpnIps.map((vpnIp) {
+                  final candidate = 'http://$vpnIp:${gateway.primaryHostPort}';
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () async {
+                      _tunnelCustomUrlCtrl.text = candidate;
+                      await gateway.applyCustomPublicUrl(candidate);
+                      if (!mounted) return;
+                      AppToast.success(context, 'Đã chọn địa chỉ Tailscale VPN: $candidate');
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.5)),
+                      ),
+                      child: Text(
+                        'Chọn nhanh Tailscale: $candidate',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: AppColors.primaryLight,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+          if (gateway.tunnelErrorMessage.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              gateway.tunnelErrorMessage,
+              style: const TextStyle(fontSize: 11, color: AppColors.danger, height: 1.35),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoleSwitchBtn({
+    Key? key,
+    required bool selected,
+    required IconData icon,
+    required String label,
+    bool expand = false,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      key: key,
+      borderRadius: BorderRadius.circular(4),
+      onTap: onTap,
+      child: Container(
+        height: 32,
+        padding: EdgeInsets.symmetric(horizontal: expand ? 8 : 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 14, color: selected ? AppColors.textWhite : AppColors.textMuted),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                  color: selected ? AppColors.textWhite : AppColors.textMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLabeledField({required String label, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11.5, color: AppColors.textDim),
+        ),
+        const SizedBox(height: 6),
+        SizedBox(height: 34, child: child),
+      ],
+    );
+  }
+
+  /// Lưới đồng đều thẳng hàng theo số cột cố định với khoảng cách gọn gàng.
+  Widget _buildAlignedGrid({
+    required int columns,
+    required double spacing,
+    required List<Widget> children,
+  }) {
+    final rows = <Widget>[];
+    for (var i = 0; i < children.length; i += columns) {
+      final rowItems = <Widget>[];
+      for (var c = 0; c < columns; c++) {
+        if (c > 0) rowItems.add(SizedBox(width: spacing));
+        final idx = i + c;
+        rowItems.add(
+          Expanded(
+            child: idx < children.length ? children[idx] : const SizedBox.shrink(),
+          ),
+        );
+      }
+      if (rows.isNotEmpty) rows.add(SizedBox(height: spacing));
+      rows.add(Row(children: rowItems));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
     );
   }
 
@@ -851,19 +3093,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required IconData icon,
     required String label,
     int badgeCount = 0,
+    bool expand = false,
   }) {
     final isSelected = _selectedTab == id;
     return InkWell(
       borderRadius: BorderRadius.circular(4),
       onTap: () => setState(() => _selectedTab = id),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        height: 32,
+        padding: EdgeInsets.symmetric(horizontal: expand ? 8 : 12),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
@@ -871,12 +3117,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: isSelected ? AppColors.textWhite : AppColors.textMuted,
             ),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? AppColors.textWhite : AppColors.textMuted,
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? AppColors.textWhite : AppColors.textMuted,
+                ),
               ),
             ),
             if (badgeCount > 0) ...[
@@ -903,36 +3153,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildGoogleModelChip(String model) {
+  Widget _buildGoogleModelTile(String model) {
     final isSelected = _googleStudioModelCtrl.text.trim() == model;
-    return ActionChip(
-      backgroundColor: isSelected ? AppColors.primary.withValues(alpha: 0.25) : AppColors.inputBg,
-      side: BorderSide(color: isSelected ? AppColors.primaryLight : AppColors.borderDark),
-      label: Text(
-        model,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          color: isSelected ? AppColors.accentCyan : AppColors.textWhite,
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: () => _applyGoogleModelPreset(model),
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.centerLeft,
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.22) : AppColors.inputBg,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryLight : AppColors.borderDark,
+            width: isSelected ? 1.1 : 0.8,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.auto_awesome_rounded,
+              size: 13,
+              color: isSelected ? AppColors.accentCyan : AppColors.textDim,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                model,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? AppColors.accentCyan : AppColors.textWhite,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      onPressed: () => _applyGoogleModelPreset(model),
     );
   }
 
-  Widget _buildPresetChip(String label, String url, String model) {
-    return ActionChip(
-      backgroundColor: AppColors.inputBg,
-      side: const BorderSide(color: AppColors.borderDark),
-      label: Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textWhite)),
-      onPressed: () => _applyPreset(label, url, model),
+  Widget _buildPresetTile(String label, String url, String model) {
+    final isSelected = _baseUrlCtrl.text.trim() == url && _modelCtrl.text.trim() == model;
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: () => _applyPreset(label, url, model),
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.centerLeft,
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.22) : AppColors.inputBg,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryLight : AppColors.borderDark,
+            width: isSelected ? 1.1 : 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? AppColors.primaryLight : AppColors.textWhite,
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildInfoBox(String title, String desc, {String? tooltip}) {
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.inputBg,
         borderRadius: BorderRadius.circular(4),
@@ -948,7 +3246,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textWhite),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Tooltip(
             message: tooltip ?? desc,
             waitDuration: const Duration(milliseconds: 400),

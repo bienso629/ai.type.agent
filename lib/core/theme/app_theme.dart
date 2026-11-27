@@ -182,6 +182,28 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 500),
+        showDuration: const Duration(seconds: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        textStyle: GoogleFonts.inter(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textWhite,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: AppColors.borderLight, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+      ),
       scrollbarTheme: ScrollbarThemeData(
         thumbVisibility: WidgetStateProperty.all(true),
         trackVisibility: WidgetStateProperty.all(false),

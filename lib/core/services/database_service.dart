@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactoryFfi;
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
@@ -130,25 +131,27 @@ class DatabaseService {
   }
 
   Future<String> _resolveDbPath() async {
-    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
-    if (home.isNotEmpty) {
-      final appDir = Directory(p.join(home, '.ai_type_agent'));
-      if (!appDir.existsSync()) {
-        try {
-          appDir.createSync(recursive: true);
-        } catch (_) {}
-      }
-      final targetPath = p.join(appDir.path, 'chat_history.db');
-      final targetFile = File(targetPath);
-      if (!targetFile.existsSync()) {
-        final legacyDb = File(p.join(home, '.tadu_ai_agent', 'chat_history.db'));
-        if (legacyDb.existsSync()) {
+    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+      if (home.isNotEmpty) {
+        final appDir = Directory(p.join(home, '.ai_type_agent'));
+        if (!appDir.existsSync()) {
           try {
-            legacyDb.copySync(targetPath);
+            appDir.createSync(recursive: true);
           } catch (_) {}
         }
+        final targetPath = p.join(appDir.path, 'chat_history.db');
+        final targetFile = File(targetPath);
+        if (!targetFile.existsSync()) {
+          final legacyDb = File(p.join(home, '.tadu_ai_agent', 'chat_history.db'));
+          if (legacyDb.existsSync()) {
+            try {
+              legacyDb.copySync(targetPath);
+            } catch (_) {}
+          }
+        }
+        return targetPath;
       }
-      return targetPath;
     }
 
     try {
@@ -772,7 +775,7 @@ class DatabaseService {
           final srcDoc = t['source_doc']?.toString() ?? '';
           await txn.insert('work_schedule_tasks', {
             'session_id': sessionId,
-            'task_code': t['id']?.toString() ?? 'T${i + 1}',
+            'task_code': t['id']?.toString() ?? t['task_code']?.toString() ?? 'T${i + 1}',
             'title': title.isNotEmpty ? _enc.encryptValue(title) : '',
             'description': desc.isNotEmpty ? _enc.encryptValue(desc) : '',
             'start_date': t['start_date']?.toString() ?? '',

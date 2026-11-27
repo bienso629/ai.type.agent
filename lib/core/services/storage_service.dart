@@ -1,4 +1,16 @@
+import 'dart:io';
+import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../constants/api_constants.dart';
+
+/// Vai trò hoạt động của ứng dụng trong mô hình App Chính <-> App Phụ.
+enum AppRole {
+  /// App Chính: chạy cục bộ đầy đủ và có thể mở máy chủ điều khiển từ xa cho App Phụ kết nối.
+  primary,
+
+  /// App Phụ: kết nối từ xa tới App Chính để điều khiển toàn bộ hội thoại, AI Agent, lịch việc, máy chủ và terminal.
+  secondary,
+}
 
 class StorageService {
   static final StorageService _instance = StorageService._internal();
@@ -10,6 +22,14 @@ class StorageService {
 
   static const String _keyGatewayUrl = 'gateway_url';
   static const String _keySecretToken = 'secret_token';
+  static const String _keyAppRole = 'app_role';
+  static const String _keyPrimaryHostEnabled = 'primary_host_enabled';
+  static const String _keyPrimaryHostPort = 'primary_host_port';
+  static const String _keyPrimaryHostToken = 'primary_host_token';
+  static const String _keyPrimaryHostName = 'primary_host_name';
+  static const String _keyPrimaryTunnelMode = 'primary_tunnel_mode';
+  static const String _keyPrimaryTunnelNamedToken = 'primary_tunnel_named_token';
+  static const String _keyPrimaryTunnelCustomUrl = 'primary_tunnel_custom_url';
   static const String _keyActiveServerId = 'active_server_id';
   static const String _keyDefaultModel = 'default_ai_model';
   static const String _keyBiometricEnabled = 'biometric_enabled';
@@ -18,6 +38,10 @@ class StorageService {
   static const String _keyUserName = 'user_name';
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyRememberMe = 'remember_me';
+  static const String _keyAiTypeAdminApiUrl = 'aitype_admin_api_url';
+  static const String _keyAiTypeAdminAuthMode = 'aitype_admin_auth_mode';
+  static const String _keyAiTypeAdminToken = 'aitype_admin_token';
+  static const String _keyAiTypeAdminUser = 'aitype_admin_user';
 
   Future<void> init() async {
     if (_isInitialized) return;
@@ -25,10 +49,205 @@ class StorageService {
     _isInitialized = true;
   }
 
-  // Gateway URL
+  // App Role (Primary / Secondary)
+  Future<AppRole> getAppRole() async {
+    await init();
+    final raw = _prefs.getString(_keyAppRole);
+    if (raw == 'secondary') return AppRole.secondary;
+    return AppRole.primary;
+  }
+
+  Future<void> setAppRole(AppRole role) async {
+    await init();
+    await _prefs.setString(_keyAppRole, role == AppRole.secondary ? 'secondary' : 'primary');
+  }
+
+  // Primary Host Remote Control Server Settings
+  Future<bool> getPrimaryHostEnabled() async {
+    await init();
+    return _prefs.getBool(_keyPrimaryHostEnabled) ?? false;
+  }
+
+  Future<void> setPrimaryHostEnabled(bool enabled) async {
+    await init();
+    await _prefs.setBool(_keyPrimaryHostEnabled, enabled);
+  }
+
+  Future<int> getPrimaryHostPort() async {
+    await init();
+    final p = _prefs.getInt(_keyPrimaryHostPort) ?? ApiConstants.defaultPrimaryHostPort;
+    return (p >= 1024 && p <= 65535) ? p : ApiConstants.defaultPrimaryHostPort;
+  }
+
+  Future<void> setPrimaryHostPort(int port) async {
+    await init();
+    final safePort = (port >= 1024 && port <= 65535) ? port : ApiConstants.defaultPrimaryHostPort;
+    await _prefs.setInt(_keyPrimaryHostPort, safePort);
+  }
+
+  static String generateSecureToken({int bytes = 16}) {
+    final rng = Random.secure();
+    final buf = StringBuffer();
+    for (var i = 0; i < bytes; i++) {
+      buf.write(rng.nextInt(256).toRadixString(16).padLeft(2, '0'));
+    }
+    return buf.toString();
+  }
+
+  Future<String> getPrimaryHostToken() async {
+    await init();
+    var token = _prefs.getString(_keyPrimaryHostToken)?.trim() ?? '';
+    if (token.isEmpty) {
+      token = generateSecureToken();
+      await _prefs.setString(_keyPrimaryHostToken, token);
+    }
+    return token;
+  }
+
+  Future<void> setPrimaryHostToken(String token) async {
+    await init();
+    final clean = token.trim();
+    if (clean.isEmpty) return;
+    await _prefs.setString(_keyPrimaryHostToken, clean);
+  }
+
+  Future<String> regeneratePrimaryHostToken() async {
+    final next = generateSecureToken();
+    await setPrimaryHostToken(next);
+    return next;
+  }
+
+  Future<String> getPrimaryHostName() async {
+    await init();
+    final saved = _prefs.getString(_keyPrimaryHostName)?.trim() ?? '';
+    if (saved.isNotEmpty) return saved;
+    try {
+      final host = Platform.localHostname.trim();
+      if (host.isNotEmpty) return host;
+    } catch (_) {}
+    return 'AI Type Agent (${Platform.operatingSystem.toUpperCase()})';
+  }
+
+  Future<void> setPrimaryHostName(String name) async {
+    await init();
+    final clean = name.trim();
+    if (clean.isEmpty) {
+      await _prefs.remove(_keyPrimaryHostName);
+    } else {
+      await _prefs.setString(_keyPrimaryHostName, clean);
+    }
+  }
+
+  // Primary Internet Tunnel Settings (Truy cập từ bất kỳ đâu qua Internet)
+  Future<String> getPrimaryTunnelMode() async {
+    await init();
+    return _prefs.getString(_keyPrimaryTunnelMode) ?? 'off';
+  }
+
+  Future<void> setPrimaryTunnelMode(String mode) async {
+    await init();
+    await _prefs.setString(_keyPrimaryTunnelMode, mode.trim());
+  }
+
+  Future<String> getPrimaryTunnelNamedToken() async {
+    await init();
+    return _prefs.getString(_keyPrimaryTunnelNamedToken) ?? '';
+  }
+
+  Future<void> setPrimaryTunnelNamedToken(String token) async {
+    await init();
+    final clean = token.trim();
+    if (clean.isEmpty) {
+      await _prefs.remove(_keyPrimaryTunnelNamedToken);
+    } else {
+      await _prefs.setString(_keyPrimaryTunnelNamedToken, clean);
+    }
+  }
+
+  Future<String> getPrimaryTunnelCustomUrl() async {
+    await init();
+    return _prefs.getString(_keyPrimaryTunnelCustomUrl) ?? '';
+  }
+
+  Future<void> setPrimaryTunnelCustomUrl(String url) async {
+    await init();
+    final clean = url.trim();
+    if (clean.isEmpty) {
+      await _prefs.remove(_keyPrimaryTunnelCustomUrl);
+    } else {
+      await _prefs.setString(_keyPrimaryTunnelCustomUrl, clean);
+    }
+  }
+
+  /// Tách chuỗi ghép nối nhanh dạng `http://192.168.1.10:8765#<token>`,
+  /// `https://xxx.trycloudflare.com#<token>&lan=http://192.168.1.10:8765` hoặc `aitype://...`.
+  static ({String url, String token, List<String> fallbackUrls}) parsePairingString(String raw) {
+    var text = raw.trim();
+    if (text.isEmpty) return (url: '', token: '', fallbackUrls: const []);
+    if (text.startsWith('aitype://')) {
+      text = 'http://${text.substring('aitype://'.length)}';
+    }
+    String urlPart = text;
+    String tokenPart = '';
+    final fallbacks = <String>[];
+
+    String normalizeUrl(String u) {
+      var clean = u.trim();
+      if (clean.isEmpty) return '';
+      if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+        clean = 'http://$clean';
+      }
+      while (clean.endsWith('/')) {
+        clean = clean.substring(0, clean.length - 1);
+      }
+      return clean;
+    }
+
+    final hashIdx = text.indexOf('#');
+    if (hashIdx != -1) {
+      urlPart = text.substring(0, hashIdx).trim();
+      final frag = text.substring(hashIdx + 1).trim();
+      if (frag.contains('&')) {
+        final parts = frag.split('&');
+        tokenPart = parts.first.trim();
+        for (var i = 1; i < parts.length; i++) {
+          final kv = parts[i].trim();
+          final eq = kv.indexOf('=');
+          if (eq <= 0) continue;
+          final k = kv.substring(0, eq).trim().toLowerCase();
+          final v = Uri.decodeComponent(kv.substring(eq + 1).trim());
+          if ((k == 'lan' || k == 'vpn' || k == 'alt') && v.isNotEmpty) {
+            final norm = normalizeUrl(v);
+            if (norm.isNotEmpty && !fallbacks.contains(norm)) {
+              fallbacks.add(norm);
+            }
+          }
+        }
+      } else {
+        tokenPart = frag;
+      }
+    } else {
+      final uri = Uri.tryParse(text);
+      if (uri != null && uri.queryParameters.containsKey('token')) {
+        tokenPart = uri.queryParameters['token']?.trim() ?? '';
+        urlPart = Uri(
+          scheme: uri.scheme,
+          userInfo: uri.userInfo,
+          host: uri.host,
+          port: uri.hasPort ? uri.port : null,
+          path: uri.path,
+        ).toString();
+      }
+    }
+    urlPart = normalizeUrl(urlPart);
+    fallbacks.removeWhere((u) => u == urlPart);
+    return (url: urlPart, token: tokenPart, fallbackUrls: fallbacks);
+  }
+
+  // Gateway URL (Địa chỉ App Chính khi thiết bị ở vai trò App Phụ)
   Future<String> getGatewayUrl() async {
     await init();
-    return _prefs.getString(_keyGatewayUrl) ?? 'http://127.0.0.1:8888';
+    return _prefs.getString(_keyGatewayUrl) ?? '';
   }
 
   Future<void> setGatewayUrl(String url) async {
@@ -200,6 +419,47 @@ class StorageService {
     await _prefs.remove(_keyUserEmail);
     await _prefs.remove(_keyUserName);
     await _prefs.setBool(_keyIsLoggedIn, false);
+  }
+
+  // AI.Type Admin Panel Credentials (Chỉ lưu cục bộ trong Agent Coder nội bộ)
+  Future<String> getAiTypeAdminApiUrl() async {
+    await init();
+    final saved = _prefs.getString(_keyAiTypeAdminApiUrl)?.trim() ?? '';
+    return saved.isNotEmpty ? saved : 'https://apiv3.type.vn/v1';
+  }
+
+  Future<String> getAiTypeAdminAuthMode() async {
+    await init();
+    return _prefs.getString(_keyAiTypeAdminAuthMode) ?? 'session';
+  }
+
+  Future<String> getAiTypeAdminToken() async {
+    await init();
+    return _prefs.getString(_keyAiTypeAdminToken)?.trim() ?? '';
+  }
+
+  Future<String> getAiTypeAdminUser() async {
+    await init();
+    return _prefs.getString(_keyAiTypeAdminUser)?.trim() ?? '';
+  }
+
+  Future<void> setAiTypeAdminCredentials({
+    required String apiUrl,
+    required String mode,
+    required String token,
+    required String user,
+  }) async {
+    await init();
+    await _prefs.setString(_keyAiTypeAdminApiUrl, apiUrl.trim());
+    await _prefs.setString(_keyAiTypeAdminAuthMode, mode.trim());
+    await _prefs.setString(_keyAiTypeAdminToken, token.trim());
+    await _prefs.setString(_keyAiTypeAdminUser, user.trim());
+  }
+
+  Future<void> clearAiTypeAdminAuth() async {
+    await init();
+    await _prefs.remove(_keyAiTypeAdminToken);
+    await _prefs.remove(_keyAiTypeAdminUser);
   }
 
   static String sanitizeUserKey(String? user) {

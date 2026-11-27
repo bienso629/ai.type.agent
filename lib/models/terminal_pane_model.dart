@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_pty_desktop/flutter_pty.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xterm/xterm.dart';
 import 'server_model.dart';
 
@@ -25,6 +26,7 @@ class TerminalPaneItem {
   Process? fallbackProcess;
   SSHClient? sshClient;
   SSHSession? sshSession;
+  WebSocketChannel? remoteWs;
   bool isConnected = false;
   bool isConnecting = false;
 
@@ -114,6 +116,10 @@ class TerminalPaneItem {
     try {
       sshClient?.close();
       sshClient = null;
+    } catch (_) {}
+    try {
+      remoteWs?.sink.close();
+      remoteWs = null;
     } catch (_) {}
 
     childPane?.cleanup();

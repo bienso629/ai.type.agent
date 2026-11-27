@@ -15,6 +15,7 @@ import 'local_config_service.dart';
 import 'database_service.dart';
 import 'native_ai_service.dart';
 import 'native_ssh_service.dart';
+import 'cli_scanner_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -29,15 +30,15 @@ class ApiService {
   final NativeAiService _ai = NativeAiService();
   final NativeSshService _ssh = NativeSshService();
 
+  Future<bool> isNativeMode() => _isNativeMode();
+
   Future<bool> _isNativeMode() async {
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      return true;
+    final role = await _storage.getAppRole();
+    if (role == AppRole.secondary) {
+      final gatewayUrl = await _storage.getGatewayUrl();
+      return gatewayUrl.trim().isEmpty;
     }
-    final gatewayUrl = await _storage.getGatewayUrl();
-    // Use Native Mode if gateway is default localhost or empty
-    return gatewayUrl.isEmpty ||
-        gatewayUrl.contains('127.0.0.1:8888') ||
-        gatewayUrl.contains('localhost:8888');
+    return true;
   }
 
   Future<Map<String, String>> _getHeaders({bool isJson = true}) async {
@@ -63,17 +64,76 @@ class ApiService {
     return await _storage.getGatewayUrl();
   }
 
-  // 1. Connectivity & Ping Check
+  // 1. Connectivity & Ping Check (Handshake với App Chính khi ở vai trò App Phụ)
+  Future<Map<String, dynamic>?> getRemoteHostInfo() async {
+    if (await _isNativeMode()) {
+      return {
+        'ok': true,
+        'role': 'primary',
+        'device_name': await _storage.getPrimaryHostName(),
+        'os': Platform.operatingSystem,
+        'app_version': '1.5.10',
+      };
+    }
+    try {
+      final baseUrl = await _getBaseUrl();
+      if (baseUrl.isEmpty) return null;
+      final res = await _client.get(
+        Uri.parse('$baseUrl${ApiConstants.epRemoteInfo}'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<List<LocalCliAgent>> getRemoteCliAgents() async {
+    if (await _isNativeMode()) {
+      return await CliScannerService().scanInstalledAgents();
+    }
+    try {
+      final baseUrl = await _getBaseUrl();
+      if (baseUrl.isEmpty) return const [];
+      final res = await _client.get(
+        Uri.parse('$baseUrl${ApiConstants.epModels}'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (data is Map && data['cli_agents'] is List) {
+          return (data['cli_agents'] as List)
+              .whereType<Map>()
+              .map(
+                (m) => LocalCliAgent(
+                  id: m['id']?.toString() ?? '',
+                  binary: m['binary']?.toString() ?? '',
+                  path: m['path']?.toString() ?? '',
+                  label: m['label']?.toString() ?? m['id']?.toString() ?? '',
+                  version: m['version']?.toString(),
+                ),
+              )
+              .where((a) => a.id.isNotEmpty)
+              .toList();
+        }
+      }
+    } catch (_) {}
+    return const [];
+  }
+
   Future<bool> checkHealth() async {
     if (await _isNativeMode()) {
       return true;
     }
     try {
       final baseUrl = await _getBaseUrl();
+      if (baseUrl.isEmpty) return false;
       final res = await _client.get(
         Uri.parse('$baseUrl${ApiConstants.epConfig}'),
         headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 4));
+      ).timeout(const Duration(seconds: 8));
       return res.statusCode == 200;
     } catch (_) {
       return false;
@@ -339,6 +399,25 @@ class ApiService {
 
   // 5. Service Logs API
   Future<String> getServerLogs({int lines = 100}) async {
+    if (!await _isNativeMode()) {
+      try {
+        final baseUrl = await _getBaseUrl();
+        final res = await _client.get(
+          Uri.parse('$baseUrl${ApiConstants.epServerLogs}?lines=$lines'),
+          headers: await _getHeaders(),
+        ).timeout(const Duration(seconds: 8));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(res.bodyBytes));
+          if (data is Map && data['logs'] != null) {
+            return data['logs'].toString();
+          }
+          return utf8.decode(res.bodyBytes);
+        }
+        return 'Không thể tải nhật ký từ App Chính (HTTP ${res.statusCode}).';
+      } catch (e) {
+        return 'Lỗi kết nối đọc nhật ký từ App Chính: $e';
+      }
+    }
     try {
       if (Platform.isLinux) {
         final res = await Process.run('bash', [
@@ -491,14 +570,40 @@ class ApiService {
     if (await _isNativeMode()) {
       return await _db.updateSessionServer(sessionId, targetServer, targetServers: targetServers);
     }
-    return true;
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.post(
+        Uri.parse('$baseUrl${ApiConstants.epChatSessions}/${Uri.encodeComponent(sessionId)}/server'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'target_server': targetServer,
+          if (targetServers != null) 'target_servers': targetServers,
+        }),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> updateChatSessionScope(String sessionId, String? scope, {List<String>? docFiles}) async {
     if (await _isNativeMode()) {
       return await _db.updateSessionScope(sessionId, scope, docFiles: docFiles);
     }
-    return true;
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.post(
+        Uri.parse('$baseUrl${ApiConstants.epChatSessions}/${Uri.encodeComponent(sessionId)}/scope'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'working_dir': scope,
+          if (docFiles != null) 'doc_files': docFiles,
+        }),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> renameChatSession(String sessionId, String newTitle) async {
@@ -530,7 +635,146 @@ class ApiService {
     if (await _isNativeMode()) {
       return await _db.deleteAllSessions();
     }
-    return true;
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.delete(
+        Uri.parse('$baseUrl${ApiConstants.epChatSessions}'),
+        headers: await _getHeaders(),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> stopRemoteChat(String sessionId) async {
+    if (await _isNativeMode()) return;
+    try {
+      final baseUrl = await _getBaseUrl();
+      await _client.post(
+        Uri.parse('$baseUrl${ApiConstants.epChatStop}'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'session_id': sessionId}),
+      ).timeout(const Duration(seconds: 4));
+    } catch (_) {}
+  }
+
+  // 8b. Work Schedules API (đồng bộ SQLite cục bộ trên App Chính hoặc gọi từ xa từ App Phụ)
+  Future<Map<String, dynamic>?> getWorkSchedule(String sessionId) async {
+    if (await _isNativeMode()) {
+      return await _db.getWorkSchedule(sessionId);
+    }
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.get(
+        Uri.parse('$baseUrl${ApiConstants.epWorkSchedules}/${Uri.encodeComponent(sessionId)}'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (data is Map && data['schedule'] is Map) {
+          return Map<String, dynamic>.from(data['schedule'] as Map);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<bool> saveWorkSchedule({
+    required String sessionId,
+    required String projectName,
+    required String summary,
+    required List<String> docFiles,
+    DateTime? generatedAt,
+    required List<Map<String, dynamic>> tasks,
+  }) async {
+    if (await _isNativeMode()) {
+      return await _db.saveWorkSchedule(
+        sessionId: sessionId,
+        projectName: projectName,
+        summary: summary,
+        docFiles: docFiles,
+        generatedAt: generatedAt,
+        tasks: tasks,
+      );
+    }
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.post(
+        Uri.parse('$baseUrl${ApiConstants.epWorkSchedules}/${Uri.encodeComponent(sessionId)}'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'project_name': projectName,
+          'summary': summary,
+          'doc_files': docFiles,
+          'generated_at': (generatedAt ?? DateTime.now()).toIso8601String(),
+          'tasks': tasks,
+        }),
+      ).timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteWorkSchedule(String sessionId) async {
+    if (await _isNativeMode()) {
+      return await _db.deleteWorkSchedule(sessionId);
+    }
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.delete(
+        Uri.parse('$baseUrl${ApiConstants.epWorkSchedules}/${Uri.encodeComponent(sessionId)}'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 6));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<int> getPendingWorkScheduleCount(String sessionId) async {
+    if (await _isNativeMode()) {
+      return await _db.getPendingWorkScheduleCount(sessionId);
+    }
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.get(
+        Uri.parse('$baseUrl${ApiConstants.epWorkSchedules}/${Uri.encodeComponent(sessionId)}/pending-count'),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (data is Map && data['count'] != null) {
+          return int.tryParse(data['count'].toString()) ?? 0;
+        }
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  Future<bool> markWorkScheduleTasksDone(
+    String sessionId,
+    List<String> taskCodes, {
+    bool done = true,
+  }) async {
+    if (await _isNativeMode()) {
+      return await _db.markWorkScheduleTasksDone(sessionId, taskCodes, done: done);
+    }
+    try {
+      final baseUrl = await _getBaseUrl();
+      final res = await _client.post(
+        Uri.parse('$baseUrl${ApiConstants.epWorkSchedules}/${Uri.encodeComponent(sessionId)}/done'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'task_codes': taskCodes,
+          'done': done,
+        }),
+      ).timeout(const Duration(seconds: 6));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> togglePinSession(String sessionId, {bool? isPinned}) async {
@@ -571,7 +815,7 @@ class ApiService {
       final res = await _client.get(
         Uri.parse('$baseUrl${ApiConstants.epChatHistory}?$query'),
         headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 6));
+      ).timeout(const Duration(seconds: 12));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
@@ -674,6 +918,7 @@ class ApiService {
         streamCancelled = true;
         innerSub?.cancel();
         streamClient?.close();
+        unawaited(stopRemoteChat(sessionId));
       };
       try {
         final baseUrl = await _getBaseUrl();
@@ -695,6 +940,9 @@ class ApiService {
             }).toList(),
           if (history != null) 'history': history,
           if (workingDir != null) 'working_dir': workingDir,
+          if (docFiles != null && docFiles.isNotEmpty) 'doc_files': docFiles,
+          if (targetServer != null && targetServer.isNotEmpty) 'target_server': targetServer,
+          if (targetServers != null && targetServers.isNotEmpty) 'target_servers': targetServers,
         });
 
         // Chặn treo vĩnh viễn khi không thể kết nối/gửi request tới máy chủ
@@ -707,8 +955,19 @@ class ApiService {
                   const Duration(seconds: 30)),
             );
         if (streamedResponse.statusCode != 200) {
+          String errDetail = 'Server returned error: ${streamedResponse.statusCode}';
+          try {
+            final rawBody = await streamedResponse.stream.bytesToString();
+            final decoded = jsonDecode(rawBody);
+            if (decoded is Map) {
+              final msg = (decoded['error'] ?? decoded['message'])?.toString().trim();
+              if (msg != null && msg.isNotEmpty) {
+                errDetail = msg;
+              }
+            }
+          } catch (_) {}
           streamClient.close();
-          onError('Server returned error: ${streamedResponse.statusCode}');
+          onError(errDetail);
           return;
         }
 
@@ -806,8 +1065,27 @@ class ApiService {
     return controller.stream.listen((_) {});
   }
 
-  // 10. File System Browser APIs (Local Filesystem & SSH Remote)
+  // 10. File System Browser APIs (Local Filesystem, SSH Remote, hoặc App Chính từ xa)
   Future<List<String>> listDirectories({String prefix = ''}) async {
+    if (!await _isNativeMode()) {
+      try {
+        final baseUrl = await _getBaseUrl();
+        final res = await _client.get(
+          Uri.parse('$baseUrl${ApiConstants.epFsListDirs}?prefix=${Uri.encodeComponent(prefix)}'),
+          headers: await _getHeaders(),
+        ).timeout(const Duration(seconds: 6));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(res.bodyBytes));
+          if (data is Map && data['directories'] is List) {
+            return (data['directories'] as List).map((e) => e.toString()).toList();
+          }
+          if (data is List) {
+            return data.map((e) => e.toString()).toList();
+          }
+        }
+      } catch (_) {}
+      return [];
+    }
     try {
       final cfg = await _localConfig.loadConfig();
       final serverIp = cfg['server_ip']?.toString() ?? '127.0.0.1';
@@ -874,6 +1152,30 @@ class ApiService {
     ServerModel? server,
     void Function(int sentBytes, int totalBytes, double progress)? onProgress,
   }) async {
+    // 0. Nếu đang ở chế độ App Phụ -> gửi tệp trực tiếp lên máy App Chính
+    if (!await _isNativeMode()) {
+      final baseUrl = await _getBaseUrl();
+      try {
+        final res = await _client.post(
+          Uri.parse('$baseUrl${ApiConstants.epFsUpload}'),
+          headers: await _getHeaders(),
+          body: jsonEncode({
+            'file_name': fileName,
+            'content_base64': base64Encode(bytes),
+            if (targetDir != null && targetDir.isNotEmpty) 'target_dir': targetDir,
+          }),
+        ).timeout(const Duration(seconds: 30));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(res.bodyBytes));
+          if (onProgress != null) onProgress(bytes.length, bytes.length, 1.0);
+          return data is Map<String, dynamic> ? data : {'status': 'success'};
+        }
+        return {'status': 'error', 'message': 'HTTP ${res.statusCode}'};
+      } catch (e) {
+        return {'status': 'error', 'message': e.toString()};
+      }
+    }
+
     final isLocal = server == null ||
         server.name == 'Local Machine' ||
         server.name == 'Local' ||
@@ -908,36 +1210,13 @@ class ApiService {
     }
 
     // 2. If Remote VPS in Native SSH Mode
-    if (await _isNativeMode()) {
-      return await _ssh.uploadFile(
-        fileName: fileName,
-        bytes: bytes,
-        targetDir: targetDir,
-        server: server,
-        onProgress: onProgress,
-      );
-    }
-    final baseUrl = await _getBaseUrl();
-    try {
-      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl${ApiConstants.epFsUpload}'));
-      final headers = await _getHeaders();
-      request.headers.addAll(headers);
-      if (targetDir != null && targetDir.isNotEmpty) {
-        request.fields['target_dir'] = targetDir;
-      }
-      request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
-
-      final streamedResponse = await _client.send(request);
-      final response = await http.Response.fromStream(streamedResponse);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (onProgress != null) onProgress(bytes.length, bytes.length, 1.0);
-        return data is Map<String, dynamic> ? data : {'status': 'success'};
-      }
-      return {'status': 'error', 'message': 'HTTP ${response.statusCode}'};
-    } catch (e) {
-      return {'status': 'error', 'message': e.toString()};
-    }
+    return await _ssh.uploadFile(
+      fileName: fileName,
+      bytes: bytes,
+      targetDir: targetDir,
+      server: server,
+      onProgress: onProgress,
+    );
   }
 
   Future<Uint8List?> downloadFile({

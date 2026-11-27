@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/yenai/Documents/Projects/Typing/apps/plugins/agent-coder/third_party/flutter_pty/android/.cxx/RelWithDebInfo/671w4b47/arm64-v8a",
+  "command": "/home/yenai/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android21 --sysroot=/home/yenai/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DDART_SHARED_LIB -Dflutter_pty_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -O2 -g -DNDEBUG -fPIC -o CMakeFiles/flutter_pty.dir/flutter_pty.c.o -c /home/yenai/Documents/Projects/Typing/apps/plugins/agent-coder/third_party/flutter_pty/src/flutter_pty.c",
+  "file": "/home/yenai/Documents/Projects/Typing/apps/plugins/agent-coder/third_party/flutter_pty/src/flutter_pty.c"
+}
+]

@@ -1,0 +1,3 @@
+/home/yenai/Documents/Projects/Typing/apps/plugins/agent-coder/third_party/flutter_pty/android/.cxx/RelWithDebInfo/671w4b47/arm64-v8a/CMakeFiles/flutter_pty.dir
+/home/yenai/Documents/Projects/Typing/apps/plugins/agent-coder/third_party/flutter_pty/android/.cxx/RelWithDebInfo/671w4b47/arm64-v8a/CMakeFiles/edit_cache.dir
+/home/yenai/Documents/Projects/Typing/apps/plugins/agent-coder/third_party/flutter_pty/android/.cxx/RelWithDebInfo/671w4b47/arm64-v8a/CMakeFiles/rebuild_cache.dir

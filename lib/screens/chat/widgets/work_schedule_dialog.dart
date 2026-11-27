@@ -254,6 +254,7 @@ class _WorkScheduleDialogState extends State<WorkScheduleDialog> {
 
   late DateTime _focusedMonth;
   late DateTime _selectedDay;
+  bool _mobileShowCalendar = false;
 
   static const _weekdayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
@@ -289,20 +290,33 @@ class _WorkScheduleDialogState extends State<WorkScheduleDialog> {
   // ---------------------------------------------------------------------------
   Future<void> _saveCache() async {
     try {
-      await _db.saveWorkSchedule(
-        sessionId: widget.sessionId,
-        projectName: _projectName,
-        summary: _summary,
-        docFiles: widget.docFiles,
-        generatedAt: _generatedAt,
-        tasks: _tasks.map((t) => t.toJson()).toList(),
-      );
+      if (widget.databaseService != null) {
+        await _db.saveWorkSchedule(
+          sessionId: widget.sessionId,
+          projectName: _projectName,
+          summary: _summary,
+          docFiles: widget.docFiles,
+          generatedAt: _generatedAt,
+          tasks: _tasks.map((t) => t.toJson()).toList(),
+        );
+      } else {
+        await _api.saveWorkSchedule(
+          sessionId: widget.sessionId,
+          projectName: _projectName,
+          summary: _summary,
+          docFiles: widget.docFiles,
+          generatedAt: _generatedAt,
+          tasks: _tasks.map((t) => t.toJson()).toList(),
+        );
+      }
     } catch (_) {}
   }
 
   Future<void> _loadCacheOnly() async {
     try {
-      final data = await _db.getWorkSchedule(widget.sessionId);
+      final data = widget.databaseService != null
+          ? await _db.getWorkSchedule(widget.sessionId)
+          : await _api.getWorkSchedule(widget.sessionId);
       if (data != null) {
         _applyLoadedSchedule(data);
         _generatedAt = DateTime.tryParse(data['generated_at']?.toString() ?? '');
@@ -312,7 +326,9 @@ class _WorkScheduleDialogState extends State<WorkScheduleDialog> {
     setState(() => _isLoadingCache = false);
     if (_tasks.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _promptFocusNode.requestFocus();
+        if (mounted && MediaQuery.sizeOf(context).width >= 640) {
+          _promptFocusNode.requestFocus();
+        }
       });
     }
   }
@@ -899,7 +915,11 @@ except Exception:
         _summary = '';
         _generatedAt = null;
       });
-      await _db.deleteWorkSchedule(widget.sessionId);
+      if (widget.databaseService != null) {
+        await _db.deleteWorkSchedule(widget.sessionId);
+      } else {
+        await _api.deleteWorkSchedule(widget.sessionId);
+      }
     }
   }
 
@@ -994,31 +1014,35 @@ except Exception:
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final isCompactMobile = size.width < 720;
+    final availableHeight = (size.height - viewInsets.bottom - (isCompactMobile ? 36.0 : 48.0)).clamp(320.0, size.height * 0.92);
+
     return Dialog(
       backgroundColor: AppColors.bgDark,
-      insetPadding: const EdgeInsets.all(24),
+      insetPadding: EdgeInsets.all(isCompactMobile ? 10 : 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: const BorderSide(color: AppColors.borderDark),
       ),
       child: SizedBox(
-        width: size.width * 0.92,
-        height: size.height * 0.9,
+        width: isCompactMobile ? size.width - 20 : size.width * 0.92,
+        height: isCompactMobile ? availableHeight : size.height * 0.9,
         child: Column(
           children: [
-            _buildHeader(),
+            _buildHeader(isCompactMobile: isCompactMobile),
             const Divider(height: 1, color: AppColors.borderDark),
-            Expanded(child: _buildBody()),
+            Expanded(child: _buildBody(isCompactMobile: isCompactMobile)),
             const Divider(height: 1, color: AppColors.borderDark),
-            _buildPromptComposer(),
+            _buildPromptComposer(isCompactMobile: isCompactMobile),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader({bool isCompactMobile = false}) {
     final doneCount = _tasks.where((t) => t.done).length;
     final headerTitle = _projectName.isNotEmpty
         ? 'Lịch làm việc - $_projectName'
@@ -1027,7 +1051,7 @@ except Exception:
             : 'Lịch làm việc dự án');
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      padding: EdgeInsets.fromLTRB(isCompactMobile ? 12 : 16, 10, 6, 10),
       child: Row(
         children: [
           Container(
@@ -1039,7 +1063,7 @@ except Exception:
             ),
             child: const Icon(Icons.calendar_month_rounded, size: 18, color: AppColors.primaryLight),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1048,12 +1072,14 @@ except Exception:
                   headerTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                  style: TextStyle(fontSize: isCompactMobile ? 14 : 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _tasks.isEmpty
-                      ? 'Chưa có công việc • Nhập yêu cầu ở khung dưới và bấm "Gửi yêu cầu" để tạo việc chính xác (${widget.model})'
+                      ? (isCompactMobile
+                          ? 'Chưa có công việc • Nhập yêu cầu bên dưới'
+                          : 'Chưa có công việc • Nhập yêu cầu ở khung dưới và bấm "Gửi yêu cầu" để tạo việc chính xác (${widget.model})')
                       : '${_tasks.length} công việc • Hoàn thành $doneCount/${_tasks.length}'
                           '${_generatedAt != null ? ' • Cập nhật ${_ddmm(_generatedAt!)} ${_generatedAt!.hour.toString().padLeft(2, '0')}:${_generatedAt!.minute.toString().padLeft(2, '0')}' : ''}',
                   maxLines: 1,
@@ -1064,25 +1090,32 @@ except Exception:
             ),
           ),
           if (_tasks.isNotEmpty) ...[
-            SizedBox(
-              width: 130,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: _tasks.isEmpty ? 0 : doneCount / _tasks.length,
-                  minHeight: 6,
-                  backgroundColor: AppColors.borderDark,
-                  color: AppColors.accent,
+            if (!isCompactMobile) ...[
+              SizedBox(
+                width: 130,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _tasks.isEmpty ? 0 : doneCount / _tasks.length,
+                    minHeight: 6,
+                    backgroundColor: AppColors.borderDark,
+                    color: AppColors.accent,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: _isGenerating ? null : _confirmClearAllTasks,
-              icon: const Icon(Icons.delete_sweep_outlined, size: 16),
-              label: const Text('Xoá hết', style: TextStyle(fontSize: 12)),
-              style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _isGenerating ? null : _confirmClearAllTasks,
+                icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                label: const Text('Xoá hết', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+              ),
+            ] else
+              IconButton(
+                tooltip: 'Xoá hết công việc',
+                onPressed: _isGenerating ? null : _confirmClearAllTasks,
+                icon: const Icon(Icons.delete_sweep_outlined, size: 18, color: AppColors.danger),
+              ),
           ],
           IconButton(
             tooltip: 'Đóng',
@@ -1094,20 +1127,94 @@ except Exception:
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody({bool isCompactMobile = false}) {
     if (_isLoadingCache) {
       return const Center(child: CircularProgressIndicator());
     }
     return Stack(
       children: [
         Positioned.fill(
-          child: Row(
-            children: [
-              Expanded(flex: 7, child: _buildCalendar()),
-              const VerticalDivider(width: 1, color: AppColors.borderDark),
-              SizedBox(width: 360, child: _buildDayPanel()),
-            ],
-          ),
+          child: isCompactMobile
+              ? Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                      decoration: const BoxDecoration(
+                        color: AppColors.sidebarBg,
+                        border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 0.8)),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: AppColors.inputBg,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: AppColors.borderDark),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () => setState(() => _mobileShowCalendar = false),
+                                child: Container(
+                                  height: 30,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: !_mobileShowCalendar ? AppColors.primary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    'Công việc (${_tasksOn(_selectedDay).length})',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: !_mobileShowCalendar ? FontWeight.bold : FontWeight.w500,
+                                      color: !_mobileShowCalendar ? Colors.white : AppColors.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () => setState(() => _mobileShowCalendar = true),
+                                child: Container(
+                                  height: 30,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: _mobileShowCalendar ? AppColors.primary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    'Lịch tháng ${_focusedMonth.month}/${_focusedMonth.year}',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: _mobileShowCalendar ? FontWeight.bold : FontWeight.w500,
+                                      color: _mobileShowCalendar ? Colors.white : AppColors.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: _mobileShowCalendar
+                          ? _buildCalendar(isCompactMobile: true)
+                          : _buildDayPanel(),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(flex: 7, child: _buildCalendar(isCompactMobile: false)),
+                    const VerticalDivider(width: 1, color: AppColors.borderDark),
+                    SizedBox(width: 360, child: _buildDayPanel()),
+                  ],
+                ),
         ),
         if (_isGenerating)
           Positioned.fill(
@@ -1120,12 +1227,27 @@ except Exception:
     );
   }
 
-  Widget _buildPromptComposer() {
+  Widget _buildPromptComposer({bool isCompactMobile = false}) {
     final canSubmit = !_isGenerating && _promptController.text.trim().isNotEmpty;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final maxAllowedHeight = (screenHeight * 0.38).clamp(110.0, 320.0);
-    final effectiveHeight = _textareaHeight.clamp(96.0, maxAllowedHeight);
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 80;
+    final maxAllowedHeight = isCompactMobile
+        ? (keyboardOpen ? 92.0 : (screenHeight * 0.24).clamp(90.0, 180.0))
+        : (screenHeight * 0.38).clamp(110.0, 320.0);
+    final minAllowedHeight = isCompactMobile ? 76.0 : 96.0;
+    final effectiveHeight = (isCompactMobile && _textareaHeight == 124.0
+            ? (keyboardOpen ? 82.0 : 94.0)
+            : _textareaHeight)
+        .clamp(minAllowedHeight, maxAllowedHeight);
     final isFocused = _promptFocusNode.hasFocus;
+
+    final placeholderText = isCompactMobile
+        ? 'Nhập yêu cầu hoặc dán danh sách đầu việc cần lập lịch...\n'
+            'VD: Lên lịch triển khai Hạng mục 3 và 4 từ thứ Hai, bỏ qua các phần đã xong.'
+        : 'Nhập chi tiết yêu cầu hoặc dán danh sách đầu việc cần lập lịch tại đây...\n'
+            'Ví dụ:\n'
+            '- Lên lịch triển khai Hạng mục 3 (Đề xuất kỹ thuật) và Hạng mục 4 (OCR ODO) từ thứ Hai tuần tới\n'
+            '- Bỏ qua toàn bộ các phần đã hoàn thành trước đó';
 
     return Container(
       color: AppColors.sidebarBg,
@@ -1140,7 +1262,7 @@ except Exception:
               behavior: HitTestBehavior.opaque,
               onVerticalDragUpdate: (details) {
                 setState(() {
-                  _textareaHeight = (_textareaHeight - details.delta.dy).clamp(96.0, maxAllowedHeight);
+                  _textareaHeight = (_textareaHeight - details.delta.dy).clamp(minAllowedHeight, maxAllowedHeight);
                 });
               },
               child: Container(
@@ -1159,7 +1281,7 @@ except Exception:
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
+            padding: EdgeInsets.fromLTRB(isCompactMobile ? 10 : 14, 2, isCompactMobile ? 10 : 14, isCompactMobile ? 10 : 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -1193,169 +1315,171 @@ except Exception:
                   ),
 
                 // Hàng chọn nguồn dữ liệu đi kèm lệnh tạo việc
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const Text(
-                      'Dữ liệu gửi kèm:',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textMuted),
-                    ),
-                    if (widget.docFiles.isNotEmpty)
-                      InkWell(
-                        onTap: _isGenerating ? null : _openDocPickerDialog,
-                        borderRadius: BorderRadius.circular(4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _selectedDocPaths.isNotEmpty
-                                ? AppColors.accentCyan.withValues(alpha: 0.16)
-                                : AppColors.cardBg,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: _selectedDocPaths.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
-                              width: 0.9,
+                if (widget.docFiles.isNotEmpty || widget.recentMessages.isNotEmpty || _tasks.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      const Text(
+                        'Dữ liệu gửi kèm:',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+                      ),
+                      if (widget.docFiles.isNotEmpty)
+                        InkWell(
+                          onTap: _isGenerating ? null : _openDocPickerDialog,
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _selectedDocPaths.isNotEmpty
+                                  ? AppColors.accentCyan.withValues(alpha: 0.16)
+                                  : AppColors.cardBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: _selectedDocPaths.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                                width: 0.9,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.description_outlined,
-                                size: 13,
-                                color: _selectedDocPaths.isNotEmpty ? AppColors.accentCyan : AppColors.textMuted,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _selectedDocPaths.isEmpty
-                                    ? 'Chọn tài liệu (0/${widget.docFiles.length})'
-                                    : 'Tài liệu đã chọn (${_selectedDocPaths.length}/${widget.docFiles.length})',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: _selectedDocPaths.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.description_outlined,
+                                  size: 13,
+                                  color: _selectedDocPaths.isNotEmpty ? AppColors.accentCyan : AppColors.textMuted,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 5),
+                                Text(
+                                  _selectedDocPaths.isEmpty
+                                      ? 'Chọn tài liệu (0/${widget.docFiles.length})'
+                                      : 'Tài liệu đã chọn (${_selectedDocPaths.length}/${widget.docFiles.length})',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _selectedDocPaths.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    if (widget.recentMessages.isNotEmpty)
-                      InkWell(
-                        onTap: _isGenerating
-                            ? null
-                            : () => setState(() => _includeRecentChat = !_includeRecentChat),
-                        borderRadius: BorderRadius.circular(4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _includeRecentChat
-                                ? AppColors.primaryLight.withValues(alpha: 0.16)
-                                : AppColors.cardBg,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: _includeRecentChat ? AppColors.primaryLight : AppColors.borderDark,
-                              width: 0.9,
+                      if (widget.recentMessages.isNotEmpty)
+                        InkWell(
+                          onTap: _isGenerating
+                              ? null
+                              : () => setState(() => _includeRecentChat = !_includeRecentChat),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _includeRecentChat
+                                  ? AppColors.primaryLight.withValues(alpha: 0.16)
+                                  : AppColors.cardBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: _includeRecentChat ? AppColors.primaryLight : AppColors.borderDark,
+                                width: 0.9,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _includeRecentChat ? Icons.check_circle_rounded : Icons.chat_bubble_outline_rounded,
-                                size: 13,
-                                color: _includeRecentChat ? AppColors.primaryLight : AppColors.textMuted,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                'Kèm ngữ cảnh hội thoại gần đây',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: _includeRecentChat ? AppColors.primaryLight : AppColors.textBody,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _includeRecentChat ? Icons.check_circle_rounded : Icons.chat_bubble_outline_rounded,
+                                  size: 13,
+                                  color: _includeRecentChat ? AppColors.primaryLight : AppColors.textMuted,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 5),
+                                Text(
+                                  isCompactMobile ? 'Kèm hội thoại gần đây' : 'Kèm ngữ cảnh hội thoại gần đây',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _includeRecentChat ? AppColors.primaryLight : AppColors.textBody,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    if (_tasks.isNotEmpty)
-                      InkWell(
-                        onTap: _isGenerating
-                            ? null
-                            : () => setState(() => _replaceAll = !_replaceAll),
-                        borderRadius: BorderRadius.circular(4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _replaceAll
-                                ? AppColors.warning.withValues(alpha: 0.16)
-                                : AppColors.accent.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: _replaceAll ? AppColors.warning : AppColors.accent,
-                              width: 0.9,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _replaceAll ? Icons.autorenew_rounded : Icons.playlist_add_check_rounded,
-                                size: 14,
+                      if (_tasks.isNotEmpty)
+                        InkWell(
+                          onTap: _isGenerating
+                              ? null
+                              : () => setState(() => _replaceAll = !_replaceAll),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _replaceAll
+                                  ? AppColors.warning.withValues(alpha: 0.16)
+                                  : AppColors.accent.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
                                 color: _replaceAll ? AppColors.warning : AppColors.accent,
+                                width: 0.9,
                               ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _replaceAll
-                                    ? 'Chế độ: Thay thế lịch hiện tại'
-                                    : 'Chế độ: Bổ sung (giữ việc cũ & việc đã xong)',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _replaceAll ? Icons.autorenew_rounded : Icons.playlist_add_check_rounded,
+                                  size: 14,
                                   color: _replaceAll ? AppColors.warning : AppColors.accent,
                                 ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  _replaceAll
+                                      ? (isCompactMobile ? 'Thay thế lịch cũ' : 'Chế độ: Thay thế lịch hiện tại')
+                                      : (isCompactMobile ? 'Bổ sung việc mới' : 'Chế độ: Bổ sung (giữ việc cũ & việc đã xong)'),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _replaceAll ? AppColors.warning : AppColors.accent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      for (final docPath in _selectedDocPaths.take(3))
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.inputBg,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppColors.borderDark),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 160),
+                                child: Text(
+                                  p.basename(docPath),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 10.5, color: AppColors.textBody),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: _isGenerating ? null : () => setState(() => _selectedDocPaths.remove(docPath)),
+                                child: const Icon(Icons.close_rounded, size: 12, color: AppColors.textMuted),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    for (final docPath in _selectedDocPaths.take(3))
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.inputBg,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: AppColors.borderDark),
+                      if (_selectedDocPaths.length > 3)
+                        Text(
+                          '+${_selectedDocPaths.length - 3} tệp khác',
+                          style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 160),
-                              child: Text(
-                                p.basename(docPath),
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 10.5, color: AppColors.textBody),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            InkWell(
-                              onTap: _isGenerating ? null : () => setState(() => _selectedDocPaths.remove(docPath)),
-                              child: const Icon(Icons.close_rounded, size: 12, color: AppColors.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (_selectedDocPaths.length > 3)
-                      Text(
-                        '+${_selectedDocPaths.length - 3} tệp khác',
-                        style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
 
                 // Khung Textarea rộng rãi nhiều dòng + thanh tác vụ gửi bên dưới
                 Container(
@@ -1371,57 +1495,84 @@ except Exception:
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(
-                        key: const ValueKey('schedule_prompt_textarea_box'),
-                        height: effectiveHeight,
-                        child: Focus(
-                          onKeyEvent: (_, event) {
-                            final isCtrlOrCmd = HardwareKeyboard.instance.isControlPressed ||
-                                HardwareKeyboard.instance.isMetaPressed;
-                            if (event is KeyDownEvent &&
-                                event.logicalKey == LogicalKeyboardKey.enter &&
-                                isCtrlOrCmd) {
-                              if (canSubmit) {
-                                _submitPrompt();
-                              }
-                              return KeyEventResult.handled;
-                            }
-                            return KeyEventResult.ignored;
-                          },
-                          child: Scrollbar(
-                            controller: _promptScrollController,
-                            thumbVisibility: true,
-                            child: TextField(
-                              controller: _promptController,
-                              scrollController: _promptScrollController,
-                              focusNode: _promptFocusNode,
-                              enabled: !_isGenerating,
-                              keyboardType: TextInputType.multiline,
-                              textInputAction: TextInputAction.newline,
-                              expands: true,
-                              minLines: null,
-                              maxLines: null,
-                              textAlignVertical: TextAlignVertical.top,
-                              style: const TextStyle(fontSize: 13.5, color: AppColors.textWhite, height: 1.45),
-                              decoration: const InputDecoration(
-                                hintText:
-                                    'Nhập chi tiết yêu cầu hoặc dán danh sách đầu việc cần lập lịch tại đây...\n'
-                                    'Ví dụ:\n'
-                                    '- Lên lịch triển khai Hạng mục 3 (Đề xuất kỹ thuật) và Hạng mục 4 (OCR ODO) từ thứ Hai tuần tới\n'
-                                    '- Bỏ qua toàn bộ các phần đã hoàn thành trước đó',
-                                hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textDim, height: 1.4),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                filled: false,
-                                contentPadding: EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                        child: SizedBox(
+                          key: const ValueKey('schedule_prompt_textarea_box'),
+                          height: effectiveHeight,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (_promptController.text.isEmpty)
+                                IgnorePointer(
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                    child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: Text(
+                                        placeholderText,
+                                        softWrap: true,
+                                        maxLines: isCompactMobile ? 3 : 5,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: isCompactMobile ? 12 : 12.5,
+                                          color: AppColors.textDim,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              Focus(
+                                onKeyEvent: (_, event) {
+                                  final isCtrlOrCmd = HardwareKeyboard.instance.isControlPressed ||
+                                      HardwareKeyboard.instance.isMetaPressed;
+                                  if (event is KeyDownEvent &&
+                                      event.logicalKey == LogicalKeyboardKey.enter &&
+                                      isCtrlOrCmd) {
+                                    if (canSubmit) {
+                                      _submitPrompt();
+                                    }
+                                    return KeyEventResult.handled;
+                                  }
+                                  return KeyEventResult.ignored;
+                                },
+                                child: Scrollbar(
+                                  controller: _promptScrollController,
+                                  thumbVisibility: !isCompactMobile,
+                                  child: TextField(
+                                    controller: _promptController,
+                                    scrollController: _promptScrollController,
+                                    focusNode: _promptFocusNode,
+                                    enabled: !_isGenerating,
+                                    keyboardType: TextInputType.multiline,
+                                    textInputAction: TextInputAction.newline,
+                                    expands: true,
+                                    minLines: null,
+                                    maxLines: null,
+                                    textAlignVertical: TextAlignVertical.top,
+                                    style: TextStyle(
+                                      fontSize: isCompactMobile ? 13 : 13.5,
+                                      color: AppColors.textWhite,
+                                      height: 1.4,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      isCollapsed: true,
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      filled: false,
+                                      contentPadding: EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 10 : 12, vertical: 7),
                         decoration: const BoxDecoration(
                           color: AppColors.cardBg,
                           borderRadius: BorderRadius.vertical(bottom: Radius.circular(5)),
@@ -1429,16 +1580,18 @@ except Exception:
                         ),
                         child: Row(
                           children: [
-                            const Expanded(
+                            Expanded(
                               child: Text(
-                                'Enter để xuống dòng • Ctrl + Enter để gửi nhanh • Kéo thanh trên để mở rộng khung nhập',
+                                isCompactMobile
+                                    ? 'Nhập yêu cầu rồi bấm Gửi'
+                                    : 'Enter để xuống dòng • Ctrl + Enter để gửi nhanh • Kéo thanh trên để mở rộng khung nhập',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 11, color: AppColors.textDim),
+                                style: const TextStyle(fontSize: 11, color: AppColors.textDim),
                               ),
                             ),
-                            const SizedBox(width: 12),
-            if (_isGenerating)
+                            const SizedBox(width: 10),
+                            if (_isGenerating)
                               ElevatedButton.icon(
                                 onPressed: _cancelGeneration,
                                 icon: const Icon(Icons.stop_circle_outlined, size: 14),
@@ -1467,7 +1620,7 @@ except Exception:
                                   disabledBackgroundColor: AppColors.sidebarBg,
                                   foregroundColor: Colors.white,
                                   disabledForegroundColor: AppColors.textDim,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                                  padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 14, vertical: 0),
                                   shape: AppRadius.shape,
                                 ),
                               ),
@@ -1517,14 +1670,14 @@ except Exception:
     );
   }
 
-  Widget _buildCalendar() {
+  Widget _buildCalendar({bool isCompactMobile = false}) {
     final firstOfMonth = DateTime(_focusedMonth.year, _focusedMonth.month, 1);
     final gridStart = firstOfMonth.subtract(Duration(days: firstOfMonth.weekday - 1));
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(isCompactMobile ? 8 : 12),
       child: Column(
         children: [
           // Thanh điều hướng tháng
@@ -1532,23 +1685,28 @@ except Exception:
             children: [
               IconButton(
                 tooltip: 'Tháng trước',
+                constraints: isCompactMobile ? const BoxConstraints(minWidth: 32, minHeight: 32) : null,
+                padding: isCompactMobile ? EdgeInsets.zero : const EdgeInsets.all(8),
                 onPressed: () => setState(() => _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month - 1)),
                 icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textBody),
               ),
               Text(
                 'Tháng ${_focusedMonth.month}/${_focusedMonth.year}',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                style: TextStyle(fontSize: isCompactMobile ? 13.5 : 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
               ),
               IconButton(
                 tooltip: 'Tháng sau',
+                constraints: isCompactMobile ? const BoxConstraints(minWidth: 32, minHeight: 32) : null,
+                padding: isCompactMobile ? EdgeInsets.zero : const EdgeInsets.all(8),
                 onPressed: () => setState(() => _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + 1)),
                 icon: const Icon(Icons.chevron_right_rounded, color: AppColors.textBody),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               OutlinedButton(
                 onPressed: () => setState(() {
                   _selectedDay = today;
                   _focusedMonth = DateTime(today.year, today.month);
+                  if (isCompactMobile) _mobileShowCalendar = false;
                 }),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 32),
@@ -1561,11 +1719,13 @@ except Exception:
                 ),
                 child: const Text('Hôm nay', style: TextStyle(fontSize: 11.5)),
               ),
-              const Spacer(),
-              _legendDot(AppColors.danger, 'Cao'),
-              _legendDot(AppColors.warning, 'Trung bình'),
-              _legendDot(AppColors.textDim, 'Thấp'),
-              _legendDot(AppColors.accent, 'Đã xong'),
+              if (!isCompactMobile) ...[
+                const Spacer(),
+                _legendDot(AppColors.danger, 'Cao'),
+                _legendDot(AppColors.warning, 'Trung bình'),
+                _legendDot(AppColors.textDim, 'Thấp'),
+                _legendDot(AppColors.accent, 'Đã xong'),
+              ],
             ],
           ),
           if (_summary.isNotEmpty)
@@ -1644,6 +1804,9 @@ except Exception:
       onTap: () => setState(() {
         _selectedDay = day;
         if (!inMonth) _focusedMonth = DateTime(day.year, day.month);
+        if (MediaQuery.sizeOf(context).width < 720) {
+          _mobileShowCalendar = false;
+        }
       }),
       child: Container(
         margin: const EdgeInsets.all(2),
@@ -2099,7 +2262,9 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
 
   Future<void> _loadTasks() async {
     try {
-      final data = await _db.getWorkSchedule(widget.sessionId);
+      final data = widget.databaseService != null
+          ? await _db.getWorkSchedule(widget.sessionId)
+          : await ApiService().getWorkSchedule(widget.sessionId);
       final loaded = <ScheduleTask>[];
       if (data != null) {
         _projectName = data['project_name']?.toString() ?? '';
@@ -2167,14 +2332,25 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
         _allTasks[i].id = 'T${i + 1}';
       }
     });
-    await _db.saveWorkSchedule(
-      sessionId: widget.sessionId,
-      projectName: _projectName,
-      summary: _summary,
-      docFiles: _docFiles,
-      generatedAt: _generatedAt ?? DateTime.now(),
-      tasks: _allTasks.map((e) => e.toJson()).toList(),
-    );
+    if (widget.databaseService != null) {
+      await _db.saveWorkSchedule(
+        sessionId: widget.sessionId,
+        projectName: _projectName,
+        summary: _summary,
+        docFiles: _docFiles,
+        generatedAt: _generatedAt ?? DateTime.now(),
+        tasks: _allTasks.map((e) => e.toJson()).toList(),
+      );
+    } else {
+      await ApiService().saveWorkSchedule(
+        sessionId: widget.sessionId,
+        projectName: _projectName,
+        summary: _summary,
+        docFiles: _docFiles,
+        generatedAt: _generatedAt ?? DateTime.now(),
+        tasks: _allTasks.map((e) => e.toJson()).toList(),
+      );
+    }
   }
 
   @override
@@ -2183,15 +2359,18 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
     final visible = _filteredTasks;
     final selected = _selectedTasks;
 
+    final screenSize = MediaQuery.sizeOf(context);
+    final isCompactMobile = screenSize.width < 680;
     return Dialog(
       backgroundColor: AppColors.bgDark,
+      insetPadding: EdgeInsets.all(isCompactMobile ? 10 : 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: const BorderSide(color: AppColors.borderDark),
       ),
       child: SizedBox(
-        width: 680,
-        height: 540,
+        width: isCompactMobile ? screenSize.width - 20 : 680,
+        height: isCompactMobile ? (screenSize.height * 0.78).clamp(360.0, 560.0) : 540,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2229,17 +2408,6 @@ class _ProjectTaskPickerDialogState extends State<ProjectTaskPickerDialog> {
                       ],
                     ),
                   ),
-                  if (widget.onOpenFullSchedule != null)
-                    TextButton.icon(
-                      onPressed: () {
-                        final openSchedule = widget.onOpenFullSchedule!;
-                        Navigator.of(context).pop();
-                        openSchedule();
-                      },
-                      icon: const Icon(Icons.calendar_month_rounded, size: 15),
-                      label: const Text('Mở Lịch làm việc', style: TextStyle(fontSize: 11.5)),
-                      style: TextButton.styleFrom(foregroundColor: AppColors.accentCyan),
-                    ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.textMuted),
@@ -2776,14 +2944,17 @@ class _ScheduleTaskEditDialogState extends State<ScheduleTaskEditDialog> {
         .toSet()
         .toList();
 
+    final screenSize = MediaQuery.sizeOf(context);
+    final isCompactMobile = screenSize.width < 640;
     return Dialog(
       backgroundColor: AppColors.bgDark,
+      insetPadding: EdgeInsets.all(isCompactMobile ? 10 : 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: const BorderSide(color: AppColors.borderDark),
       ),
       child: SizedBox(
-        width: 620,
+        width: isCompactMobile ? screenSize.width - 20 : 620,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

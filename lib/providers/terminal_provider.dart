@@ -4,6 +4,9 @@ import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_pty_desktop/flutter_pty.dart';
+import 'package:web_socket_channel/io.dart';
+import '../core/constants/api_constants.dart';
+import '../core/services/api_service.dart';
 import '../core/services/native_ssh_service.dart';
 import '../core/services/storage_service.dart';
 import '../models/server_model.dart';
@@ -191,6 +194,7 @@ class TerminalProvider extends ChangeNotifier {
         try {
           pane.pty?.write(utf8.encode('$command\n'));
           pane.sshSession?.stdin.add(utf8.encode('$command\n'));
+          pane.remoteWs?.sink.add('$command\n');
         } catch (_) {}
       }
       return;
@@ -365,6 +369,11 @@ class TerminalProvider extends ChangeNotifier {
     if (pane.isRemoteSsh) {
       await _connectSshPane(pane);
     } else {
+      // Nếu thiết bị đang là App Phụ (Secondary) -> kết nối Terminal trực tiếp lên App Chính qua WebSocket
+      if (!await ApiService().isNativeMode()) {
+        await _connectRemotePrimaryPane(pane);
+        return;
+      }
       if (Platform.isIOS) {
         pane.isConnecting = false;
         pane.isConnected = false;
@@ -376,20 +385,136 @@ class TerminalProvider extends ChangeNotifier {
     }
   }
 
+  /// Kết nối lại toàn bộ các tab Local Terminal (hữu ích khi chuyển đổi giữa App Chính và App Phụ).
+  Future<void> reconnectLocalPanes() async {
+    for (final pane in _panes) {
+      if (!pane.isRemoteSsh) {
+        await _connectPane(pane);
+      }
+      if (pane.childPane != null && !pane.childPane!.isRemoteSsh) {
+        await _connectPane(pane.childPane!);
+      }
+    }
+  }
+
+  Future<void> _connectRemotePrimaryPane(TerminalPaneItem pane) async {
+    try {
+      final baseUrl = await _storage.getGatewayUrl();
+      final token = await _storage.getSecretToken();
+      if (baseUrl.trim().isEmpty) {
+        pane.isConnecting = false;
+        pane.isConnected = false;
+        pane.terminal.write('\r\n\x1b[33m[App Phụ] Chưa cấu hình địa chỉ App Chính trong Cài đặt.\x1b[0m\r\n');
+        notifyListeners();
+        return;
+      }
+
+      final baseUri = Uri.parse(baseUrl);
+      final wsScheme = baseUri.scheme == 'https' ? 'wss' : 'ws';
+      final initialCols = pane.terminal.viewWidth >= 10 ? pane.terminal.viewWidth : 80;
+      final initialRows = pane.terminal.viewHeight >= 3 ? pane.terminal.viewHeight : 24;
+      int lastAppliedCols = initialCols;
+      int lastAppliedRows = initialRows;
+
+      final basePath = baseUri.path.endsWith('/')
+          ? baseUri.path.substring(0, baseUri.path.length - 1)
+          : baseUri.path;
+      final wsUri = baseUri.replace(
+        scheme: wsScheme,
+        path: '$basePath${ApiConstants.wsTerminal}',
+        queryParameters: {
+          if (token.isNotEmpty) 'token': token,
+          if (pane.workingDirectory != null && pane.workingDirectory!.trim().isNotEmpty)
+            'cwd': pane.workingDirectory!.trim(),
+          'cols': '$initialCols',
+          'rows': '$initialRows',
+        },
+      );
+
+      final channel = IOWebSocketChannel.connect(
+        wsUri,
+        pingInterval: const Duration(seconds: 20),
+        connectTimeout: const Duration(seconds: 12),
+      );
+      await channel.ready.timeout(const Duration(seconds: 12));
+      pane.remoteWs = channel;
+      pane.isConnected = true;
+      pane.isConnecting = false;
+      pane.title = 'App Chính (Remote)';
+      notifyListeners();
+
+      if (pane.initialCommand != null && pane.initialCommand!.trim().isNotEmpty) {
+        final cmd = pane.initialCommand!;
+        Future.delayed(const Duration(milliseconds: 450), () {
+          try {
+            pane.remoteWs?.sink.add('$cmd\r');
+          } catch (_) {}
+          pane.initialCommand = null;
+        });
+      }
+
+      channel.stream.listen(
+        (data) {
+          if (data is String) {
+            pane.terminal.write(data);
+          } else if (data is List<int>) {
+            pane.terminal.write(utf8.decode(data, allowMalformed: true));
+          }
+        },
+        onDone: () {
+          pane.isConnected = false;
+          pane.terminal.write('\r\n\x1b[33m[Đã ngắt kết nối Terminal tới App Chính]\x1b[0m\r\n');
+          notifyListeners();
+        },
+        onError: (err) {
+          pane.isConnected = false;
+          pane.terminal.write('\r\n\x1b[31m[Lỗi kết nối Terminal App Chính]: $err\x1b[0m\r\n');
+          notifyListeners();
+        },
+      );
+
+      pane.terminal.onOutput = (data) {
+        try {
+          pane.remoteWs?.sink.add(data);
+        } catch (_) {}
+      };
+
+      pane.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
+        if (width >= 10 && height >= 3 && (width != lastAppliedCols || height != lastAppliedRows)) {
+          lastAppliedCols = width;
+          lastAppliedRows = height;
+          try {
+            pane.remoteWs?.sink.add(jsonEncode({'type': 'resize', 'cols': width, 'rows': height}));
+          } catch (_) {}
+        }
+      };
+    } catch (e) {
+      pane.isConnecting = false;
+      pane.isConnected = false;
+      notifyListeners();
+      pane.terminal.write('\r\n\x1b[31m[Không thể mở Terminal từ xa trên App Chính]: $e\x1b[0m\r\n');
+    }
+  }
+
   Future<void> _connectLocalPane(TerminalPaneItem pane) async {
     if (Platform.isIOS) return;
     try {
       final isWin = Platform.isWindows;
-      final shell = Platform.environment['SHELL'] ??
-          (isWin ? 'cmd.exe' : (File('/bin/bash').existsSync() ? '/bin/bash' : '/bin/sh'));
-      final defaultHome = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? (isWin ? 'C:\\' : '/');
+      final isAndroid = Platform.isAndroid;
+      final shell = isAndroid
+          ? (File('/system/bin/sh').existsSync() ? '/system/bin/sh' : '/bin/sh')
+          : (Platform.environment['SHELL'] ??
+              (isWin ? 'cmd.exe' : (File('/bin/bash').existsSync() ? '/bin/bash' : '/bin/sh')));
+      final defaultHome = isAndroid
+          ? Directory.systemTemp.path
+          : (Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? (isWin ? 'C:\\' : '/'));
 
       String targetDir = defaultHome;
       if (pane.workingDirectory != null &&
           pane.workingDirectory!.trim().isNotEmpty &&
           Directory(pane.workingDirectory!.trim()).existsSync()) {
         targetDir = pane.workingDirectory!.trim();
-      } else {
+      } else if (!isAndroid) {
         try {
           final recents = await _storage.getRecentScopes();
           if (recents.isNotEmpty && Directory(recents.first).existsSync()) {
@@ -407,7 +532,7 @@ class TerminalProvider extends ChangeNotifier {
 
       pane.pty = Pty.start(
         shell,
-        arguments: isWin ? [] : ['-l'],
+        arguments: (isWin || isAndroid) ? [] : ['-l'],
         workingDirectory: targetDir,
         environment: {
           ...Platform.environment,

@@ -17,8 +17,9 @@ export '../../providers/terminal_provider.dart';
 
 class TerminalScreen extends StatefulWidget {
   final VoidCallback? onHidePanel;
+  final VoidCallback? onOpenDrawer;
 
-  const TerminalScreen({super.key, this.onHidePanel});
+  const TerminalScreen({super.key, this.onHidePanel, this.onOpenDrawer});
 
   @override
   State<TerminalScreen> createState() => TerminalScreenState();
@@ -513,6 +514,23 @@ class TerminalScreenState extends State<TerminalScreen> with AutomaticKeepAliveC
             ),
             child: Row(
               children: [
+                if (widget.onOpenDrawer != null) ...[
+                  IconButton(
+                    tooltip: 'Mở menu điều hướng',
+                    style: IconButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(28, 28),
+                      fixedSize: const Size(28, 28),
+                      maximumSize: const Size(28, 28),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.standard,
+                    ),
+                    constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                    onPressed: widget.onOpenDrawer,
+                    icon: const Icon(Icons.menu_rounded, size: 18, color: AppColors.textWhite),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 Expanded(
                   child: ScrollConfiguration(
                     behavior: const MaterialScrollBehavior().copyWith(
@@ -997,7 +1015,7 @@ class TerminalScreenState extends State<TerminalScreen> with AutomaticKeepAliveC
                         const SizedBox(width: 8),
                         // Pane Mode Switcher Dropdown
                         PopupMenuButton<String>(
-                          tooltip: 'Đổi môi trường cho Panel này',
+                          tooltip: '',
                           offset: const Offset(0, 30),
                           color: AppColors.cardBg,
                           shape: RoundedRectangleBorder(

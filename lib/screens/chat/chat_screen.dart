@@ -14,7 +14,6 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/clipboard_service.dart';
-import '../../core/services/database_service.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/services/pdf_export_service.dart';
 import '../../core/services/storage_service.dart';
@@ -35,11 +34,13 @@ import '../terminal/terminal_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final VoidCallback? onNavigateToServers;
+  final VoidCallback? onOpenSessionsDrawer;
   final bool embedTerminalPanel;
 
   const ChatScreen({
     super.key,
     this.onNavigateToServers,
+    this.onOpenSessionsDrawer,
     this.embedTerminalPanel = true,
   });
 
@@ -51,9 +52,12 @@ class _ChatScreenState extends State<ChatScreen> {
   final ApiService _apiService = ApiService();
   ApiService get _api => _apiService;
   final TextEditingController _textController = TextEditingController();
+  final ScrollController _promptInputScrollController = ScrollController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
   final List<AttachmentItem> _attachedFiles = [];
+  double? _promptTextareaHeight;
+  bool _isResizingPrompt = false;
 
   // Prompt history navigation state
   int _promptHistoryIndex = -1;
@@ -197,6 +201,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.removeListener(_onScroll);
     _inputFocusNode.dispose();
     _textController.dispose();
+    _promptInputScrollController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -901,7 +906,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _refreshPendingScheduleTaskCount([String? sessionId]) async {
     final sid = sessionId ?? context.read<ChatProvider>().currentSession?.id;
     if (sid == null || sid.isEmpty) return;
-    final count = await DatabaseService().getPendingWorkScheduleCount(sid);
+    final count = await _api.getPendingWorkScheduleCount(sid);
     if (mounted && context.read<ChatProvider>().currentSession?.id == sid) {
       setState(() {
         _pendingScheduleTaskCount = count;
@@ -996,7 +1001,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final session = chat.currentSession;
     if (session == null || _activeScheduleTasks.isEmpty) return;
     final codes = _activeScheduleTasks.map((t) => t.id).toList();
-    final ok = await DatabaseService().markWorkScheduleTasksDone(session.id, codes, done: true);
+    final ok = await _api.markWorkScheduleTasksDone(session.id, codes, done: true);
     if (!mounted) return;
     if (ok) {
       setState(() {
@@ -1299,9 +1304,9 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       }
     }
-    // 2. Chỉ cuộn xuống cuối khi Agent trả lời xong câu hỏi (chuyển từ generating sang done)
-    else if (_wasGenerating && !chat.isGenerating) {
-      _wasGenerating = false;
+    // 2. Tự cuộn xuống cuối khi Agent bắt đầu phản hồi từ App Phụ hoặc vừa hoàn tất câu trả lời
+    else if ((!_wasGenerating && chat.isRemoteGenerating) || (_wasGenerating && !chat.isGenerating)) {
+      _wasGenerating = chat.isGenerating;
       _safeScrollToBottom();
     } else {
       _wasGenerating = chat.isGenerating;
@@ -1318,264 +1323,298 @@ class _ChatScreenState extends State<ChatScreen> {
           backgroundColor: AppColors.bgDark,
           body: Column(
             children: [
-          // 1. Topbar Header (Height 66px)
-          Container(
-            height: 66,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            decoration: const BoxDecoration(
-              color: AppColors.bgDark,
-              border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Left: Session & Server Info
-                Expanded(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Builder(
-                        builder: (context) {
-                          final currentServerName = (chat.currentSession?.targetServer != null && chat.currentSession!.targetServer!.isNotEmpty)
-                              ? chat.currentSession!.targetServer!
-                              : (serverProvider.selectedServer?.name ?? 'Local Machine');
-                          return Stack(
-                            children: [
-                              ChatAvatar(
-                                serverName: currentServerName,
-                                server: serverProvider.selectedServer,
-                                size: 34,
+          // 1. Topbar Header (Height 56px mobile / 66px desktop)
+          Builder(
+            builder: (context) {
+              final isCompactMobile = MediaQuery.sizeOf(context).width < 600;
+              return Container(
+                height: isCompactMobile ? 56 : 66,
+                padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 20),
+                decoration: const BoxDecoration(
+                  color: AppColors.bgDark,
+                  border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Left: Session & Server Info
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.onOpenSessionsDrawer != null) ...[
+                            IconButton(
+                              tooltip: 'Danh sách hội thoại & menu',
+                              style: IconButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(34, 34),
+                                fixedSize: const Size(34, 34),
+                                maximumSize: const Size(34, 34),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.standard,
                               ),
-                              Positioned(
-                                top: 0,
-                                right: 0,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.accent,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: AppColors.bgDark, width: 1.5),
+                              constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                              onPressed: widget.onOpenSessionsDrawer,
+                              icon: const Icon(Icons.menu_rounded, size: 20, color: AppColors.textWhite),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Builder(
+                            builder: (context) {
+                              final currentServerName = (chat.currentSession?.targetServer != null && chat.currentSession!.targetServer!.isNotEmpty)
+                                  ? chat.currentSession!.targetServer!
+                                  : (serverProvider.selectedServer?.name ?? 'Local Machine');
+                              return Stack(
+                                children: [
+                                  ChatAvatar(
+                                    serverName: currentServerName,
+                                    server: serverProvider.selectedServer,
+                                    size: isCompactMobile ? 32 : 34,
                                   ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 12),
-                      Flexible(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.accent,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: AppColors.bgDark, width: 1.5),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          SizedBox(width: isCompactMobile ? 10 : 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Flexible(
-                                  child: Text(
-                                    chat.currentSession?.title ?? 'AI Type Agent',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        chat.currentSession?.title ?? 'AI Type Agent',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        serverProvider.currentAiModel,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    serverProvider.currentAiModel,
-                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                                  ),
+                                Builder(
+                                  builder: (context) {
+                                    final currentServerName = (chat.currentSession?.targetServer != null && chat.currentSession!.targetServer!.isNotEmpty)
+                                        ? chat.currentSession!.targetServer!
+                                        : (serverProvider.selectedServer?.name ?? 'Local Machine');
+                                    final isLocal = currentServerName == 'Local Machine' ||
+                                        currentServerName == 'Local' ||
+                                        currentServerName == 'localhost' ||
+                                        currentServerName == '127.0.0.1';
+                                    final scope = chat.currentSessionScope;
+                                    final hasScope = scope != null && scope.isNotEmpty;
+                                    final remoteServers = <String>{
+                                      if (chat.currentSession?.targetServers != null) ...chat.currentSession!.targetServers,
+                                      if (serverProvider.selectedServer != null &&
+                                          serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+                                          serverProvider.selectedServer!.serverIp != 'localhost')
+                                        serverProvider.selectedServer!.name,
+                                    }..remove('Local Machine');
+
+                                    // Uu tien: neu hoi thoai co Scope tro ve du an local thi
+                                    // noi thuc thi chinh luon la du an local, server SSH chi la
+                                    // ket noi bo sung (Agent SSH len khi can dieu khien).
+                                    if (hasScope) {
+                                      if (remoteServers.isEmpty) {
+                                        return Text(
+                                          'Gắn với dự án: $scope • Thực thi trực tiếp trên máy cục bộ',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                        );
+                                      }
+                                      final extra = remoteServers.length == 1
+                                          ? remoteServers.first
+                                          : '${remoteServers.length} máy chủ';
+                                      return Text(
+                                        'Gắn với dự án: $scope • Máy chủ bổ sung: $extra (SSH khi cần)',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                      );
+                                    }
+
+                                    if (isLocal) {
+                                      return Text(
+                                        'Gắn với: Local Machine (${Platform.operatingSystem}) • Thực thi an toàn trên shell cục bộ',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                      );
+                                    } else {
+                                      return Text(
+                                        'Gắn với Máy chủ: $currentServerName • Mọi lệnh terminal được gửi qua SSH tới máy chủ này',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 11, color: AppColors.primaryLight),
+                                      );
+                                    }
+                                  },
                                 ),
                               ],
                             ),
-                            Builder(
-                              builder: (context) {
-                                final currentServerName = (chat.currentSession?.targetServer != null && chat.currentSession!.targetServer!.isNotEmpty)
-                                    ? chat.currentSession!.targetServer!
-                                    : (serverProvider.selectedServer?.name ?? 'Local Machine');
-                                final isLocal = currentServerName == 'Local Machine' ||
-                                    currentServerName == 'Local' ||
-                                    currentServerName == 'localhost' ||
-                                    currentServerName == '127.0.0.1';
-                                final scope = chat.currentSessionScope;
-                                final hasScope = scope != null && scope.isNotEmpty;
-                                final remoteServers = <String>{
-                                  if (chat.currentSession?.targetServers != null) ...chat.currentSession!.targetServers,
-                                  if (serverProvider.selectedServer != null &&
-                                      serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
-                                      serverProvider.selectedServer!.serverIp != 'localhost')
-                                    serverProvider.selectedServer!.name,
-                                }..remove('Local Machine');
+                          ),
+                        ],
+                      ),
+                    ),
 
-                                // Uu tien: neu hoi thoai co Scope tro ve du an local thi
-                                // noi thuc thi chinh luon la du an local, server SSH chi la
-                                // ket noi bo sung (Agent SSH len khi can dieu khien).
-                                if (hasScope) {
-                                  if (remoteServers.isEmpty) {
-                                    return Text(
-                                      'Gắn với dự án: $scope • Thực thi trực tiếp trên máy cục bộ',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                    );
-                                  }
-                                  final extra = remoteServers.length == 1
-                                      ? remoteServers.first
-                                      : '${remoteServers.length} máy chủ';
-                                  return Text(
-                                    'Gắn với dự án: $scope • Máy chủ bổ sung: $extra (SSH khi cần)',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                  );
-                                }
+                    SizedBox(width: isCompactMobile ? 8 : 12),
 
-                                if (isLocal) {
-                                  return Text(
-                                    'Gắn với: Local Machine (${Platform.operatingSystem}) • Thực thi an toàn trên shell cục bộ',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                  );
-                                } else {
-                                  return Text(
-                                    'Gắn với Máy chủ: $currentServerName • Mọi lệnh terminal được gửi qua SSH tới máy chủ này',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, color: AppColors.primaryLight),
-                                  );
+                    // Server Selector Dropdown (Desktop/Tablet; trên mobile đã có nút Server ngay thanh nhập)
+                    if (!isCompactMobile) _buildServerDropdown(serverProvider),
+
+                    if (chat.currentSessionDocFiles.isNotEmpty) ...[
+                      if (!isCompactMobile) const SizedBox(width: 8),
+                      Tooltip(
+                        message: 'Tài liệu (${chat.currentSessionDocFiles.length})',
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              if (_showDocViewerPanel) {
+                                _showDocViewerPanel = false;
+                              } else {
+                                _showDocViewerPanel = true;
+                                _showTerminalPanel = false;
+                                if (_selectedViewerDocPath == null || !chat.currentSessionDocFiles.contains(_selectedViewerDocPath)) {
+                                  _selectedViewerDocPath = chat.currentSessionDocFiles.first;
                                 }
-                              },
+                              }
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            height: 36,
+                            padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 6 : 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _showDocViewerPanel
+                                  ? AppColors.accentCyan.withValues(alpha: 0.18)
+                                  : AppColors.cardBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: _showDocViewerPanel ? AppColors.accentCyan : AppColors.borderDark,
+                                width: _showDocViewerPanel ? 1.2 : 0.8,
+                              ),
                             ),
-                          ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accentCyan.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.description_rounded,
+                                      size: 14,
+                                      color: AppColors.accentCyan,
+                                    ),
+                                  ),
+                                ),
+                                if (!isCompactMobile) ...[
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Tài liệu (${chat.currentSessionDocFiles.length})',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _showDocViewerPanel ? AppColors.accentCyan : AppColors.textWhite,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                // Server Selector Dropdown
-                _buildServerDropdown(serverProvider),
-
-                if (chat.currentSessionDocFiles.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        if (_showDocViewerPanel) {
-                          _showDocViewerPanel = false;
-                        } else {
-                          _showDocViewerPanel = true;
-                          _showTerminalPanel = false;
-                          if (_selectedViewerDocPath == null || !chat.currentSessionDocFiles.contains(_selectedViewerDocPath)) {
-                            _selectedViewerDocPath = chat.currentSessionDocFiles.first;
-                          }
-                        }
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      height: 36,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _showDocViewerPanel
-                            ? AppColors.accentCyan.withValues(alpha: 0.18)
-                            : AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: _showDocViewerPanel ? AppColors.accentCyan : AppColors.borderDark,
-                          width: _showDocViewerPanel ? 1.2 : 0.8,
+                    if (chat.currentSession != null) ...[
+                      SizedBox(width: isCompactMobile ? 6 : 8),
+                      Tooltip(
+                        message: 'Lịch làm việc',
+                        child: InkWell(
+                          onTap: () => _openWorkScheduleDialog(chat, serverProvider),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            height: 36,
+                            padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 6 : 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardBg,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppColors.borderDark, width: 0.8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.calendar_month_rounded,
+                                      size: 14,
+                                      color: AppColors.primaryLight,
+                                    ),
+                                  ),
+                                ),
+                                if (!isCompactMobile) ...[
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Lịch làm việc',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textWhite,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: AppColors.accentCyan.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.description_rounded,
-                                size: 14,
-                                color: AppColors.accentCyan,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Tài liệu (${chat.currentSessionDocFiles.length})',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: _showDocViewerPanel ? AppColors.accentCyan : AppColors.textWhite,
-                              height: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-                if (chat.currentSession != null) ...[
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () => _openWorkScheduleDialog(chat, serverProvider),
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      height: 36,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBg,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.borderDark, width: 0.8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryLight.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.calendar_month_rounded,
-                                size: 14,
-                                color: AppColors.primaryLight,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Lịch làm việc',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textWhite,
-                              height: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+                    ],
+                  ],
+                ),
+              );
+            },
           ),
 
           // 2. Main Content Split 50-50: Left is Chat Feed, Right is Terminal Screen
@@ -2578,24 +2617,177 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildInputBar(ChatProvider chat, ServerProvider serverProvider) {
+    final isCompactMobile = MediaQuery.sizeOf(context).width < 600;
+    final hasDocs = chat.currentSessionDocFiles.isNotEmpty;
+    final hasRemoteServer = serverProvider.selectedServer != null &&
+        serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
+        serverProvider.selectedServer!.serverIp != 'localhost';
+
+    Widget buildDocBadge() {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.accentCyan.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.description_rounded, size: 11, color: AppColors.accentCyan),
+            const SizedBox(width: 4),
+            Text(
+              '${chat.currentSessionDocFiles.length} tài liệu',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.accentCyan,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget buildServerBadge() {
+      return Builder(
+        builder: (chipCtx) => Tooltip(
+          message: 'Server bổ sung: Agent SSH lên máy chủ này khi cần điều khiển (Scope vẫn ưu tiên chính). Bấm để đổi máy chủ',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(3),
+            onTap: () => _showQuickServerMenu(chipCtx, serverProvider),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.accentCyan.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(3),
+                border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.sync_alt_rounded, size: 11, color: AppColors.accentCyan),
+                  const SizedBox(width: 4),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: isCompactMobile ? 210 : 180),
+                    child: Text(
+                      'Server: ${serverProvider.selectedServer!.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.accentCyan,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget buildCloseScopeBtn() {
+      return Tooltip(
+        message: 'Xóa Scope',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          hoverColor: AppColors.danger.withValues(alpha: 0.2),
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          onTap: () {
+            chat.setScopeForCurrentSession(null);
+            AppToast.info(context, 'Đã xóa giới hạn Scope của cuộc hội thoại');
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(2),
+            child: Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
+          ),
+        ),
+      );
+    }
+
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final availableHeight = (screenHeight - keyboardInset).clamp(240.0, screenHeight);
+    final minPromptHeight = isCompactMobile ? 48.0 : 56.0;
+    final maxPromptHeight = isCompactMobile
+        ? (availableHeight * 0.42).clamp(96.0, 320.0)
+        : (availableHeight * 0.48).clamp(160.0, 420.0);
+    final defaultPromptHeight = isCompactMobile ? 54.0 : 64.0;
+    final effectivePromptHeight = (_promptTextareaHeight ?? defaultPromptHeight)
+        .clamp(minPromptHeight, maxPromptHeight);
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(
+        isCompactMobile ? 10 : 16,
+        0,
+        isCompactMobile ? 10 : 16,
+        isCompactMobile ? 10 : 16,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.bgDark,
         border: Border(top: BorderSide(color: AppColors.borderDark, width: 1)),
       ),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.inputBg,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: AppColors.borderDark),
-        ),
-        child: Column(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Thanh kéo thả điều chỉnh chiều cao ô nhập prompt (như bên Lịch làm việc)
+          MouseRegion(
+            cursor: SystemMouseCursors.resizeUpDown,
+            child: GestureDetector(
+              key: const ValueKey('chat_prompt_resize_handle'),
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragStart: (_) {
+                setState(() {
+                  _isResizingPrompt = true;
+                  _promptTextareaHeight = effectivePromptHeight;
+                });
+              },
+              onVerticalDragUpdate: (details) {
+                setState(() {
+                  _promptTextareaHeight = ((_promptTextareaHeight ?? effectivePromptHeight) - details.delta.dy)
+                      .clamp(minPromptHeight, maxPromptHeight);
+                });
+              },
+              onVerticalDragEnd: (_) => setState(() => _isResizingPrompt = false),
+              onVerticalDragCancel: () => setState(() => _isResizingPrompt = false),
+              onDoubleTap: () => setState(() => _promptTextareaHeight = null),
+              child: Container(
+                width: double.infinity,
+                height: isCompactMobile ? 16 : 12,
+                alignment: Alignment.center,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: _isResizingPrompt ? 52 : 40,
+                  height: _isResizingPrompt ? 3.5 : 3,
+                  decoration: BoxDecoration(
+                    color: _isResizingPrompt ? AppColors.primaryLight : AppColors.borderLight,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.all(isCompactMobile ? 10 : 12),
+            decoration: BoxDecoration(
+              color: AppColors.inputBg,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: _isResizingPrompt ? AppColors.primaryLight.withValues(alpha: 0.7) : AppColors.borderDark,
+              ),
+            ),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (chat.currentSessionScope != null && chat.currentSessionScope!.isNotEmpty) ...[
               Container(
+                width: isCompactMobile ? double.infinity : null,
                 margin: const EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.12),
@@ -2611,108 +2803,80 @@ class _ChatScreenState extends State<ChatScreen> {
                     highlightColor: Colors.transparent,
                     onTap: _triggerScopePicker,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.folder_open_rounded, size: 14, color: AppColors.primaryLight),
-                          const SizedBox(width: 6),
-                          const Text('Scope Hội Thoại: ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
-                          Flexible(
-                            child: Text(
-                              chat.currentSessionScope!,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryLight,
-                              ),
-                            ),
-                          ),
-                          if (chat.currentSessionDocFiles.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: AppColors.accentCyan.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(3),
-                                border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.description_rounded, size: 11, color: AppColors.accentCyan),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${chat.currentSessionDocFiles.length} tài liệu',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.accentCyan,
-                                      fontWeight: FontWeight.bold,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: isCompactMobile ? 6 : 4,
+                      ),
+                      child: isCompactMobile
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.folder_open_rounded, size: 13, color: AppColors.primaryLight),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        chat.currentSessionScope!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primaryLight,
+                                        ),
+                                      ),
                                     ),
+                                    const SizedBox(width: 6),
+                                    buildCloseScopeBtn(),
+                                  ],
+                                ),
+                                if (hasDocs || hasRemoteServer) ...[
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      if (hasDocs) buildDocBadge(),
+                                      if (hasRemoteServer) buildServerBadge(),
+                                    ],
                                   ),
                                 ],
-                              ),
-                            ),
-                          ],
-                          if (serverProvider.selectedServer != null &&
-                              serverProvider.selectedServer!.serverIp != '127.0.0.1' &&
-                              serverProvider.selectedServer!.serverIp != 'localhost') ...[
-                            const SizedBox(width: 8),
-                            Builder(
-                              builder: (chipCtx) => Tooltip(
-                                message: 'Server bổ sung: Agent SSH lên máy chủ này khi cần điều khiển (Scope vẫn ưu tiên chính). Bấm để đổi máy chủ',
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(3),
-                                  onTap: () => _showQuickServerMenu(chipCtx, serverProvider),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.accentCyan.withValues(alpha: 0.18),
-                                      borderRadius: BorderRadius.circular(3),
-                                      border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.4)),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.sync_alt_rounded, size: 11, color: AppColors.accentCyan),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Server: ${serverProvider.selectedServer!.name}',
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            color: AppColors.accentCyan,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
+                              ],
+                            )
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.folder_open_rounded, size: 14, color: AppColors.primaryLight),
+                                const SizedBox(width: 6),
+                                const Text('Scope Hội Thoại: ', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                                Flexible(
+                                  child: Text(
+                                    chat.currentSessionScope!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primaryLight,
                                     ),
                                   ),
                                 ),
-                              ),
+                                if (hasDocs) ...[
+                                  const SizedBox(width: 8),
+                                  buildDocBadge(),
+                                ],
+                                if (hasRemoteServer) ...[
+                                  const SizedBox(width: 8),
+                                  buildServerBadge(),
+                                ],
+                                const SizedBox(width: 8),
+                                buildCloseScopeBtn(),
+                              ],
                             ),
-                          ],
-                          const SizedBox(width: 8),
-                          Tooltip(
-                            message: 'Xóa Scope',
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(4),
-                              hoverColor: AppColors.danger.withValues(alpha: 0.2),
-                              splashColor: Colors.transparent,
-                              highlightColor: Colors.transparent,
-                              onTap: () {
-                                chat.setScopeForCurrentSession(null);
-                                AppToast.info(context, 'Đã xóa giới hạn Scope của cuộc hội thoại');
-                              },
-                              child: const Padding(
-                                padding: EdgeInsets.all(2),
-                                child: Icon(Icons.close_rounded, size: 14, color: AppColors.danger),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                   ),
                 ),
@@ -3040,212 +3204,399 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ],
-            TextField(
-              controller: _textController,
-              focusNode: _inputFocusNode,
-              minLines: 2,
-              maxLines: 5,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _handleSend(chat, serverProvider),
-              decoration: const InputDecoration(
-                hintText: "Nhập yêu cầu, gõ '/' để chọn thư mục giới hạn...",
-                contentPadding: EdgeInsets.zero,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: false,
+            if (chat.isRemoteGenerating) ...[
+              Container(
+                key: const ValueKey('chat_remote_generating_banner'),
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.accentCyan.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.45)),
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.8,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        chat.currentStatus.isNotEmpty
+                            ? 'App Phụ đang hỏi Agent: ${chat.currentStatus}'
+                            : 'App Phụ đang hỏi Agent trong hộp hội thoại này — tạm khóa gửi trùng...',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.accentCyan,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            SizedBox(
+              key: const ValueKey('chat_prompt_textarea_box'),
+              height: effectivePromptHeight,
+              child: Scrollbar(
+                controller: _promptInputScrollController,
+                thumbVisibility: !isCompactMobile,
+                child: TextField(
+                  controller: _textController,
+                  scrollController: _promptInputScrollController,
+                  focusNode: _inputFocusNode,
+                  readOnly: chat.isRemoteGenerating,
+                  expands: true,
+                  minLines: null,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _handleSend(chat, serverProvider),
+                  decoration: InputDecoration(
+                    hintText: chat.isRemoteGenerating
+                        ? 'App Phụ đang hỏi Agent trong hộp hội thoại này — vui lòng đợi hoàn tất...'
+                        : "Nhập yêu cầu, gõ '/' để chọn thư mục giới hạn...",
+                    hintMaxLines: 2,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+            Builder(
+              builder: (context) {
+                final isCompactMobile = MediaQuery.sizeOf(context).width < 600;
+                final gap = isCompactMobile ? 6.0 : 8.0;
+                final isRemoteActive = _isRemoteServerActive(serverProvider);
+
+                Widget buildCompactIconBtn({
+                  required String tooltip,
+                  required IconData icon,
+                  required Color iconColor,
+                  required Color borderColor,
+                  Color? backgroundColor,
+                  int badgeCount = 0,
+                  Color badgeColor = AppColors.accent,
+                  required VoidCallback onPressed,
+                }) {
+                  return Tooltip(
+                    message: tooltip,
+                    child: Stack(
+                      clipBehavior: Clip.none,
                       children: [
-                        OutlinedButton.icon(
+                        OutlinedButton(
                           style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 32),
-                            fixedSize: const Size.fromHeight(32),
-                            side: const BorderSide(color: AppColors.borderDark),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            minimumSize: const Size(32, 32),
+                            fixedSize: const Size(32, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            side: BorderSide(color: borderColor),
+                            backgroundColor: backgroundColor,
+                            padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                           ),
-                          icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
-                          label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
-                          onPressed: _triggerScopePicker,
+                          onPressed: onPressed,
+                          child: Icon(icon, size: 15, color: iconColor),
                         ),
-                        const SizedBox(width: 8),
-                        // Nút kết nối nhanh máy chủ có sẵn (bên cạnh nút Scope)
-                        Builder(
-                          builder: (btnCtx) => OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(0, 32),
-                              fixedSize: const Size.fromHeight(32),
-                              side: BorderSide(
-                                color: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan : AppColors.borderDark,
-                              ),
-                              backgroundColor: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            ),
-                            icon: Icon(
-                              Icons.dns_rounded,
-                              size: 14,
-                              color: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan : AppColors.textBody,
-                            ),
-                            label: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 110),
-                              child: Text(
-                                _isRemoteServerActive(serverProvider) ? serverProvider.selectedServer!.name : 'Server',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: _isRemoteServerActive(serverProvider) ? AppColors.accentCyan : AppColors.textBody,
-                                  fontWeight: _isRemoteServerActive(serverProvider) ? FontWeight.bold : FontWeight.normal,
+                        if (badgeCount > 0)
+                          Positioned(
+                            top: -4,
+                            right: -4,
+                            child: IgnorePointer(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                                decoration: BoxDecoration(
+                                  color: badgeColor,
+                                  borderRadius: BorderRadius.circular(7),
+                                  border: Border.all(color: AppColors.inputBg, width: 1),
                                 ),
-                              ),
-                            ),
-                            onPressed: () => _showQuickServerMenu(btnCtx, serverProvider),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 32),
-                            fixedSize: const Size.fromHeight(32),
-                            side: BorderSide(
-                              color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
-                            ),
-                            backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          ),
-                          icon: Icon(
-                            Icons.attach_file_rounded,
-                            size: 14,
-                            color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.accentCyan,
-                          ),
-                          label: Text(
-                            _attachedFiles.isNotEmpty ? 'Attach (${_attachedFiles.length})' : 'Attach',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
-                              fontWeight: _attachedFiles.isNotEmpty ? FontWeight.bold : FontWeight.normal,
-                            ),
-                          ),
-                          onPressed: _pickFiles,
-                        ),
-                        if (chat.currentSession != null) ...[
-                          const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(0, 32),
-                              fixedSize: const Size.fromHeight(32),
-                              side: BorderSide(
-                                color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.borderDark,
-                              ),
-                              backgroundColor: _pendingScheduleTaskCount > 0
-                                  ? AppColors.accent.withValues(alpha: 0.1)
-                                  : null,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            ),
-                            icon: Icon(
-                              Icons.checklist_rtl_rounded,
-                              size: 14,
-                              color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.primaryLight,
-                            ),
-                            label: Text(
-                              _pendingScheduleTaskCount > 0
-                                  ? 'Công việc ($_pendingScheduleTaskCount)'
-                                  : 'Công việc',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.textBody,
-                                fontWeight: _pendingScheduleTaskCount > 0 ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                            onPressed: () => _openQuickTaskPicker(chat, serverProvider),
-                          ),
-                        ],
-                        const SizedBox(width: 8),
-                        // Model Selector Button
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 32),
-                            fixedSize: const Size.fromHeight(32),
-                            side: const BorderSide(color: AppColors.primaryLight, width: 0.8),
-                            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          ),
-                          icon: const Icon(Icons.smart_toy_rounded, size: 14, color: AppColors.primaryLight),
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 140),
+                                alignment: Alignment.center,
                                 child: Text(
-                                  serverProvider.currentAiModel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  badgeCount > 99 ? '99+' : '$badgeCount',
                                   style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 11,
+                                    fontSize: 8.5,
                                     fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryLight,
+                                    color: AppColors.bgDark,
+                                    height: 1.0,
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.arrow_drop_down_rounded, size: 14, color: AppColors.primaryLight),
-                            ],
+                            ),
                           ),
-                          onPressed: () => ModelPickerDialog.show(context, serverProvider),
-                        ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                if (chat.isGenerating)
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(64, 32),
-                      fixedSize: const Size.fromHeight(32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor: AppColors.danger,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  );
+                }
+
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        clipBehavior: Clip.none,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isCompactMobile)
+                              buildCompactIconBtn(
+                                tooltip: 'Scope /',
+                                icon: Icons.account_tree_rounded,
+                                iconColor: AppColors.warning,
+                                borderColor: AppColors.borderDark,
+                                onPressed: _triggerScopePicker,
+                              )
+                            else
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 32),
+                                  fixedSize: const Size.fromHeight(32),
+                                  side: const BorderSide(color: AppColors.borderDark),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                ),
+                                icon: const Icon(Icons.account_tree_rounded, size: 14, color: AppColors.warning),
+                                label: const Text('Scope /', style: TextStyle(fontSize: 11, color: AppColors.textBody)),
+                                onPressed: _triggerScopePicker,
+                              ),
+                            SizedBox(width: gap),
+                            // Nút kết nối nhanh máy chủ có sẵn (bên cạnh nút Scope)
+                            Builder(
+                              builder: (btnCtx) => isCompactMobile
+                                  ? buildCompactIconBtn(
+                                      tooltip: isRemoteActive
+                                          ? 'Server: ${serverProvider.selectedServer!.name}'
+                                          : 'Server',
+                                      icon: Icons.dns_rounded,
+                                      iconColor: isRemoteActive ? AppColors.accentCyan : AppColors.textBody,
+                                      borderColor: isRemoteActive ? AppColors.accentCyan : AppColors.borderDark,
+                                      backgroundColor: isRemoteActive ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
+                                      onPressed: () => _showQuickServerMenu(btnCtx, serverProvider),
+                                    )
+                                  : OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        minimumSize: const Size(0, 32),
+                                        fixedSize: const Size.fromHeight(32),
+                                        side: BorderSide(
+                                          color: isRemoteActive ? AppColors.accentCyan : AppColors.borderDark,
+                                        ),
+                                        backgroundColor: isRemoteActive ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                      ),
+                                      icon: Icon(
+                                        Icons.dns_rounded,
+                                        size: 14,
+                                        color: isRemoteActive ? AppColors.accentCyan : AppColors.textBody,
+                                      ),
+                                      label: ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 110),
+                                        child: Text(
+                                          isRemoteActive ? serverProvider.selectedServer!.name : 'Server',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isRemoteActive ? AppColors.accentCyan : AppColors.textBody,
+                                            fontWeight: isRemoteActive ? FontWeight.bold : FontWeight.normal,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: () => _showQuickServerMenu(btnCtx, serverProvider),
+                                    ),
+                            ),
+                            SizedBox(width: gap),
+                            if (isCompactMobile)
+                              buildCompactIconBtn(
+                                tooltip: _attachedFiles.isNotEmpty
+                                    ? 'Đính kèm (${_attachedFiles.length})'
+                                    : 'Đính kèm tệp',
+                                icon: Icons.attach_file_rounded,
+                                iconColor: AppColors.accentCyan,
+                                borderColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                                backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
+                                badgeCount: _attachedFiles.length,
+                                badgeColor: AppColors.accentCyan,
+                                onPressed: _pickFiles,
+                              )
+                            else
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 32),
+                                  fixedSize: const Size.fromHeight(32),
+                                  side: BorderSide(
+                                    color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.borderDark,
+                                  ),
+                                  backgroundColor: _attachedFiles.isNotEmpty ? AppColors.accentCyan.withValues(alpha: 0.1) : null,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                ),
+                                icon: Icon(
+                                  Icons.attach_file_rounded,
+                                  size: 14,
+                                  color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.accentCyan,
+                                ),
+                                label: Text(
+                                  _attachedFiles.isNotEmpty ? 'Attach (${_attachedFiles.length})' : 'Attach',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: _attachedFiles.isNotEmpty ? AppColors.accentCyan : AppColors.textBody,
+                                    fontWeight: _attachedFiles.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                                onPressed: _pickFiles,
+                              ),
+                            if (chat.currentSession != null) ...[
+                              SizedBox(width: gap),
+                              if (isCompactMobile)
+                                buildCompactIconBtn(
+                                  tooltip: _pendingScheduleTaskCount > 0
+                                      ? 'Công việc ($_pendingScheduleTaskCount)'
+                                      : 'Công việc',
+                                  icon: Icons.checklist_rtl_rounded,
+                                  iconColor: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.primaryLight,
+                                  borderColor: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.borderDark,
+                                  backgroundColor: _pendingScheduleTaskCount > 0
+                                      ? AppColors.accent.withValues(alpha: 0.1)
+                                      : null,
+                                  badgeCount: _pendingScheduleTaskCount,
+                                  badgeColor: AppColors.accent,
+                                  onPressed: () => _openQuickTaskPicker(chat, serverProvider),
+                                )
+                              else
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 32),
+                                    fixedSize: const Size.fromHeight(32),
+                                    side: BorderSide(
+                                      color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.borderDark,
+                                    ),
+                                    backgroundColor: _pendingScheduleTaskCount > 0
+                                        ? AppColors.accent.withValues(alpha: 0.1)
+                                        : null,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                  ),
+                                  icon: Icon(
+                                    Icons.checklist_rtl_rounded,
+                                    size: 14,
+                                    color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.primaryLight,
+                                  ),
+                                  label: Text(
+                                    _pendingScheduleTaskCount > 0
+                                        ? 'Công việc ($_pendingScheduleTaskCount)'
+                                        : 'Công việc',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: _pendingScheduleTaskCount > 0 ? AppColors.accent : AppColors.textBody,
+                                      fontWeight: _pendingScheduleTaskCount > 0 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                  onPressed: () => _openQuickTaskPicker(chat, serverProvider),
+                                ),
+                            ],
+                            SizedBox(width: gap),
+                            // Model Selector Button
+                            if (isCompactMobile)
+                              buildCompactIconBtn(
+                                tooltip: 'Model AI: ${serverProvider.currentAiModel}',
+                                icon: Icons.smart_toy_rounded,
+                                iconColor: AppColors.primaryLight,
+                                borderColor: AppColors.primaryLight.withValues(alpha: 0.8),
+                                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                                onPressed: () => ModelPickerDialog.show(context, serverProvider),
+                              )
+                            else
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 32),
+                                  fixedSize: const Size.fromHeight(32),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  side: const BorderSide(color: AppColors.primaryLight, width: 0.8),
+                                  backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                ),
+                                icon: const Icon(Icons.smart_toy_rounded, size: 14, color: AppColors.primaryLight),
+                                label: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 140),
+                                      child: Text(
+                                        serverProvider.currentAiModel,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primaryLight,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    const Icon(Icons.arrow_drop_down_rounded, size: 14, color: AppColors.primaryLight),
+                                  ],
+                                ),
+                                onPressed: () => ModelPickerDialog.show(context, serverProvider),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
-                    icon: const Icon(Icons.stop_rounded, size: 14),
-                    label: const Text('Dừng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    onPressed: () => chat.stopGenerating(),
-                  )
-                else
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(64, 32),
-                      fixedSize: const Size.fromHeight(32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                    ),
-                    icon: const Icon(Icons.send_rounded, size: 14),
-                    label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    onPressed: () => _handleSend(chat, serverProvider),
-                  ),
-              ],
+                    SizedBox(width: isCompactMobile ? 8 : 10),
+                    if (chat.isGenerating)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(64, 32),
+                          fixedSize: const Size.fromHeight(32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          backgroundColor: AppColors.danger,
+                          padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 14, vertical: 0),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        icon: const Icon(Icons.stop_rounded, size: 14),
+                        label: const Text('Dừng', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        onPressed: () => chat.stopGenerating(),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(64, 32),
+                          fixedSize: const Size.fromHeight(32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          backgroundColor: AppColors.primary,
+                          padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 14, vertical: 0),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        icon: const Icon(Icons.send_rounded, size: 14),
+                        label: const Text('Gửi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        onPressed: () => _handleSend(chat, serverProvider),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
+      ),
+        ],
       ),
     );
   }
@@ -5016,43 +5367,120 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompactMobile = MediaQuery.sizeOf(context).width < 600;
+
+    final browseDirButton = ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.cardBg,
+        side: const BorderSide(color: AppColors.primary),
+        minimumSize: const Size(0, 34),
+        fixedSize: const Size.fromHeight(34),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+      ),
+      icon: const Icon(Icons.drive_folder_upload_rounded, size: 14, color: AppColors.primaryLight),
+      label: const Text('Duyệt máy tính...', style: TextStyle(fontSize: 11.5, color: AppColors.primaryLight)),
+      onPressed: _pickLocalDirectory,
+    );
+
+    final pickDocsButton = ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.cardBg,
+        side: const BorderSide(color: AppColors.accentCyan),
+        minimumSize: const Size(0, 34),
+        fixedSize: const Size.fromHeight(34),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+      ),
+      icon: const Icon(Icons.note_add_rounded, size: 14, color: AppColors.accentCyan),
+      label: const Text(
+        'Chọn nhiều file...',
+        style: TextStyle(fontSize: 11.5, color: AppColors.accentCyan),
+      ),
+      onPressed: _pickDocFiles,
+    );
+
+    final scopeDocsHeading = Row(
+      mainAxisSize: isCompactMobile ? MainAxisSize.max : MainAxisSize.min,
+      children: [
+        const Icon(Icons.menu_book_rounded, size: 14, color: AppColors.accentCyan),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            'Tài liệu dự án đính kèm (Scope Docs):',
+            maxLines: isCompactMobile ? 2 : 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textWhite,
+            ),
+          ),
+        ),
+        if (_selectedDocs.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppColors.accentCyan.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Text(
+              '${_selectedDocs.length}',
+              style: const TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.bold,
+                color: AppColors.accentCyan,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+
     return TaduDialog(
       minWidth: 560,
       maxWidth: 660,
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.folder_open_rounded, color: AppColors.primaryLight, size: 20),
-          SizedBox(width: 8),
-          Text('Phạm Vi Thư Mục Làm Việc Cục Bộ (Scope)'),
+          const Icon(Icons.folder_open_rounded, color: AppColors.primaryLight, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isCompactMobile ? 'Phạm Vi Thư Mục (Scope)' : 'Phạm Vi Thư Mục Làm Việc Cục Bộ (Scope)',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
       content: SizedBox(
-        width: 560,
+        width: isCompactMobile ? double.infinity : 560,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Giới hạn phạm vi thao tác của AI Agent trong thư mục này trên máy tính:',
-                    style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+            if (isCompactMobile) ...[
+              const Text(
+                'Giới hạn phạm vi thao tác của AI Agent trong thư mục này trên máy tính:',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.35),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: browseDirButton),
+            ] else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Giới hạn phạm vi thao tác của AI Agent trong thư mục này trên máy tính:',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+                    ),
                   ),
-                ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.cardBg,
-                    side: const BorderSide(color: AppColors.primary),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  ),
-                  icon: const Icon(Icons.drive_folder_upload_rounded, size: 14, color: AppColors.primaryLight),
-                  label: const Text('Duyệt máy tính...', style: TextStyle(fontSize: 11.5, color: AppColors.primaryLight)),
-                  onPressed: _pickLocalDirectory,
-                ),
-              ],
-            ),
+                  const SizedBox(width: 10),
+                  browseDirButton,
+                ],
+              ),
             const SizedBox(height: 10),
 
             // Recent Scopes History Section
@@ -5060,19 +5488,25 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.history_rounded, size: 12, color: AppColors.accentCyan),
-                      SizedBox(width: 4),
-                      Text(
-                        'Lịch sử thư mục đã làm việc:',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.accentCyan,
+                  const Expanded(
+                    child: Row(
+                      children: [
+                        Icon(Icons.history_rounded, size: 12, color: AppColors.accentCyan),
+                        SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Lịch sử thư mục đã làm việc:',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.accentCyan,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   InkWell(
                     onTap: () async {
@@ -5127,7 +5561,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                               ),
                               const SizedBox(width: 4),
                               ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 320),
+                                constraints: BoxConstraints(maxWidth: isCompactMobile ? 220 : 320),
                                 child: Text(
                                   scopePath,
                                   overflow: TextOverflow.ellipsis,
@@ -5215,7 +5649,9 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
               focusNode: _dialogFocusNode,
               onChanged: _loadSuggestions,
               decoration: InputDecoration(
-                hintText: 'Nhập đường dẫn thư mục cục bộ, dùng ↑ ↓ Enter để chọn...',
+                hintText: isCompactMobile
+                    ? 'Nhập đường dẫn thư mục dự án...'
+                    : 'Nhập đường dẫn thư mục cục bộ, dùng ↑ ↓ Enter để chọn...',
                 prefixIcon: const Icon(Icons.search_rounded, size: 18),
                 suffixIcon: _isLoading
                     ? const Padding(
@@ -5241,7 +5677,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
 
             // Suggestions List
             Container(
-              height: 180,
+              height: isCompactMobile ? 150 : 180,
               decoration: BoxDecoration(
                 color: AppColors.bgDark,
                 borderRadius: BorderRadius.circular(4),
@@ -5290,6 +5726,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                                   Expanded(
                                     child: Text(
                                       dir,
+                                      overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontFamily: 'monospace',
                                         fontSize: 12,
@@ -5298,6 +5735,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                                       ),
                                     ),
                                   ),
+                                  const SizedBox(width: 6),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
@@ -5321,56 +5759,19 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
             const SizedBox(height: 14),
 
             // Section: Scope Documentation Files
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.menu_book_rounded, size: 14, color: AppColors.accentCyan),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Tài liệu dự án đính kèm (Scope Docs):',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textWhite,
-                      ),
-                    ),
-                    if (_selectedDocs.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppColors.accentCyan.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        child: Text(
-                          '${_selectedDocs.length}',
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.accentCyan,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.cardBg,
-                    side: const BorderSide(color: AppColors.accentCyan),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  ),
-                  icon: const Icon(Icons.note_add_rounded, size: 14, color: AppColors.accentCyan),
-                  label: const Text(
-                    'Chọn nhiều file...',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.accentCyan),
-                  ),
-                  onPressed: _pickDocFiles,
-                ),
-              ],
-            ),
+            if (isCompactMobile) ...[
+              scopeDocsHeading,
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: pickDocsButton),
+            ] else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: scopeDocsHeading),
+                  const SizedBox(width: 10),
+                  pickDocsButton,
+                ],
+              ),
             const SizedBox(height: 6),
             const Text(
               'Các file được chọn sẽ được tự động nạp vào chỉ thị bối cảnh của Scope để Agent tham chiếu khi làm việc:',
@@ -5421,7 +5822,7 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
                             const Icon(Icons.description_rounded, size: 12, color: AppColors.accentCyan),
                             const SizedBox(width: 5),
                             ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 240),
+                              constraints: BoxConstraints(maxWidth: isCompactMobile ? 190 : 240),
                               child: Tooltip(
                                 message: docPath,
                                 child: Text(
@@ -5460,6 +5861,11 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
       ),
       actions: [
         TextButton(
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, 34),
+            fixedSize: const Size.fromHeight(34),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           onPressed: () {
             widget.onSelect(null, const []);
             Navigator.pop(context);
@@ -5467,6 +5873,11 @@ class _ScopePickerDialogState extends State<_ScopePickerDialog> {
           child: const Text('Xóa giới hạn', style: TextStyle(color: AppColors.danger)),
         ),
         ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(0, 34),
+            fixedSize: const Size.fromHeight(34),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           onPressed: () {
             final val = _controller.text.trim();
             widget.onSelect(val.isEmpty ? null : val, _selectedDocs);

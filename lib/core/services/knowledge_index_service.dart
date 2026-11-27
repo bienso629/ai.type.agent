@@ -91,6 +91,7 @@ class KnowledgeIndexService {
 
   /// Khoi dong vong lap dong bo dinh ky (goi mot lan khi ung dung khoi dong).
   void startBackgroundLoop() {
+    if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) return;
     _loopTimer ??= Timer.periodic(_syncInterval, (_) {
       final scope = _currentScope;
       if (scope != null && scope.isNotEmpty) {
@@ -103,6 +104,9 @@ class KnowledgeIndexService {
   /// tren may, tao symlink ten trung tinh + entry script trung tinh trong thu
   /// muc runtime rieng. Tra ve true neu san sang.
   Future<bool> ensureRuntime() async {
+    if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) {
+      return false;
+    }
     if (_runtimeReady &&
         _interpreterPath != null &&
         _entryScriptPath != null &&

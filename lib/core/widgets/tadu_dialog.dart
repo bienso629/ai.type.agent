@@ -23,7 +23,18 @@ class TaduDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final isCompactMobile = screenSize.width < 600;
+    final maxAllowedWidth = (screenSize.width - (isCompactMobile ? 24 : 80)).clamp(240.0, double.infinity);
+    final effectiveMinWidth = isCompactMobile
+        ? maxAllowedWidth
+        : (minWidth > maxAllowedWidth ? maxAllowedWidth : minWidth);
+    final effectiveMaxWidth = maxWidth > maxAllowedWidth ? maxAllowedWidth : maxWidth;
+
     return Dialog(
+      insetPadding: isCompactMobile
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 20)
+          : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       backgroundColor: AppColors.cardBg,
       elevation: 20,
       shape: RoundedRectangleBorder(
@@ -33,9 +44,9 @@ class TaduDialog extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          minWidth: minWidth,
-          maxWidth: maxWidth,
-          maxHeight: maxHeight ?? MediaQuery.of(context).size.height * 0.85,
+          minWidth: effectiveMinWidth,
+          maxWidth: effectiveMaxWidth,
+          maxHeight: maxHeight ?? screenSize.height * 0.85,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -43,7 +54,9 @@ class TaduDialog extends StatelessWidget {
           children: [
             // 1. MODAL HEADER (Border Bottom Separator)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              padding: isCompactMobile
+                  ? const EdgeInsets.fromLTRB(14, 10, 8, 10)
+                  : const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: const BoxDecoration(
                 color: AppColors.cardBg,
                 border: Border(
@@ -53,14 +66,17 @@ class TaduDialog extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  DefaultTextStyle(
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textWhite,
+                  Expanded(
+                    child: DefaultTextStyle(
+                      style: TextStyle(
+                        fontSize: isCompactMobile ? 14 : 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textWhite,
+                      ),
+                      child: title,
                     ),
-                    child: title,
                   ),
+                  const SizedBox(width: 6),
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -75,7 +91,7 @@ class TaduDialog extends StatelessWidget {
             // 2. MODAL BODY (Scrollable if needed)
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.all(isCompactMobile ? 14 : 20),
                 child: content,
               ),
             ),
@@ -83,22 +99,31 @@ class TaduDialog extends StatelessWidget {
             // 3. MODAL FOOTER (Border Top Separator)
             if (actions != null && actions!.isNotEmpty)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: isCompactMobile
+                    ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
+                    : const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: const BoxDecoration(
                   color: AppColors.sidebarBg,
                   border: Border(
                     top: BorderSide(color: AppColors.borderDark, width: 1),
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    for (int i = 0; i < actions!.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 10),
-                      actions![i],
-                    ],
-                  ],
-                ),
+                child: isCompactMobile
+                    ? Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: actions!,
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          for (int i = 0; i < actions!.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 10),
+                            actions![i],
+                          ],
+                        ],
+                      ),
               ),
           ],
         ),

@@ -345,7 +345,9 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.add_comment_rounded, size: 20, color: AppColors.primaryLight),
+                  style: _sidebarCompactIconStyle(32),
+                  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                  icon: const Icon(Icons.add_comment_rounded, size: 19, color: AppColors.primaryLight),
                   tooltip: 'Tạo hội thoại mới',
                   onPressed: () {
                     widget.onSessionSelected?.call();
@@ -356,7 +358,9 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                 ),
                 const SizedBox(height: 4),
                 IconButton(
-                  icon: const Icon(Icons.history_rounded, size: 20, color: AppColors.textDim),
+                  style: _sidebarCompactIconStyle(32),
+                  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                  icon: const Icon(Icons.history_rounded, size: 19, color: AppColors.textDim),
                   tooltip: 'Mở rộng danh sách hội thoại (${chat.sessions.length})',
                   onPressed: widget.onExpandRequested,
                 ),
@@ -533,11 +537,8 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                       ),
                       const SizedBox(width: 6),
                       IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-                        hoverColor: Colors.transparent,
-                        splashColor: Colors.transparent,
-                        highlightColor: Colors.transparent,
+                        style: _sidebarCompactIconStyle(28),
+                        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                         icon: const Icon(Icons.add_rounded, size: 18, color: AppColors.primaryLight),
                         tooltip: 'Tạo hội thoại mới',
                         onPressed: () => chat.createNewSession(
@@ -564,11 +565,8 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                            hoverColor: Colors.transparent,
-                            splashColor: Colors.transparent,
-                            highlightColor: Colors.transparent,
+                            style: _sidebarCompactIconStyle(28),
+                            constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                             icon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textDim),
                             tooltip: 'Tìm kiếm hội thoại',
                             onPressed: () {
@@ -580,13 +578,10 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                               });
                             },
                           ),
-                          const SizedBox(width: 2),
+                          const SizedBox(width: 4),
                           IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                            hoverColor: Colors.transparent,
-                            splashColor: Colors.transparent,
-                            highlightColor: Colors.transparent,
+                            style: _sidebarCompactIconStyle(28),
+                            constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                             icon: const Icon(Icons.add_rounded, size: 18, color: AppColors.primaryLight),
                             tooltip: 'Tạo hội thoại mới',
                             onPressed: () {
@@ -726,16 +721,13 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                                             children: [
                                               // Pin Button
                                               IconButton(
-                                                padding: EdgeInsets.zero,
-                                                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                                hoverColor: Colors.transparent,
-                                                splashColor: Colors.transparent,
-                                                highlightColor: Colors.transparent,
+                                                style: _sidebarCompactIconStyle(24),
+                                                constraints: const BoxConstraints.tightFor(width: 24, height: 24),
                                                 icon: Transform.rotate(
                                                   angle: sess.isPinned ? -0.5 : 0,
                                                   child: Icon(
                                                     sess.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                                                    size: 12.5,
+                                                    size: 13,
                                                     color: sess.isPinned ? AppColors.warning : AppColors.textDim,
                                                   ),
                                                 ),
@@ -883,9 +875,13 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
                                                             ],
                                                           ),
                                                         ),
-                                                        Text(
-                                                          _formatSessionTime(sess.updatedAt),
-                                                          style: const TextStyle(fontSize: 9.5, color: AppColors.textDim),
+                                                        Flexible(
+                                                          child: Text(
+                                                            _formatSessionTime(sess.updatedAt),
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(fontSize: 9.5, color: AppColors.textDim),
+                                                          ),
                                                         ),
                                                       ],
                                                     ),
@@ -1097,6 +1093,19 @@ class _SessionListSidebarState extends State<SessionListSidebar> {
   }
 }
 
+ButtonStyle _sidebarCompactIconStyle(double size) => IconButton.styleFrom(
+      padding: EdgeInsets.zero,
+      minimumSize: Size(size, size),
+      fixedSize: Size(size, size),
+      maximumSize: Size(size, size),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.standard,
+      hoverColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      overlayColor: Colors.transparent,
+      splashFactory: NoSplash.splashFactory,
+    );
+
 class _RecentQuestionItem extends StatefulWidget {
   final String question;
   final ChatSessionModel session;
@@ -1131,8 +1140,8 @@ class _RecentQuestionItemState extends State<_RecentQuestionItem> {
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          margin: const EdgeInsets.only(top: 4, bottom: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          margin: const EdgeInsets.only(top: 2, bottom: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Row(
             children: [
               Expanded(
@@ -1155,14 +1164,11 @@ class _RecentQuestionItemState extends State<_RecentQuestionItem> {
               const SizedBox(width: 4),
               // Copy Button
               IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                hoverColor: Colors.transparent,
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
+                style: _sidebarCompactIconStyle(24),
+                constraints: const BoxConstraints.tightFor(width: 24, height: 24),
                 icon: Icon(
                   Icons.copy_rounded,
-                  size: 11.5,
+                  size: 12.5,
                   color: _isHovered ? AppColors.textWhite : AppColors.textDim,
                 ),
                 tooltip: 'Sao chép câu hỏi',
@@ -1171,14 +1177,11 @@ class _RecentQuestionItemState extends State<_RecentQuestionItem> {
               const SizedBox(width: 2),
               // Re-ask Button
               IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                hoverColor: Colors.transparent,
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
+                style: _sidebarCompactIconStyle(24),
+                constraints: const BoxConstraints.tightFor(width: 24, height: 24),
                 icon: const Icon(
                   Icons.replay_rounded,
-                  size: 12,
+                  size: 13,
                   color: AppColors.primaryLight,
                 ),
                 tooltip: 'Hỏi lại câu này ngay',
@@ -1290,8 +1293,8 @@ class _SwipeableSessionItemState extends State<_SwipeableSessionItem> with Singl
                         border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
                       ),
                       child: IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        style: _sidebarCompactIconStyle(28),
+                        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                         icon: const Icon(Icons.restart_alt_rounded, size: 14, color: AppColors.warning),
                         tooltip: 'Reset hội thoại',
                         onPressed: () {
@@ -1311,8 +1314,8 @@ class _SwipeableSessionItemState extends State<_SwipeableSessionItem> with Singl
                         border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.4)),
                       ),
                       child: IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        style: _sidebarCompactIconStyle(28),
+                        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                         icon: const Icon(Icons.edit_outlined, size: 13, color: AppColors.primaryLight),
                         tooltip: 'Chỉnh sửa hội thoại',
                         onPressed: () {
@@ -1332,8 +1335,8 @@ class _SwipeableSessionItemState extends State<_SwipeableSessionItem> with Singl
                         border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
                       ),
                       child: IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        style: _sidebarCompactIconStyle(28),
+                        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
                         icon: const Icon(Icons.delete_outline_rounded, size: 13, color: AppColors.danger),
                         tooltip: 'Xóa hội thoại',
                         onPressed: () {

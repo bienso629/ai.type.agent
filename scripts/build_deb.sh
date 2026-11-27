@@ -65,7 +65,7 @@ Version: $VERSION
 Section: devel
 Priority: optional
 Architecture: $ARCH
-Depends: libgtk-3-0, libcups2, libsqlite3-0, liblzma5
+Depends: libgtk-3-0t64 | libgtk-3-0, libcups2t64 | libcups2, libsqlite3-0, liblzma5
 Installed-Size: $INSTALLED_SIZE
 Maintainer: AI Type Agent <support@tadu.vn>
 Description: AI Type Agent - Trợ lý lập trình và Quản trị máy chủ Agentic AI

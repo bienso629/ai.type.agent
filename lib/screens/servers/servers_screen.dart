@@ -12,7 +12,9 @@ import '../../models/server_model.dart';
 import '../../providers/server_provider.dart';
 
 class ServersScreen extends StatefulWidget {
-  const ServersScreen({super.key});
+  final VoidCallback? onOpenDrawer;
+
+  const ServersScreen({super.key, this.onOpenDrawer});
 
   @override
   State<ServersScreen> createState() => _ServersScreenState();
@@ -213,7 +215,13 @@ class _ServersScreenState extends State<ServersScreen> {
               children: [
                 const Icon(Icons.terminal_rounded, color: AppColors.primaryLight, size: 20),
                 const SizedBox(width: 8),
-                Text('Trạng Thái Systemd: ${server.name} (ai-agent.service)'),
+                Expanded(
+                  child: Text(
+                    'Trạng Thái Systemd: ${server.name} (ai-agent.service)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
             content: Container(
@@ -327,7 +335,13 @@ class _ServersScreenState extends State<ServersScreen> {
               children: [
                 const Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 22),
                 const SizedBox(width: 8),
-                Text(existing != null ? 'Chỉnh Sửa Thông Tin Máy Chủ' : 'Thêm Máy Chủ VPS Mới'),
+                Expanded(
+                  child: Text(
+                    existing != null ? 'Chỉnh Sửa Thông Tin Máy Chủ' : 'Thêm Máy Chủ VPS Mới',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
             content: SingleChildScrollView(
@@ -485,13 +499,15 @@ class _ServersScreenState extends State<ServersScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Row(
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            crossAxisAlignment: WrapCrossAlignment.center,
                                             children: [
                                               const Text(
                                                 'Chế độ 1: Dịch vụ nền Systemd (ai-agent.service)',
                                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                               ),
-                                              const SizedBox(width: 6),
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                                 decoration: const BoxDecoration(
@@ -534,7 +550,12 @@ class _ServersScreenState extends State<ServersScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        const Text('(Port lắng nghe của ai-agent.service)', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                                        const Expanded(
+                                          child: Text(
+                                            '(Port lắng nghe của ai-agent.service)',
+                                            style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -559,9 +580,11 @@ class _ServersScreenState extends State<ServersScreen> {
                                           children: [
                                             Icon(Icons.shield_rounded, size: 15, color: AppColors.primaryLight),
                                             SizedBox(width: 6),
-                                            Text(
-                                              'Điều Khiển Dịch Vụ Systemd (ai-agent.service)',
-                                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                            Expanded(
+                                              child: Text(
+                                                'Điều Khiển Dịch Vụ Systemd (ai-agent.service)',
+                                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -653,32 +676,28 @@ class _ServersScreenState extends State<ServersScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        const Row(
                                           children: [
-                                            const Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      Icon(Icons.cloud_upload_rounded, size: 15, color: AppColors.accentCyan),
-                                                      SizedBox(width: 6),
-                                                      Text(
-                                                        '1-Click Deploy & Tự Động Thiết Lập',
-                                                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  SizedBox(height: 4),
-                                                  Text(
-                                                    'Tự động cài đặt nhị phân, cấu hình Systemd service trên VPS',
-                                                    style: TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                                  ),
-                                                ],
+                                            Icon(Icons.cloud_upload_rounded, size: 15, color: AppColors.accentCyan),
+                                            SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                '1-Click Deploy & Tự Động Thiết Lập',
+                                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Text(
+                                          'Tự động cài đặt nhị phân, cấu hình Systemd service trên VPS',
+                                          style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 6,
+                                          children: [
                                             // Nút Kiểm Tra Trạng Thái (Status) nằm bên trái nút Thiết lập ngay
                                             OutlinedButton.icon(
                                               style: OutlinedButton.styleFrom(
@@ -697,7 +716,6 @@ class _ServersScreenState extends State<ServersScreen> {
                                                 }
                                               },
                                             ),
-                                            const SizedBox(width: 6),
                                             // Nút Thiết lập ngay
                                             ElevatedButton.icon(
                                               style: ElevatedButton.styleFrom(
@@ -813,20 +831,23 @@ class _ServersScreenState extends State<ServersScreen> {
                                       children: [
                                         const Text('Lệnh CLI thực thi:', style: TextStyle(fontSize: 11, color: AppColors.textDim)),
                                         const SizedBox(width: 8),
-                                        DropdownButton<String>(
-                                          value: selectedCliBinary,
-                                          dropdownColor: AppColors.cardBg,
-                                          style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontFamily: 'monospace'),
-                                          underline: Container(height: 1, color: AppColors.accent),
-                                          items: const [
-                                            DropdownMenuItem(value: 'agy', child: Text('agy (Google Antigravity CLI)')),
-                                            DropdownMenuItem(value: 'claude', child: Text('claude (Claude Code CLI)')),
-                                            DropdownMenuItem(value: 'gemini', child: Text('gemini (Google Gemini CLI)')),
-                                            DropdownMenuItem(value: 'ollama', child: Text('ollama (Local LLM CLI)')),
-                                          ],
-                                          onChanged: (val) {
-                                            if (val != null) setDialogState(() => selectedCliBinary = val);
-                                          },
+                                        Expanded(
+                                          child: DropdownButton<String>(
+                                            value: selectedCliBinary,
+                                            isExpanded: true,
+                                            dropdownColor: AppColors.cardBg,
+                                            style: const TextStyle(fontSize: 11.5, color: AppColors.textWhite, fontFamily: 'monospace'),
+                                            underline: Container(height: 1, color: AppColors.accent),
+                                            items: const [
+                                              DropdownMenuItem(value: 'agy', child: Text('agy (Google Antigravity CLI)', overflow: TextOverflow.ellipsis)),
+                                              DropdownMenuItem(value: 'claude', child: Text('claude (Claude Code CLI)', overflow: TextOverflow.ellipsis)),
+                                              DropdownMenuItem(value: 'gemini', child: Text('gemini (Google Gemini CLI)', overflow: TextOverflow.ellipsis)),
+                                              DropdownMenuItem(value: 'ollama', child: Text('ollama (Local LLM CLI)', overflow: TextOverflow.ellipsis)),
+                                            ],
+                                            onChanged: (val) {
+                                              if (val != null) setDialogState(() => selectedCliBinary = val);
+                                            },
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -931,7 +952,13 @@ class _ServersScreenState extends State<ServersScreen> {
             children: [
               Icon(Icons.upload_file_rounded, color: AppColors.primaryLight, size: 22),
               SizedBox(width: 8),
-              Text('Khôi Phục / Nhập Danh Sách Máy Chủ (Import)'),
+              Expanded(
+                child: Text(
+                  'Khôi Phục / Nhập Danh Sách Máy Chủ (Import)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           content: Column(
@@ -1053,14 +1080,16 @@ class _ServersScreenState extends State<ServersScreen> {
           s.sshUser.toLowerCase().contains(q);
     }).toList();
 
+    final isCompactMobile = MediaQuery.sizeOf(context).width < 700;
+
     return Scaffold(
       backgroundColor: AppColors.bgDark,
       body: Column(
         children: [
-          // 1. Header Bar (Height 66px)
+          // 1. Header Bar
           Container(
-            height: 66,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            height: isCompactMobile ? 56 : 66,
+            padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 24),
             decoration: const BoxDecoration(
               color: AppColors.bgDark,
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
@@ -1068,44 +1097,74 @@ class _ServersScreenState extends State<ServersScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: 24),
-                    const SizedBox(width: 12),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                Expanded(
+                  child: Row(
+                    children: [
+                      if (widget.onOpenDrawer != null) ...[
+                        IconButton(
+                          tooltip: 'Mở menu điều hướng',
+                          style: IconButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(34, 34),
+                            fixedSize: const Size(34, 34),
+                            maximumSize: const Size(34, 34),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.standard,
+                          ),
+                          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                          onPressed: widget.onOpenDrawer,
+                          icon: const Icon(Icons.menu_rounded, size: 20, color: AppColors.textWhite),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Icon(Icons.dns_rounded, color: AppColors.primaryLight, size: isCompactMobile ? 20 : 22),
+                      SizedBox(width: isCompactMobile ? 8 : 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Quản Lý Máy Chủ & Kết Nối SSH',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    isCompactMobile ? 'Máy Chủ & SSH' : 'Quản Lý Máy Chủ & Kết Nối SSH',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+                                  ),
+                                ),
+                                if (!isCompactMobile) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${serverProvider.servers.length} máy chủ',
+                                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '${serverProvider.servers.length} máy chủ',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                              ),
+                            Text(
+                              isRemoteActive
+                                  ? 'Đang kết nối: ${serverProvider.selectedServer!.name} (${serverProvider.selectedServer!.serverIp})'
+                                  : 'Chọn một máy chủ VPS bên dưới để kết nối và quản trị',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                             ),
                           ],
                         ),
-                        Text(
-                          isRemoteActive
-                              ? 'Đang kết nối: ${serverProvider.selectedServer!.name} (${serverProvider.selectedServer!.serverIp})'
-                              : 'Chọn một máy chủ VPS bên dưới để kết nối và quản trị',
-                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Row(
                   children: [
                     PopupMenuButton<String>(
@@ -1147,20 +1206,23 @@ class _ServersScreenState extends State<ServersScreen> {
                         ),
                       ],
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        height: 32,
+                        padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 8 : 10),
                         decoration: BoxDecoration(
                           color: AppColors.cardBg,
                           border: Border.all(color: AppColors.borderDark),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.sync_alt_rounded, size: 15, color: AppColors.textDim),
-                            SizedBox(width: 6),
-                            Text('Sao Lưu & Khôi Phục', style: TextStyle(fontSize: 12, color: AppColors.textBody, fontWeight: FontWeight.w500)),
-                            SizedBox(width: 2),
-                            Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppColors.textDim),
+                            const Icon(Icons.sync_alt_rounded, size: 15, color: AppColors.textDim),
+                            if (!isCompactMobile) ...[
+                              const SizedBox(width: 6),
+                              const Text('Sao Lưu & Khôi Phục', style: TextStyle(fontSize: 12, color: AppColors.textBody, fontWeight: FontWeight.w500)),
+                              const SizedBox(width: 2),
+                              const Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppColors.textDim),
+                            ],
                           ],
                         ),
                       ),
@@ -1169,10 +1231,16 @@ class _ServersScreenState extends State<ServersScreen> {
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        minimumSize: const Size(0, 32),
+                        fixedSize: const Size.fromHeight(32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 10 : 14, vertical: 0),
                       ),
                       icon: const Icon(Icons.add_rounded, size: 16),
-                      label: const Text('Thêm Máy Chủ Mới', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      label: Text(
+                        isCompactMobile ? 'Thêm' : 'Thêm Máy Chủ Mới',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
                       onPressed: () => _showAddServerDialog(context),
                     ),
                   ],
@@ -1183,13 +1251,13 @@ class _ServersScreenState extends State<ServersScreen> {
 
           // 2. Search & Filter Bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 24, vertical: isCompactMobile ? 10 : 12),
             decoration: const BoxDecoration(
               color: AppColors.sidebarBg,
               border: Border(bottom: BorderSide(color: AppColors.borderDark, width: 1)),
             ),
             child: SizedBox(
-              height: 38,
+              height: 36,
               child: TextField(
                 controller: _searchCtrl,
                 textAlignVertical: TextAlignVertical.center,
@@ -1200,9 +1268,16 @@ class _ServersScreenState extends State<ServersScreen> {
                   hintText: 'Tìm kiếm nhanh máy chủ theo tên, IP, username...',
                   hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                   prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textMuted),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
                           padding: EdgeInsets.zero,
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(32, 32),
+                            fixedSize: const Size(32, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
                           hoverColor: Colors.transparent,
                           splashColor: Colors.transparent,
                           highlightColor: Colors.transparent,
@@ -1215,7 +1290,8 @@ class _ServersScreenState extends State<ServersScreen> {
                       : null,
                   filled: true,
                   fillColor: AppColors.inputBg,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                  constraints: const BoxConstraints(minHeight: 36, maxHeight: 36),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(4),
                     borderSide: const BorderSide(color: AppColors.borderDark),
@@ -1235,25 +1311,29 @@ class _ServersScreenState extends State<ServersScreen> {
 
           if (_searchQuery.isNotEmpty)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 12 : 24, vertical: 8),
               color: AppColors.primary.withValues(alpha: 0.1),
               child: Row(
                 children: [
                   const Icon(Icons.filter_alt_outlined, size: 14, color: AppColors.primaryLight),
                   const SizedBox(width: 6),
-                  Text(
-                    'Đang lọc theo: "$_searchQuery" (${servers.length} kết quả)',
-                    style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
+                  Expanded(
+                    child: Text(
+                      'Đang lọc theo: "$_searchQuery" (${servers.length} kết quả)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: AppColors.primaryLight),
+                    ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   InkWell(
                     onTap: () {
                       _searchCtrl.clear();
                       setState(() => _searchQuery = '');
                     },
-                    child: const Text(
-                      'Xóa bộ lọc (Hiện tất cả)',
-                      style: TextStyle(fontSize: 12, color: AppColors.accentCyan, decoration: TextDecoration.underline),
+                    child: Text(
+                      isCompactMobile ? 'Xóa lọc' : 'Xóa bộ lọc (Hiện tất cả)',
+                      style: const TextStyle(fontSize: 12, color: AppColors.accentCyan, decoration: TextDecoration.underline),
                     ),
                   ),
                 ],
@@ -1268,7 +1348,7 @@ class _ServersScreenState extends State<ServersScreen> {
                     ? Center(
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-                          margin: const EdgeInsets.all(20),
+                          margin: EdgeInsets.all(isCompactMobile ? 12 : 20),
                           decoration: BoxDecoration(
                             color: AppColors.cardBg.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(4),
@@ -1283,6 +1363,7 @@ class _ServersScreenState extends State<ServersScreen> {
                                 _searchQuery.isNotEmpty
                                     ? 'Không tìm thấy máy chủ nào khớp với "$_searchQuery"'
                                     : 'Chưa có máy chủ VPS nào trong danh sách',
+                                textAlign: TextAlign.center,
                                 style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
                               ),
                               const SizedBox(height: 14),
@@ -1297,7 +1378,7 @@ class _ServersScreenState extends State<ServersScreen> {
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.all(20),
+                        padding: EdgeInsets.all(isCompactMobile ? 12 : 20),
                         itemCount: servers.length,
                         itemBuilder: (context, index) {
                           final s = servers[index];
@@ -1306,8 +1387,251 @@ class _ServersScreenState extends State<ServersScreen> {
                               (s.id == serverProvider.selectedServer!.id || s.serverIp == serverProvider.selectedServer!.serverIp);
                           final test = _testStatus[s.id];
 
+                          Widget buildCompactActionIcon({
+                            required String tooltip,
+                            required Widget icon,
+                            required VoidCallback? onPressed,
+                            Color? borderColor,
+                          }) {
+                            final size = isCompactMobile ? 32.0 : 34.0;
+                            return IconButton(
+                              tooltip: tooltip,
+                              onPressed: onPressed,
+                              style: IconButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size(size, size),
+                                fixedSize: Size(size, size),
+                                maximumSize: Size(size, size),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.standard,
+                                backgroundColor: isCompactMobile ? AppColors.inputBg : Colors.transparent,
+                                side: isCompactMobile
+                                    ? BorderSide(color: borderColor ?? AppColors.borderDark)
+                                    : BorderSide.none,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                              ),
+                              constraints: BoxConstraints.tightFor(width: size, height: size),
+                              icon: icon,
+                            );
+                          }
+
+                          final activeBadge = Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_rounded, size: 11, color: Colors.white),
+                                SizedBox(width: 3),
+                                Text(
+                                  'ĐANG HOẠT ĐỘNG',
+                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          final metadataChips = Wrap(
+                            spacing: isCompactMobile ? 6 : 8,
+                            runSpacing: 6,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.inputBg,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.borderDark),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.terminal_rounded, size: 12, color: AppColors.accentCyan),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        '${s.sshUser}@${s.serverIp}:${s.sshPort}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textWhite),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.inputBg,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.borderDark),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.folder_special_outlined, size: 12, color: AppColors.warning),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        s.remoteWorkDir.isNotEmpty ? s.remoteWorkDir : '/opt/ai_agent',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: s.isCliMode
+                                      ? AppColors.accent.withValues(alpha: 0.15)
+                                      : AppColors.primary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: s.isCliMode
+                                        ? AppColors.accent.withValues(alpha: 0.4)
+                                        : AppColors.primaryLight.withValues(alpha: 0.4),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      s.isCliMode ? Icons.terminal_rounded : Icons.shield_rounded,
+                                      size: 11,
+                                      color: s.isCliMode ? AppColors.accent : AppColors.primaryLight,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      s.isCliMode
+                                          ? 'Chế độ 2: CLI (${s.cliBinary})'
+                                          : 'Chế độ 1: Systemd (Port ${s.apiPort})',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: s.isCliMode ? AppColors.accent : AppColors.primaryLight,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+
+                          final actionButtons = Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              buildCompactActionIcon(
+                                tooltip: 'Bật Proxy & Mở Trình Duyệt Local qua Server này',
+                                onPressed: _proxyLoading[s.id] == true ? null : () => _openProxyAndBrowser(s),
+                                icon: _proxyLoading[s.id] == true
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
+                                      )
+                                    : const Icon(
+                                        Icons.language_rounded,
+                                        size: 16,
+                                        color: AppColors.accentCyan,
+                                      ),
+                              ),
+                              SizedBox(width: isCompactMobile ? 6 : 4),
+                              buildCompactActionIcon(
+                                tooltip: test == 'testing'
+                                    ? 'Đang thử kết nối...'
+                                    : test == 'success'
+                                        ? 'Kết nối thành công (Online) - Bấm để thử lại'
+                                        : test == 'failed'
+                                            ? 'Lỗi kết nối - Bấm để thử lại'
+                                            : 'Thử kết nối máy chủ',
+                                onPressed: test == 'testing' ? null : () => _testServerConnection(s),
+                                borderColor: test == 'success'
+                                    ? AppColors.accent.withValues(alpha: 0.5)
+                                    : test == 'failed'
+                                        ? AppColors.danger.withValues(alpha: 0.5)
+                                        : null,
+                                icon: test == 'testing'
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
+                                      )
+                                    : Icon(
+                                        test == 'failed'
+                                            ? Icons.error_outline_rounded
+                                            : Icons.wifi_protected_setup_rounded,
+                                        size: 16,
+                                        color: test == 'success'
+                                            ? AppColors.accent
+                                            : test == 'failed'
+                                                ? AppColors.danger
+                                                : AppColors.textDim,
+                                      ),
+                              ),
+                              SizedBox(width: isCompactMobile ? 6 : 4),
+                              buildCompactActionIcon(
+                                tooltip: 'Chỉnh sửa thông tin máy chủ',
+                                onPressed: () => _showAddServerDialog(context, s),
+                                icon: const Icon(Icons.edit_outlined, size: 16, color: AppColors.textDim),
+                              ),
+                              SizedBox(width: isCompactMobile ? 6 : 4),
+                              buildCompactActionIcon(
+                                tooltip: 'Xóa máy chủ khỏi danh sách',
+                                borderColor: AppColors.danger.withValues(alpha: 0.35),
+                                icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppColors.danger),
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => TaduDialog(
+                                      minWidth: 420,
+                                      maxWidth: 500,
+                                      title: const Row(
+                                        children: [
+                                          Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 22),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Xác Nhận Xóa Máy Chủ',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      content: Text('Bạn có chắc muốn xóa máy chủ "${s.name}" (${s.serverIp})?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx),
+                                          child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+                                        ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+                                          onPressed: () {
+                                            final srvId = s.id;
+                                            final srvName = s.name;
+                                            Navigator.pop(ctx);
+                                            serverProvider.deleteServer(srvId);
+                                            if (mounted) {
+                                              AppToast.success(context, 'Đã xóa máy chủ "$srvName" thành công!');
+                                            }
+                                          },
+                                          child: const Text('Xóa vĩnh viễn'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          );
+
                           return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
+                            margin: EdgeInsets.only(bottom: isCompactMobile ? 10 : 12),
                             decoration: BoxDecoration(
                               color: isSelected ? AppColors.cardBg : AppColors.cardBg.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(4),
@@ -1316,262 +1640,165 @@ class _ServersScreenState extends State<ServersScreen> {
                                 width: isSelected ? 1.5 : 1,
                               ),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Row(
-                                children: [
-                                  // Server Icon & Active Indicator
-                                  Container(
+                            child: isCompactMobile
+                                ? Padding(
                                     padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? AppColors.primary.withValues(alpha: 0.15)
-                                          : AppColors.inputBg,
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: isSelected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.borderDark,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      Icons.dns_rounded,
-                                      size: 24,
-                                      color: isSelected ? AppColors.primaryLight : AppColors.textDim,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-
-                                  // Server Information
-                                  Expanded(
-                                    child: InkWell(
-                                      hoverColor: Colors.transparent,
-                                      splashColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      mouseCursor: SystemMouseCursors.click,
-                                      onTap: () {
-                                        if (!isSelected) _switchToServer(serverProvider, s);
-                                      },
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        InkWell(
+                                          borderRadius: BorderRadius.circular(4),
+                                          onTap: () {
+                                            if (!isSelected) _switchToServer(serverProvider, s);
+                                          },
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                s.name,
-                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppColors.textWhite),
-                                              ),
-                                              if (isSelected) ...[
-                                                const SizedBox(width: 10),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                  decoration: BoxDecoration(
-                                                    color: AppColors.primary,
-                                                    borderRadius: BorderRadius.circular(4),
-                                                  ),
-                                                  child: const Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(Icons.check_circle_rounded, size: 11, color: Colors.white),
-                                                      SizedBox(width: 3),
-                                                      Text(
-                                                        'ĐANG HOẠT ĐỘNG',
-                                                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Row(
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.inputBg,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: AppColors.borderDark),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    const Icon(Icons.terminal_rounded, size: 12, color: AppColors.accentCyan),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      '${s.sshUser}@${s.serverIp}:${s.sshPort}',
-                                                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textWhite),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.inputBg,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: AppColors.borderDark),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    const Icon(Icons.folder_special_outlined, size: 12, color: AppColors.warning),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      s.remoteWorkDir.isNotEmpty ? s.remoteWorkDir : '/opt/ai_agent',
-                                                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.textMuted),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: s.isCliMode
-                                                      ? AppColors.accent.withValues(alpha: 0.15)
-                                                      : AppColors.primary.withValues(alpha: 0.15),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(
-                                                    color: s.isCliMode
-                                                        ? AppColors.accent.withValues(alpha: 0.4)
-                                                        : AppColors.primaryLight.withValues(alpha: 0.4),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(
-                                                      s.isCliMode ? Icons.terminal_rounded : Icons.shield_rounded,
-                                                      size: 11,
-                                                      color: s.isCliMode ? AppColors.accent : AppColors.primaryLight,
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      s.isCliMode ? 'Chế độ 2: CLI (${s.cliBinary})' : 'Chế độ 1: Systemd (Port ${s.apiPort})',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        fontWeight: FontWeight.bold,
-                                                        color: s.isCliMode ? AppColors.accent : AppColors.primaryLight,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Action Buttons
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      // Open Proxy Browser Button
-                                      IconButton(
-                                        icon: _proxyLoading[s.id] == true
-                                            ? const SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
-                                              )
-                                            : const Icon(
-                                                Icons.language_rounded,
-                                                size: 17,
-                                                color: AppColors.accentCyan,
-                                              ),
-                                        tooltip: 'Bật Proxy & Mở Trình Duyệt Local qua Server này',
-                                        onPressed: _proxyLoading[s.id] == true ? null : () => _openProxyAndBrowser(s),
-                                      ),
-                                      const SizedBox(width: 8),
-
-                                      // Test Connection Button (Icon only)
-                                      IconButton(
-                                        icon: test == 'testing'
-                                            ? const SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryLight),
-                                              )
-                                            : Icon(
-                                                test == 'success'
-                                                    ? Icons.wifi_protected_setup_rounded
-                                                    : test == 'failed'
-                                                        ? Icons.error_outline_rounded
-                                                        : Icons.wifi_protected_setup_rounded,
-                                                size: 16,
-                                                color: test == 'success'
-                                                    ? AppColors.accent
-                                                    : test == 'failed'
-                                                        ? AppColors.danger
-                                                        : AppColors.textDim,
-                                              ),
-                                        tooltip: test == 'testing'
-                                            ? 'Đang thử kết nối...'
-                                            : test == 'success'
-                                                ? 'Kết nối thành công (Online) - Bấm để thử lại'
-                                                : test == 'failed'
-                                                    ? 'Lỗi kết nối - Bấm để thử lại'
-                                                    : 'Thử kết nối máy chủ',
-                                        onPressed: test == 'testing' ? null : () => _testServerConnection(s),
-                                      ),
-                                      const SizedBox(width: 8),
-
-                                      // Edit Button
-                                      IconButton(
-                                        icon: const Icon(Icons.edit_outlined, size: 16, color: AppColors.textDim),
-                                        tooltip: 'Chỉnh sửa thông tin máy chủ',
-                                        onPressed: () => _showAddServerDialog(context, s),
-                                      ),
-
-                                      // Delete Button
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppColors.danger),
-                                        tooltip: 'Xóa máy chủ khỏi danh sách',
-                                        onPressed: () {
-                                          showDialog(
-                                            context: context,
-                                            builder: (ctx) => TaduDialog(
-                                              minWidth: 420,
-                                              maxWidth: 500,
-                                              title: const Row(
+                                              Row(
+                                                crossAxisAlignment: CrossAxisAlignment.center,
                                                 children: [
-                                                  Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 22),
-                                                  SizedBox(width: 8),
-                                                  Text('Xác Nhận Xóa Máy Chủ'),
+                                                  Container(
+                                                    padding: const EdgeInsets.all(8),
+                                                    decoration: BoxDecoration(
+                                                      color: isSelected
+                                                          ? AppColors.primary.withValues(alpha: 0.15)
+                                                          : AppColors.inputBg,
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(
+                                                        color: isSelected
+                                                            ? AppColors.primary.withValues(alpha: 0.4)
+                                                            : AppColors.borderDark,
+                                                      ),
+                                                    ),
+                                                    child: Icon(
+                                                      Icons.dns_rounded,
+                                                      size: 20,
+                                                      color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          s.name,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: const TextStyle(
+                                                            fontWeight: FontWeight.bold,
+                                                            fontSize: 14,
+                                                            color: AppColors.textWhite,
+                                                          ),
+                                                        ),
+                                                        if (isSelected) ...[
+                                                          const SizedBox(height: 4),
+                                                          activeBadge,
+                                                        ],
+                                                      ],
+                                                    ),
+                                                  ),
                                                 ],
                                               ),
-                                              content: Text('Bạn có chắc muốn xóa máy chủ "${s.name}" (${s.serverIp})?'),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.pop(ctx),
-                                                  child: const Text('Hủy', style: TextStyle(color: AppColors.textMuted)),
+                                              const SizedBox(height: 10),
+                                              metadataChips,
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        const Divider(height: 1, color: AppColors.borderDark),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                isSelected ? 'Đang được chọn' : 'Chạm thẻ để kích hoạt',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+                                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                                                 ),
-                                                ElevatedButton(
-                                                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-                                                  onPressed: () {
-                                                    final srvId = s.id;
-                                                    final srvName = s.name;
-                                                    Navigator.pop(ctx);
-                                                    serverProvider.deleteServer(srvId);
-                                                    if (mounted) {
-                                                      AppToast.success(context, 'Đã xóa máy chủ "$srvName" thành công!');
-                                                    }
-                                                  },
-                                                  child: const Text('Xóa vĩnh viễn'),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            actionButtons,
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Row(
+                                      children: [
+                                        // Server Icon & Active Indicator
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? AppColors.primary.withValues(alpha: 0.15)
+                                                : AppColors.inputBg,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: isSelected ? AppColors.primary.withValues(alpha: 0.4) : AppColors.borderDark,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            Icons.dns_rounded,
+                                            size: 24,
+                                            color: isSelected ? AppColors.primaryLight : AppColors.textDim,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+
+                                        // Server Information
+                                        Expanded(
+                                          child: InkWell(
+                                            hoverColor: Colors.transparent,
+                                            splashColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            mouseCursor: SystemMouseCursors.click,
+                                            onTap: () {
+                                              if (!isSelected) _switchToServer(serverProvider, s);
+                                            },
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Flexible(
+                                                      child: Text(
+                                                        s.name,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: const TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 14.5,
+                                                          color: AppColors.textWhite,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (isSelected) ...[
+                                                      const SizedBox(width: 10),
+                                                      activeBadge,
+                                                    ],
+                                                  ],
                                                 ),
+                                                const SizedBox(height: 6),
+                                                metadataChips,
                                               ],
                                             ),
-                                          );
-                                        },
-                                      ),
-                                    ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+
+                                        // Action Buttons
+                                        actionButtons,
+                                      ],
+                                    ),
                                   ),
-                                ],
-                              ),
-                            ),
                           );
                         },
                       ),

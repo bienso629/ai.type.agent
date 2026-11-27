@@ -1,0 +1,1 @@
+/home/yenai/Documents/Projects/Typing/apps/plugins/agent-coder/build/flutter_pty_desktop/intermediates/cxx/RelWithDebInfo/671w4b47/obj/x86_64

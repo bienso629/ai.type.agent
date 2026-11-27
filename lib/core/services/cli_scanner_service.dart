@@ -103,6 +103,9 @@ class CliScannerService {
   }
 
   Future<List<LocalCliAgent>> scanInstalledAgents() async {
+    if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) {
+      return const [];
+    }
     final installed = <LocalCliAgent>[];
     final searchPaths = _getSearchPaths();
 
