@@ -1,4 +1,4 @@
-# CI Build Trigger: rebuild iOS TestFlight at 2026-10-07T06:25:24
+# CI Build Trigger: auto-rotate oldest Distribution cert on HTTP 409 and publish TestFlight
 name: Build iOS and publish to TestFlight
 
 on:
@@ -83,13 +83,92 @@ jobs:
             export CERTIFICATE_PRIVATE_KEY="$(cat /tmp/cert_key.pem)"
           fi
 
-          app-store-connect fetch-signing-files ai.type.agent.coder \
-            --platform IOS \
-            --type IOS_APP_STORE \
-            --create \
-            --verbose > /tmp/fetch.log 2>&1
-          CODE=$?
-          cat /tmp/fetch.log
+          # Thu tai/tao signing files; neu Apple bao 409 (day 3/3 Distribution cert) thi tu dong thu hoi 1 chung chi cu nhat roi thu lai
+          CODE=1
+          for ATTEMPT in 1 2 3; do
+            echo "=== fetch-signing-files (lan thu $ATTEMPT) ==="
+            app-store-connect fetch-signing-files ai.type.agent.coder \
+              --platform IOS \
+              --type IOS_APP_STORE \
+              --create \
+              --verbose > /tmp/fetch.log 2>&1
+            CODE=$?
+            cat /tmp/fetch.log
+            if [ $CODE -eq 0 ]; then
+              break
+            fi
+
+            if [ $ATTEMPT -lt 3 ] && grep -qiE "returned 409|current Distribution certificate|maximum number of certificates" /tmp/fetch.log; then
+              echo "Phat hien day han muc Distribution Certificate (409). Dang thu hoi 1 chung chi cu nhat de giai phong slot..."
+              python3 - << 'PYEOF'
+          import json
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+          import jwt
+
+          issuer_id = os.environ["APP_STORE_CONNECT_ISSUER_ID"].strip()
+          key_id = os.environ["APP_STORE_CONNECT_KEY_ID"].strip()
+          private_key = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"].strip()
+          if "\\n" in private_key and "\n" not in private_key:
+              private_key = private_key.replace("\\n", "\n")
+
+          now = int(time.time())
+          token = jwt.encode(
+              {"iss": issuer_id, "iat": now, "exp": now + 600, "aud": "appstoreconnect-v1"},
+              private_key,
+              algorithm="ES256",
+              headers={"kid": key_id, "typ": "JWT"},
+          )
+          if isinstance(token, bytes):
+              token = token.decode("utf-8")
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/json",
+          }
+
+          list_url = "https://api.appstoreconnect.apple.com/v1/certificates?filter[certificateType]=DISTRIBUTION,IOS_DISTRIBUTION&limit=50"
+          req = urllib.request.Request(list_url, headers=headers)
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              payload = json.loads(resp.read().decode("utf-8"))
+
+          certs = payload.get("data", [])
+          if not certs:
+              print("Khong tim thay Distribution Certificate nao de thu hoi.")
+              sys.exit(1)
+
+          certs.sort(key=lambda c: c.get("attributes", {}).get("expirationDate", "9999"))
+          print(f"Danh sach {len(certs)} Distribution Certificate hien co:")
+          for c in certs:
+              a = c.get("attributes", {})
+              print(f"  - id={c.get('id')} type={a.get('certificateType')} name={a.get('displayName')} exp={a.get('expirationDate')}")
+
+          target = certs[0]
+          target_id = target["id"]
+          target_attr = target.get("attributes", {})
+          print(f"Dang thu hoi chung chi cu nhat: id={target_id} type={target_attr.get('certificateType')} exp={target_attr.get('expirationDate')}")
+
+          del_req = urllib.request.Request(
+              f"https://api.appstoreconnect.apple.com/v1/certificates/{target_id}",
+              headers=headers,
+              method="DELETE",
+          )
+          with urllib.request.urlopen(del_req, timeout=30) as del_resp:
+              print(f"Da thu hoi thanh cong (HTTP {del_resp.status}).")
+          PYEOF
+              ROTATE_CODE=$?
+              if [ $ROTATE_CODE -ne 0 ]; then
+                echo "::error::Tu dong thu hoi chung chi cu that bai (exit $ROTATE_CODE)."
+                break
+              fi
+            else
+              break
+            fi
+          done
+
           if [ $CODE -ne 0 ]; then
             echo "::error::fetch-signing-files that bai (exit $CODE). Log day du:"
             tail -40 /tmp/fetch.log | while IFS= read -r line; do
@@ -112,21 +191,27 @@ jobs:
           UD_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
           mkdir -p "$MD_DIR" "$UD_DIR"
 
-          # app-store-connect mac dinh luu vao $HOME/Library/MobileDevice/Provisioning Profiles/
+          FOUND_PROFILE=""
           for f in "$MD_DIR"/*.mobileprovision "$UD_DIR"/*.mobileprovision; do
             if [ -f "$f" ]; then
               UUID=$(security cms -D -i "$f" 2>/dev/null | plutil -extract UUID raw - 2>/dev/null || true)
               NAME=$(security cms -D -i "$f" 2>/dev/null | plutil -extract Name raw - 2>/dev/null || true)
               if [ -n "$UUID" ]; then
                 echo "Cai dat profile: $NAME (UUID: $UUID)"
-                cp -f "$f" "$MD_DIR/$UUID.mobileprovision"
-                cp -f "$f" "$UD_DIR/$UUID.mobileprovision"
+                [ "$f" != "$MD_DIR/$UUID.mobileprovision" ] && cp -f "$f" "$MD_DIR/$UUID.mobileprovision"
+                [ "$f" != "$UD_DIR/$UUID.mobileprovision" ] && cp -f "$f" "$UD_DIR/$UUID.mobileprovision"
                 echo "PROFILE_NAME=$NAME" >> "$GITHUB_ENV"
                 echo "PROFILE_UUID=$UUID" >> "$GITHUB_ENV"
                 echo "PROFILE_PATH=$MD_DIR/$UUID.mobileprovision" >> "$GITHUB_ENV"
+                FOUND_PROFILE="$MD_DIR/$UUID.mobileprovision"
               fi
             fi
           done
+
+          if [ -z "$FOUND_PROFILE" ]; then
+            echo "::error::Khong tim thay file .mobileprovision nao sau khi fetch-signing-files."
+            exit 1
+          fi
 
       - name: Flutter pub get & pod install
         run: |
@@ -144,22 +229,26 @@ jobs:
           CODE=$?
           cat /tmp/profiles.log
           if [ $CODE -ne 0 ]; then
-            echo "::error::use-profiles that bai (exit $CODE). 10 dong cuoi cua log:"
-            tail -10 /tmp/profiles.log | while IFS= read -r line; do
+            echo "::error::use-profiles that bai (exit $CODE). 20 dong cuoi cua log:"
+            tail -20 /tmp/profiles.log | while IFS= read -r line; do
               echo "::error::${line:0:400}"
             done
             exit $CODE
           fi
 
-      - name: Create ExportOptions.plist
+      - name: Prepare ExportOptions.plist
         run: |
-          cat > ios/ExportOptions.plist <<EOF
+          if [ -s "$HOME/export_options.plist" ]; then
+            cp -f "$HOME/export_options.plist" ios/ExportOptions.plist
+            echo "Su dung ExportOptions.plist do xcode-project use-profiles tao ra:"
+          else
+            cat > ios/ExportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>teamID</key>
             <string>${APPLE_TEAM_ID}</string>
             <key>signingStyle</key>
@@ -176,13 +265,46 @@ jobs:
           </dict>
           </plist>
           EOF
-          echo "ExportOptions.plist da tao voi teamID ${APPLE_TEAM_ID} va profile ${PROFILE_NAME}"
+            echo "ExportOptions.plist da tao thu cong voi teamID ${APPLE_TEAM_ID} va profile ${PROFILE_NAME}:"
+          fi
+          cat ios/ExportOptions.plist
 
       - name: Build .ipa
-        run: flutter build ipa --release --build-number=$GITHUB_RUN_NUMBER --export-options-plist=ios/ExportOptions.plist
+        run: |
+          set +e
+          flutter build ipa --release --build-number="$GITHUB_RUN_NUMBER" --export-options-plist=ios/ExportOptions.plist 2>&1 | tee /tmp/ipa_build.log
+          CODE=${PIPESTATUS[0]}
+          if [ $CODE -ne 0 ]; then
+            echo "::error::flutter build ipa that bai (exit $CODE). Chi tiet loi:"
+            grep -iE 'error:|fatal error|Code Signing|Provisioning|EXPORT FAILED|ARCHIVE FAILED|Exception' /tmp/ipa_build.log | tail -40 | while IFS= read -r line; do
+              echo "::error::${line:0:400}"
+            done
+            exit $CODE
+          fi
+          ls -lh build/ios/ipa/
+
+      - name: Upload Signed IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-type-agent-ios-testflight
+          path: build/ios/ipa/*.ipa
+          retention-days: 14
 
       - name: Publish to TestFlight
         run: |
+          set +e
           APP_FILE=$(ls build/ios/ipa/*.ipa | head -n 1)
-          echo "Dang upload $APP_FILE len TestFlight..."
-          app-store-connect publish "$APP_FILE" --enable-package-validation
+          if [ -z "$APP_FILE" ] || [ ! -f "$APP_FILE" ]; then
+            echo "::error::Khong tim thay file .ipa trong build/ios/ipa/"
+            exit 1
+          fi
+          echo "Dang upload $APP_FILE len App Store Connect / TestFlight..."
+          app-store-connect publish --path "$APP_FILE" 2>&1 | tee /tmp/publish.log
+          CODE=${PIPESTATUS[0]}
+          if [ $CODE -ne 0 ]; then
+            echo "::error::app-store-connect publish that bai (exit $CODE). Chi tiet loi:"
+            tail -40 /tmp/publish.log | while IFS= read -r line; do
+              echo "::error::${line:0:400}"
+            done
+            exit $CODE
+          fi
