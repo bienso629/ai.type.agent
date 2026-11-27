@@ -10,15 +10,18 @@ import 'package:tadu_cloud_ai_agent_mobile/core/services/database_service.dart';
 import 'package:tadu_cloud_ai_agent_mobile/core/services/local_config_service.dart';
 import 'package:tadu_cloud_ai_agent_mobile/core/services/native_ai_service.dart';
 import 'package:tadu_cloud_ai_agent_mobile/core/services/primary_host_server_service.dart';
+import 'package:tadu_cloud_ai_agent_mobile/core/services/remote_file_download_service.dart';
 import 'package:tadu_cloud_ai_agent_mobile/core/services/remote_tunnel_service.dart';
 import 'package:tadu_cloud_ai_agent_mobile/core/services/storage_service.dart';
 import 'package:tadu_cloud_ai_agent_mobile/models/attachment_item.dart';
 import 'package:tadu_cloud_ai_agent_mobile/models/chat_message.dart';
+import 'package:tadu_cloud_ai_agent_mobile/models/chat_session.dart';
 import 'package:tadu_cloud_ai_agent_mobile/models/server_model.dart';
 import 'package:tadu_cloud_ai_agent_mobile/providers/chat_provider.dart';
 import 'package:tadu_cloud_ai_agent_mobile/providers/gateway_provider.dart';
 import 'package:tadu_cloud_ai_agent_mobile/providers/server_provider.dart';
 import 'package:tadu_cloud_ai_agent_mobile/providers/terminal_provider.dart';
+import 'package:tadu_cloud_ai_agent_mobile/screens/chat/widgets/remote_files_browser_dialog.dart';
 import 'package:tadu_cloud_ai_agent_mobile/screens/settings/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +30,73 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+class _PassthroughHttpOverrides extends HttpOverrides {}
+
+class _FakeNativePrimaryApiService implements ApiService {
+  final DatabaseService db;
+  final NativeAiService ai;
+
+  _FakeNativePrimaryApiService({required this.db, required this.ai});
+
+  @override
+  Future<bool> isNativeMode() async => true;
+
+  @override
+  Future<List<ChatSessionModel>> getChatSessions() => db.getSessions();
+
+  @override
+  Future<ChatHistoryResult> getChatHistory(
+    String sessionId, {
+    int limit = 50,
+    int? beforeId,
+    int? limitQuestions,
+  }) =>
+      db.getMessages(sessionId, limit: limitQuestions ?? limit, beforeId: beforeId);
+
+  @override
+  Future<void> stopRemoteChat(String sessionId) async {}
+
+  @override
+  StreamSubscription<String> streamChatMessage({
+    required String sessionId,
+    required String message,
+    String? model,
+    List<AttachmentItem>? attachments,
+    List<Map<String, dynamic>>? history,
+    String? workingDir,
+    List<String>? docFiles,
+    String? targetServer,
+    List<String>? targetServers,
+    required void Function(String token) onToken,
+    required void Function(String status) onStatus,
+    required void Function(ToolExecutionItem tool) onTool,
+    required void Function(String fullReply) onDone,
+    required void Function(dynamic error) onError,
+    void Function(String reason)? onDisconnected,
+    bool stopRemoteOnCancel = false,
+  }) {
+    return ai.streamChatMessage(
+      sessionId: sessionId,
+      message: message,
+      model: model,
+      attachments: attachments,
+      history: history,
+      workingDir: workingDir,
+      docFiles: docFiles,
+      targetServer: targetServer,
+      targetServers: targetServers,
+      onToken: onToken,
+      onStatus: onStatus,
+      onTool: onTool,
+      onDone: onDone,
+      onError: onError,
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _FakeLocalConfigService implements LocalConfigService {
   Map<String, dynamic> _cfg = {
@@ -1088,6 +1158,198 @@ void main() {
         client.close();
       }
     });
+
+    test('App Phụ duyệt ảnh, video, tệp qua /api/fs/list_entries và tải stream thẳng xuống đĩa + hỗ trợ HTTP Range', () async {
+      final workspacesRoot = p.join(tempDir.path, 'media_workspaces');
+      primaryHost.updateRuntimeMetadata(secondaryWorkspacesRoot: workspacesRoot);
+      await StorageService().setClientDeviceId('dev_media_phone');
+
+      final api = ApiService();
+      final info = await api.getRemoteHostInfo();
+      final wsDir = info?['client_workspace_dir']?.toString() ?? '';
+      expect(wsDir, isNotEmpty);
+
+      // Tạo thư mục con, ảnh PNG, video MP4 giả lập (128KB) và tệp PDF bên trong workspace của App Phụ
+      final subMedia = Directory(p.join(wsDir, 'exports'))..createSync(recursive: true);
+      final pngFile = File(p.join(wsDir, 'banner.png'))
+        ..writeAsBytesSync(Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 1, 2, 3, 4]));
+      final videoBytes = Uint8List.fromList(List<int>.generate(131072, (i) => i % 251));
+      final mp4File = File(p.join(wsDir, 'demo_clip.mp4'))..writeAsBytesSync(videoBytes);
+      final pdfFile = File(p.join(subMedia.path, 'report.pdf'))..writeAsStringSync('%PDF-1.7 sample report');
+
+      // 1. Liệt kê tất cả ở thư mục gốc workspace
+      final allRes = await api.listRemoteEntries();
+      expect(allRes.hasError, isFalse);
+      expect(allRes.currentPath, wsDir);
+      expect(allRes.parentPath, isNull); // Không cho leo ra ngoài workspace
+      expect(allRes.entries.map((e) => e.name), containsAll(['exports', 'banner.png', 'demo_clip.mp4']));
+      final videoEntry = allRes.entries.firstWhere((e) => e.name == 'demo_clip.mp4');
+      expect(videoEntry.isVideo, isTrue);
+      expect(videoEntry.mimeType, 'video/mp4');
+      expect(videoEntry.size, videoBytes.length);
+
+      // 2. Lọc theo loại Hình ảnh & Video + đi vào thư mục con exports
+      final imgOnly = await api.listRemoteEntries(filter: 'image');
+      expect(imgOnly.entries.where((e) => !e.isDir).map((e) => e.name), ['banner.png']);
+
+      final vidOnly = await api.listRemoteEntries(filter: 'video');
+      expect(vidOnly.entries.where((e) => !e.isDir).map((e) => e.name), ['demo_clip.mp4']);
+
+      final subRes = await api.listRemoteEntries(path: subMedia.path);
+      expect(subRes.parentPath, wsDir);
+      expect(subRes.entries.map((e) => e.name), contains('report.pdf'));
+
+      // 3. Tải stream video thẳng xuống đĩa bằng RemoteFileDownloadService.downloadAndSave
+      final saveDestDir = Directory(p.join(tempDir.path, 'phone_downloads'))..createSync(recursive: true);
+      final progressUpdates = <double>[];
+      final saveRes = await RemoteFileDownloadService.downloadAndSave(
+        api: api,
+        remotePath: mp4File.path,
+        fileName: 'demo_clip.mp4',
+        customSaveDirectory: saveDestDir.path,
+        onProgress: (_, _, prog) => progressUpdates.add(prog),
+      );
+      expect(saveRes.ok, isTrue);
+      expect(saveRes.bytes, videoBytes.length);
+      expect(File(saveRes.savedPath).readAsBytesSync(), orderedEquals(videoBytes));
+      expect(progressUpdates.last, 1.0);
+
+      // 4. Kiểm tra HTTP Range (206 Partial Content) phục vụ stream/tua video
+      final rawClient = http.Client();
+      try {
+        final rangeRes = await rawClient.get(
+          Uri.parse('$baseUrl${ApiConstants.epFsDownload}?path=${Uri.encodeQueryComponent(mp4File.path)}'),
+          headers: {
+            'Authorization': 'Bearer $pairingToken',
+            'X-Client-Id': 'dev_media_phone',
+            'Range': 'bytes=0-15',
+          },
+        );
+        expect(rangeRes.statusCode, 206);
+        expect(rangeRes.headers['content-type'], 'video/mp4');
+        expect(rangeRes.headers['accept-ranges'], 'bytes');
+        expect(rangeRes.headers['content-range'], 'bytes 0-15/${videoBytes.length}');
+        expect(rangeRes.bodyBytes.length, 16);
+        expect(rangeRes.bodyBytes, orderedEquals(videoBytes.sublist(0, 16)));
+      } finally {
+        rawClient.close();
+      }
+
+      // 5. Kiểm tra trích xuất đường dẫn ảnh/video/tệp từ câu trả lời của Agent
+      final extracted = RemoteFileDownloadService.extractDownloadablePathsFromText(
+        'Đã xuất xong ảnh [banner](file://${pngFile.path}), video `${mp4File.path}` và báo cáo ${pdfFile.path}. '
+        'Bỏ qua link web https://example.com/fake.png nhé.',
+      );
+      expect(extracted, [pngFile.path, mp4File.path, pdfFile.path]);
+    });
+
+    test('đồng bộ loading thời gian thực từ App Chính sang App Phụ khi App Chính đang hỏi Agent và cho phép dừng từ xa', () async {
+      final remoteApi = ApiService();
+      final nativePrimaryApi = _FakeNativePrimaryApiService(db: primaryDb, ai: fakeAi);
+
+      final created = await remoteApi.createChatSession(title: 'Phiên đồng bộ App Chính -> App Phụ');
+      final sid = created.id;
+
+      final primaryChat = ChatProvider(
+        apiService: nativePrimaryApi,
+        hostServer: primaryHost,
+        autoInit: false,
+      );
+      final secondaryChat = ChatProvider(
+        apiService: remoteApi,
+        hostServer: PrimaryHostServerService.forTest(databaseService: primaryDb),
+        autoInit: false,
+      );
+
+      try {
+        await primaryChat.loadSessions(silent: true);
+        await secondaryChat.loadSessions(silent: true);
+        await primaryChat.selectSession(primaryChat.sessions.firstWhere((s) => s.id == sid));
+        await secondaryChat.selectSession(secondaryChat.sessions.firstWhere((s) => s.id == sid));
+
+        // Bật luồng sự kiện thời gian thực trên App Phụ (GET /api/remote/events)
+        await secondaryChat.startRemoteEventSync();
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+
+        expect(primaryChat.isGenerating, isFalse);
+        expect(secondaryChat.isGenerating, isFalse);
+        expect(secondaryChat.isRemoteGenerating, isFalse);
+
+        // 1. App Chính bắt đầu hỏi Agent (giữ giữa chừng để kiểm chứng đồng bộ live sang App Phụ)
+        final hold1 = Completer<void>();
+        fakeAi.holdBeforeDone = hold1;
+        fakeAi.callCount = 0;
+
+        unawaited(primaryChat.sendMessage('Câu hỏi chạy trực tiếp trên App Chính'));
+
+        for (var i = 0; i < 60 && !secondaryChat.isRemoteGenerating; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+
+        // App Phụ phải thấy ngay loading + nhãn nguồn "App Chính" + tin nhắn live đang stream
+        expect(secondaryChat.isSessionGenerating(sid), isTrue);
+        expect(secondaryChat.isGenerating, isTrue);
+        expect(secondaryChat.isRemoteGenerating, isTrue);
+        expect(secondaryChat.remoteGeneratingSourceLabel, 'App Chính');
+
+        for (var i = 0;
+            i < 60 && !secondaryChat.messages.any((m) => m.role == 'assistant' && m.content.contains('Kết quả từ '));
+            i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        expect(
+          secondaryChat.messages.any((m) => m.role == 'assistant' && m.isStreaming && m.content.contains('Kết quả từ ')),
+          isTrue,
+        );
+
+        // 2. Chặn gửi trùng từ App Phụ trên cùng hộp hội thoại trong khi App Chính đang hỏi Agent
+        await secondaryChat.sendMessage('Câu hỏi gửi đè từ App Phụ');
+        expect(fakeAi.callCount, 1);
+
+        // 3. App Chính hoàn tất câu trả lời -> App Phụ tự tắt loading và hiện đủ nội dung
+        hold1.complete();
+        for (var i = 0; i < 60 && (primaryChat.isGenerating || secondaryChat.isGenerating); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        expect(primaryChat.isGenerating, isFalse);
+        expect(secondaryChat.isGenerating, isFalse);
+        expect(secondaryChat.isRemoteGenerating, isFalse);
+        expect(
+          secondaryChat.messages.any(
+            (m) =>
+                m.role == 'assistant' &&
+                !m.isStreaming &&
+                m.content == 'Kết quả từ App Chính: Câu hỏi chạy trực tiếp trên App Chính',
+          ),
+          isTrue,
+        );
+
+        // 4. App Phụ có thể bấm Dừng từ xa phiên đang chạy trên App Chính
+        final hold2 = Completer<void>();
+        fakeAi.holdBeforeDone = hold2;
+        unawaited(primaryChat.sendMessage('Tác vụ cần App Phụ bấm dừng từ xa'));
+
+        for (var i = 0; i < 60 && !secondaryChat.isRemoteGenerating; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        expect(primaryChat.isGenerating, isTrue);
+        expect(secondaryChat.isRemoteGenerating, isTrue);
+
+        secondaryChat.stopGenerating();
+        for (var i = 0; i < 60 && primaryChat.isGenerating; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        expect(primaryChat.isGenerating, isFalse);
+        expect(secondaryChat.isGenerating, isFalse);
+        expect(primaryHost.isSessionBusy(sid), isFalse);
+
+        if (!hold2.isCompleted) hold2.complete();
+        fakeAi.holdBeforeDone = null;
+      } finally {
+        primaryChat.dispose();
+        secondaryChat.dispose();
+      }
+    });
   });
 
   group('SettingsScreen Role Control UI (Mobile & Desktop)', () {
@@ -1332,6 +1594,115 @@ void main() {
       expect(host.revokedClientIds, isNot(contains('dev_ui_phone')));
       await tester.pump(const Duration(seconds: 12));
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('RemoteFilesBrowserDialog hiển thị thư mục, ảnh, video, tệp và lọc mượt trên màn hình mobile', (tester) async {
+      final previousOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      SharedPreferences.setMockInitialValues({});
+      await StorageService().init();
+
+      final tempRoot = Directory.systemTemp.createTempSync('agent_coder_browser_ui_');
+      final db = DatabaseService.forTest(p.join(tempRoot.path, 'browser.db'));
+      final host = PrimaryHostServerService.forTest(databaseService: db);
+      const tok = 'browser_ui_token_999';
+      final wsRoot = p.join(tempRoot.path, 'ws_root');
+
+      final started = await tester.runAsync(() async {
+        await db.init();
+        return await host.start(
+          port: 0,
+          token: tok,
+          deviceName: 'Primary Media Host',
+          secondaryWorkspacesRoot: wsRoot,
+          bindAddress: InternetAddress.loopbackIPv4,
+        );
+      });
+      expect(started, isTrue);
+
+      await StorageService().setAppRole(AppRole.secondary);
+      await StorageService().setGatewayUrl('http://127.0.0.1:${host.boundPort}');
+      await StorageService().setSecretToken(tok);
+      await StorageService().setClientDeviceId('dev_browser_mobile');
+
+      addTearDown(() async {
+        await tester.runAsync(() async {
+          await host.stop();
+          await db.close();
+        });
+        await StorageService().setAppRole(AppRole.primary);
+        await StorageService().setGatewayUrl('');
+        await StorageService().setSecretToken('');
+        if (tempRoot.existsSync()) tempRoot.deleteSync(recursive: true);
+        HttpOverrides.global = previousOverrides;
+      });
+
+      final api = ApiService();
+      final info = await tester.runAsync(() => api.getRemoteHostInfo());
+      final clientWs = info?['client_workspace_dir']?.toString() ?? '';
+      expect(clientWs, isNotEmpty);
+
+      // Tạo dữ liệu mẫu trong workspace của App Phụ
+      final subDir = Directory(p.join(clientWs, 'clips'))..createSync(recursive: true);
+      File(p.join(clientWs, 'clip_01.mp4')).writeAsBytesSync(List<int>.filled(2048, 7));
+      File(p.join(clientWs, 'summary.pdf')).writeAsStringSync('%PDF-1.7');
+      File(p.join(subDir.path, 'nested_video.mkv')).writeAsBytesSync(List<int>.filled(1024, 9));
+
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      Future<void> pumpUntil(Finder finder) async {
+        for (var i = 0; i < 30 && finder.evaluate().isEmpty; i++) {
+          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 25)));
+          await tester.pump();
+        }
+      }
+
+      await HttpOverrides.runWithHttpOverrides(() async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData.dark(),
+            home: Scaffold(
+              body: RemoteFilesBrowserDialog(
+                initialPath: clientWs,
+                isSecondaryMode: true,
+                apiService: api,
+              ),
+            ),
+          ),
+        );
+        await pumpUntil(find.text('clips'));
+
+        final renderedTexts = tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).toList();
+        expect(find.byKey(const Key('remote_files_browser_dialog')), findsOneWidget);
+        expect(find.text('clips'), findsOneWidget, reason: 'Rendered texts: $renderedTexts');
+        expect(find.text('clip_01.mp4'), findsOneWidget);
+        expect(find.text('summary.pdf'), findsOneWidget);
+
+        // Lọc chỉ hiện Video
+        await tester.tap(find.byKey(const Key('remote_fs_filter_video')));
+        await tester.pump();
+        await pumpUntil(find.text('clip_01.mp4'));
+        expect(find.text('clip_01.mp4'), findsOneWidget);
+        expect(find.text('summary.pdf'), findsNothing);
+
+        // Bấm vào thư mục con clips -> thấy tệp nested_video.mkv và xuất hiện nút lên thư mục cha
+        await tester.tap(find.byKey(const Key('remote_fs_entry_clips')));
+        await tester.pump();
+        await pumpUntil(find.text('nested_video.mkv'));
+        expect(find.text('nested_video.mkv'), findsOneWidget);
+        expect(find.byKey(const Key('remote_fs_up_button')), findsOneWidget);
+
+        // Lên thư mục cha
+        await tester.tap(find.byKey(const Key('remote_fs_up_button')));
+        await tester.pump();
+        await pumpUntil(find.text('clip_01.mp4'));
+        expect(find.text('clip_01.mp4'), findsOneWidget);
+
+        await tester.pump(const Duration(seconds: 20));
+        expect(tester.takeException(), isNull);
+      }, _PassthroughHttpOverrides());
     });
   });
 

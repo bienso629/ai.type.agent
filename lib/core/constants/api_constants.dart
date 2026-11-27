@@ -5,6 +5,7 @@ class ApiConstants {
 
   // Remote Primary <-> Secondary Control Endpoints
   static const String epRemoteInfo = '/api/remote/info';
+  static const String epRemoteEvents = '/api/remote/events';
   static const String epRemoteDisconnect = '/api/remote/disconnect';
   static const String epModels = '/api/models';
   static const String epPairRequest = '/api/pair/request';
@@ -35,6 +36,7 @@ class ApiConstants {
   static const String epServerDeploy = '/api/server/deploy';
 
   static const String epFsListDirs = '/api/fs/list_dirs';
+  static const String epFsListEntries = '/api/fs/list_entries';
   static const String epFsDownload = '/api/fs/download';
   static const String epFsUpload = '/api/fs/upload';
 

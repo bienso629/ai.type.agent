@@ -16,6 +16,7 @@ import '../../core/services/api_service.dart';
 import '../../core/services/clipboard_service.dart';
 import '../../core/services/native_ssh_service.dart';
 import '../../core/services/pdf_export_service.dart';
+import '../../core/services/remote_file_download_service.dart';
 import '../../core/services/storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
@@ -23,12 +24,14 @@ import '../../core/widgets/attachment_hover_preview.dart';
 import '../../core/widgets/tadu_dialog.dart';
 import '../../core/widgets/chat_avatar.dart';
 import 'widgets/model_picker_dialog.dart';
+import 'widgets/remote_files_browser_dialog.dart';
 import 'widgets/work_schedule_dialog.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import '../../models/server_model.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/gateway_provider.dart';
 import '../../providers/server_provider.dart';
 import '../terminal/terminal_screen.dart';
 
@@ -692,174 +695,29 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _downloadAttachment(AttachmentItem att) async {
-    final remotePath = att.remotePath ?? '/opt/ai_agent/uploads/${att.name}';
-    final homeDir = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
-    final downloadsDir = Directory('$homeDir/Downloads');
-    if (!downloadsDir.existsSync()) {
-      downloadsDir.createSync(recursive: true);
-    }
-    final destFile = File('${downloadsDir.path}/${att.name}');
-
-    double progress = 0.0;
-    int received = 0;
-    int total = att.size;
-    bool isDone = false;
-    String? errorMsg;
-    StateSetter? dialogSetState;
-
-    showDialog(
+  Future<void> _openRemoteFilesBrowser(ChatProvider chat, GatewayProvider? gateway) async {
+    final isSecondary = gateway?.isSecondary == true;
+    final initialPath = (chat.currentSessionScope != null && chat.currentSessionScope!.trim().isNotEmpty)
+        ? chat.currentSessionScope!.trim()
+        : (isSecondary ? (gateway?.remoteClientWorkspaceDir ?? '') : '');
+    await showDialog<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDState) {
-          dialogSetState = setDState;
-          final pct = (progress * 100).toInt();
-          final receivedFormatted = received < 1024 * 1024
-              ? '${(received / 1024).toStringAsFixed(1)} KB'
-              : '${(received / (1024 * 1024)).toStringAsFixed(1)} MB';
-          final totalFormatted = total > 0
-              ? (total < 1024 * 1024
-                  ? '${(total / 1024).toStringAsFixed(1)} KB'
-                  : '${(total / (1024 * 1024)).toStringAsFixed(1)} MB')
-              : att.formattedSize;
-
-          return AlertDialog(
-            backgroundColor: AppColors.cardBg,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
-              side: const BorderSide(color: AppColors.borderDark),
-            ),
-            title: Row(
-              children: [
-                Icon(
-                  isDone
-                      ? Icons.check_circle_rounded
-                      : (errorMsg != null ? Icons.error_outline_rounded : Icons.download_rounded),
-                  color: isDone ? AppColors.accent : (errorMsg != null ? AppColors.danger : AppColors.accentCyan),
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isDone ? 'Tải xuống hoàn tất' : (errorMsg != null ? 'Lỗi tải xuống' : 'Đang tải xuống từ VPS'),
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textWhite),
-                ),
-              ],
-            ),
-            content: SizedBox(
-              width: 380,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(att.isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded, size: 16, color: AppColors.warning),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          att.name,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textWhite),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: isDone ? 1.0 : (total > 0 ? progress : null),
-                      minHeight: 8,
-                      backgroundColor: AppColors.bgDark,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        isDone ? AppColors.accent : (errorMsg != null ? AppColors.danger : AppColors.accentCyan),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          isDone
-                              ? 'Đã lưu: ${destFile.path}'
-                              : (errorMsg ?? '$receivedFormatted / $totalFormatted'),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: errorMsg != null ? AppColors.danger : AppColors.textMuted,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (!isDone && errorMsg == null)
-                        Text(
-                          '$pct%',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              if (isDone)
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.folder_open_rounded, size: 14),
-                  label: const Text('Mở thư mục'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    if (Platform.isLinux) {
-                      Process.run('xdg-open', [downloadsDir.path]);
-                    } else if (Platform.isWindows) {
-                      Process.run('explorer.exe', [downloadsDir.path]);
-                    } else if (Platform.isMacOS) {
-                      Process.run('open', [downloadsDir.path]);
-                    }
-                  },
-                ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(isDone ? 'Đóng' : 'Huỷ'),
-              ),
-            ],
-          );
-        },
+      builder: (_) => RemoteFilesBrowserDialog(
+        initialPath: initialPath,
+        isSecondaryMode: isSecondary,
+        apiService: _api,
       ),
     );
+  }
 
-    try {
-      final bytes = await _api.downloadFile(
-        remotePath: remotePath,
-        onProgress: (rec, tot, prog) {
-          received = rec;
-          if (tot > 0) total = tot;
-          progress = prog;
-          dialogSetState?.call(() {});
-        },
-      );
-
-      if (bytes != null && bytes.isNotEmpty) {
-        await destFile.writeAsBytes(bytes);
-        isDone = true;
-        progress = 1.0;
-        dialogSetState?.call(() {});
-        if (mounted) {
-          AppToast.success(context, 'Đã tải xuống: ${att.name}');
-        }
-      } else {
-        errorMsg = 'Không tải được nội dung tệp từ server';
-        dialogSetState?.call(() {});
-      }
-    } catch (e) {
-      errorMsg = 'Lỗi: $e';
-      dialogSetState?.call(() {});
-    }
+  Future<void> _downloadAttachment(AttachmentItem att) async {
+    final remotePath = att.remotePath ?? '/opt/ai_agent/uploads/${att.name}';
+    await showStreamingDownloadDialog(
+      context: context,
+      apiService: _api,
+      remotePath: remotePath,
+      fileName: att.name,
+    );
   }
 
   Future<void> _handleSend(ChatProvider chat, ServerProvider serverProvider) async {
@@ -1561,6 +1419,68 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ],
                     if (chat.currentSession != null) ...[
+                      SizedBox(width: isCompactMobile ? 6 : 8),
+                      Builder(
+                        builder: (ctx) {
+                          GatewayProvider? gw;
+                          try {
+                            gw = ctx.watch<GatewayProvider>();
+                          } catch (_) {}
+                          final isSecondary = gw?.isSecondary == true;
+                          return Tooltip(
+                            message: isSecondary ? 'Duyệt & tải ảnh, video, tệp từ App Chính' : 'Duyệt tệp trong thư mục làm việc',
+                            child: InkWell(
+                              key: const ValueKey('open_remote_files_browser_button'),
+                              onTap: () => _openRemoteFilesBrowser(chat, gw),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                height: 36,
+                                padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 6 : 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBg,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: isSecondary ? AppColors.accentCyan.withValues(alpha: 0.55) : AppColors.borderDark,
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.accentCyan.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.cloud_download_rounded,
+                                          size: 14,
+                                          color: AppColors.accentCyan,
+                                        ),
+                                      ),
+                                    ),
+                                    if (!isCompactMobile) ...[
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        isSecondary ? 'Tệp máy chính' : 'Tệp Scope',
+                                        style: const TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textWhite,
+                                          height: 1.1,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                       SizedBox(width: isCompactMobile ? 6 : 8),
                       Tooltip(
                         message: 'Lịch làm việc',
@@ -2294,6 +2214,26 @@ class _ChatScreenState extends State<ChatScreen> {
                         // 2. Reply Answer Content rendered below tool executions
                         if (msg.cleanContent.isNotEmpty)
                           _buildOptimizedMessageContent(msg, keyStr),
+
+                        // 2b. Tự nhận diện hình ảnh / video / tệp kết quả trong câu trả lời của Agent để bấm xem & tải về
+                        if (!isUser && !msg.isStreaming && msg.cleanContent.isNotEmpty)
+                          Builder(
+                            builder: (ctx) {
+                              final detected = RemoteFileDownloadService.extractDownloadablePathsFromText(
+                                msg.cleanContent,
+                              );
+                              if (detected.isEmpty) return const SizedBox.shrink();
+                              GatewayProvider? gw;
+                              try {
+                                gw = ctx.watch<GatewayProvider>();
+                              } catch (_) {}
+                              return RemoteChatDetectedFilesBar(
+                                paths: detected,
+                                isSecondaryMode: gw?.isSecondary == true,
+                                apiService: _api,
+                              );
+                            },
+                          ),
 
                       if (msg.isStreaming) ...[
                         const SizedBox(height: 6),
@@ -3229,8 +3169,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     Expanded(
                       child: Text(
                         chat.currentStatus.isNotEmpty
-                            ? 'App Phụ đang hỏi Agent: ${chat.currentStatus}'
-                            : 'App Phụ đang hỏi Agent trong hộp hội thoại này — tạm khóa gửi trùng...',
+                            ? '${chat.remoteGeneratingSourceLabel} đang hỏi Agent: ${chat.currentStatus}'
+                            : '${chat.remoteGeneratingSourceLabel} đang hỏi Agent trong hộp hội thoại này — tạm khóa gửi trùng...',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -3263,7 +3203,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onSubmitted: (_) => _handleSend(chat, serverProvider),
                   decoration: InputDecoration(
                     hintText: chat.isRemoteGenerating
-                        ? 'App Phụ đang hỏi Agent trong hộp hội thoại này — vui lòng đợi hoàn tất...'
+                        ? '${chat.remoteGeneratingSourceLabel} đang hỏi Agent trong hộp hội thoại này — vui lòng đợi hoàn tất...'
                         : "Nhập yêu cầu, gõ '/' để chọn thư mục giới hạn...",
                     hintMaxLines: 2,
                     isDense: true,

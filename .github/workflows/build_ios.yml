@@ -1,0 +1,106 @@
+name: Build iOS (.ipa)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'build-ios/*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    name: Build iOS Release (.ipa)
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.44.2'
+          cache: true
+
+      - name: Read App Version
+        id: app_version
+        run: |
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d '+' -f1)
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building AI Type Agent iOS version: $VERSION (build ${{ github.run_number }})"
+
+      - name: Get Dependencies & Install CocoaPods
+        run: |
+          flutter pub get
+          cd ios
+          pod install --repo-update 2>&1 | tee pod_install.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -iE 'error|failed|unable' pod_install.log | tail -25 | while IFS= read -r l; do
+              echo "::error::${l:0:400}"
+            done
+            exit "$code"
+          fi
+          cd ..
+
+      - name: Build Flutter iOS Release (No Codesign)
+        run: |
+          flutter build ios --release --no-codesign --build-number="${{ github.run_number }}" 2>&1 | tee build_ios.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -iE 'error:|fatal error|ld:|Undefined symbol|BUILD FAILED|Exception' build_ios.log | tail -40 | while IFS= read -r l; do
+              echo "::error::${l:0:400}"
+            done
+            exit "$code"
+          fi
+
+      - name: Package Unsigned IPA
+        run: |
+          VERSION="${{ steps.app_version.outputs.VERSION }}"
+          APP_BUNDLE="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            echo "::error::Khong tim thay $APP_BUNDLE sau khi build iOS."
+            exit 1
+          fi
+
+          rm -rf Payload dist-ios
+          mkdir -p Payload dist-ios
+          cp -R "$APP_BUNDLE" Payload/Runner.app
+          IPA_NAME="ai-type-agent_${VERSION}_ios_unsigned.ipa"
+          zip -qry "dist-ios/${IPA_NAME}" Payload
+          rm -rf Payload
+
+          (cd dist-ios && shasum -a 256 "${IPA_NAME}" > "${IPA_NAME}.sha256")
+          echo "=== HOAN TAT DONG GOI BAN IOS ==="
+          ls -lh dist-ios/
+          cat "dist-ios/${IPA_NAME}.sha256"
+
+      - name: Upload iOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-type-agent-ios
+          path: dist-ios/*
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-build-${{ github.run_number }}
+          name: iOS build ${{ github.run_number }} (v${{ steps.app_version.outputs.VERSION }})
+          body: |
+            ## Bản cài đặt iOS AI Type Agent v${{ steps.app_version.outputs.VERSION }} (Build ${{ github.run_number }})
+
+            Tự động biên dịch bằng GitHub Actions (`macos-15`, Flutter `3.44.2`).
+
+            ### Tệp đầu ra:
+            - `ai-type-agent_${{ steps.app_version.outputs.VERSION }}_ios_unsigned.ipa` (IPA Release chưa ký số, hỗ trợ cài qua AltStore / SideStore / Sideloadly / TrollStore / ESign hoặc tự ký bằng chứng chỉ Apple Developer).
+            - `ai-type-agent_${{ steps.app_version.outputs.VERSION }}_ios_unsigned.ipa.sha256` (Mã kiểm tra SHA-256).
+          files: dist-ios/*
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

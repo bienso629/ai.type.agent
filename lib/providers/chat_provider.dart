@@ -20,7 +20,9 @@ class ChatProvider extends ChangeNotifier {
   final Map<String, List<ChatMessageModel>> _sessionMessages = {};
   final Map<String, bool> _sessionGenerating = {};
   final Set<String> _localGeneratingSessions = {};
+  final Set<String> _ownSecondaryGeneratingSessions = {};
   final Set<String> _remoteGeneratingSessions = {};
+  final Map<String, String> _remoteSessionSources = {};
   final Map<String, ChatMessageModel> _remoteStreamingMessages = {};
   final Map<String, ChatMessageModel> _remoteUserMessages = {};
   final Map<String, Timer> _remoteTokenThrottleTimers = {};
@@ -71,6 +73,13 @@ class ChatProvider extends ChangeNotifier {
       (_remoteGeneratingSessions.contains(sessionId) ||
           _hostServer.isRemoteSessionGenerating(sessionId));
 
+  /// Nhãn thiết bị đang chạy phiên hội thoại đồng bộ (ví dụ: 'App Chính' khi xem từ App Phụ, hoặc 'App Phụ' khi xem từ App Chính).
+  String get remoteGeneratingSourceLabel {
+    final sId = _currentSession?.id;
+    if (sId == null) return 'App Phụ';
+    return _remoteSessionSources[sId] == 'primary' ? 'App Chính' : 'App Phụ';
+  }
+
   String get currentStatus =>
       _currentSession != null ? (_sessionStatuses[_currentSession!.id] ?? '') : '';
   String getSessionStatus(String? sessionId) =>
@@ -94,6 +103,8 @@ class ChatProvider extends ChangeNotifier {
 
   StreamSubscription<String>? _remoteMutationSub;
   StreamSubscription<RemoteChatSyncEvent>? _remoteChatSyncSub;
+  StreamSubscription<String>? _remoteEventsSub;
+  Timer? _remoteEventsReconnectTimer;
 
   ChatProvider({
     ApiService? apiService,
@@ -102,6 +113,11 @@ class ChatProvider extends ChangeNotifier {
   })  : _api = apiService ?? ApiService(),
         _hostServer = hostServer ?? PrimaryHostServerService.instance {
     _hostServer.isLocalSessionGenerating = (sessionId) => _localGeneratingSessions.contains(sessionId);
+    _hostServer.onRequestStopLocalSession = (sessionId) {
+      if (_localGeneratingSessions.contains(sessionId)) {
+        stopGenerating(sessionId: sessionId);
+      }
+    };
 
     // Đồng bộ ngay các phiên App Phụ đã chạy trước khi ChatProvider khởi tạo
     for (final sId in _hostServer.activeRemoteSessionIds) {
@@ -372,6 +388,7 @@ class ChatProvider extends ChangeNotifier {
 
   /// Tải lại toàn bộ phiên hội thoại và tin nhắn (dùng khi chuyển vai trò App Chính <-> App Phụ).
   Future<void> reloadAll() async {
+    _stopRemoteEventSync();
     for (final sub in _sessionStreams.values) {
       sub.cancel();
     }
@@ -389,7 +406,9 @@ class ChatProvider extends ChangeNotifier {
     _sessionMessages.clear();
     _sessionGenerating.clear();
     _localGeneratingSessions.clear();
+    _ownSecondaryGeneratingSessions.clear();
     _remoteGeneratingSessions.clear();
+    _remoteSessionSources.clear();
     _remoteStreamingMessages.clear();
     _remoteUserMessages.clear();
     _sessionStatuses.clear();
@@ -399,6 +418,134 @@ class ChatProvider extends ChangeNotifier {
     _currentSession = null;
     notifyListeners();
     await initChat();
+  }
+
+  /// Bắt đầu lắng nghe luồng sự kiện thời gian thực từ App Chính (`GET /api/remote/events`) khi thiết bị là App Phụ.
+  Future<void> startRemoteEventSync() async {
+    if (_disposed) return;
+    if (await _api.isNativeMode()) {
+      _stopRemoteEventSync();
+      return;
+    }
+    if (_remoteEventsSub != null) return;
+    _remoteEventsReconnectTimer?.cancel();
+    _remoteEventsReconnectTimer = null;
+
+    _remoteEventsSub = _api.subscribeRemoteEvents(
+      onEvent: _handleIncomingPrimaryEvent,
+      onDisconnected: (reason) {
+        _remoteEventsSub = null;
+        if (_disposed || reason == 'DEVICE_REVOKED') return;
+        _remoteEventsReconnectTimer?.cancel();
+        _remoteEventsReconnectTimer = Timer(const Duration(seconds: 3), () {
+          if (!_disposed) {
+            unawaited(startRemoteEventSync());
+          }
+        });
+      },
+    );
+  }
+
+  void _stopRemoteEventSync() {
+    _remoteEventsReconnectTimer?.cancel();
+    _remoteEventsReconnectTimer = null;
+    _remoteEventsSub?.cancel();
+    _remoteEventsSub = null;
+  }
+
+  void _handleIncomingPrimaryEvent(Map<String, dynamic> event) {
+    if (_disposed) return;
+    final type = event['type']?.toString() ?? '';
+
+    if (type == 'sync_state') {
+      final rawActive = event['active_sessions'];
+      if (rawActive is List) {
+        final activeIds = <String>{};
+        for (final item in rawActive.whereType<Map>()) {
+          final sId = item['session_id']?.toString() ?? '';
+          if (sId.isEmpty) continue;
+          activeIds.add(sId);
+          if (_ownSecondaryGeneratingSessions.contains(sId)) continue;
+          final source = item['source']?.toString() ?? 'primary';
+          final status = item['status']?.toString() ??
+              (source == 'primary' ? 'App Chính đang hỏi Agent...' : 'App Phụ đang hỏi Agent...');
+          _remoteGeneratingSessions.add(sId);
+          _remoteSessionSources[sId] = source;
+          _sessionGenerating[sId] = true;
+          _sessionStatuses[sId] = status;
+          if (_currentSession?.id == sId && !_sessionStreams.containsKey(sId)) {
+            unawaited(_recoverRemoteSession(sId, reloadHistoryIfIdle: false));
+          }
+        }
+        // Dọn dẹp các phiên trước đó đánh dấu remote nhưng App Chính báo không còn chạy nữa
+        for (final prevId in _remoteGeneratingSessions.toList()) {
+          if (!activeIds.contains(prevId) && !_sessionStreams.containsKey(prevId)) {
+            _remoteGeneratingSessions.remove(prevId);
+            _remoteSessionSources.remove(prevId);
+            if (!_localGeneratingSessions.contains(prevId)) {
+              _sessionGenerating[prevId] = false;
+              _sessionStatuses.remove(prevId);
+            }
+          }
+        }
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (type == 'chat_start') {
+      final sId = event['session_id']?.toString() ?? '';
+      if (sId.isEmpty || _ownSecondaryGeneratingSessions.contains(sId)) return;
+      final source = event['source']?.toString() ?? 'primary';
+      final status = event['status']?.toString() ??
+          (source == 'primary' ? 'App Chính đang hỏi Agent...' : 'App Phụ đang hỏi Agent...');
+      _remoteGeneratingSessions.add(sId);
+      _remoteSessionSources[sId] = source;
+      _sessionGenerating[sId] = true;
+      _sessionStatuses[sId] = status;
+      notifyListeners();
+
+      if (_currentSession?.id == sId && !_sessionStreams.containsKey(sId)) {
+        unawaited(_recoverRemoteSession(sId, reloadHistoryIfIdle: false));
+      } else if (!_sessions.any((s) => s.id == sId)) {
+        unawaited(loadSessions(silent: true));
+      }
+      return;
+    }
+
+    if (type == 'chat_end') {
+      final sId = event['session_id']?.toString() ?? '';
+      if (sId.isEmpty) return;
+      if (!_sessionStreams.containsKey(sId)) {
+        _remoteGeneratingSessions.remove(sId);
+        _remoteSessionSources.remove(sId);
+        _ownSecondaryGeneratingSessions.remove(sId);
+        _interruptedRemoteSessions.remove(sId);
+        if (!_localGeneratingSessions.contains(sId)) {
+          _sessionGenerating[sId] = false;
+          _sessionStatuses.remove(sId);
+        }
+        notifyListeners();
+        unawaited(loadSessions(silent: true));
+        if (_sessionMessages.containsKey(sId)) {
+          unawaited(_reloadSessionHistorySilent(sId));
+        }
+      }
+      return;
+    }
+
+    if (type == 'mutation') {
+      final topic = event['topic']?.toString() ?? '';
+      if (topic == 'sessions') {
+        unawaited(loadSessions(silent: true));
+      } else if (topic.startsWith('chat:')) {
+        final sId = topic.substring(5);
+        unawaited(loadSessions(silent: true));
+        if (_sessionMessages.containsKey(sId) && !isSessionGenerating(sId)) {
+          unawaited(_reloadSessionHistorySilent(sId));
+        }
+      }
+    }
   }
 
   void _sortSessions() {
@@ -419,6 +566,7 @@ class ChatProvider extends ChangeNotifier {
     } else {
       await createNewSession();
     }
+    unawaited(startRemoteEventSync());
   }
 
   Future<void> loadSessions({bool silent = false}) async {
@@ -561,7 +709,7 @@ class ChatProvider extends ChangeNotifier {
       if (isDifferentSession) {
         notifyListeners();
       }
-      if (!_sessionStreams.containsKey(sId) && !isSessionRemoteGenerating(sId)) {
+      if (!_sessionStreams.containsKey(sId)) {
         unawaited(_recoverRemoteSession(sId, reloadHistoryIfIdle: _interruptedRemoteSessions.contains(sId)));
       }
       return;
@@ -594,7 +742,7 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     // Nếu đang ở chế độ App Phụ và phiên này đang chạy dở trên App Chính -> tự bám nối lại luồng live
-    if (!_sessionStreams.containsKey(sId) && !isSessionRemoteGenerating(sId)) {
+    if (!_sessionStreams.containsKey(sId)) {
       unawaited(_recoverRemoteSession(sId, reloadHistoryIfIdle: false));
     }
   }
@@ -833,18 +981,25 @@ class ChatProvider extends ChangeNotifier {
   void stopGenerating({String? sessionId}) {
     final targetId = sessionId ?? _currentSession?.id;
     if (targetId == null) return;
+    final wasLocalPrimary = _localGeneratingSessions.contains(targetId) &&
+        !_ownSecondaryGeneratingSessions.contains(targetId);
     _sessionStreams[targetId]?.cancel();
     _sessionStreams.remove(targetId);
     _remoteTokenThrottleTimers.remove(targetId)?.cancel();
     _localOnPrimaryPollTimers.remove(targetId)?.cancel();
     _interruptedRemoteSessions.remove(targetId);
+    if (wasLocalPrimary) {
+      _hostServer.notifyLocalChatStop(targetId, reason: 'Đã dừng phản hồi từ App Chính.');
+    }
     if (isSessionRemoteGenerating(targetId)) {
       unawaited(_hostServer.stopActiveChat(targetId, reason: 'Đã dừng phản hồi từ App Chính.'));
     }
     unawaited(_api.stopRemoteChat(targetId));
     _sessionGenerating[targetId] = false;
     _localGeneratingSessions.remove(targetId);
+    _ownSecondaryGeneratingSessions.remove(targetId);
     _remoteGeneratingSessions.remove(targetId);
+    _remoteSessionSources.remove(targetId);
     _remoteStreamingMessages.remove(targetId);
     _remoteUserMessages.remove(targetId);
     _sessionStatuses.remove(targetId);
@@ -920,6 +1075,19 @@ class ChatProvider extends ChangeNotifier {
     _sessionStatuses[sessionId] = 'Đang suy nghĩ...';
     notifyListeners();
 
+    final isNative = await _api.isNativeMode();
+    if (isNative) {
+      _hostServer.notifyLocalChatStart(
+        sessionId: sessionId,
+        userMessage: userMsg.content,
+        model: userMsg.model,
+        attachments: attachments,
+        status: 'App Chính đang hỏi Agent...',
+      );
+    } else {
+      _ownSecondaryGeneratingSessions.add(sessionId);
+    }
+
     // Prepare history snapshot (excluding current user message and placeholder)
     final historySnap = _sessionMessages[sessionId]!
         .where((m) => m.content.isNotEmpty && m != assistantMsg && m != userMsg)
@@ -941,6 +1109,9 @@ class ChatProvider extends ChangeNotifier {
           ? targetServers
           : (_currentSession?.targetServers ?? const []),
       onToken: (token) {
+        if (isNative) {
+          _hostServer.notifyLocalChatToken(sessionId, token);
+        }
         if (token == '__CLEAR_INTERMEDIATE_THOUGHTS__') {
           assistantMsg.content = '';
         } else {
@@ -954,6 +1125,9 @@ class ChatProvider extends ChangeNotifier {
         }
       },
       onStatus: (status) {
+        if (isNative) {
+          _hostServer.notifyLocalChatStatus(sessionId, status);
+        }
         tokenThrottleTimer?.cancel();
         _sessionStatuses[sessionId] = status;
         assistantMsg.statusMessage = status;
@@ -970,6 +1144,9 @@ class ChatProvider extends ChangeNotifier {
           command: tool.command,
           output: cappedOutput,
         );
+        if (isNative) {
+          _hostServer.notifyLocalChatTool(sessionId, cappedTool);
+        }
         var existingIdx = assistantMsg.toolExecutions.lastIndexWhere(
           (t) => t.tool == tool.tool && t.command == tool.command && t.output == 'Đang thực thi...',
         );
@@ -1011,8 +1188,12 @@ class ChatProvider extends ChangeNotifier {
         if (fullReply.isNotEmpty) {
           assistantMsg.content = fullReply;
         }
+        if (isNative) {
+          _hostServer.notifyLocalChatDone(sessionId, assistantMsg.content);
+        }
         _sessionGenerating[sessionId] = false;
         _localGeneratingSessions.remove(sessionId);
+        _ownSecondaryGeneratingSessions.remove(sessionId);
         _sessionStatuses.remove(sessionId);
         _sessionStreams.remove(sessionId);
         notifyListeners();
@@ -1029,6 +1210,9 @@ class ChatProvider extends ChangeNotifier {
       },
       onError: (err) {
         tokenThrottleTimer?.cancel();
+        if (isNative) {
+          _hostServer.notifyLocalChatError(sessionId, err.toString());
+        }
         for (var i = 0; i < assistantMsg.toolExecutions.length; i++) {
           final item = assistantMsg.toolExecutions[i];
           if (item.output == 'Đang thực thi...') {
@@ -1079,6 +1263,7 @@ $solution
         }
         _sessionGenerating[sessionId] = false;
         _localGeneratingSessions.remove(sessionId);
+        _ownSecondaryGeneratingSessions.remove(sessionId);
         _interruptedRemoteSessions.remove(sessionId);
         _sessionStatuses.remove(sessionId);
         _sessionStreams.remove(sessionId);
@@ -1119,6 +1304,7 @@ $solution
     if (_disposed) return;
     if (await _api.isNativeMode()) return;
 
+    unawaited(startRemoteEventSync());
     final toRecover = <String>{..._interruptedRemoteSessions};
     final activeId = _currentSession?.id;
     if (activeId != null && !_sessionStreams.containsKey(activeId)) {
@@ -1191,8 +1377,10 @@ $solution
             userMessage: snap['user_message']?.toString(),
             model: snap['model']?.toString(),
           );
+          final source = snap['source']?.toString() ?? 'secondary';
           final content = snap['content']?.toString() ?? '';
-          final status = snap['status']?.toString() ?? 'Đang tiếp tục từ App Chính...';
+          final status = snap['status']?.toString() ??
+              (source == 'primary' ? 'App Chính đang hỏi Agent...' : 'Đang tiếp tục từ App Chính...');
           msg.content = content;
           msg.isStreaming = true;
           msg.statusMessage = content.isEmpty ? status : null;
@@ -1206,7 +1394,12 @@ $solution
               );
           }
           _sessionGenerating[sessionId] = true;
-          _localGeneratingSessions.add(sessionId);
+          if (source == 'primary' || !_ownSecondaryGeneratingSessions.contains(sessionId)) {
+            _remoteGeneratingSessions.add(sessionId);
+            _remoteSessionSources[sessionId] = source;
+          } else {
+            _localGeneratingSessions.add(sessionId);
+          }
           _sessionStatuses[sessionId] = status;
           notifyListeners();
         },
@@ -1292,6 +1485,9 @@ $solution
           _interruptedRemoteSessions.remove(sessionId);
           _sessionGenerating[sessionId] = false;
           _localGeneratingSessions.remove(sessionId);
+          _ownSecondaryGeneratingSessions.remove(sessionId);
+          _remoteGeneratingSessions.remove(sessionId);
+          _remoteSessionSources.remove(sessionId);
           _sessionStatuses.remove(sessionId);
           _sessionStreams.remove(sessionId);
           notifyListeners();
@@ -1320,6 +1516,9 @@ $solution
           _interruptedRemoteSessions.remove(sessionId);
           _sessionGenerating[sessionId] = false;
           _localGeneratingSessions.remove(sessionId);
+          _ownSecondaryGeneratingSessions.remove(sessionId);
+          _remoteGeneratingSessions.remove(sessionId);
+          _remoteSessionSources.remove(sessionId);
           _sessionStatuses.remove(sessionId);
           _sessionStreams.remove(sessionId);
           notifyListeners();
@@ -1340,10 +1539,14 @@ $solution
         _interruptedRemoteSessions.remove(sessionId);
         _sessionStreams[sessionId] = res.subscription!;
         _sessionGenerating[sessionId] = true;
-        _localGeneratingSessions.add(sessionId);
+        if (_ownSecondaryGeneratingSessions.contains(sessionId)) {
+          _localGeneratingSessions.add(sessionId);
+        }
         notifyListeners();
       } else if (res.active && res.isLocalOnPrimary) {
         _interruptedRemoteSessions.add(sessionId);
+        _remoteGeneratingSessions.add(sessionId);
+        _remoteSessionSources[sessionId] = 'primary';
         _sessionGenerating[sessionId] = true;
         _sessionStatuses[sessionId] = res.localStatus ?? 'App Chính đang xử lý câu hỏi...';
         notifyListeners();
@@ -1355,8 +1558,11 @@ $solution
         });
       } else {
         _localOnPrimaryPollTimers.remove(sessionId)?.cancel();
-        final wasPending =
-            _interruptedRemoteSessions.remove(sessionId) || _sessionGenerating[sessionId] == true;
+        final wasPending = _interruptedRemoteSessions.remove(sessionId) ||
+            _remoteGeneratingSessions.remove(sessionId) ||
+            _sessionGenerating[sessionId] == true;
+        _remoteSessionSources.remove(sessionId);
+        _ownSecondaryGeneratingSessions.remove(sessionId);
         _sessionGenerating[sessionId] = false;
         _localGeneratingSessions.remove(sessionId);
         _sessionStatuses.remove(sessionId);
@@ -1383,7 +1589,9 @@ $solution
   @override
   void dispose() {
     _disposed = true;
+    _stopRemoteEventSync();
     _hostServer.isLocalSessionGenerating = null;
+    _hostServer.onRequestStopLocalSession = null;
     _remoteChatSyncSub?.cancel();
     _remoteMutationSub?.cancel();
     for (final t in _remoteTokenThrottleTimers.values) {

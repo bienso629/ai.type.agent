@@ -10,6 +10,7 @@ import '../../models/metrics_model.dart';
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
+import '../../models/remote_fs_entry.dart';
 import 'storage_service.dart';
 import 'local_config_service.dart';
 import 'database_service.dart';
@@ -1157,6 +1158,89 @@ class ApiService {
     return controller.stream.listen((_) {});
   }
 
+  /// Lắng nghe luồng sự kiện thời gian thực từ App Chính (`GET /api/remote/events`) khi thiết bị ở vai trò App Phụ.
+  /// Giúp App Phụ nhận biết ngay lập tức khi App Chính bắt đầu / kết thúc hỏi Agent trên bất kỳ hộp hội thoại nào.
+  StreamSubscription<String> subscribeRemoteEvents({
+    required void Function(Map<String, dynamic> event) onEvent,
+    void Function(String reason)? onDisconnected,
+  }) {
+    final controller = StreamController<String>();
+
+    () async {
+      if (await _isNativeMode()) return;
+
+      http.Client? sseClient;
+      StreamSubscription<String>? innerSub;
+      bool cancelled = false;
+      controller.onCancel = () {
+        cancelled = true;
+        innerSub?.cancel();
+        sseClient?.close();
+      };
+
+      try {
+        final baseUrl = await _getBaseUrl();
+        if (baseUrl.trim().isEmpty || cancelled) return;
+        sseClient = http.Client();
+        final request = http.Request('GET', Uri.parse('$baseUrl${ApiConstants.epRemoteEvents}'));
+        request.headers.addAll(await _getHeaders());
+
+        final streamed = await sseClient.send(request).timeout(const Duration(seconds: 15));
+        if (cancelled) {
+          sseClient.close();
+          return;
+        }
+        if (streamed.statusCode != 200) {
+          String rawBody = '';
+          try {
+            rawBody = await streamed.stream.bytesToString();
+            _checkRevokedPayload(streamed.statusCode, rawBody);
+          } catch (_) {}
+          sseClient.close();
+          if (!cancelled) {
+            onDisconnected?.call(streamed.statusCode == 401 ? 'DEVICE_REVOKED' : 'HTTP ${streamed.statusCode}');
+          }
+          return;
+        }
+
+        innerSub = streamed.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen(
+          (line) {
+            if (cancelled) return;
+            final trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) return;
+            final jsonStr = trimmed.substring(5).trim();
+            if (jsonStr.isEmpty || jsonStr == '[DONE]') return;
+            try {
+              final decoded = jsonDecode(jsonStr);
+              if (decoded is Map<String, dynamic>) {
+                onEvent(decoded);
+              } else if (decoded is Map) {
+                onEvent(Map<String, dynamic>.from(decoded));
+              }
+            } catch (_) {}
+          },
+          onError: (e) {
+            sseClient?.close();
+            if (!cancelled) onDisconnected?.call(e.toString());
+          },
+          onDone: () {
+            sseClient?.close();
+            if (!cancelled) onDisconnected?.call('SSE_CLOSED');
+          },
+          cancelOnError: true,
+        );
+      } catch (e) {
+        sseClient?.close();
+        if (!cancelled) onDisconnected?.call(e.toString());
+      }
+    }();
+
+    return controller.stream.listen((_) {});
+  }
+
   /// Kiểm tra trạng thái chạy live của hộp hội thoại trên App Chính (`GET /api/chat/live`)
   /// và bám nối lại luồng SSE nếu Agent vẫn đang xử lý dở (nhận `snapshot` rồi tiếp tục nhận token live).
   Future<({
@@ -1501,6 +1585,240 @@ class ApiService {
     );
   }
 
+  /// Tạo URL + headers xác thực để hiển thị ảnh xem trước (thumbnail/lightbox) trực tiếp từ App Chính.
+  Future<({Uri uri, Map<String, String> headers})?> buildRemoteFileRequest(
+    String remotePath, {
+    bool inline = true,
+  }) async {
+    if (await _isNativeMode()) return null;
+    final baseUrl = await _getBaseUrl();
+    if (baseUrl.trim().isEmpty) return null;
+    final query = 'path=${Uri.encodeQueryComponent(remotePath)}${inline ? '&inline=1' : ''}';
+    return (
+      uri: Uri.parse('$baseUrl${ApiConstants.epFsDownload}?$query'),
+      headers: await _getHeaders(),
+    );
+  }
+
+  /// Liệt kê cả thư mục con và tệp (hình ảnh, video, âm thanh, tài liệu) từ máy App Chính (hoặc thư mục cục bộ ở chế độ App Chính).
+  Future<RemoteFsListResult> listRemoteEntries({
+    String path = '',
+    String filter = 'all',
+    String search = '',
+  }) async {
+    if (!await _isNativeMode()) {
+      try {
+        final baseUrl = await _getBaseUrl();
+        final uri = Uri.parse(
+          '$baseUrl${ApiConstants.epFsListEntries}'
+          '?path=${Uri.encodeQueryComponent(path)}'
+          '&filter=${Uri.encodeQueryComponent(filter)}'
+          '&search=${Uri.encodeQueryComponent(search)}',
+        );
+        final res = await _client.get(uri, headers: await _getHeaders()).timeout(const Duration(seconds: 10));
+        final rawBody = utf8.decode(res.bodyBytes);
+        _checkRevokedPayload(res.statusCode, rawBody);
+        if (res.statusCode == 200) {
+          final data = jsonDecode(rawBody);
+          if (data is Map) {
+            final entries = (data['entries'] is List)
+                ? (data['entries'] as List)
+                    .whereType<Map>()
+                    .map((e) => RemoteFsEntry.fromJson(Map<String, dynamic>.from(e)))
+                    .toList()
+                : <RemoteFsEntry>[];
+            return RemoteFsListResult(
+              currentPath: data['current_path']?.toString() ?? path,
+              parentPath: data['parent_path']?.toString(),
+              workspaceRoot: data['workspace_root']?.toString() ?? '',
+              entries: entries,
+            );
+          }
+        }
+        return RemoteFsListResult(
+          currentPath: path,
+          error: 'Máy chủ App Chính phản hồi mã ${res.statusCode}.',
+        );
+      } catch (e) {
+        return RemoteFsListResult(
+          currentPath: path,
+          error: 'Không thể duyệt tệp trên App Chính: $e',
+        );
+      }
+    }
+
+    // Chế độ App Chính (cục bộ)
+    try {
+      final homeDir = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? Directory.current.path;
+      var targetPath = path.trim().isNotEmpty ? path.trim() : homeDir;
+      if (!Directory(targetPath).existsSync()) targetPath = homeDir;
+      final dir = Directory(targetPath);
+      final parent = dir.parent.path != dir.path ? dir.parent.path : null;
+      final lowerSearch = search.trim().toLowerCase();
+      final dirs = <RemoteFsEntry>[];
+      final files = <RemoteFsEntry>[];
+      for (final entity in dir.listSync(followLinks: false)) {
+        final name = entity.path.split(Platform.pathSeparator).last;
+        if (name.startsWith('.') && lowerSearch.isEmpty) continue;
+        if (lowerSearch.isNotEmpty && !name.toLowerCase().contains(lowerSearch)) continue;
+        if (entity is Directory) {
+          dirs.add(
+            RemoteFsEntry(
+              name: name,
+              path: entity.path,
+              isDir: true,
+              kind: 'dir',
+              mimeType: 'inode/directory',
+              modifiedAt: entity.statSync().modified,
+            ),
+          );
+        } else if (entity is File) {
+          final kind = RemoteFsEntry.detectKind(entity.path);
+          if (filter == 'image' && kind != 'image') continue;
+          if (filter == 'video' && kind != 'video') continue;
+          if (filter == 'audio' && kind != 'audio') continue;
+          if (filter == 'file' && (kind == 'image' || kind == 'video')) continue;
+          final st = entity.statSync();
+          files.add(
+            RemoteFsEntry(
+              name: name,
+              path: entity.path,
+              isDir: false,
+              size: st.size,
+              modifiedAt: st.modified,
+              kind: kind,
+              mimeType: RemoteFsEntry.detectMimeType(entity.path),
+            ),
+          );
+        }
+      }
+      dirs.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      files.sort((a, b) => (b.modifiedAt ?? DateTime(0)).compareTo(a.modifiedAt ?? DateTime(0)));
+      return RemoteFsListResult(
+        currentPath: dir.path,
+        parentPath: parent,
+        entries: [...dirs, ...files].take(300).toList(),
+      );
+    } catch (e) {
+      return RemoteFsListResult(currentPath: path, error: 'Lỗi đọc thư mục cục bộ: $e');
+    }
+  }
+
+  /// Tải tệp (hình ảnh, video dung lượng lớn, tài liệu) từ App Chính theo dạng stream thẳng xuống đĩa,
+  /// không nạp toàn bộ tệp vào RAM và báo tiến độ byte thực tế theo thời gian thực.
+  Future<File?> downloadFileToPath({
+    required String remotePath,
+    required String savePath,
+    void Function(int receivedBytes, int totalBytes, double progress)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    if (await _isNativeMode()) {
+      final localSrc = File(remotePath);
+      if (localSrc.existsSync()) {
+        final total = await localSrc.length();
+        final destFile = File(savePath);
+        if (!destFile.parent.existsSync()) {
+          destFile.parent.createSync(recursive: true);
+        }
+        final sink = destFile.openWrite();
+        int received = 0;
+        try {
+          await for (final chunk in localSrc.openRead()) {
+            if (isCancelled?.call() == true) {
+              await sink.close();
+              if (destFile.existsSync()) await destFile.delete();
+              return null;
+            }
+            sink.add(chunk);
+            received += chunk.length;
+            onProgress?.call(received, total, total > 0 ? (received / total).clamp(0.0, 1.0) : 1.0);
+          }
+          await sink.flush();
+          await sink.close();
+          return destFile;
+        } catch (_) {
+          await sink.close();
+          if (destFile.existsSync()) {
+            try {
+              await destFile.delete();
+            } catch (_) {}
+          }
+          return null;
+        }
+      }
+      final bytes = await _ssh.downloadFile(remotePath: remotePath, onProgress: onProgress);
+      if (bytes == null) return null;
+      final destFile = File(savePath);
+      if (!destFile.parent.existsSync()) {
+        destFile.parent.createSync(recursive: true);
+      }
+      await destFile.writeAsBytes(bytes);
+      return destFile;
+    }
+
+    final baseUrl = await _getBaseUrl();
+    final dlClient = http.Client();
+    IOSink? sink;
+    final destFile = File(savePath);
+    try {
+      final request = http.Request(
+        'GET',
+        Uri.parse('$baseUrl${ApiConstants.epFsDownload}?path=${Uri.encodeQueryComponent(remotePath)}'),
+      );
+      request.headers.addAll(await _getHeaders());
+
+      final streamed = await dlClient.send(request).timeout(const Duration(seconds: 20));
+      if (streamed.statusCode != 200 && streamed.statusCode != 206) {
+        try {
+          final body = await streamed.stream.bytesToString();
+          _checkRevokedPayload(streamed.statusCode, body);
+        } catch (_) {}
+        return null;
+      }
+
+      final total = streamed.contentLength ?? 0;
+      if (!destFile.parent.existsSync()) {
+        destFile.parent.createSync(recursive: true);
+      }
+      final fileSink = destFile.openWrite();
+      sink = fileSink;
+      int received = 0;
+      int lastNotifyMs = 0;
+
+      await for (final chunk in streamed.stream) {
+        if (isCancelled?.call() == true) {
+          await fileSink.close();
+          sink = null;
+          if (destFile.existsSync()) await destFile.delete();
+          return null;
+        }
+        fileSink.add(chunk);
+        received += chunk.length;
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (onProgress != null && (nowMs - lastNotifyMs >= 80 || (total > 0 && received >= total))) {
+          lastNotifyMs = nowMs;
+          onProgress(received, total, total > 0 ? (received / total).clamp(0.0, 1.0) : 0.0);
+        }
+      }
+
+      await fileSink.flush();
+      await fileSink.close();
+      sink = null;
+      onProgress?.call(received, total > 0 ? total : received, 1.0);
+      return destFile;
+    } catch (_) {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      try {
+        if (destFile.existsSync()) await destFile.delete();
+      } catch (_) {}
+      return null;
+    } finally {
+      dlClient.close();
+    }
+  }
+
   Future<Uint8List?> downloadFile({
     required String remotePath,
     void Function(int receivedBytes, int totalBytes, double progress)? onProgress,
@@ -1512,16 +1830,35 @@ class ApiService {
       );
     }
     final baseUrl = await _getBaseUrl();
+    final dlClient = http.Client();
     try {
-      final res = await _client.get(
-        Uri.parse('$baseUrl${ApiConstants.epFsDownload}?path=${Uri.encodeComponent(remotePath)}'),
-        headers: await _getHeaders(),
+      final request = http.Request(
+        'GET',
+        Uri.parse('$baseUrl${ApiConstants.epFsDownload}?path=${Uri.encodeQueryComponent(remotePath)}'),
       );
-      if (res.statusCode == 200) {
-        if (onProgress != null) onProgress(res.bodyBytes.length, res.bodyBytes.length, 1.0);
-        return res.bodyBytes;
+      request.headers.addAll(await _getHeaders());
+      final streamed = await dlClient.send(request).timeout(const Duration(seconds: 20));
+      if (streamed.statusCode != 200) {
+        try {
+          final body = await streamed.stream.bytesToString();
+          _checkRevokedPayload(streamed.statusCode, body);
+        } catch (_) {}
+        return null;
       }
-    } catch (_) {}
-    return null;
+      final total = streamed.contentLength ?? 0;
+      final builder = BytesBuilder(copy: false);
+      int received = 0;
+      await for (final chunk in streamed.stream) {
+        builder.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, total, total > 0 ? (received / total).clamp(0.0, 1.0) : 0.0);
+      }
+      onProgress?.call(received, total > 0 ? total : received, 1.0);
+      return builder.takeBytes();
+    } catch (_) {
+      return null;
+    } finally {
+      dlClient.close();
+    }
   }
 }

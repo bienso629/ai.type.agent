@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../../models/attachment_item.dart';
 import '../../models/chat_message.dart';
+import '../../models/remote_fs_entry.dart';
 import '../../models/server_model.dart';
 import '../constants/api_constants.dart';
 import 'cli_scanner_service.dart';
@@ -142,9 +143,10 @@ class RemoteChatSyncEvent {
   });
 }
 
-/// Trạng thái snapshot của một phiên chat đang được App Phụ hỏi Agent trên App Chính.
+/// Trạng thái snapshot của một phiên chat đang chạy live trên App Chính (từ App Chính hoặc App Phụ).
 class RemoteChatLiveSnapshot {
   final String sessionId;
+  final String source; // 'primary' | 'secondary'
   final String userMessage;
   final String model;
   final List<AttachmentItem>? attachments;
@@ -154,6 +156,7 @@ class RemoteChatLiveSnapshot {
 
   RemoteChatLiveSnapshot({
     required this.sessionId,
+    this.source = 'secondary',
     required this.userMessage,
     required this.model,
     this.attachments,
@@ -274,7 +277,9 @@ class PrimaryHostServerService {
   final Map<String, StreamSubscription<String>> _activeChatStreams = {};
   final Map<String, Future<void> Function(String reason)> _activeChatStoppers = {};
   final Map<String, RemoteChatLiveSnapshot> _activeRemoteChatSnapshots = {};
+  final Map<String, RemoteChatLiveSnapshot> _activeLocalChatSnapshots = {};
   final Map<String, Set<_RemoteSseSubscriber>> _chatSseSubscribers = {};
+  final Set<_RemoteSseSubscriber> _globalEventSubscribers = {};
   final Map<String, String> _activeChatClientIds = {};
   final Map<String, ConnectedSecondaryClient> _connectedClients = {};
   final Map<String, String> _clientWorkspaceDirs = {};
@@ -293,6 +298,9 @@ class PrimaryHostServerService {
 
   /// Callback do `ChatProvider` trên App Chính đăng ký để kiểm tra phiên nào đang chạy cục bộ.
   bool Function(String sessionId)? isLocalSessionGenerating;
+
+  /// Callback do `ChatProvider` trên App Chính đăng ký để cho phép App Phụ bấm Dừng phiên đang chạy trên App Chính.
+  void Function(String sessionId)? onRequestStopLocalSession;
 
   bool get isRunning => _server != null;
   int get boundPort => _boundPort;
@@ -612,7 +620,7 @@ class PrimaryHostServerService {
       );
     }
 
-    // 1b. Đóng cả các kết nối SSE quan sát (/api/chat/live) của riêng thiết bị này
+    // 1b. Đóng cả các kết nối SSE quan sát (/api/chat/live) và luồng sự kiện (/api/remote/events) của riêng thiết bị này
     for (final subs in _chatSseSubscribers.values) {
       for (final s in subs.where((e) => e.clientId == cleanId).toList()) {
         s.sendEvent({
@@ -624,6 +632,10 @@ class PrimaryHostServerService {
         await s.finishAndClose();
         subs.remove(s);
       }
+    }
+    for (final s in _globalEventSubscribers.where((e) => e.clientId == cleanId).toList()) {
+      await s.finishAndClose();
+      _globalEventSubscribers.remove(s);
     }
 
     // 2. Đóng toàn bộ WebSocket Terminal của riêng thiết bị này
@@ -669,7 +681,136 @@ class PrimaryHostServerService {
   /// Kiểm tra một phiên hội thoại có đang bận (từ App Phụ hoặc cục bộ trên App Chính) hay không.
   bool isSessionBusy(String sessionId) =>
       _activeChatStreams.containsKey(sessionId) ||
+      _activeLocalChatSnapshots.containsKey(sessionId) ||
       (isLocalSessionGenerating?.call(sessionId) == true);
+
+  /// Thông báo App Chính vừa bắt đầu chạy một phiên chat cục bộ -> đồng bộ loading sang tất cả App Phụ.
+  void notifyLocalChatStart({
+    required String sessionId,
+    required String userMessage,
+    required String model,
+    List<AttachmentItem>? attachments,
+    String status = 'App Chính đang hỏi Agent...',
+  }) {
+    final snap = RemoteChatLiveSnapshot(
+      sessionId: sessionId,
+      source: 'primary',
+      userMessage: userMessage,
+      model: model.isNotEmpty ? model : 'glm-5.3',
+      attachments: attachments,
+      status: status,
+    );
+    _activeLocalChatSnapshots[sessionId] = snap;
+    _broadcastGlobalEvent({
+      'type': 'chat_start',
+      'session_id': sessionId,
+      'source': 'primary',
+      'user_message': userMessage,
+      'model': snap.model,
+      'status': status,
+    });
+  }
+
+  void notifyLocalChatStatus(String sessionId, String status) {
+    final snap = _activeLocalChatSnapshots[sessionId];
+    if (snap != null) {
+      snap.status = status;
+    }
+    _broadcastChatSse(sessionId, {'type': 'status', 'message': status});
+  }
+
+  void notifyLocalChatToken(String sessionId, String token) {
+    final snap = _activeLocalChatSnapshots[sessionId];
+    if (snap != null) {
+      if (token == '__CLEAR_INTERMEDIATE_THOUGHTS__') {
+        snap.content = '';
+      } else {
+        snap.content += token;
+      }
+    }
+    _broadcastChatSse(sessionId, {'type': 'token', 'delta': token});
+  }
+
+  void notifyLocalChatTool(String sessionId, ToolExecutionItem tool) {
+    final snap = _activeLocalChatSnapshots[sessionId];
+    if (snap != null) {
+      var existingIdx = snap.toolExecutions.lastIndexWhere(
+        (t) => t.tool == tool.tool && t.command == tool.command && t.output == 'Đang thực thi...',
+      );
+      if (existingIdx == -1 && tool.output != 'Đang thực thi...') {
+        existingIdx = snap.toolExecutions.lastIndexWhere(
+          (t) => t.tool == tool.tool && t.command == tool.tool && t.output == 'Đang thực thi...',
+        );
+      }
+      if (existingIdx != -1) {
+        snap.toolExecutions[existingIdx] = tool;
+      } else {
+        snap.toolExecutions.add(tool);
+      }
+      if (snap.toolExecutions.length > 30) {
+        snap.toolExecutions.removeRange(0, snap.toolExecutions.length - 30);
+      }
+    }
+    _broadcastChatSse(sessionId, {'type': 'tool', 'tool': tool.toJson()});
+  }
+
+  void notifyLocalChatDone(String sessionId, String fullReply) {
+    if (_activeLocalChatSnapshots.remove(sessionId) == null &&
+        (_chatSseSubscribers[sessionId]?.isEmpty ?? true)) {
+      return;
+    }
+    _broadcastChatSse(sessionId, {'type': 'done', 'reply': fullReply});
+    unawaited(_closeChatSseSubscribers(sessionId));
+    _broadcastGlobalEvent({
+      'type': 'chat_end',
+      'session_id': sessionId,
+      'source': 'primary',
+      'end_type': 'done',
+    });
+  }
+
+  void notifyLocalChatError(String sessionId, String errorMessage) {
+    if (_activeLocalChatSnapshots.remove(sessionId) == null &&
+        (_chatSseSubscribers[sessionId]?.isEmpty ?? true)) {
+      return;
+    }
+    _broadcastChatSse(sessionId, {'type': 'error', 'message': errorMessage});
+    unawaited(_closeChatSseSubscribers(sessionId));
+    _broadcastGlobalEvent({
+      'type': 'chat_end',
+      'session_id': sessionId,
+      'source': 'primary',
+      'end_type': 'error',
+    });
+  }
+
+  void notifyLocalChatStop(
+    String sessionId, {
+    String reason = 'Đã dừng phản hồi.',
+  }) {
+    if (_activeLocalChatSnapshots.remove(sessionId) == null &&
+        (_chatSseSubscribers[sessionId]?.isEmpty ?? true)) {
+      return;
+    }
+    _broadcastChatSse(sessionId, {'type': 'done', 'reply': reason});
+    unawaited(_closeChatSseSubscribers(sessionId));
+    _broadcastGlobalEvent({
+      'type': 'chat_end',
+      'session_id': sessionId,
+      'source': 'primary',
+      'end_type': 'stop',
+    });
+  }
+
+  void _broadcastGlobalEvent(Map<String, dynamic> payload) {
+    if (_globalEventSubscribers.isEmpty) return;
+    for (final s in _globalEventSubscribers.toList()) {
+      s.sendEvent(payload);
+      if (s.closed) {
+        _globalEventSubscribers.remove(s);
+      }
+    }
+  }
 
   /// Danh sách ID các phiên đang có App Phụ chạy Agent.
   Set<String> get activeRemoteSessionIds => _activeChatStreams.keys.toSet();
@@ -693,7 +834,7 @@ class PrimaryHostServerService {
     }
   }
 
-  /// Dừng luồng AI mà App Phụ đang chạy cho `sessionId` (có thể gọi từ nút Dừng trên App Chính hoặc `/api/chat/stop`).
+  /// Dừng luồng AI đang chạy cho `sessionId` (cả phiên do App Phụ khởi tạo lẫn phiên đang chạy cục bộ trên App Chính).
   Future<void> stopActiveChat(
     String sessionId, {
     String reason = 'Đã dừng phản hồi.',
@@ -718,6 +859,15 @@ class PrimaryHostServerService {
           ),
         );
         _emitMutation('chat:$sessionId');
+      }
+      return;
+    }
+    if (_activeLocalChatSnapshots.containsKey(sessionId) ||
+        isLocalSessionGenerating?.call(sessionId) == true) {
+      if (onRequestStopLocalSession != null) {
+        onRequestStopLocalSession!(sessionId);
+      } else {
+        notifyLocalChatStop(sessionId, reason: reason);
       }
     }
   }
@@ -1043,9 +1193,14 @@ class PrimaryHostServerService {
       await _closeChatSseSubscribers(sId);
     }
     _chatSseSubscribers.clear();
+    for (final s in _globalEventSubscribers.toList()) {
+      await s.finishAndClose();
+    }
+    _globalEventSubscribers.clear();
     _activeChatStreams.clear();
     _activeChatStoppers.clear();
     _activeRemoteChatSnapshots.clear();
+    _activeLocalChatSnapshots.clear();
     _activeChatClientIds.clear();
     _clientTerminalSockets.clear();
     _connectedClients.clear();
@@ -1260,6 +1415,10 @@ class PrimaryHostServerService {
       }
 
       // 2. Handshake & Thông tin thiết bị App Chính
+      if (method == 'GET' && path == ApiConstants.epRemoteEvents) {
+        await _handleRemoteEvents(req, clientInfo.clientId);
+        return;
+      }
       if (method == 'GET' && path == ApiConstants.epRemoteInfo) {
         final cfg = await _config.loadConfig();
         final sessions = await _db.getSessions();
@@ -1560,7 +1719,7 @@ class PrimaryHostServerService {
         }
       }
 
-      // 11. Duyệt thư mục Scope & Upload/Download tệp trên App Chính
+      // 11. Duyệt thư mục Scope, liệt kê ảnh/video/tệp & Upload/Download trên App Chính
       if (method == 'GET' && path == ApiConstants.epFsListDirs) {
         final prefix = req.uri.queryParameters['prefix'] ?? '';
         final dirs = await _listLocalOrSshDirectories(prefix, rootConstraint: clientWorkspaceDir);
@@ -1568,6 +1727,20 @@ class PrimaryHostServerService {
           'directories': dirs,
           if (clientWorkspaceDir.isNotEmpty) 'workspace_root': clientWorkspaceDir,
         });
+        return;
+      }
+
+      if (method == 'GET' && path == ApiConstants.epFsListEntries) {
+        final reqPath = req.uri.queryParameters['path'] ?? '';
+        final filter = (req.uri.queryParameters['filter'] ?? 'all').trim().toLowerCase();
+        final search = (req.uri.queryParameters['search'] ?? '').trim().toLowerCase();
+        final listed = _listLocalEntries(
+          reqPath,
+          rootConstraint: clientWorkspaceDir,
+          filter: filter,
+          search: search,
+        );
+        await _sendJson(res, HttpStatus.ok, listed);
         return;
       }
 
@@ -1624,8 +1797,56 @@ class PrimaryHostServerService {
           await _sendJson(res, HttpStatus.notFound, {'error': 'File not found'});
           return;
         }
+
+        final fileLength = await file.length();
+        final fileName = p.basename(filePath);
+        final mimeType = RemoteFsEntry.detectMimeType(filePath);
+        final inlineMode = req.uri.queryParameters['inline'] == '1' || req.uri.queryParameters['inline'] == 'true';
+        final asciiName = fileName.replaceAll(RegExp(r'[^\x20-\x7E]'), '_').replaceAll('"', '');
+        final encodedName = Uri.encodeComponent(fileName);
+
+        res.headers.set(HttpHeaders.contentTypeHeader, mimeType);
+        res.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+        res.headers.set(
+          'Content-Disposition',
+          '${inlineMode ? 'inline' : 'attachment'}; filename="$asciiName"; filename*=UTF-8\'\'$encodedName',
+        );
+
+        final rangeHeader = req.headers.value(HttpHeaders.rangeHeader)?.trim();
+        if (rangeHeader != null && rangeHeader.startsWith('bytes=') && fileLength > 0) {
+          final match = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(rangeHeader);
+          if (match != null) {
+            final startStr = match.group(1) ?? '';
+            final endStr = match.group(2) ?? '';
+            int start;
+            int end;
+            if (startStr.isEmpty && endStr.isNotEmpty) {
+              final suffix = int.tryParse(endStr) ?? 0;
+              start = (fileLength - suffix).clamp(0, fileLength - 1);
+              end = fileLength - 1;
+            } else {
+              start = int.tryParse(startStr) ?? 0;
+              end = endStr.isNotEmpty ? (int.tryParse(endStr) ?? (fileLength - 1)) : (fileLength - 1);
+            }
+            if (start >= fileLength || start > end) {
+              res.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+              res.headers.set(HttpHeaders.contentRangeHeader, 'bytes */$fileLength');
+              await res.close();
+              return;
+            }
+            end = end.clamp(start, fileLength - 1);
+            final chunkLen = end - start + 1;
+            res.statusCode = HttpStatus.partialContent;
+            res.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$fileLength');
+            res.headers.set(HttpHeaders.contentLengthHeader, chunkLen.toString());
+            await res.addStream(file.openRead(start, end + 1));
+            await res.close();
+            return;
+          }
+        }
+
         res.statusCode = HttpStatus.ok;
-        res.headers.contentType = ContentType.binary;
+        res.headers.set(HttpHeaders.contentLengthHeader, fileLength.toString());
         await res.addStream(file.openRead());
         await res.close();
         return;
@@ -1797,6 +2018,12 @@ class PrimaryHostServerService {
             ),
           );
         }
+        _broadcastGlobalEvent({
+          'type': 'chat_end',
+          'session_id': sessionId,
+          'source': 'secondary',
+          'end_type': syncEndType?.name ?? 'done',
+        });
         _emitMutation('chat:$sessionId');
       }
     }
@@ -1832,7 +2059,7 @@ class PrimaryHostServerService {
       );
     };
 
-    // Thông báo ngay cho UI App Chính trước khi nhận bất kỳ callback onStatus/onToken nào
+    // Thông báo ngay cho UI App Chính và các App Phụ khác trước khi nhận callback onStatus/onToken nào
     if (!isEphemeralSchedule) {
       _emitRemoteChatSync(
         RemoteChatSyncEvent(
@@ -1844,6 +2071,14 @@ class PrimaryHostServerService {
           status: 'App Phụ đang hỏi Agent...',
         ),
       );
+      _broadcastGlobalEvent({
+        'type': 'chat_start',
+        'session_id': sessionId,
+        'source': 'secondary',
+        'user_message': message,
+        'model': (model != null && model.isNotEmpty) ? model : 'glm-5.3',
+        'status': 'App Phụ đang hỏi Agent...',
+      });
     }
 
     sub = _ai.streamChatMessage(
@@ -1979,8 +2214,49 @@ class PrimaryHostServerService {
     }
   }
 
+  /// Luồng SSE sự kiện toàn cục (`GET /api/remote/events`) đồng bộ tức thì trạng thái loading từ App Chính -> App Phụ.
+  Future<void> _handleRemoteEvents(HttpRequest req, String clientId) async {
+    final res = req.response;
+    res.statusCode = HttpStatus.ok;
+    res.headers.set(HttpHeaders.contentTypeHeader, 'text/event-stream; charset=utf-8');
+    res.headers.set(HttpHeaders.cacheControlHeader, 'no-cache, no-transform');
+    res.headers.set(HttpHeaders.connectionHeader, 'keep-alive');
+    res.headers.set('X-Accel-Buffering', 'no');
+    res.bufferOutput = false;
+
+    final subscriber = _RemoteSseSubscriber(clientId, res);
+    _globalEventSubscribers.add(subscriber);
+
+    final activeSnapshots = <RemoteChatLiveSnapshot>[
+      ..._activeLocalChatSnapshots.values,
+      ..._activeRemoteChatSnapshots.values,
+    ];
+    subscriber.sendEvent({
+      'type': 'sync_state',
+      'active_sessions': activeSnapshots
+          .map(
+            (s) => {
+              'session_id': s.sessionId,
+              'source': s.source,
+              'user_message': s.userMessage,
+              'model': s.model,
+              'content': s.content,
+              'status': s.status,
+            },
+          )
+          .toList(),
+    });
+
+    res.done.whenComplete(() {
+      subscriber.detach();
+      _globalEventSubscribers.remove(subscriber);
+    });
+
+    await subscriber.done.future;
+  }
+
   /// Cho phép App Phụ kiểm tra trạng thái hộp hội thoại và bám nối lại luồng SSE live
-  /// nếu Agent trên App Chính vẫn đang trả lời (ví dụ sau khi ẩn app hoặc chuyển mạng).
+  /// cho cả phiên do App Phụ khởi tạo lẫn phiên đang chạy trực tiếp trên App Chính.
   Future<void> _handleChatLive(HttpRequest req, String clientId) async {
     final res = req.response;
     final sessionId = (req.uri.queryParameters['session_id'] ?? '').trim();
@@ -1989,8 +2265,11 @@ class PrimaryHostServerService {
       return;
     }
 
-    final liveSnapshot = _activeRemoteChatSnapshots[sessionId];
-    if (liveSnapshot != null && _activeChatStreams.containsKey(sessionId)) {
+    final RemoteChatLiveSnapshot? liveSnapshot =
+        (_activeRemoteChatSnapshots[sessionId] != null && _activeChatStreams.containsKey(sessionId))
+            ? _activeRemoteChatSnapshots[sessionId]
+            : _activeLocalChatSnapshots[sessionId];
+    if (liveSnapshot != null) {
       res.statusCode = HttpStatus.ok;
       res.headers.set(HttpHeaders.contentTypeHeader, 'text/event-stream; charset=utf-8');
       res.headers.set(HttpHeaders.cacheControlHeader, 'no-cache, no-transform');
@@ -2001,10 +2280,11 @@ class PrimaryHostServerService {
       final subscriber = _RemoteSseSubscriber(clientId, res);
       _chatSseSubscribers.putIfAbsent(sessionId, () => <_RemoteSseSubscriber>{}).add(subscriber);
 
-      // Gửi ngay snapshot hiện có để App Phụ đồng bộ toàn bộ token/tool đã sinh trong lúc ẩn app
+      // Gửi ngay snapshot hiện có để App Phụ đồng bộ toàn bộ token/tool đang chạy trên App Chính
       subscriber.sendEvent({
         'type': 'snapshot',
         'session_id': sessionId,
+        'source': liveSnapshot.source,
         'user_message': liveSnapshot.userMessage,
         'model': liveSnapshot.model,
         'content': liveSnapshot.content,
@@ -2306,5 +2586,117 @@ class PrimaryHostServerService {
     } catch (_) {
       return [];
     }
+  }
+
+  /// Liệt kê cả thư mục con lẫn tệp (hình ảnh, video, âm thanh, tài liệu) trên máy App Chính.
+  /// Nếu `rootConstraint` được thiết lập (workspace riêng của App Phụ), ràng buộc chặt không thoát ra ngoài.
+  Map<String, dynamic> _listLocalEntries(
+    String rawPath, {
+    String rootConstraint = '',
+    String filter = 'all',
+    String search = '',
+  }) {
+    final homeDir = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? Directory.current.path;
+    final hasConstraint = rootConstraint.trim().isNotEmpty;
+    final normRoot = hasConstraint ? p.normalize(p.absolute(rootConstraint.trim())) : '';
+
+    String resolvedDir;
+    if (hasConstraint) {
+      final rootDir = Directory(normRoot);
+      if (!rootDir.existsSync()) {
+        rootDir.createSync(recursive: true);
+      }
+      final scoped = _resolveClientScopedPath(normRoot, rawPath) ?? normRoot;
+      resolvedDir = Directory(scoped).existsSync() ? scoped : normRoot;
+    } else {
+      var candidate = rawPath.trim();
+      if (candidate.isEmpty) {
+        candidate = homeDir;
+      } else if (candidate == '~' || candidate.startsWith('~/') || candidate.startsWith('~\\')) {
+        candidate = candidate == '~' ? homeDir : p.join(homeDir, candidate.substring(2));
+      }
+      candidate = p.normalize(p.absolute(candidate));
+      resolvedDir = Directory(candidate).existsSync() ? candidate : homeDir;
+    }
+
+    String? parentPath;
+    final parent = Directory(resolvedDir).parent.path;
+    if (parent != resolvedDir) {
+      if (!hasConstraint || isPathWithinRoot(parent, normRoot)) {
+        parentPath = parent;
+      }
+    }
+
+    final dirEntries = <RemoteFsEntry>[];
+    final fileEntries = <RemoteFsEntry>[];
+    try {
+      for (final entity in Directory(resolvedDir).listSync(followLinks: false)) {
+        final entityPath = p.normalize(p.absolute(entity.path));
+        if (hasConstraint && !isPathWithinRoot(entityPath, normRoot)) continue;
+        final name = p.basename(entityPath);
+        if (name.startsWith('.') && search.isEmpty) continue;
+        if (search.isNotEmpty && !name.toLowerCase().contains(search)) continue;
+
+        if (entity is Directory) {
+          DateTime? mod;
+          try {
+            mod = entity.statSync().modified;
+          } catch (_) {}
+          dirEntries.add(
+            RemoteFsEntry(
+              name: name,
+              path: entityPath,
+              isDir: true,
+              size: 0,
+              modifiedAt: mod,
+              kind: 'dir',
+              mimeType: 'inode/directory',
+            ),
+          );
+        } else if (entity is File) {
+          final kind = RemoteFsEntry.detectKind(entityPath);
+          if (filter == 'image' && kind != 'image') continue;
+          if (filter == 'video' && kind != 'video') continue;
+          if (filter == 'audio' && kind != 'audio') continue;
+          if (filter == 'file' && (kind == 'image' || kind == 'video')) continue;
+
+          int size = 0;
+          DateTime? mod;
+          try {
+            final st = entity.statSync();
+            size = st.size;
+            mod = st.modified;
+          } catch (_) {}
+
+          fileEntries.add(
+            RemoteFsEntry(
+              name: name,
+              path: entityPath,
+              isDir: false,
+              size: size,
+              modifiedAt: mod,
+              kind: kind,
+              mimeType: RemoteFsEntry.detectMimeType(entityPath),
+            ),
+          );
+        }
+      }
+    } catch (_) {}
+
+    dirEntries.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    fileEntries.sort((a, b) {
+      final am = a.modifiedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bm = b.modifiedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final cmp = bm.compareTo(am);
+      return cmp != 0 ? cmp : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+
+    final merged = [...dirEntries, ...fileEntries].take(300).map((e) => e.toJson()).toList();
+    return {
+      'current_path': resolvedDir,
+      'parent_path': parentPath,
+      'workspace_root': normRoot,
+      'entries': merged,
+    };
   }
 }

@@ -26,6 +26,25 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Cho phép sử dụng camera để quét mã QR ghép nối nhanh với App Chính.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Cho phép truy cập mạng nội bộ để tìm và kết nối tới máy tính chạy App Chính trong cùng mạng LAN.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Cho phép chọn ảnh và video từ thư viện để gửi tới AI Agent.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Cho phép lưu ảnh và video tải từ App Chính vào thư viện.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-testflight:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -16,6 +16,7 @@ jobs:
       APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_P8 }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      CERTIFICATE_PRIVATE_KEY: ${{ secrets.CERTIFICATE_PRIVATE_KEY }}
 
     steps:
       - name: Checkout
@@ -32,6 +33,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.44.2'
           cache: true
 
       - name: Install Codemagic CLI tools (ky so va publish)
