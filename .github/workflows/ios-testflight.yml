@@ -298,13 +298,38 @@ jobs:
             echo "::error::Khong tim thay file .ipa trong build/ios/ipa/"
             exit 1
           fi
-          echo "Dang upload $APP_FILE len App Store Connect / TestFlight..."
-          app-store-connect publish --path "$APP_FILE" 2>&1 | tee /tmp/publish.log
+
+          # Chuan bi file AuthKey_<KEY_ID>.p8 cho xcrun altool
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          KEY_FILE="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          mkdir -p "$KEY_DIR"
+          KEY_FILE="$KEY_FILE" python3 -c '
+          import os, pathlib
+          key = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"].strip()
+          if "\\n" in key and "\n" not in key:
+              key = key.replace("\\n", "\n")
+          pathlib.Path(os.environ["KEY_FILE"]).write_text(key + "\n", encoding="utf-8")
+          '
+          chmod 600 "$KEY_FILE"
+
+          echo "Dang upload $APP_FILE len App Store Connect / TestFlight bang xcrun altool..."
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$APP_FILE" \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --show-progress 2>&1 | tee /tmp/publish.log
           CODE=${PIPESTATUS[0]}
+          rm -f "$KEY_FILE"
+
           if [ $CODE -ne 0 ]; then
-            echo "::error::app-store-connect publish that bai (exit $CODE). Chi tiet loi:"
-            tail -40 /tmp/publish.log | while IFS= read -r line; do
-              echo "::error::${line:0:400}"
+            ERR_LINES=$(grep -iE 'error|ITMS-|fail|invalid|denied|not found|suitable|description|reason|localized' /tmp/publish.log | tail -n 8)
+            if [ -z "$ERR_LINES" ]; then
+              ERR_LINES=$(tail -n 8 /tmp/publish.log)
+            fi
+            echo "$ERR_LINES" | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::${line:0:400}"
             done
             exit $CODE
           fi
+          echo "Upload len TestFlight thanh cong!"
