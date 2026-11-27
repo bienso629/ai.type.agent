@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-testflight:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     env:
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -28,6 +28,15 @@ jobs:
             echo "::error::Thieu secrets. Vao Settings > Secrets and variables > Actions > New repository secret de tao: APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_P8 (toan bo noi dung file .p8), APPLE_TEAM_ID."
             exit 1
           fi
+
+      - name: Verify Xcode & iOS 26 SDK
+        run: |
+          BEST_XCODE=$(ls -d /Applications/Xcode_26*.app /Applications/Xcode.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$BEST_XCODE" ]; then
+            sudo xcode-select -s "$BEST_XCODE/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

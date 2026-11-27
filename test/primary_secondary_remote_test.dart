@@ -1774,5 +1774,101 @@ void main() {
       expect(gw.isInternetTunnelRunning, isFalse);
       expect(gw.publicTunnelUrl, isEmpty);
     });
+
+    test('Chi App Phu yeu cau tao/xuat anh, video hoac file moi bat preview + download', () {
+      const assistantWithImage = 'Da tao xong anh tai `/tmp/workspace/cat.png` va video `/tmp/workspace/demo.mp4`.';
+      const assistantWithPdf = 'Bao cao da xuat ra [report.pdf](file:///tmp/workspace/report.pdf).';
+
+      // App Chinh: tuyet doi KHONG hien du yeu cau tao anh/video/file
+      expect(
+        RemoteFileDownloadService.shouldShowRemotePreviewAndDownload(
+          isSecondaryMode: false,
+          userPrompt: 'Tao cho minh 1 tam anh con meo va video demo',
+          assistantText: assistantWithImage,
+        ),
+        isFalse,
+      );
+
+      // App Phu + yeu cau tao anh/video/file: HIEN preview + download
+      expect(
+        RemoteFileDownloadService.shouldShowRemotePreviewAndDownload(
+          isSecondaryMode: true,
+          userPrompt: 'Tạo cho mình 1 ảnh con mèo và video ngắn',
+          assistantText: assistantWithImage,
+        ),
+        isTrue,
+      );
+      expect(
+        RemoteFileDownloadService.shouldShowRemotePreviewAndDownload(
+          isSecondaryMode: true,
+          userPrompt: 'Xuất báo cáo PDF giúp mình',
+          assistantText: assistantWithPdf,
+        ),
+        isTrue,
+      );
+
+      // App Phu + xac nhan ngan "lam luon" sau yeu cau tao anh/file: HIEN
+      expect(
+        RemoteFileDownloadService.shouldShowRemotePreviewAndDownload(
+          isSecondaryMode: true,
+          userPrompt: 'Làm luôn',
+          previousUserPrompt: 'Tạo file PDF tổng kết dự án nhé',
+          assistantText: assistantWithPdf,
+        ),
+        isTrue,
+      );
+
+      // App Phu + cau hoi thong thuong KHONG yeu cau tao media/file: AN
+      expect(
+        RemoteFileDownloadService.shouldShowRemotePreviewAndDownload(
+          isSecondaryMode: true,
+          userPrompt: 'Giải thích lệnh ffmpeg chạy thế nào?',
+          assistantText: assistantWithImage,
+        ),
+        isFalse,
+      );
+      expect(
+        RemoteFileDownloadService.shouldShowRemotePreviewAndDownload(
+          isSecondaryMode: true,
+          userPrompt: 'Kiểm tra thư mục dự án hiện có gì',
+          assistantText: assistantWithPdf,
+        ),
+        isFalse,
+      );
+    });
+
+    testWidgets('RemoteChatDetectedFilesBar an hoan toan tren App Chinh va chi hien tren App Phu', (tester) async {
+      final api = ApiService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RemoteChatDetectedFilesBar(
+              paths: const ['/tmp/demo_image.png', '/tmp/demo_video.mp4'],
+              isSecondaryMode: false,
+              apiService: api,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('demo_image.png'), findsNothing);
+      expect(find.text('demo_video.mp4'), findsNothing);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RemoteChatDetectedFilesBar(
+              paths: const ['/tmp/demo_image.png', '/tmp/demo_video.mp4'],
+              isSecondaryMode: true,
+              apiService: api,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('demo_image.png'), findsOneWidget);
+      expect(find.text('demo_video.mp4'), findsOneWidget);
+      expect(find.byIcon(Icons.download_rounded), findsNWidgets(2));
+    });
   });
 }

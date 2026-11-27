@@ -1419,7 +1419,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ],
                     if (chat.currentSession != null) ...[
-                      SizedBox(width: isCompactMobile ? 6 : 8),
                       Builder(
                         builder: (ctx) {
                           GatewayProvider? gw;
@@ -1427,54 +1426,58 @@ class _ChatScreenState extends State<ChatScreen> {
                             gw = ctx.watch<GatewayProvider>();
                           } catch (_) {}
                           final isSecondary = gw?.isSecondary == true;
-                          return Tooltip(
-                            message: isSecondary ? 'Duyệt & tải ảnh, video, tệp từ App Chính' : 'Duyệt tệp trong thư mục làm việc',
-                            child: InkWell(
-                              key: const ValueKey('open_remote_files_browser_button'),
-                              onTap: () => _openRemoteFilesBrowser(chat, gw),
-                              borderRadius: BorderRadius.circular(4),
-                              child: Container(
-                                height: 36,
-                                padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 6 : 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.cardBg,
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: isSecondary ? AppColors.accentCyan.withValues(alpha: 0.55) : AppColors.borderDark,
-                                    width: 0.8,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.accentCyan.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Center(
-                                        child: Icon(
-                                          Icons.cloud_download_rounded,
-                                          size: 14,
-                                          color: AppColors.accentCyan,
-                                        ),
-                                      ),
+                          if (!isSecondary) return const SizedBox.shrink();
+                          return Padding(
+                            padding: EdgeInsets.only(left: isCompactMobile ? 6 : 8),
+                            child: Tooltip(
+                              message: 'Duyệt & tải ảnh, video, tệp từ App Chính',
+                              child: InkWell(
+                                key: const ValueKey('open_remote_files_browser_button'),
+                                onTap: () => _openRemoteFilesBrowser(chat, gw),
+                                borderRadius: BorderRadius.circular(4),
+                                child: Container(
+                                  height: 36,
+                                  padding: EdgeInsets.symmetric(horizontal: isCompactMobile ? 6 : 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.cardBg,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: AppColors.accentCyan.withValues(alpha: 0.55),
+                                      width: 0.8,
                                     ),
-                                    if (!isCompactMobile) ...[
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        isSecondary ? 'Tệp máy chính' : 'Tệp Scope',
-                                        style: const TextStyle(
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.textWhite,
-                                          height: 1.1,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accentCyan.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Center(
+                                          child: Icon(
+                                            Icons.cloud_download_rounded,
+                                            size: 14,
+                                            color: AppColors.accentCyan,
+                                          ),
                                         ),
                                       ),
+                                      if (!isCompactMobile) ...[
+                                        const SizedBox(width: 8),
+                                        const Text(
+                                          'Tệp máy chính',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.textWhite,
+                                            height: 1.1,
+                                          ),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -2215,21 +2218,47 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (msg.cleanContent.isNotEmpty)
                           _buildOptimizedMessageContent(msg, keyStr),
 
-                        // 2b. Tự nhận diện hình ảnh / video / tệp kết quả trong câu trả lời của Agent để bấm xem & tải về
+                        // 2b. Chỉ hiển thị xem trước + tải về trên App Phụ khi người dùng yêu cầu tạo/xuất hình ảnh, video hoặc tệp
                         if (!isUser && !msg.isStreaming && msg.cleanContent.isNotEmpty)
                           Builder(
                             builder: (ctx) {
-                              final detected = RemoteFileDownloadService.extractDownloadablePathsFromText(
-                                msg.cleanContent,
-                              );
-                              if (detected.isEmpty) return const SizedBox.shrink();
                               GatewayProvider? gw;
                               try {
                                 gw = ctx.watch<GatewayProvider>();
                               } catch (_) {}
+                              if (gw?.isSecondary != true) return const SizedBox.shrink();
+
+                              String triggeringPrompt = '';
+                              String? previousPrompt;
+                              final messages = chat.messages;
+                              final startIdx = (index - 1).clamp(-1, messages.length - 1);
+                              for (int i = startIdx; i >= 0; i--) {
+                                if (messages[i].role == 'user') {
+                                  if (triggeringPrompt.isEmpty) {
+                                    triggeringPrompt = messages[i].cleanContent;
+                                  } else {
+                                    previousPrompt = messages[i].cleanContent;
+                                    break;
+                                  }
+                                }
+                              }
+
+                              if (!RemoteFileDownloadService.shouldShowRemotePreviewAndDownload(
+                                isSecondaryMode: true,
+                                userPrompt: triggeringPrompt,
+                                previousUserPrompt: previousPrompt,
+                                assistantText: msg.cleanContent,
+                              )) {
+                                return const SizedBox.shrink();
+                              }
+
+                              final detected = RemoteFileDownloadService.extractDownloadablePathsFromText(
+                                msg.cleanContent,
+                              );
+                              if (detected.isEmpty) return const SizedBox.shrink();
                               return RemoteChatDetectedFilesBar(
                                 paths: detected,
-                                isSecondaryMode: gw?.isSecondary == true,
+                                isSecondaryMode: true,
                                 apiService: _api,
                               );
                             },

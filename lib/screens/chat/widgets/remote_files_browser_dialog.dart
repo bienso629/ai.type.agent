@@ -1123,9 +1123,8 @@ class _RemoteChatDetectedFilesBarState extends State<RemoteChatDetectedFilesBar>
 
   @override
   Widget build(BuildContext context) {
-    final visiblePaths = widget.isSecondaryMode
-        ? widget.paths.take(8).toList()
-        : widget.paths.where((pStr) => File(pStr).existsSync()).take(8).toList();
+    if (!widget.isSecondaryMode) return const SizedBox.shrink();
+    final visiblePaths = widget.paths.take(8).toList();
     if (visiblePaths.isEmpty) return const SizedBox.shrink();
 
     return Padding(

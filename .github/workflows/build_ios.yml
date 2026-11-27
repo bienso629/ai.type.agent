@@ -13,12 +13,21 @@ permissions:
 jobs:
   build-ios:
     name: Build iOS Release (.ipa)
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Verify Xcode & iOS 26 SDK
+        run: |
+          BEST_XCODE=$(ls -d /Applications/Xcode_26*.app /Applications/Xcode.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$BEST_XCODE" ]; then
+            sudo xcode-select -s "$BEST_XCODE/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2

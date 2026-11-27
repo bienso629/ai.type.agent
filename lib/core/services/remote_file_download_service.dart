@@ -47,6 +47,7 @@ class RemoteFileDownloadService {
     'rar',
     'apk',
     'deb',
+    'ipa',
     'exe',
     'dmg',
     'docx',
@@ -54,6 +55,72 @@ class RemoteFileDownloadService {
     'pptx',
     'csv',
   };
+
+  static final RegExp _creationActionRegex = RegExp(
+    r'(?:^|[^\p{L}\p{N}_])('
+    r'tạo|tao|vẽ|ve|sinh|xuất|xuat|render|chụp|chup|quay|ghép|ghep|cắt|cat|nén|nen|'
+    r'đóng\s*gói|dong\s*goi|build|biên\s*dịch|bien\s*dich|thiết\s*kế|thiet\s*ke|'
+    r'chuyển\s*đổi|chuyen\s*doi|convert|tải|tai|gửi|gui|lưu|luu|làm|lam|viết|viet|'
+    r'create|generate|make|draw|export|produce|package|compile|screenshot|capture|record|download|send|save'
+    r')(?:$|[^\p{L}\p{N}_])',
+    caseSensitive: false,
+    unicode: true,
+  );
+
+  static final RegExp _mediaOrFileTargetRegex = RegExp(
+    r'(?:^|[^\p{L}\p{N}_])('
+    r'ảnh|anh|hình|hinh|image|images|photo|photos|picture|pictures|poster|banner|logo|avatar|icon|'
+    r'biểu\s*đồ|bieu\s*do|chart|diagram|màn\s*hình|man\s*hinh|screenshot|'
+    r'video|videos|clip|clips|phim|mp4|mov|mkv|webm|gif|'
+    r'âm\s*thanh|am\s*thanh|audio|nhạc|nhac|giọng\s*nói|giong\s*noi|voice|tts|mp3|wav|'
+    r'file|files|tệp|tep|tài\s*liệu|tai\s*lieu|báo\s*cáo|bao\s*cao|'
+    r'pdf|word|docx|excel|xlsx|csv|pptx|slide|slides|zip|tar|gz|apk|deb|ipa|exe|dmg'
+    r')(?:$|[^\p{L}\p{N}_])|\.(?:png|jpe?g|gif|webp|bmp|svg|heic|mp4|mov|mkv|webm|avi|m4v|3gp|mp3|wav|m4a|ogg|flac|pdf|zip|tar|gz|tgz|7z|rar|apk|deb|ipa|exe|dmg|docx|xlsx|pptx|csv)\b',
+    caseSensitive: false,
+    unicode: true,
+  );
+
+  static final RegExp _shortFollowUpRegex = RegExp(
+    r'^(?:làm\s*luôn|lam\s*luon|tiếp\s*tục|tiep\s*tuc|chạy\s*đi|chay\s*di|triển\s*khai|trien\s*khai|'
+    r'ok|oke|okay|đồng\s*ý|dong\s*y|yes|go|do\s*it|proceed|continue)[\s!.,?]*$',
+    caseSensitive: false,
+    unicode: true,
+  );
+
+  /// Kiểm tra câu yêu cầu có phải yêu cầu tạo/xuất/chụp/đóng gói/gửi hình ảnh, video, âm thanh hoặc tệp hay không.
+  static bool isMediaOrFileCreationRequest(String userPrompt) {
+    final text = userPrompt.trim();
+    if (text.isEmpty) return false;
+    return _creationActionRegex.hasMatch(text) && _mediaOrFileTargetRegex.hasMatch(text);
+  }
+
+  /// Kiểm tra câu ngắn xác nhận tiếp nối lượt trước (ví dụ: "làm luôn", "tiếp tục", "ok").
+  static bool isShortContinuationPrompt(String userPrompt) {
+    final text = userPrompt.trim();
+    return text.isNotEmpty && text.length <= 40 && _shortFollowUpRegex.hasMatch(text);
+  }
+
+  /// Quy tắc hiển thị khung xem trước + tải về trong tin nhắn Chat:
+  /// - Tuyệt đối KHÔNG hiện trên App Chính (`isSecondaryMode == false`).
+  /// - Trên App Phụ (`isSecondaryMode == true`), CHỈ hiện khi câu hỏi yêu cầu tạo/xuất
+  ///   hình ảnh, video hoặc tệp (kể cả khi xác nhận ngắn tiếp nối từ yêu cầu ngay trước đó)
+  ///   và câu trả lời của Agent chứa đường dẫn tệp tải được.
+  static bool shouldShowRemotePreviewAndDownload({
+    required bool isSecondaryMode,
+    required String userPrompt,
+    required String assistantText,
+    String? previousUserPrompt,
+  }) {
+    if (!isSecondaryMode) return false;
+    if (extractDownloadablePathsFromText(assistantText).isEmpty) return false;
+    if (isMediaOrFileCreationRequest(userPrompt)) return true;
+    if (isShortContinuationPrompt(userPrompt) &&
+        previousUserPrompt != null &&
+        isMediaOrFileCreationRequest(previousUserPrompt)) {
+      return true;
+    }
+    return false;
+  }
 
   /// Trích xuất danh sách đường dẫn ảnh/video/tệp mà Agent nhắc tới trong tin nhắn trả lời.
   static List<String> extractDownloadablePathsFromText(String text) {
@@ -97,7 +164,7 @@ class RemoteFileDownloadService {
 
     // 2. Đường dẫn tuyệt đối Unix (/home/..., /tmp/..., /opt/...) hoặc Windows (C:\...)
     final pathRegex = RegExp(
-      r'(?:(?<![A-Za-z0-9_:/])(?:/[A-Za-z0-9._\-\+\~\(\)@ ]+)+|(?:[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+))\.(?:png|jpe?g|gif|webp|bmp|svg|heic|mp4|mov|mkv|webm|avi|m4v|3gp|mp3|wav|m4a|ogg|flac|pdf|zip|tar|gz|tgz|7z|rar|apk|deb|exe|dmg|docx|xlsx|pptx|csv)\b',
+      r'(?:(?<![A-Za-z0-9_:/])(?:/[A-Za-z0-9._\-\+\~\(\)@ ]+)+|(?:[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+))\.(?:png|jpe?g|gif|webp|bmp|svg|heic|mp4|mov|mkv|webm|avi|m4v|3gp|mp3|wav|m4a|ogg|flac|pdf|zip|tar|gz|tgz|7z|rar|apk|deb|ipa|exe|dmg|docx|xlsx|pptx|csv)\b',
       caseSensitive: false,
     );
     for (final m in pathRegex.allMatches(text)) {
