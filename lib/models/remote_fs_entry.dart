@@ -92,7 +92,6 @@ class RemoteFsEntry {
     '3gp',
     'flv',
     'wmv',
-    'ts',
   };
 
   static const Set<String> audioExtensions = {

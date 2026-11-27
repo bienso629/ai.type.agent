@@ -16,6 +16,7 @@ import 'package:tadu_cloud_ai_agent_mobile/core/services/storage_service.dart';
 import 'package:tadu_cloud_ai_agent_mobile/models/attachment_item.dart';
 import 'package:tadu_cloud_ai_agent_mobile/models/chat_message.dart';
 import 'package:tadu_cloud_ai_agent_mobile/models/chat_session.dart';
+import 'package:tadu_cloud_ai_agent_mobile/models/remote_fs_entry.dart';
 import 'package:tadu_cloud_ai_agent_mobile/models/server_model.dart';
 import 'package:tadu_cloud_ai_agent_mobile/providers/chat_provider.dart';
 import 'package:tadu_cloud_ai_agent_mobile/providers/gateway_provider.dart';
@@ -1834,6 +1835,15 @@ void main() {
           assistantText: assistantWithPdf,
         ),
         isFalse,
+      );
+
+      // Tep ma nguon TypeScript (.ts) KHONG duoc nhan nham la video hay tep tai xuong
+      expect(RemoteFsEntry.detectKind('/tmp/affiliate-livestream-dialog.component.ts'), 'file');
+      expect(
+        RemoteFileDownloadService.extractDownloadablePathsFromText(
+          'Da sua tep [affiliate-livestream-dialog.component.ts](file:///tmp/affiliate-livestream-dialog.component.ts)',
+        ),
+        isEmpty,
       );
     });
 

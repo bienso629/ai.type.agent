@@ -1132,9 +1132,9 @@ class _RemoteChatDetectedFilesBarState extends State<RemoteChatDetectedFilesBar>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            widget.isSecondaryMode ? 'Tệp trên máy chính (bấm để xem / tải về):' : 'Tệp đính kèm / xuất ra:',
-            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+          const Text(
+            'Tệp trên máy chính (bấm để xem / tải về):',
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.textMuted),
           ),
           const SizedBox(height: 6),
           Wrap(
